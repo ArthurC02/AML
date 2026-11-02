@@ -16,14 +16,59 @@
   </module>
 
   <module name="Case">
-    <!-- ponytail: example statement; real columns land with the first DbUp script. -->
     <statement id="Case.GetById" kind="Select">
       <description>Load one Case by id.</description>
       <sql><![CDATA[
         SELECT c.case_id, c.subject_ref, c.trigger_event_id, c.case_status,
-               c.current_revision, c.effective_revision, c.created_at
+               c.current_revision, c.effective_revision, c.created_at, c.updated_at
         FROM aml_case c
         WHERE c.case_id = @caseId
+      ]]></sql>
+    </statement>
+
+    <statement id="Case.GetByTrigger" kind="Select">
+      <description>Idempotency lookup: one Case per trigger event and subject.</description>
+      <sql><![CDATA[
+        SELECT c.case_id, c.subject_ref, c.trigger_event_id, c.case_status,
+               c.current_revision, c.effective_revision, c.created_at, c.updated_at
+        FROM aml_case c
+        WHERE c.trigger_event_id = @triggerEventId AND c.subject_ref = @subjectRef
+      ]]></sql>
+    </statement>
+
+    <statement id="Case.Insert" kind="Insert">
+      <description>Create a Case with no analysis yet.</description>
+      <sql><![CDATA[
+        INSERT INTO aml_case (case_id, subject_ref, trigger_event_id, case_status,
+                              current_revision, effective_revision, created_at, updated_at)
+        VALUES (@caseId, @subjectRef, @triggerEventId, @caseStatus, 0, NULL, @now, @now)
+      ]]></sql>
+    </statement>
+
+    <statement id="Case.InsertAnalysis" kind="Insert">
+      <description>Store one analysis revision; the primary key rejects a duplicate revision.</description>
+      <sql><![CDATA[
+        INSERT INTO case_analysis (case_id, revision, execution_status, case_result, result_json, created_at)
+        VALUES (@caseId, @revision, @executionStatus, @caseResult, @resultJson, @now)
+      ]]></sql>
+    </statement>
+
+    <statement id="Case.AcceptAnalysis" kind="Update">
+      <description>Move the Case to a new revision; guarded so a late revision never overwrites a newer one.</description>
+      <sql><![CDATA[
+        UPDATE aml_case
+        SET current_revision = @revision, effective_revision = @effectiveRevision,
+            case_status = @caseStatus, updated_at = @now
+        WHERE case_id = @caseId AND current_revision < @revision
+      ]]></sql>
+    </statement>
+
+    <statement id="Case.GetAnalysis" kind="Select">
+      <description>Load one analysis revision.</description>
+      <sql><![CDATA[
+        SELECT a.case_id, a.revision, a.execution_status, a.case_result, a.result_json, a.created_at
+        FROM case_analysis a
+        WHERE a.case_id = @caseId AND a.revision = @revision
       ]]></sql>
     </statement>
   </module>

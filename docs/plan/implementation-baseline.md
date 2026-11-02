@@ -71,6 +71,13 @@ Rules:
 - Case state mutators are `internal` with `InternalsVisibleTo("Aml.Services")`; within Services, `CaseService` remains the only writer by review.
 - Api holds no business logic.
 
+Built so far (2026-11-02):
+
+- Api uses minimal APIs in `Program.cs` instead of `Controllers/`; endpoints: `POST /api/cases` (multipart `.txt` upload), `POST /api/cases/{caseId}/analyses`, `GET /api/cases/{caseId}`, `GET /api/cases/{caseId}/analyses/{revision}`.
+- Analysis runs synchronously in `CaseService`; the job table exists but `BatchService` and `JobWorker` are not built.
+- Persistence is SQLite-only (`SqliteDatabase`, `SqlCatalog`, `CaseStore`); `IDbConnectionFactory` and `ISqlDialect` are extracted when a second provider is chosen.
+- OpenTelemetry, health checks and authentication are not wired yet.
+
 ## Build settings
 
 | File | Purpose |

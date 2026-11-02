@@ -1,7 +1,9 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Aml.Api/Aml.Api.csproj" />
     <Project Path="src/Aml.Core/Aml.Core.csproj" />
     <Project Path="src/Aml.Infra/Aml.Infra.csproj" />
+    <Project Path="src/Aml.Services/Aml.Services.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Aml.Tests/Aml.Tests.csproj" />

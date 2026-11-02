@@ -2,3 +2,6 @@ bin/
 obj/
 *.user
 .vs/
+*.db
+*.db-shm
+*.db-wal

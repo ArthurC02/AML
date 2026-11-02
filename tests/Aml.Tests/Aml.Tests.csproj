@@ -10,9 +10,11 @@
     <Using Include="Xunit" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Aml.Core\Aml.Core.csproj" />
     <ProjectReference Include="..\..\src\Aml.Infra\Aml.Infra.csproj" />
+    <ProjectReference Include="..\..\src\Aml.Api\Aml.Api.csproj" />
   </ItemGroup>
 </Project>

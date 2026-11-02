@@ -15,7 +15,7 @@ namespace Aml.Tests.GoldenCases;
 /// </summary>
 public class GoldenCaseTests
 {
-    private static string Folder(string gc)
+    internal static string Folder(string gc)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         while (dir is not null && !Directory.Exists(Path.Combine(dir.FullName, "samples", "golden"))) dir = dir.Parent;

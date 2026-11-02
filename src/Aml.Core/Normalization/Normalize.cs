@@ -6,25 +6,54 @@ namespace Aml.Core.Normalization;
 
 public static partial class Normalize
 {
-    /// <summary>Comparison key: diacritics folded, case folded, spaces and punctuation removed. CJK kept as is.</summary>
-    public static string NameKey(string name)
+    /// <summary>
+    /// Comparison key: NFKC, diacritics folded, case folded, spaces and punctuation removed.
+    /// With <paramref name="foldVariants"/>, controlled variant characters fold to one form (鍾/鐘/钟 → 鐘, simplified → traditional).
+    /// </summary>
+    public static string NameKey(string name, bool foldVariants = false)
     {
-        var d = name.Replace('đ', 'd').Replace('Đ', 'D').Normalize(NormalizationForm.FormD);
+        var d = name.Normalize(NormalizationForm.FormKC).Replace('đ', 'd').Replace('Đ', 'D').Normalize(NormalizationForm.FormD);
         var sb = new StringBuilder(d.Length);
         foreach (var c in d)
-            if (char.IsLetterOrDigit(c)) sb.Append(char.ToUpperInvariant(c));
+            if (char.IsLetterOrDigit(c))
+                sb.Append(foldVariants && CjkVariants.TryGetValue(c, out var v) ? v : char.ToUpperInvariant(c));
         return sb.ToString();
     }
 
     /// <summary>Keys for a name in source order and with the surname moved to either end (given-first vs surname-first).</summary>
-    public static IEnumerable<string> NameKeys(string name)
+    public static IEnumerable<string> NameKeys(string name, bool foldVariants = false)
     {
-        yield return NameKey(name);
+        yield return NameKey(name, foldVariants);
         var tokens = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (tokens.Length < 2) yield break;
-        yield return NameKey(string.Join(' ', tokens[1..]) + " " + tokens[0]);
-        yield return NameKey(tokens[^1] + " " + string.Join(' ', tokens[..^1]));
+        yield return NameKey(string.Join(' ', tokens[1..]) + " " + tokens[0], foldVariants);
+        yield return NameKey(tokens[^1] + " " + string.Join(' ', tokens[..^1]), foldVariants);
     }
+
+    /// <summary>EXACT on source characters, EXACT with VARIANT_CHARACTERS after controlled folding, else PARTIAL.</summary>
+    public static (ComparisonStatus Status, string? Detail) CompareNames(IEnumerable<string> subject, IEnumerable<string> profile)
+    {
+        var s = subject.ToList();
+        var p = profile.ToList();
+        if (s.Count == 0) return (ComparisonStatus.SubjectMissing, null);
+        if (p.Count == 0) return (ComparisonStatus.ProfileMissing, null);
+        bool Match(bool fold) => s.SelectMany(n => NameKeys(n, fold)).Intersect(p.SelectMany(n => NameKeys(n, fold))).Any();
+        return Match(false) ? (ComparisonStatus.Exact, null)
+            : Match(true) ? (ComparisonStatus.Exact, Findings.VariantCharacters)
+            : (ComparisonStatus.Partial, "NOT_IDENTICAL_AFTER_NORMALIZATION");
+    }
+
+    // ponytail: controlled list of same-reading variants and simplified forms seen in name data; it needs business
+    // approval and grows from reviewed cases. Characters that are distinct surnames (涂/塗, 云/雲, 余/餘) are never folded.
+    private static readonly Dictionary<char, char> CjkVariants = new()
+    {
+        ['鍾'] = '鐘', ['钟'] = '鐘', ['声'] = '聲', ['陈'] = '陳', ['张'] = '張', ['刘'] = '劉', ['杨'] = '楊',
+        ['黄'] = '黃', ['吴'] = '吳', ['赵'] = '趙', ['郑'] = '鄭', ['许'] = '許', ['邓'] = '鄧', ['冯'] = '馮',
+        ['韩'] = '韓', ['萧'] = '蕭', ['叶'] = '葉', ['苏'] = '蘇', ['卢'] = '盧', ['罗'] = '羅', ['谢'] = '謝',
+        ['钱'] = '錢', ['孙'] = '孫', ['马'] = '馬', ['龙'] = '龍', ['东'] = '東', ['国'] = '國', ['华'] = '華',
+        ['伟'] = '偉', ['丽'] = '麗', ['庄'] = '莊', ['荣'] = '榮', ['宁'] = '寧', ['台'] = '臺', ['阳'] = '陽',
+        ['贵'] = '貴', ['宝'] = '寶', ['凤'] = '鳳', ['兰'] = '蘭', ['颖'] = '穎',
+    };
 
     // ponytail: only the countries seen in samples; extend from an ISO table when more appear.
     public static string Country(string raw) => raw.Trim() switch

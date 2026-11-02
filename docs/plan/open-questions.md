@@ -13,6 +13,7 @@ Questions that need a bank decision. When one is answered, record the answer her
 
 ## Identity policy
 
+- Approve the controlled variant-character list used for name comparison (`Normalize.CjkVariants`: 鍾/鐘/钟 and common simplified forms; distinct surnames such as 涂/塗 are never folded). A name matched only after folding is EXACT with `VARIANT_CHARACTERS` disclosed.
 - Minimum plausible age for an attributed adult role (hard conflict `IMPOSSIBLE_AGE_AT_REPORTED_EVENT`): the code uses 14 (`HardConflictGate.MinimumRoleAge`); GC-01 needs anything above 6.
 - Which complete DOB conflicts qualify as hard conflicts?
 - Which unique-identifier combinations permit automatic MATCH?

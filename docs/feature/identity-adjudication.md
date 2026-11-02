@@ -92,6 +92,8 @@ Applies only to an age explicitly stated for a named person in a bounded source 
 - Requires a full DOB on the subject side; otherwise the result is UNKNOWN and the explanation may show the possible age range.
 - |difference| ≤ 2 (inclusive) → `AGE_COMPATIBLE_AT_REPORT`, recorded like `TEMPORALLY_PLAUSIBLE`: compatible is not support.
 - |difference| > 2 → `AGE_DIFFERENCE_AT_REPORT`, a soft conflict that keeps the pair in REVIEW; it is never a hard conflict.
+- Without a full subject DOB or a report date the result is `AGE_NOT_COMPARABLE`.
+- Phase 1 reads the age only when it is adjacent to the Profile person's name in the same sentence of attached news (e.g. 陳志明（45歲）, 45歲的陳志明).
 - The ±2 tolerance applies to stated ages only, never to DOB comparisons.
 
 ## Hard conflict gate

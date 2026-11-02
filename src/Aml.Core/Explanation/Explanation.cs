@@ -106,7 +106,7 @@ public static class ExplanationBuilder
             NameRow("英文姓名／拼音", s.Names.Where(n => !IsCjk(n)), p.Names.Where(n => !IsCjk(n))),
             new("國籍", Opt(Join(s.Nationalities)), Opt(Join(p.Citizenship)), St(EvidenceGroup.Nationality), null),
             new("出生日期", s.DateOfBirth?.ToString(), Opt(Join(p.DatesOfBirth.Select(d => d.ToString()))), St(EvidenceGroup.DateOfBirth),
-                Detail(EvidenceGroup.DateOfBirth) ?? (p.Findings.Contains(Findings.ProfileMultipleDob) ? Findings.ProfileMultipleDob : null)),
+                DobDifference(e, p)),
             new("性別", Gender(s.Gender), Gender(p.Gender), St(EvidenceGroup.Gender), null),
             new("證件", s.Document is { } d ? $"{d.Type} {Mask(d.Number)}" : null, null, St(EvidenceGroup.Document), null),
             new("地址", Opt(Join(addresses)), Opt(Join(p.AddressCountries)), St(EvidenceGroup.Address), Detail(EvidenceGroup.Address)),
@@ -116,15 +116,22 @@ public static class ExplanationBuilder
         ];
     }
 
+    // DOB detail, plus any age stated in news (the table's "DOB or age" row).
+    private static string? DobDifference(IReadOnlyDictionary<EvidenceGroup, Evidence> e, SourceProfile p)
+    {
+        var parts = new List<string>();
+        if (e.TryGetValue(EvidenceGroup.DateOfBirth, out var dob) && dob.Detail is not null) parts.Add(dob.Detail);
+        else if (p.Findings.Contains(Findings.ProfileMultipleDob)) parts.Add(Findings.ProfileMultipleDob);
+        if (e.TryGetValue(EvidenceGroup.StatedAge, out var age)) parts.Add($"{age.Detail}（{age.Note}）");
+        return parts.Count == 0 ? null : string.Join("；", parts);
+    }
+
     private static ComparisonRow NameRow(string field, IEnumerable<string> subject, IEnumerable<string> profile)
     {
         var sv = subject.ToList();
         var pv = profile.ToList();
-        var status = sv.Count == 0 ? ComparisonStatus.SubjectMissing
-            : pv.Count == 0 ? ComparisonStatus.ProfileMissing
-            : sv.SelectMany(Normalize.NameKeys).Intersect(pv.SelectMany(Normalize.NameKeys)).Any() ? ComparisonStatus.Exact
-            : ComparisonStatus.Partial;
-        return new(field, Opt(Join(sv)), Opt(Join(pv)), status, status == ComparisonStatus.Partial ? "NOT_IDENTICAL_AFTER_NORMALIZATION" : null);
+        var (status, detail) = Normalize.CompareNames(sv, pv);
+        return new(field, Opt(Join(sv)), Opt(Join(pv)), status, detail);
     }
 
     private static string KeyEvidence(HitResult h, List<Evidence> support)

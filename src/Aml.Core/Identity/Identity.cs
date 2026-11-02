@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.RegularExpressions;
 using Aml.Core.Normalization;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
@@ -16,17 +18,15 @@ public sealed record IdentityResult(
 /// <summary>Builds per-group evidence for one screened subject versus one Profile.</summary>
 public static class EvidenceBuilder
 {
-    public static IReadOnlyDictionary<EvidenceGroup, Evidence> Build(ScreenedSubject s, SourceProfile p)
+    public static IReadOnlyDictionary<EvidenceGroup, Evidence> Build(ScreenedSubject s, SourceProfile p, NewsItem? news = null)
     {
         var e = new Dictionary<EvidenceGroup, Evidence>();
         void Add(EvidenceGroup g, Direction d, ComparisonStatus st, Strength str = Strength.None, string? detail = null) =>
             e[g] = new Evidence(g, d, st, str, detail);
 
         // Hit prerequisites: recorded, never support.
-        var profileKeys = p.Names.SelectMany(Normalize.NameKeys).ToHashSet();
-        Add(EvidenceGroup.Name, Direction.Prerequisite,
-            s.Names.Count == 0 ? ComparisonStatus.SubjectMissing
-            : s.Names.Any(n => Normalize.NameKeys(n).Any(profileKeys.Contains)) ? ComparisonStatus.Exact : ComparisonStatus.Partial);
+        var (nameStatus, nameDetail) = Normalize.CompareNames(s.Names, p.Names);
+        Add(EvidenceGroup.Name, Direction.Prerequisite, nameStatus, detail: nameDetail);
         Add(EvidenceGroup.Gender, Direction.Prerequisite,
             Compare(s.Gender is null, p.Gender is null, () => s.Gender == p.Gender));
         Add(EvidenceGroup.Nationality, Direction.Prerequisite,
@@ -51,6 +51,7 @@ public static class EvidenceBuilder
             s.Addresses.All(a => a.Country is null) ? ComparisonStatus.SubjectMissing
             : p.AddressCountries.Count == 0 ? ComparisonStatus.ProfileMissing : ComparisonStatus.Uncertain,
             detail: p.AddressCountries.Count > 0 ? "SOFT_DIFFERENCE" : null);
+        if (StatedAgeCheck.Check(s, p, news) is { } age) e[EvidenceGroup.StatedAge] = age;
         return e;
     }
 
@@ -84,6 +85,44 @@ public static class EvidenceBuilder
         subjectMissing ? ComparisonStatus.SubjectMissing : profileMissing ? ComparisonStatus.ProfileMissing : ComparisonStatus.Uncertain;
 }
 
+/// <summary>
+/// Age explicitly stated for the Profile person in attached news (identity-adjudication.md, age stated in a source).
+/// Compared at the report date. Within ±2 years is compatible, never support; beyond is a soft conflict, never hard.
+/// </summary>
+public static class StatedAgeCheck
+{
+    public const int ToleranceYears = 2;
+
+    public static Evidence? Check(ScreenedSubject s, SourceProfile p, NewsItem? news)
+    {
+        if (news is null || FindStatedAge(news.Text, p.Names.Where(n => n.Any(c => c is >= '㐀' and <= '鿿'))) is not { } stated)
+            return null;
+        if (s.DateOfBirth is not { Precision: DatePrecision.Day } dob || news.PublishedOn is not { Precision: DatePrecision.Day } at)
+            return new Evidence(EvidenceGroup.StatedAge, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, ReasonCodes.AgeNotComparable,
+                $"報導年齡 {stated} 歲；缺少完整出生日期或報導日期，無法換算");
+
+        var age = at.Year - dob.Year - ((at.Month, at.Day).CompareTo((dob.Month, dob.Day)) < 0 ? 1 : 0);
+        var note = $"報導年齡 {stated} 歲；依報導日期 {at} 推算 {age} 歲";
+        return Math.Abs(stated - age) <= ToleranceYears
+            ? new Evidence(EvidenceGroup.StatedAge, Direction.Neutral, ComparisonStatus.Exact, Strength.None, ReasonCodes.AgeCompatibleAtReport, note)
+            : new Evidence(EvidenceGroup.StatedAge, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.AgeDifferenceAtReport, note);
+    }
+
+    /// <summary>"陳志明（45歲）", "陳志明今年45歲", "45歲的陳志明", within one sentence and adjacent to the name.</summary>
+    public static int? FindStatedAge(string text, IEnumerable<string> names)
+    {
+        foreach (var sentence in text.Split('。', '！', '？', '\n'))
+        foreach (var name in names)
+        {
+            var n = Regex.Escape(name);
+            var m = Regex.Match(sentence, $@"{n}[（(，,]?(?:今年|現年|時年)?(\d{{1,3}})歲|(\d{{1,3}})歲的?{n}");
+            if (m.Success)
+                return int.Parse(m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value, CultureInfo.InvariantCulture);
+        }
+        return null;
+    }
+}
+
 /// <summary>Stage 1 hard conflict gate.</summary>
 public static class HardConflictGate
 {
@@ -113,9 +152,9 @@ public static class HardConflictGate
 /// <summary>Stage 3 decision table (identity-adjudication.md). The first matching row wins.</summary>
 public static class IdentityDecisionPolicy
 {
-    public static IdentityResult Decide(ScreenedSubject s, SourceProfile p)
+    public static IdentityResult Decide(ScreenedSubject s, SourceProfile p, NewsItem? news = null)
     {
-        var e = EvidenceBuilder.Build(s, p);
+        var e = EvidenceBuilder.Build(s, p, news);
         if (HardConflictGate.Check(s, p) is { } hard)
             return new IdentityResult(e, hard, null, IdentityDecision.NoMatch, [hard]);
 
@@ -130,7 +169,7 @@ public static class IdentityDecisionPolicy
         ComparisonStatus St(EvidenceGroup g) => e.TryGetValue(g, out var v) ? v.Status : ComparisonStatus.ProfileMissing;
         var supports = e.Values.Where(v => v.IsSupport).ToList();
 
-        var conflict = new[] { EvidenceGroup.DateOfBirth, EvidenceGroup.Document, EvidenceGroup.Employment }
+        var conflict = new[] { EvidenceGroup.DateOfBirth, EvidenceGroup.Document, EvidenceGroup.Employment, EvidenceGroup.StatedAge }
             .Select(g => e.GetValueOrDefault(g)).FirstOrDefault(v => v?.Status == ComparisonStatus.Conflict);
         if (conflict is not null)
             return (1, IdentityDecision.Review, conflict.Detail ?? conflict.Group switch

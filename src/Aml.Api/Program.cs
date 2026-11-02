@@ -58,6 +58,12 @@ cases.MapGet("/{caseId}/analyses/{revision:int}", async Task<Results<ContentHttp
         : TypedResults.NotFound())
 .WithSummary("Analysis result: hits, source conditions, evidence, identity decision and reason codes");
 
+cases.MapGet("/{caseId}/explanation", async Task<Results<ContentHttpResult, NotFound>> (string caseId, CaseService service, CancellationToken ct) =>
+    await service.GetExplanationAsync(caseId, ct) is { } json
+        ? TypedResults.Content(json, "application/json")
+        : TypedResults.NotFound())
+.WithSummary("Reviewer and audit view of the effective revision: hit reason, comparison table, evidence, reason codes and a five-part summary");
+
 app.Run();
 
 // Saves the upload to a private temp folder (file names reduced to their last segment), reads it, deletes it.

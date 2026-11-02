@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Aml.Core.Cases;
+using Aml.Core.Explanation;
 using Aml.Core.Ports;
 using Aml.Core.Subjects;
 
@@ -35,6 +36,14 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock)
 
     public Task<CaseRecord?> GetAsync(string caseId, CancellationToken ct) => store.GetAsync(caseId, ct);
 
+    /// <summary>Explanation of the effective revision.</summary>
+    public async Task<string?> GetExplanationAsync(string caseId, CancellationToken ct)
+    {
+        var c = await store.GetAsync(caseId, ct).ConfigureAwait(false);
+        if (c?.EffectiveRevision is not { } rev) return null;
+        return (await store.GetAnalysisAsync(caseId, rev, ct).ConfigureAwait(false))?.ExplanationJson;
+    }
+
     public Task<AnalysisRecord?> GetAnalysisAsync(string caseId, int revision, CancellationToken ct) => store.GetAnalysisAsync(caseId, revision, ct);
 
     private async Task<CaseRecord> AnalyzeAsync(CaseRecord c, CaseInput input, CancellationToken ct)
@@ -43,7 +52,7 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock)
         var revision = c.CurrentRevision + 1;
         var status = CaseLifecycle.AfterAnalysis(analysis);
         var record = new AnalysisRecord(c.CaseId, revision, ExecutionStatus.Completed, CaseLifecycle.Aggregate(analysis),
-            JsonSerializer.Serialize(analysis, Json), clock.GetUtcNow());
+            JsonSerializer.Serialize(analysis, Json), JsonSerializer.Serialize(ExplanationBuilder.Build(input, analysis), Json), clock.GetUtcNow());
 
         if (!await store.AcceptAnalysisAsync(record, status, ct).ConfigureAwait(false))
             throw new InvalidOperationException($"Case {c.CaseId} already has a revision newer than {revision}");

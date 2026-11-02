@@ -16,6 +16,16 @@ public static partial class Normalize
         return sb.ToString();
     }
 
+    /// <summary>Keys for a name in source order and with the surname moved to either end (given-first vs surname-first).</summary>
+    public static IEnumerable<string> NameKeys(string name)
+    {
+        yield return NameKey(name);
+        var tokens = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (tokens.Length < 2) yield break;
+        yield return NameKey(string.Join(' ', tokens[1..]) + " " + tokens[0]);
+        yield return NameKey(tokens[^1] + " " + string.Join(' ', tokens[..^1]));
+    }
+
     // ponytail: only the countries seen in samples; extend from an ISO table when more appear.
     public static string Country(string raw) => raw.Trim() switch
     {

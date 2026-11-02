@@ -23,10 +23,10 @@ public static class EvidenceBuilder
             e[g] = new Evidence(g, d, st, str, detail);
 
         // Hit prerequisites: recorded, never support.
-        var profileKeys = p.Names.Select(Normalize.NameKey).ToHashSet();
+        var profileKeys = p.Names.SelectMany(Normalize.NameKeys).ToHashSet();
         Add(EvidenceGroup.Name, Direction.Prerequisite,
             s.Names.Count == 0 ? ComparisonStatus.SubjectMissing
-            : s.Names.Any(n => profileKeys.Contains(Normalize.NameKey(n))) ? ComparisonStatus.Exact : ComparisonStatus.Partial);
+            : s.Names.Any(n => Normalize.NameKeys(n).Any(profileKeys.Contains)) ? ComparisonStatus.Exact : ComparisonStatus.Partial);
         Add(EvidenceGroup.Gender, Direction.Prerequisite,
             Compare(s.Gender is null, p.Gender is null, () => s.Gender == p.Gender));
         Add(EvidenceGroup.Nationality, Direction.Prerequisite,

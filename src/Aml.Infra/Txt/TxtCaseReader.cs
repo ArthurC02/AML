@@ -174,7 +174,7 @@ public static partial class TxtCaseReader
         var names = new List<string>();
         foreach (var r in T("主要名稱").Concat(T("拼寫變化")))
         {
-            if (Numbered(r) && r.Length >= 3) { names.Add($"{r[2]} {r[1]}"); names.Add($"{r[1]} {r[2]}"); }
+            if (Numbered(r) && r.Length >= 3) names.Add($"{r[2]} {r[1]}"); // surname first, as the source lists it
             else if (r[0] == "OSN") names.Add(r[1]);
         }
 

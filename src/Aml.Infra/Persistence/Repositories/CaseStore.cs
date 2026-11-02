@@ -13,7 +13,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
     private sealed record CaseRow(string CaseId, string SubjectRef, string TriggerEventId, string CaseStatus,
         long CurrentRevision, long? EffectiveRevision, string CreatedAt, string UpdatedAt);
 
-    private sealed record AnalysisRow(string CaseId, long Revision, string ExecutionStatus, string CaseResult, string ResultJson, string CreatedAt);
+    private sealed record AnalysisRow(string CaseId, long Revision, string ExecutionStatus, string CaseResult, string ResultJson, string? ExplanationJson, string CreatedAt);
 
     public async Task<CaseRecord> CreateAsync(CaseRecord record, CancellationToken ct)
     {
@@ -49,7 +49,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
         await c.ExecuteAsync(new CommandDefinition(db.Sql["Case.InsertAnalysis"], new
         {
             caseId = analysis.CaseId, revision = analysis.Revision, executionStatus = Enum(analysis.ExecutionStatus),
-            caseResult = Enum(analysis.CaseResult), resultJson = analysis.ResultJson, now,
+            caseResult = Enum(analysis.CaseResult), resultJson = analysis.ResultJson, explanationJson = analysis.ExplanationJson, now,
         }, tx, cancellationToken: ct)).ConfigureAwait(false);
 
         // Only a COMPLETED revision becomes the effective (published) result.
@@ -68,7 +68,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
         var row = await c.QuerySingleOrDefaultAsync<AnalysisRow>(new CommandDefinition(db.Sql["Case.GetAnalysis"], new { caseId, revision }, cancellationToken: ct)).ConfigureAwait(false);
         return row is null ? null : new AnalysisRecord(row.CaseId, (int)row.Revision,
-            Parse<ExecutionStatus>(row.ExecutionStatus), Parse<CaseResult>(row.CaseResult), row.ResultJson, ParseTime(row.CreatedAt));
+            Parse<ExecutionStatus>(row.ExecutionStatus), Parse<CaseResult>(row.CaseResult), row.ResultJson, row.ExplanationJson, ParseTime(row.CreatedAt));
     }
 
     private static CaseRecord Map(CaseRow r) => new(r.CaseId, r.SubjectRef, r.TriggerEventId, Parse<CaseStatus>(r.CaseStatus),

@@ -29,7 +29,7 @@ public sealed class CaseStoreTests : IDisposable
         new(Guid.CreateVersion7().ToString(), "subject-1", trigger, CaseStatus.Open, 0, null, T0, T0);
 
     private static AnalysisRecord Analysis(string caseId, int revision) =>
-        new(caseId, revision, ExecutionStatus.Completed, CaseResult.Review, "{\"hits\":[]}", T0.AddMinutes(revision));
+        new(caseId, revision, ExecutionStatus.Completed, CaseResult.Review, "{\"hits\":[]}", "{}", T0.AddMinutes(revision));
 
     [Fact]
     public async Task Round_trip_and_idempotent_create()

@@ -54,6 +54,11 @@ public sealed class CasesApiTests : IDisposable
         var hit = analysis.GetProperty("hits")[0];
         Assert.Equal(identityDecision, hit.GetProperty("identity").GetProperty("decision").GetString());
 
+        var explanation = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/explanation", ct);
+        var first = explanation.GetProperty("hits")[0];
+        Assert.Equal(9, first.GetProperty("comparison").GetArrayLength());
+        Assert.False(string.IsNullOrEmpty(first.GetProperty("summary").GetProperty("conclusion").GetString()));
+
         // Same trigger and subject: the existing Case comes back, no new revision.
         using var repeated = await client.PostAsync("/api/cases", Upload(gc, "evt-" + gc), ct);
         var again = await repeated.Content.ReadFromJsonAsync<JsonElement>(ct);

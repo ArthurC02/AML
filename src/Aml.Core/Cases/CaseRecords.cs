@@ -14,7 +14,7 @@ public sealed record CaseRecord(
     int CurrentRevision, int? EffectiveRevision, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
 
 public sealed record AnalysisRecord(
-    string CaseId, int Revision, ExecutionStatus ExecutionStatus, CaseResult CaseResult, string ResultJson, DateTimeOffset CreatedAt);
+    string CaseId, int Revision, ExecutionStatus ExecutionStatus, CaseResult CaseResult, string ResultJson, string? ExplanationJson, DateTimeOffset CreatedAt);
 
 public static class CaseLifecycle
 {

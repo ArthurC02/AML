@@ -15,7 +15,7 @@ Build a traceable identity adjudication flow for customer and related-party scre
 - candidate retrieval and Profile-level deduplication;
 - MATCH, NO_MATCH, REVIEW and internal PROBABLE_MATCH;
 - source-condition HIT, NOT_HIT and UNKNOWN;
-- human review, approval and final disposition, including bank operating procedure Article 22 ([review and disposition](review-and-disposition.md));
+- the explanation of every system decision: evidence, comparison table, reason codes and a summary restating recorded facts;
 - batch execution, retry, idempotency and analysis revision;
 - API with OpenAPI / Swagger UI ([ADR-0009](../adr/0009-api-only.md)).
 
@@ -29,7 +29,8 @@ Build a traceable identity adjudication flow for customer and related-party scre
 - photo or face comparison;
 - unapproved AML scoring weights;
 - automatic confirmation for all PEP or Sanction cases;
-- any UI.
+- any UI;
+- the human workflow: reviewer and approver roles, HumanDecision, approvals, close and reopen, and Article 22 dispositions ([review and disposition](review-and-disposition.md) stays as the later design; Golden Case human results are documentation only). PoC decision of 2026-11-02: the PoC proves the system's judgment, evidence and explanation.
 
 ## Capability exposure policy
 

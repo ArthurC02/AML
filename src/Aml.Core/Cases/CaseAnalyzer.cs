@@ -25,7 +25,7 @@ public static class CaseAnalyzer
             .Select(g =>
             {
                 var profile = input.Profiles[g.Key];
-                var conditions = SourceConditions.Determine(profile, g.Any(r => r.IsRca), input.NewsByProfileId.GetValueOrDefault(g.Key));
+                var conditions = SourceConditions.Determine(profile, g.Any(r => r.IsRca), input.NewsByProfileId.GetValueOrDefault(g.Key)?.Text);
                 var identity = IdentityDecisionPolicy.Decide(input.Subject, profile);
                 // PROBABLE_MATCH is internal; externally it is REVIEW (ADR-0003).
                 var pair = identity.Decision == IdentityDecision.NoMatch ? PairResult.NoMatch : PairResult.Review;

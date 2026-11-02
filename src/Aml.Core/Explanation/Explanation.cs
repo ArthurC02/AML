@@ -34,7 +34,11 @@ public sealed record HitExplanation(
     PairResult PairResult,
     IReadOnlyList<string> ReasonCodes,
     IReadOnlyList<string> DataQualityFindings,
+    IReadOnlyList<ExplanationSource> Sources,
     ExplanationSummary Summary);
+
+/// <summary>A source behind a hit: what it is, where it is and what the system used it for.</summary>
+public sealed record ExplanationSource(string Id, string Name, string? Url, string? PublishedOn, string? RetrievedOn, string UsedFor, bool AttachedToProfile);
 
 public sealed record CaseExplanation(CaseResult CaseResult, IReadOnlyList<HitExplanation> Hits, IReadOnlyList<ImportedDecision> ImportedDecisions);
 
@@ -62,7 +66,13 @@ public static class ExplanationBuilder
         var unknown = rows.Where(r => r.Status is ComparisonStatus.SubjectMissing or ComparisonStatus.ProfileMissing or ComparisonStatus.Uncertain)
             .Select(r => r.Field).ToList();
         var findings = s.Findings.Concat(s.Addresses.Select(a => a.Detail).OfType<string>()).Concat(p.Findings).Distinct().ToList();
-        var news = input.NewsByProfileId.ContainsKey(p.ProfileKey["DJ:".Length..]);
+        var newsItem = input.NewsByProfileId.GetValueOrDefault(p.ProfileKey["DJ:".Length..]);
+        var news = newsItem is not null;
+        var sources = p.Sources.Select(x => new ExplanationSource(x.Id, x.Name, x.Url, x.PublishedOn, x.RetrievedOn, "PROFILE_RECORD", true)).ToList();
+        if (newsItem is not null)
+            sources.Add(new ExplanationSource(newsItem.DocumentId ?? $"{p.ProfileKey}#news", $"{newsItem.Publisher}：{newsItem.Title}", null,
+                newsItem.PublishedOn?.ToString(), null,
+                h.Conditions.Any(c => c.Type == ListType.AdverseMedia) ? "LEGAL_STAGE" : "CONTEXT", true));
 
         var summary = new ExplanationSummary(
             InternalData: $"受檢對象為{subject}；出生日期 {Show(s.DateOfBirth?.ToString())}；國籍 {Show(Join(s.Nationalities))}；性別 {Show(Gender(s.Gender))}；證件 {(s.Document is null ? "未提供" : "已提供")}。",
@@ -78,7 +88,7 @@ public static class ExplanationBuilder
 
         return new HitExplanation(number, subject, p.ProfileKey, matched, input.Rows.Any(r => "DJ:" + r.ProfileId == p.ProfileKey && r.IsRca),
             categories, h.Conditions, news, rows, support, conflicts, unknown, h.Identity.HardConflict, h.Identity.Stage3Row,
-            h.Identity.Decision, h.PairResult, h.Identity.ReasonCodes, findings, summary);
+            h.Identity.Decision, h.PairResult, h.Identity.ReasonCodes, findings, sources, summary);
     }
 
     private static List<ComparisonRow> Comparison(ScreenedSubject s, SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence> e)

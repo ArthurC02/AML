@@ -69,6 +69,25 @@ public class ExplanationTests
         Assert.Contains("沒有任何佐證", h.Summary.KeyEvidenceOrGaps, StringComparison.Ordinal);
         Assert.Contains("ADVERSE_MEDIA（FINANCIAL_CRIME、TAX_CRIME；法律階段 INDICTED）", h.Summary.ExternalData, StringComparison.Ordinal);
         Assert.Contains("REVIEW（第三階段第 6 列）", h.Summary.Conclusion, StringComparison.Ordinal);
+
+        Assert.Collection(h.Sources,
+            s =>
+            {
+                Assert.Equal("DJ:90000012#source-1", s.Id);
+                Assert.Equal("Liberty Times (Chinese - Traditional)", s.Name);
+                Assert.Equal("2026-09-06", s.PublishedOn);
+                Assert.Equal("2026-09-10", s.RetrievedOn);
+                Assert.StartsWith("https://global.factiva.com/", s.Url, StringComparison.Ordinal);
+                Assert.Equal("PROFILE_RECORD", s.UsedFor);
+            },
+            s =>
+            {
+                Assert.Equal("LIBTOT0020260905EXAMPLE12", s.Id);
+                Assert.StartsWith("自由時報 (繁體)：虛構銷售額", s.Name, StringComparison.Ordinal);
+                Assert.Equal("2026-09-06", s.PublishedOn);
+                Assert.Equal("LEGAL_STAGE", s.UsedFor);
+                Assert.True(s.AttachedToProfile);
+            });
         // No identifier from the source appears unmasked.
         Assert.DoesNotContain("B123456780", System.Text.Json.JsonSerializer.Serialize(h), StringComparison.Ordinal);
     }
@@ -80,6 +99,7 @@ public class ExplanationTests
 
         Assert.Equal(ReasonCodes.ImpossibleAgeAtReportedEvent, h.HardConflict);
         Assert.Null(h.Stage3Row);
+        Assert.Empty(h.Sources); // GC-01 cites no source and has no attached news
         Assert.Contains("董事長，宏遠投資股份有限公司（1990-07 起）", Row(h, "職業／雇主").ProfileValue, StringComparison.Ordinal);
         Assert.Contains("硬衝突 IMPOSSIBLE_AGE_AT_REPORTED_EVENT", h.Summary.KeyEvidenceOrGaps, StringComparison.Ordinal);
         Assert.Contains("NO_MATCH（第一階段硬衝突", h.Summary.Conclusion, StringComparison.Ordinal);

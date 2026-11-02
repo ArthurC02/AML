@@ -43,7 +43,14 @@ public sealed record SourceProfile(
     IReadOnlyList<ProfileRole> Roles,
     IReadOnlyList<ProfileRelationship> Relationships,
     OfficialListEntry? OfficialList,
-    IReadOnlyList<string> Findings);
+    IReadOnlyList<string> Findings,
+    IReadOnlyList<SourceReference> Sources);
+
+/// <summary>A source the Profile cites. Dates are ISO strings as far as the source states them.</summary>
+public sealed record SourceReference(string Id, string Name, string? Url, string? PublishedOn, string? RetrievedOn);
+
+/// <summary>A news item attached to a Profile in the input.</summary>
+public sealed record NewsItem(string ProfileId, string? DocumentId, string Title, string? Publisher, PartialDate? PublishedOn, string Text);
 
 /// <summary>One row of the candidate table. Legacy columns are ImportedDecision only, never evidence.</summary>
 public sealed record CandidateRow(string MatchedName, string ProfileId, string? LegacyReason, bool IsRca);
@@ -54,5 +61,5 @@ public sealed record CaseInput(
     ScreenedSubject Subject,
     IReadOnlyList<CandidateRow> Rows,
     IReadOnlyDictionary<string, SourceProfile> Profiles,
-    IReadOnlyDictionary<string, string> NewsByProfileId,
+    IReadOnlyDictionary<string, NewsItem> NewsByProfileId,
     IReadOnlyList<ImportedDecision> LegacyDecisions);

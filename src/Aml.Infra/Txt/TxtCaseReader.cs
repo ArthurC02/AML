@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Aml.Core.Normalization;
 using Aml.Core.Shared;
@@ -26,7 +27,7 @@ public static partial class TxtCaseReader
         var news = rows.Select(r => r.ProfileId).Distinct()
             .Select(id => (id, path: Path.Combine(folder, $"新聞資訊_{id}.txt")))
             .Where(x => File.Exists(x.path))
-            .ToDictionary(x => x.id, x => File.ReadAllText(x.path));
+            .ToDictionary(x => x.id, x => ReadNews(x.id, x.path));
 
         var legacy = new List<ImportedDecision>();
         if (subjectRow.ListMatch is { } m) legacy.Add(new("是否符合名單", m));
@@ -199,8 +200,49 @@ public static partial class TxtCaseReader
             Roles: roles,
             Relationships: relationships,
             OfficialList: official,
-            Findings: dobs.Count > 1 ? [Findings.ProfileMultipleDob] : []);
+            Findings: dobs.Count > 1 ? [Findings.ProfileMultipleDob] : [],
+            Sources: T("來源").Where(Numbered).Select(r => Source($"DJ:{scalars["Profile_ID"]}#source-{r[0]}", r[1], r.ElementAtOrDefault(2))).ToList());
     }
+
+    // "Liberty Times (Chinese - Traditional), 06-Sep-2026, on Factiva.com (https://…)" + "2026/9/10 下午 01:00:15"
+    private static SourceReference Source(string id, string text, string? retrieved)
+    {
+        var parts = text.Split(", ");
+        var published = parts.Skip(1)
+            .Select(p => DateTime.TryParseExact(p.Trim(), "dd-MMM-yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d)
+                ? d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : null)
+            .FirstOrDefault(d => d is not null);
+        var url = SourceUrl().Match(text) is { Success: true } m ? m.Groups[1].Value : null;
+        var retrievedOn = Normalize.NullIfPlaceholder(retrieved)?.Split(' ')[0] is { } r && PartialDate.Parse(r) is { } rd ? rd.ToString() : null;
+        return new SourceReference(id, parts[0].Trim(), url, published, retrievedOn);
+    }
+
+    [GeneratedRegex("\\((https?://[^)\\s]+)\\)")]
+    private static partial Regex SourceUrl();
+
+    // News export: id line, section, title, reporter, length, "2026 年 9 月 6 日", publisher, …, "文件 <id>".
+    private static NewsItem ReadNews(string profileId, string path)
+    {
+        var lines = File.ReadAllLines(path).Select(l => l.Trim()).ToArray();
+        var dateIndex = Array.FindIndex(lines, l => NewsDate().IsMatch(l));
+        PartialDate? published = null;
+        if (dateIndex >= 0)
+        {
+            var g = NewsDate().Match(lines[dateIndex]).Groups;
+            published = new PartialDate(Int(g[1].Value), Int(g[2].Value), Int(g[3].Value));
+        }
+        var docId = lines.Select(l => NewsDocument().Match(l)).FirstOrDefault(m => m.Success)?.Groups[1].Value;
+        return new NewsItem(profileId, docId, lines.ElementAtOrDefault(2) ?? "",
+            dateIndex >= 0 ? lines.ElementAtOrDefault(dateIndex + 1) : null, published, string.Join('\n', lines));
+    }
+
+    private static int Int(string s) => int.Parse(s, CultureInfo.InvariantCulture);
+
+    [GeneratedRegex("^(\\d{4}) 年 (\\d{1,2}) 月 (\\d{1,2}) 日$")]
+    private static partial Regex NewsDate();
+
+    [GeneratedRegex("^文件 (\\S+)$")]
+    private static partial Regex NewsDocument();
 
     // "Profile_ID: 1", "性別:\tMale", "類別:"; excludes free text such as "Watchlist ProfileNotes: ..." (key has a space).
     [GeneratedRegex("^([^\\s:：]+\\??)[:：]\\s*(.*)$")]

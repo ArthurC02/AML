@@ -1,0 +1,39 @@
+Profile_ID: 90000011
+記錄類型:	Person
+性別:	Male
+已故?:	False
+主要名稱:
+編號	名字	姓	Sub Name Type
+1	Jen-Sheng	Jhong
+類型	名字
+OSN	钟仁声
+OSN	鐘仁聲
+OSN	钟任声
+OSN	鍾任聲
+拼寫變化:
+編號	名字	姓
+1	Jen-Sheng	Chung
+2	Ren-Sheng	Zhong
+3	Jen Sheng	Jhong
+4	Jen Sheng	Chung
+5	Ren Sheng	Zhong
+6	Rensheng	Zhong
+國家資料:
+編號	類型	國家
+1	Citizenship	Taiwan
+2	Country of Reported Allegation	Taiwan
+3	Resident of	Taiwan
+日期:
+編號	類型	日期
+1	Date of Birth	1973
+2	Date of Birth	1972
+狀態:	Active
+類別:
+編號	描述1	描述2
+1	Special Interest Person (SIP)	Financial Crime
+簡介說明:
+Watchlist ProfileNotes: Last Reviewed Date: 03-Sep-2026 Record Status: Active  Comments: [truncated in the supplied sample]
+來源:
+編號	來源	資料庫日期
+1	China Times Real Time News (Chinese - Traditional), 07-May-2026, on Factiva.com (https://global.factiva.com/redir/default.aspx?P=sa&an=EXAMPLE000000000000)
+最後審查日期:	2026/9/3

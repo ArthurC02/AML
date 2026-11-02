@@ -1,0 +1,30 @@
+Profile_ID: 90000031
+記錄類型:	Person
+性別:	Female
+已故?:	False
+主要名稱:
+編號	名字	姓	Sub Name Type
+1	Thị Hồng Nhung	Nguyễn
+拼寫變化:
+編號	名字	姓
+1	Thi Hong Nhung	Nguyen
+國家資料:
+編號	類型	國家
+1	Citizenship	Viet Nam
+2	Resident of	Viet Nam
+地址:
+編號	地址	城市	國家
+1	Thôn Example, Xã An Hòa	Tỉnh Example	Viet Nam
+日期:
+編號	類型	日期
+1	Date of Birth	1992
+狀態:	Active
+類別:
+編號	描述1	描述2
+1	Other Official List	
+名單資訊:
+機關	名單	狀態	決定日期	罪名
+Example Provincial Police	Wanted Persons List	Active	2024/6/30	Fraud
+簡介說明:
+Watchlist ProfileNotes: Listed on a provincial wanted persons list for fraud. [fictional synthetic sample]
+最後審查日期:	2026/9/15

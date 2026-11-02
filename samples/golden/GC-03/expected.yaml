@@ -1,0 +1,65 @@
+# GC-03 expected results. Authoritative: a policy that disagrees is changed, not this file.
+# Walkthrough: docs/plan/golden-cases.md#gc-03-multilingual-probable-match-on-official-wanted-list
+case: GC-03
+validationStatus: SYNTHETIC                  # fictional data built from the validated scenario; replace with the anonymized real case when supplied
+assumptions:
+  - listFlags are MISSING; column order pending confirmation
+  - the Profile's official-list details arrive as a structured 名單資訊 table (format assumed; real export pending)
+
+extraction:
+  customer:
+    englishName: NGUYEN THI HONG NHUNG
+    localName: { valueState: MISSING, detail: PLACEHOLDER_DASH }
+    dateOfBirth: { value: 1992-04-10, precision: DAY }
+    gender: FEMALE
+    nationality: [VN]
+    document: { type: TW_RESIDENT_CERTIFICATE, issuingCountry: TW, number: AC12345678 }   # fictional
+    address: { raw: 33041桃園市桃園區中正路１００號, country: TW }
+  profile:
+    profileKey: DJ:90000031
+    gender: FEMALE
+    names: { primary: Nguyễn Thị Hồng Nhung, variants: [Nguyen Thi Hong Nhung] }
+    dateOfBirth: { value: "1992", precision: YEAR }
+    citizenship: [VN]
+    address: { country: VN }
+    category: Other Official List
+    officialList: { authority: Example Provincial Police, list: Wanted Persons List, status: Active, decisionDate: 2024-06-30, offence: Fraud }
+  legacyDecisions:                           # ImportedDecision only, never evidence
+    - { field: 理由, value: 確認後符合, independentlyVerified: false }
+
+retrieval:
+  candidateRows: 2                           # with and without diacritics
+  candidateProfiles: 1
+  hitCount: 1
+
+sourceConditions:
+  - conditionType: OFFICIAL_WANTED_LIST      # OTHER_OFFICIAL_LIST refined by OfficialListPolicy
+    status: HIT
+    basis: CATEGORY_MAPPING
+    legalStage: WANTED
+
+identity:
+  evidence:
+    NAME: { direction: PREREQUISITE, comparisonStatus: EXACT }     # after diacritic folding
+    GENDER: { direction: PREREQUISITE, comparisonStatus: EXACT }
+    NATIONALITY: { direction: PREREQUISITE, comparisonStatus: EXACT }
+    DATE_OF_BIRTH: { direction: SUPPORT, comparisonStatus: PARTIAL, strength: LOW, reasonCode: BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE }
+    DOCUMENT: { comparisonStatus: PROFILE_MISSING }
+    ADDRESS: { comparisonStatus: UNCERTAIN, effect: SOFT_DIFFERENCE }  # TW residence vs VN source address, periods unknown; not a hard exclusion
+  stage1: no hard conflict
+  stage3Row: 4
+  identityDecision: PROBABLE_MATCH
+  reasonCodes: [CONSISTENT_AT_AVAILABLE_PRECISION, NO_BILATERAL_DIRECT_IDENTIFIER]
+
+pairResult: REVIEW                           # PROBABLE_MATCH is internal
+disposition:
+  article22_1: NOT_APPLICABLE                # not a PEP condition
+caseStatus: IN_REVIEW
+finalDisposition: { humanDecision: MATCH, disposition: ON_LIST, basis: IDENTITY }
+
+regressionAssertions:
+  - two rows (with and without diacritics) produce one hit
+  - the DOB is never reported as a full-date match
+  - different current and source countries of address never produce NO_MATCH
+  - WANTED is never described as a conviction or judgment
+  - legacy 確認後符合 never appears as evidence or SystemDecision

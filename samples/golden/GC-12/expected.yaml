@@ -1,0 +1,100 @@
+# GC-12 expected results. Authoritative: a policy that disagrees is changed, not this file.
+# Walkthrough: docs/plan/golden-cases.md#gc-12-related-party-with-a-common-name-and-no-comparable-identifiers
+case: GC-12
+validationStatus: VALIDATED_REAL_CASE        # anonymized; business outcome 無法判斷 (grey area, confirmed 2026-11-02)
+assumptions:
+  - listFlags (PEP, blacklist, adverse news) are MISSING in 案件資訊; column order pending confirmation
+  - the account holder's data is case context only (business answer 2026-11-02); the sample omits it, and adding it must not change identity results
+
+extraction:
+  screenedSubject:
+    role: RELATED_PARTY
+    relationship: 帳戶持有人的法定代理人
+    referenceNumber: { value: B123456780, group: OTHER_IDENTIFIER }   # ID-shaped, valid checksum, still not a document
+    localName: 陳志明
+    gender: { valueState: MISSING, detail: FIELD_ABSENT }
+    dateOfBirth: { value: 1983-04-20, precision: DAY }
+    nationality: [TW]
+    document: { valueState: MISSING, detail: FIELD_BLANK }
+    phone: { value: 0912345678 }             # never logged, never used in a query
+    email: { value: user@example.com }
+    addresses:
+      - { role: PERMANENT, raw: 32556桃園市龍潭區中興里１鄰中興路８８巷１２號 }
+      - { role: MAILING, raw: 23100新北市新店區中正路１０號３樓之１ }
+      - { role: MAILING, raw: "23100", valueState: AMBIGUOUS, detail: POSTAL_CODE_ONLY }
+    findings: [DUPLICATED_ADDRESS_LINE]      # mailing 1 and 3 are identical
+  profile:
+    profileKey: DJ:90000012
+    subjectType: PERSON
+    gender: MALE
+    names: { primary: Chen Chih-Ming, originalScript: [陳志明] }
+    dateOfBirth: { valueState: MISSING }
+    citizenship: [TW]
+    relationships:
+      - { profileKey: DJ:90000013, name: Heng Yuan Life Industry Company Limited, type: ENTITY, relation: EMPLOYER }
+      - { profileKey: DJ:90000014, name: Hsu Ya-Ting, type: PERSON, relation: WIFE }
+    categories: [SIP / Financial Crime, SIP / Tax Crime]
+  legacyDecisions:                           # ImportedDecision only, never evidence
+    - { field: 是否符合名單, value: 未符合, independentlyVerified: false }
+    - { field: 理由, value: 確認後不符合, independentlyVerified: false }
+
+retrieval:
+  candidateRows: 1
+  candidateProfiles: 1
+  hitCount: 1
+
+sourceConditions:
+  - conditionType: ADVERSE_MEDIA
+    status: HIT
+    basis: CATEGORY_MAPPING
+    riskCategories: [FINANCIAL_CRIME, TAX_CRIME]
+    legalStage: INDICTED                     # "indicted"; 求刑 is a sentencing request, not a sentence
+    amlRelevance: UNCERTAIN                  # system default; reviewer expected RELATED (fraud, tax evasion are predicate offences)
+
+identity:
+  evidence:
+    NAME: { direction: PREREQUISITE, comparisonStatus: EXACT }
+    GENDER: { direction: PREREQUISITE, comparisonStatus: SUBJECT_MISSING }
+    NATIONALITY: { direction: PREREQUISITE, comparisonStatus: EXACT }
+    DATE_OF_BIRTH: { comparisonStatus: PROFILE_MISSING }
+    DOCUMENT: { comparisonStatus: SUBJECT_MISSING }
+    OTHER_IDENTIFIER: { comparisonStatus: PROFILE_MISSING }
+    EMPLOYMENT: { comparisonStatus: SUBJECT_MISSING }     # Profile: nursing-home operator, employer relationship
+    RELATIONSHIP: { comparisonStatus: SUBJECT_MISSING }   # Profile: wife; subject has no family data
+    ADDRESS: { comparisonStatus: PROFILE_MISSING }        # Profile has residence country only
+  stage1: no hard conflict
+  stage3Row: 6
+  identityDecision: REVIEW
+  reasonCodes: [NO_NON_PREREQUISITE_SUPPORT, NO_BILATERAL_DIRECT_IDENTIFIER]
+
+pairResult: REVIEW
+disposition:
+  article22_1: NOT_APPLICABLE                # both Taiwanese
+  recommendation: NONE
+verifications:
+  - { type: REGION_RELEVANCE, triggered: true }          # New Taipei prosecution; subject lives in Taoyuan and New Taipei; weak
+  - { type: JUDGMENT_PARTY_IDENTITY, triggered: true, judgmentLookupRequired: false, conclusion: NOT_MENTIONED }
+    # the article names 陳志明 exactly and reports indictment and sentencing requests only
+  - { type: EMPLOYMENT_RELEVANCE, triggered: false }
+  - { type: IDENTITY_CHECK, triggered: false }
+pendingVerifications:                        # Article 22 ③ requires at least one
+  - company registry: is the subject the responsible person of the Profile's employer company?
+  - subsidiary customer cross-check platform
+  - ask the customer (account holder) about the legal representative's occupation and spouse
+caseStatus: IN_REVIEW
+finalDisposition:
+  humanDecision: UNRESOLVED
+  reasonCodes: [ART22_UNRESOLVED_ESCALATION]
+  approvals: [APPROVER, SENIOR_APPROVER]
+  disposition: NOT_ON_LIST                   # chosen by the senior approver; identity stays unresolved; confirmed by business 2026-11-02
+
+regressionAssertions:
+  - comparisons use the related party's data only, never the account holder's; account-holder data, when supplied, stays case context and adds no Evidence
+  - the ID-shaped reference number never becomes DOCUMENT evidence
+  - an exact match on a very common name with nationality adds no support
+  - missing gender on the subject side is SUBJECT_MISSING, not agreement
+  - the couple's 18-year sentencing request is not attributed to the Profile person
+  - 求刑 is not reported as a sentence, and indictment is not reported as conviction
+  - UNRESOLVED cannot close without senior approval, and the final disposition is still binary
+  - the NOT_ON_LIST disposition is never reported as "different person"
+  - the legacy 理由 text 確認後不符合 never sets humanDecision to NO_MATCH

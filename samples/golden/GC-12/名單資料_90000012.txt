@@ -1,0 +1,44 @@
+Profile_ID: 90000012
+記錄類型:	Person
+性別:	Male
+已故?:	False
+主要名稱:
+編號	名字	姓	Sub Name Type
+1	Chih-Ming	Chen
+類型	名字
+OSN	陳志明
+拼寫變化:
+編號	名字	姓
+1	Chih-Ming	Chen
+2	Zhi-Ming	Chen
+3	Jhih-Ming	Chen
+4	Chih Ming	Chen
+5	Zhi Ming	Chen
+6	Jhih Ming	Chen
+7	Chih Ming	Chern
+8	Zhiming	Chen
+國家資料:
+編號	類型	國家
+1	Citizenship	Taiwan
+2	Resident of	Taiwan
+3	Country of Reported Allegation	Taiwan
+親戚/密切聯營公司:
+編號	Profile_ID	姓名/名稱	類型	關係
+1	90000013	Heng Yuan Life Industry Company Limited	Entity	Employer
+2	90000014	Hsu, Ya-Ting	Person	Wife
+狀態:	Active
+類別:
+編號	描述1	描述2
+1	Special Interest Person (SIP)	Financial Crime
+2	Special Interest Person (SIP)	Tax Crime
+簡介說明:
+Watchlist ProfileNotes: Last Reviewed Date: 09-Sep-2026 Record Status: Active  Comments: Keywords: fraud, tax evasion  People mentioned: Chen Chih-Ming
+Profile:  Chen Chih-Ming, operator of a nursing home, was one of seven individuals indicted by the New Taipei District Prosecutors Office on charges including violations
+          of the Banking Act and aggravated fraud in connection with a loan fraud scheme involving more than TWD 1bn and tax evasion up to TWD 40m, as reported on September 6, 2026.
+          According to the prosecution, beginning in 2013, two of the indicted individuals assisted five companies in obtaining fraudulent loans from seven banks by issuing invoices
+          using companies under their control or purchasing fake ones from external sources to create false financial statements. Chen and a family member
+          were said to have engaged the duo to create fake invoices to falsify sales, thereby obtaining loans.
+來源:
+編號	來源	資料庫日期
+1	Liberty Times (Chinese - Traditional), 06-Sep-2026, on Factiva.com (https://global.factiva.com/redir/default.aspx?P=sa&AN=EXAMPLE000000000012)	2026/9/10 下午 01:00:15
+最後審查日期:	2026/9/9

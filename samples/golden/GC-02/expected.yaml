@@ -1,0 +1,66 @@
+# GC-02 expected results. Authoritative: a policy that disagrees is changed, not this file.
+# Walkthrough: docs/plan/golden-cases.md#gc-02-fraud-condition-hit-insufficient-identity-evidence
+case: GC-02
+validationStatus: SYNTHETIC                  # fictional data built from the validated scenario; replace with the anonymized real case when supplied
+assumptions:
+  - listFlags are MISSING; column order pending confirmation
+  - the Profile carries a 關鍵字 line (format assumed; real export pending)
+
+extraction:
+  customer:
+    localName: 林美玲
+    englishName: LIN MEI LING
+    dateOfBirth: { value: 1975-09-02, precision: DAY }
+    gender: FEMALE
+    nationality: [TW]
+    document: { type: TW_NATIONAL_ID, issuingCountry: TW, number: A223456788 }   # fictional; fails the checksum on purpose
+    occupation: 其他服務業
+  profile:
+    profileKey: DJ:90000021
+    gender: FEMALE
+    names: { primary: Lin Mei-Ling, originalScript: [林美玲] }
+    dateOfBirth: { valueState: MISSING }
+    citizenship: [TW]
+    category: SIP / Fraud
+    keywords: [Fraud, Tax Evasion]
+  legacyDecisions:                           # ImportedDecision only, never evidence
+    - { field: 理由, value: 確認後不符合, independentlyVerified: false }
+
+retrieval:
+  candidateRows: 1
+  candidateProfiles: 1
+  hitCount: 1
+
+sourceConditions:
+  - conditionType: ADVERSE_MEDIA
+    status: HIT
+    basis: CATEGORY_MAPPING
+    riskCategories: [FRAUD, TAX_EVASION]     # FRAUD from the category, TAX_EVASION from the keyword
+    legalStage: ALLEGED                      # 分案偵辦: under investigation, not indicted
+    amlRelevance: UNCERTAIN
+
+identity:
+  evidence:
+    NAME: { direction: PREREQUISITE, comparisonStatus: EXACT }
+    GENDER: { direction: PREREQUISITE, comparisonStatus: EXACT }
+    NATIONALITY: { direction: PREREQUISITE, comparisonStatus: EXACT }
+    DATE_OF_BIRTH: { comparisonStatus: PROFILE_MISSING }
+    DOCUMENT: { comparisonStatus: PROFILE_MISSING }
+    EMPLOYMENT: { comparisonStatus: PROFILE_MISSING }  # news role is not structured evidence in Phase 1
+    ADDRESS: { comparisonStatus: PROFILE_MISSING }
+  temporal: TEMPORALLY_PLAUSIBLE             # customer aged 49 in 2025; compatible, not support
+  stage1: no hard conflict
+  stage3Row: 6
+  identityDecision: REVIEW
+  reasonCodes: [NO_NON_PREREQUISITE_SUPPORT, NO_BILATERAL_DIRECT_IDENTIFIER]
+
+pairResult: REVIEW
+caseStatus: IN_REVIEW
+finalDisposition: { humanDecision: NO_MATCH, disposition: NOT_ON_LIST, basis: IDENTITY }
+  # the human decision is documented by the reviewer; the system REVIEW is preserved alongside it
+
+regressionAssertions:
+  - a Fraud HIT never forces identity MATCH
+  - TEMPORALLY_PLAUSIBLE is never counted as support
+  - legacy 確認後不符合 never appears as SystemDecision or as the human decision
+  - 分案偵辦 is not reported as indictment

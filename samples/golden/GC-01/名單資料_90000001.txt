@@ -1,0 +1,25 @@
+Profile_ID: 90000001
+記錄類型:	Person
+性別:	Male
+已故?:	False
+主要名稱:
+編號	名字	姓	Sub Name Type
+1	Chien-Hung	Wang
+類型	名字
+OSN	王建宏
+拼寫變化:
+編號	名字	姓
+1	Jian-Hong	Wang
+國家資料:
+編號	類型	國家
+1	Citizenship	Taiwan
+狀態:	Active
+類別:
+編號	描述1	描述2
+1	Special Interest Person (SIP)	Financial Crime
+職位:
+編號	職位	組織	起始日期	結束日期
+1	董事長	宏遠投資股份有限公司	1990/7	1995/12
+簡介說明:
+Watchlist ProfileNotes: Chairman of Hongyuan Investment Co., Ltd. from July 1990; indicted in 1996 for illegal fund-raising. [fictional synthetic sample]
+最後審查日期:	2026/8/1

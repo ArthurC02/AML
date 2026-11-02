@@ -1,0 +1,83 @@
+# GC-11 expected results. Authoritative: a policy that disagrees is changed, not this file.
+# Walkthrough: docs/plan/golden-cases.md#gc-11-taiwanese-customer-on-adverse-media-with-year-only-dob
+case: GC-11
+validationStatus: VALIDATED_REAL_CASE        # anonymized; human decision MATCH
+assumptions:
+  - listFlags (PEP, blacklist, adverse news) are MISSING in 案件資訊.txt; column order pending confirmation
+
+extraction:
+  customer:
+    customerNumber: { value: A123456789 }    # same string as the document number; kept separate
+    taxId: { valueState: AMBIGUOUS, rawValue: F }
+    localName: 鐘仁聲
+    englishName: JONG JENN SHENG
+    dateOfBirth: { value: 1973-06-12, precision: DAY }
+    gender: MALE
+    nationality: [TW]
+    document: { type: TW_NATIONAL_ID, issuingCountry: TW, number: A123456789 }
+    occupation: 批發及零售業
+    address:
+      raw: 242台北縣新莊市中平里１２鄰中華路３５巷８號３樓
+      normalized: { postalCode: "242", city: 新北市, district: 新莊區, village: 中平里, neighborhood: "12", road: 中華路, lane: "35", houseNumber: "8", floor: "3" }
+      findings: [HISTORICAL_ADMIN_DIVISION]  # 台北縣新莊市 → 新北市新莊區
+    riskAttributes: [CSE03-高風險失聯戶, 相信為高風險]   # context only, not identity evidence
+  profile:
+    profileKey: DJ:90000011
+    subjectType: PERSON
+    names: { primary: Jhong Jen-Sheng, originalScript: [钟仁声, 鐘仁聲, 钟任声, 鍾任聲] }
+    dateOfBirth: [{ value: "1973", precision: YEAR }, { value: "1972", precision: YEAR }]
+    findings: [PROFILE_MULTIPLE_DOB]
+    citizenship: [TW]                        # allegation and residence countries are not nationality
+    category: SIP / Financial Crime
+    status: Active
+  legacyDecisions:                           # ImportedDecision only, never evidence
+    - { field: 是否符合名單, value: 符合, independentlyVerified: false }
+    - { field: 理由, value: 確認後符合, independentlyVerified: false }
+
+retrieval:
+  candidateRows: 2                           # 鐘仁聲, 钟仁声
+  candidateProfiles: 1
+  hitCount: 1
+
+sourceConditions:
+  - conditionType: ADVERSE_MEDIA
+    status: HIT
+    basis: CATEGORY_MAPPING
+    riskCategories: [FINANCIAL_CRIME]
+    legalStage: UNKNOWN                      # snippet does not state indictment or judgment
+    amlRelevance: UNCERTAIN                  # system default; reviewer expected RELATED (fraud is a predicate offence)
+
+identity:
+  evidence:
+    NAME: { direction: PREREQUISITE, comparisonStatus: EXACT }        # 鐘仁聲 equals an original-script name
+    GENDER: { direction: PREREQUISITE, comparisonStatus: EXACT }
+    NATIONALITY: { direction: PREREQUISITE, comparisonStatus: EXACT }
+    DATE_OF_BIRTH: { direction: SUPPORT, comparisonStatus: PARTIAL, strength: LOW }   # 1973 agrees, 1972 is source ambiguity
+    DOCUMENT: { comparisonStatus: PROFILE_MISSING }
+    EMPLOYMENT: { comparisonStatus: PROFILE_MISSING }                  # news text is not structured evidence in Phase 1
+    ADDRESS: { comparisonStatus: PROFILE_MISSING }
+  stage1: no hard conflict
+  stage3Row: 4
+  identityDecision: PROBABLE_MATCH
+  reasonCodes: [CONSISTENT_AT_AVAILABLE_PRECISION, NO_BILATERAL_DIRECT_IDENTIFIER]
+
+pairResult: REVIEW                           # HIT + PROBABLE_MATCH
+disposition:
+  article22_1: NOT_APPLICABLE                # both Taiwanese
+  recommendation: NONE                       # identity not decided; human decides
+verifications:
+  - { type: REGION_RELEVANCE, triggered: true }         # ADVERSE_MEDIA HIT; 西門 vs 新莊 is weak
+  - { type: JUDGMENT_PARTY_IDENTITY, triggered: true, judgmentLookupRequired: true }   # snippet cannot exclude a delivered judgment
+  - { type: EMPLOYMENT_RELEVANCE, triggered: false }
+  - { type: IDENTITY_CHECK, triggered: false }
+caseStatus: IN_REVIEW
+finalDisposition: { humanDecision: MATCH, disposition: ON_LIST, basis: IDENTITY }
+
+regressionAssertions:
+  - two candidate rows produce one hit
+  - SIP Financial Crime maps to ADVERSE_MEDIA, never to a separate condition type
+  - legacy 符合 / 確認後符合 never appears as evidence or SystemDecision
+  - the 1972 value does not create a DOB conflict, and 1973 is never reported as a full-date match
+  - JONG JENN SHENG is compared as a romanization of the same name; no new name is created
+  - customer occupation versus the news job title is not used as evidence
+  - fraud is not treated as unrelated to money laundering

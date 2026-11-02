@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  AML SQL catalog for SQLite. Validated against Sql.xsd at startup.
+  Keep SQL close to what SQL Server / Oracle accept so later Sql.<provider>.xml
+  files are mostly copies: @name parameters, no AS on table aliases,
+  snake_case identifiers (max 30 chars), app-supplied ids and UTC timestamps.
+  Wrap SQL in CDATA so < and > need no escaping.
+-->
+<sqlCatalog xmlns="urn:aml:sql:v1" version="1">
+
+  <module name="System">
+    <statement id="System.Ping" kind="Select">
+      <description>Health check round-trip.</description>
+      <sql><![CDATA[SELECT 1]]></sql>
+    </statement>
+  </module>
+
+  <module name="Case">
+    <!-- ponytail: example statement; real columns land with the first DbUp script. -->
+    <statement id="Case.GetById" kind="Select">
+      <description>Load one Case by id.</description>
+      <sql><![CDATA[
+        SELECT c.case_id, c.subject_ref, c.trigger_event_id, c.case_status,
+               c.current_revision, c.effective_revision, c.created_at
+        FROM aml_case c
+        WHERE c.case_id = @caseId
+      ]]></sql>
+    </statement>
+  </module>
+
+  <module name="Batch">
+    <statement id="Batch.ListClaimable" kind="Select">
+      <description>Next claimable jobs, highest priority first.</description>
+      <sql><![CDATA[
+        SELECT j.job_id
+        FROM job j
+        WHERE j.status = 'PENDING' AND j.next_attempt_at <= @now
+        ORDER BY j.priority DESC, j.created_at
+        LIMIT @take
+      ]]></sql>
+    </statement>
+
+    <statement id="Batch.Claim" kind="Update">
+      <description>Optimistic claim: 1 row affected means this worker owns the job.</description>
+      <sql><![CDATA[
+        UPDATE job
+        SET status = 'RUNNING', lease_owner = @leaseOwner, lease_expiry = @leaseExpiry,
+            attempt_count = attempt_count + 1
+        WHERE job_id = @jobId AND status = 'PENDING'
+      ]]></sql>
+    </statement>
+  </module>
+
+  <module name="Extraction"/>
+  <module name="Identity"/>
+  <module name="Screening"/>
+  <module name="Explanation"/>
+
+</sqlCatalog>

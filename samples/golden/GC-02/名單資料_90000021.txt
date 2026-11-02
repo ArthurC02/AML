@@ -1,0 +1,24 @@
+Profile_ID: 90000021
+記錄類型:	Person
+性別:	Female
+已故?:	False
+主要名稱:
+編號	名字	姓	Sub Name Type
+1	Mei-Ling	Lin
+類型	名字
+OSN	林美玲
+國家資料:
+編號	類型	國家
+1	Citizenship	Taiwan
+2	Country of Reported Allegation	Taiwan
+狀態:	Active
+類別:
+編號	描述1	描述2
+1	Special Interest Person (SIP)	Fraud
+關鍵字:	Fraud; Tax Evasion
+簡介說明:
+Watchlist ProfileNotes: Reported in 2025 as the operator of a trading company accused of fraud and tax evasion. [fictional synthetic sample]
+來源:
+編號	來源	資料庫日期
+1	Example Daily News (Chinese - Traditional), 12-Mar-2025 [fictional]
+最後審查日期:	2026/7/20

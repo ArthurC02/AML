@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Aml.Core\Aml.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="Persistence\Sql\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

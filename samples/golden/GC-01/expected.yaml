@@ -1,0 +1,68 @@
+# GC-01 expected results. Authoritative: a policy that disagrees is changed, not this file.
+# Walkthrough: docs/plan/golden-cases.md#gc-01-same-name-with-impossible-agerole
+case: GC-01
+validationStatus: SYNTHETIC                  # fictional data built from the validated scenario; replace with the anonymized real case when supplied
+assumptions:
+  - listFlags are MISSING; column order pending confirmation
+  - the Profile's dated role arrives as a structured 職位 table (format assumed; real export pending)
+
+extraction:
+  customer:
+    localName: 王建宏
+    englishName: WANG CHIEN HUNG
+    dateOfBirth: { value: 1985-03-18, precision: DAY }
+    gender: MALE
+    nationality: [TW]
+    document: { type: TW_NATIONAL_ID, issuingCountry: TW, number: A123456789 }
+  profiles:
+    - profileKey: DJ:90000001
+      gender: MALE
+      citizenship: [TW]
+      dateOfBirth: { valueState: MISSING }
+      roles: [{ title: 董事長, organization: 宏遠投資股份有限公司, from: { value: 1990-07, precision: MONTH } }]
+      category: SIP / Financial Crime
+    - profileKey: DJ:90000002
+      gender: MALE
+      citizenship: [TW]
+      dateOfBirth: { valueState: MISSING }
+      roles: [{ title: 總經理, organization: 宏遠投資股份有限公司, from: { value: 1991-03, precision: MONTH } }]
+      category: SIP / Financial Crime
+  legacyDecisions:                           # ImportedDecision only, never evidence
+    - { field: 理由, value: 確認後不符合, independentlyVerified: false }
+
+retrieval:
+  candidateRows: 3
+  candidateProfiles: 2
+  hitCount: 2
+
+sourceConditions:                            # per Profile, independent of identity
+  - { profileKey: DJ:90000001, conditionType: ADVERSE_MEDIA, status: HIT, basis: CATEGORY_MAPPING, riskCategories: [FINANCIAL_CRIME] }
+  - { profileKey: DJ:90000002, conditionType: ADVERSE_MEDIA, status: HIT, basis: CATEGORY_MAPPING, riskCategories: [FINANCIAL_CRIME] }
+
+identity:
+  - profileKey: DJ:90000001
+    evidence:
+      NAME: { direction: PREREQUISITE, comparisonStatus: EXACT }   # two rows, one NAME group
+      GENDER: { direction: PREREQUISITE, comparisonStatus: EXACT }
+      NATIONALITY: { direction: PREREQUISITE, comparisonStatus: EXACT }
+      DATE_OF_BIRTH: { comparisonStatus: PROFILE_MISSING }
+    stage1: { hardConflict: IMPOSSIBLE_AGE_AT_REPORTED_EVENT, detail: "chairman from 1990-07; customer age 5" }
+    identityDecision: NO_MATCH
+  - profileKey: DJ:90000002
+    evidence:
+      NAME: { direction: PREREQUISITE, comparisonStatus: EXACT }
+      GENDER: { direction: PREREQUISITE, comparisonStatus: EXACT }
+      NATIONALITY: { direction: PREREQUISITE, comparisonStatus: EXACT }
+      DATE_OF_BIRTH: { comparisonStatus: PROFILE_MISSING }
+    stage1: { hardConflict: IMPOSSIBLE_AGE_AT_REPORTED_EVENT, detail: "general manager from 1991-03; customer age 5 or 6" }
+    identityDecision: NO_MATCH
+
+pairResults: { DJ:90000001: NO_MATCH, DJ:90000002: NO_MATCH }
+finalDisposition: { disposition: NOT_ON_LIST, basis: IDENTITY }
+
+regressionAssertions:
+  - three candidate rows produce two hits, one per Profile
+  - the two name rows of DJ:90000001 count once in the NAME group
+  - name, gender and nationality agreement cannot offset the hard conflict
+  - a month-precision event date gives an age range (5 to 6); the conflict fires only because the whole range is impossible
+  - Financial Crime stays a source condition and is never attributed to the customer

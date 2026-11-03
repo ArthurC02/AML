@@ -101,7 +101,7 @@ evidenceRefs: []
 reasonCodes: []
 ```
 
-`conditionType` is the bank's list type ([ADR-0016](../adr/0016-bank-list-type-vocabulary.md)); `riskCategories` carries what the source alleges ([ADR-0005](../adr/0005-watchlist-model-beyond-fraud.md)). A "Fraud HIT" is therefore an `ADVERSE_MEDIA` SourceConditionResult with `status: HIT` and `FRAUD` in `riskCategories`, not a separate condition type. Category and legal-stage values are listed in [watchlist and adverse information](watchlist-and-adverse-information.md). `amlRelevance` feeds Article 22 ② ([review and disposition](review-and-disposition.md#article-22-2-adverse-news-unrelated-to-mltfpf)).
+`conditionType` is the bank's list type ([ADR-0016](../adr/0016-bank-list-type-vocabulary.md)); `riskCategories` carries what the source alleges ([ADR-0005](../adr/0005-watchlist-model-beyond-fraud.md)). A "Fraud HIT" is therefore an `ADVERSE_MEDIA` SourceConditionResult with `status: HIT` and `FRAUD` in `riskCategories`, not a separate condition type. Category and legal-stage values are listed in [watchlist and adverse information](watchlist-and-adverse-information.md). `amlRelevance` feeds Article 22 ② ([disposition recommendation](review-and-disposition.md#article-22-2-adverse-news-unrelated-to-mltfpf)).
 
 ## ScreeningAssessment
 
@@ -148,7 +148,7 @@ type: EMPLOYMENT_RELEVANCE | REGION_RELEVANCE | IDENTITY_CHECK
     | JUDGMENT_PARTY_IDENTITY | OTHER
 triggered: true
 searchOutcome: RETRIEVED | NOT_FOUND | UNAVAILABLE | PARSE_FAILED | null
-conclusion: null          # allowed values per type, see review and disposition
+conclusion: null          # allowed values per type, see disposition recommendation
 method: null
 performedAt: null
 performedBy: null
@@ -156,7 +156,7 @@ sourceRefs: []
 reasoning: null
 ```
 
-Result values and rules are in [review and disposition](review-and-disposition.md#verification-records).
+Result values and rules are in [disposition recommendation](review-and-disposition.md#verification-records).
 
 ## Field value wrapper
 

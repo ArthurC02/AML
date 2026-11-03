@@ -30,7 +30,6 @@ public static class ReasonCodes
     public const string AgeCompatibleAtReport = "AGE_COMPATIBLE_AT_REPORT";
     public const string AgeDifferenceAtReport = "AGE_DIFFERENCE_AT_REPORT";
     public const string AgeNotComparable = "AGE_NOT_COMPARABLE";
-    public const string ArticleTwentyTwoUnresolvedEscalation = "ART22_UNRESOLVED_ESCALATION";
 }
 
 public static class Findings
@@ -40,4 +39,5 @@ public static class Findings
     public const string DuplicatedAddressLine = "DUPLICATED_ADDRESS_LINE";
     public const string ProfileMultipleDob = "PROFILE_MULTIPLE_DOB";
     public const string VariantCharacters = "VARIANT_CHARACTERS";
+    public const string RomanizationVariant = "ROMANIZATION_VARIANT";
 }

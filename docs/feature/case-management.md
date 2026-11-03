@@ -4,21 +4,15 @@
 
 ## Case lifecycle
 
-```text
-OPEN → IN_REVIEW → CLOSED
-  ↑        │          │
-  └────────┴── REOPENED
-```
+Case status follows the latest analysis; no person moves a Case ([ADR-0020](../adr/0020-identification-only.md)).
 
-| From → To | Allowed when |
+| Status | When |
 |---|---|
-| OPEN → IN_REVIEW | published result contains at least one REVIEW or HIT pair |
-| OPEN → CLOSED | published result has no REVIEW or HIT pair, and every NO_HIT relies on a validated automatic rule ([hard conflict gate](identity-adjudication.md#hard-conflict-gate)) |
-| IN_REVIEW → CLOSED | every REVIEW and HIT pair has an approved HumanDecision and a FinalDisposition; an `UNRESOLVED` decision also needs senior approval ([Article 22 ③](review-and-disposition.md#article-22-3-cannot-be-determined)) |
-| CLOSED → REOPENED | new analysis revision with changed inputs or policy, or authorized manual reopen |
-| REOPENED → IN_REVIEW / CLOSED | same rules as from OPEN |
+| OPEN | created; no analysis accepted yet, or the latest revision is incomplete |
+| IN_REVIEW | published result contains at least one REVIEW or HIT pair |
+| CLOSED | published result has no REVIEW or HIT pair, and every NO_HIT relies on a validated automatic rule ([hard conflict gate](identity-adjudication.md#hard-conflict-gate)) |
 
-Every transition records actor, time, reason code and the analysis revision it is based on.
+A new analysis revision recomputes the status. Every change records the analysis revision it is based on.
 
 ## Execution status
 
@@ -56,17 +50,12 @@ NOT_EVALUATED > HIT > REVIEW > NO_HIT > NOT_APPLICABLE
 
 - **ImportedDecision**: external or legacy decision, with verification status (`independentlyVerified`). Includes earlier manual results found in the input; never used as evidence.
 - **SystemDecision**: decision produced by a named policy version.
-- **DispositionRecommendation**: Article 22 recommendation (ON_LIST / NOT_ON_LIST) and its basis ([review and disposition](review-and-disposition.md)).
-- **HumanDecision**: reviewer decision (`MATCH | NO_MATCH | UNRESOLVED`), reason codes, evidence and [verification records](review-and-disposition.md#verification-records); approved by the approver, and by the senior approver when UNRESOLVED.
-- **FinalDisposition**: effective business result (ON_LIST / NOT_ON_LIST) and the decision or Article 22 rule it relies on.
-
-A Case's disposition is ON_LIST when any pair is ON_LIST, and NOT_ON_LIST only when every pair is.
+- **DispositionRecommendation**: advisory Article 22 recommendation (ON_LIST / NOT_ON_LIST) and its basis ([disposition recommendation](review-and-disposition.md)).
 
 ## Decision preservation rules
 
 - Imported decisions never masquerade as system output.
-- Human decisions never rewrite source attributes.
-- Final disposition identifies its basis.
-- A new analysis revision does not silently invalidate a human decision; policy must define whether re-review is required.
+- System decisions never rewrite source attributes.
+- Every system decision identifies its policy version and evidence.
 
 Data shapes are in [data contracts](data-contracts.md).

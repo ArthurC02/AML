@@ -16,10 +16,8 @@
 10. produce SystemDecision;
 11. evaluate source-condition policies;
 12. form ScreeningAssessments;
-13. evaluate DispositionPolicy (Article 22) and assign human-review priority;
-14. accept HumanDecision, verification records and approvals when provided;
-15. create FinalDisposition;
-16. assemble explanation and publish if version/completeness checks pass.
+13. evaluate DispositionPolicy (Article 22) and assign review priority;
+14. assemble explanation and publish if version/completeness checks pass.
 
 ## Triggers
 
@@ -34,14 +32,12 @@ All triggers are events; timed triggers are an [open question](../plan/open-ques
 
 | Service | Module |
 |---|---|
-| CaseService, ReviewService, DispositionService | Case and Adjudication Management |
+| CaseService | Case and Adjudication Management |
 | BatchService | Batch and Work Management |
 | ExtractionService | Extraction and Data Quality |
 | CandidateService, IdentityAdjudicationService | Candidate and Identity Adjudication |
-| SourceScreeningService | Source Screening and Risk Assessment |
+| SourceScreeningService, DispositionService | Source Screening and Risk Assessment |
 | ExplanationService | Explanation and Reporting |
-
-ReviewService sits in Case and Adjudication Management because only that module publishes Case state ([write ownership](system-overview.md#write-ownership)).
 
 ## REST resources
 
@@ -50,22 +46,15 @@ POST /api/cases
 POST /api/cases/{caseId}/analyses
 GET  /api/cases/{caseId}
 GET  /api/cases/{caseId}/analyses/{revision}
-POST /api/cases/{caseId}/human-decisions
-POST /api/cases/{caseId}/human-decisions/{decisionId}/approvals
-POST /api/cases/{caseId}/verifications
 POST /api/cases/{caseId}/imported-decisions
-POST /api/cases/{caseId}/close
-POST /api/cases/{caseId}/reopen
 GET  /api/cases/{caseId}/explanation
 POST /api/batches
 GET  /api/batches/{batchId}
 ```
 
-- Publication has no endpoint: step 16 publishes automatically when the version and completeness checks of the [case-level result](case-management.md#case-level-result) pass.
-- `close` and `reopen` enforce the [lifecycle transitions](case-management.md#case-lifecycle).
+- Publication has no endpoint: step 14 publishes automatically when the version and completeness checks of the [case-level result](case-management.md#case-level-result) pass.
 - Imported decisions are stored with `independentlyVerified` and never become SystemDecisions.
-- `GET …/explanation` is the reviewer and audit view ([ADR-0009](../adr/0009-api-only.md)).
-- Approvals check the caller's role: approver, or senior approver for UNRESOLVED ([roles](review-and-disposition.md#roles)).
+- `GET …/explanation` is the explanation and audit view ([ADR-0009](../adr/0009-api-only.md)).
 - Authentication is OIDC/OAuth 2.0 with policy-based authorization, wired once the identity provider is known.
 
 ## Explanation contents

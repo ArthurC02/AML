@@ -44,14 +44,13 @@ Pair results use the canonical [combination matrix](data-contracts.md#combinatio
 
 The same IdentityComparison is reused across PEP, Sanction and other classifications when customer version, Profile version and identity policy version are identical.
 
-## Human review
+## Review
 
-A foreign PEP hit on a non-Taiwanese subject may receive the Article 22 ① presumption ([review and disposition](review-and-disposition.md#article-22-1-foreign-pep-presumption)); the identity decision is unchanged.
+A foreign PEP hit on a non-Taiwanese subject may receive the Article 22 ① presumption ([disposition recommendation](review-and-disposition.md#article-22-1-foreign-pep-presumption)); the identity decision is unchanged.
 
-The reviewer checks employment relevance for every PEP HIT, and identity (published birth year or age) when the PEP flag is explicitly Yes, `Is RCA?` is not Yes and the Profile has no DOB or age ([verification records](review-and-disposition.md#verification-records)).
+The explanation lists an employment-relevance check for every PEP HIT, and an identity check (published birth year or age) when the PEP flag is explicitly Yes, `Is RCA?` is not Yes and the Profile has no DOB or age as pending ([verification records](review-and-disposition.md#verification-records)).
 
 Until GC-04 is validated:
 
 - all PEP/RCA candidates remain REVIEW;
 - former-PEP duration and RCA relationship scope are configurable and not hardcoded;
-- a human reviewer must select documented reason codes and evidence.

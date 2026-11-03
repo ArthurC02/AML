@@ -3,7 +3,7 @@ using Aml.Core.Screening;
 
 namespace Aml.Core.Cases;
 
-public enum CaseStatus { Open, InReview, Closed, Reopened }
+public enum CaseStatus { Open, InReview, Closed }
 
 public enum ExecutionStatus { Pending, Running, Completed, Partial, Failed }
 

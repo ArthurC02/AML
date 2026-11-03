@@ -20,9 +20,13 @@ BM25 and displayed similarity values are not identity probabilities ([ADR-0001](
 
 Possible routes include exact alias, word BM25, character n-gram and prior Case/Profile links.
 
+INDEX_SEARCH (steps 3 and 5 of the [operating architecture](system-overview.md#operating-architecture)) needs a list database of structured Profiles and a search index over names and aliases (BM25 words, character n-grams, alias table). A name query returns the Top N Profiles, counted after deduplication; candidate data is then fetched for the named or retrieved Profiles. The PoC uses CONTROLLED_SET: the bank's case table supplies the candidates.
+
 ## Profile-level deduplication
 
 All hits with the same `sourceNamespace + profileId` become one CandidateProfile. Top K is counted by Profile, not alias rows.
+
+Merging different Profiles that describe the same person (across Profile IDs or sources) happens when the list database is built, not per Case. A merge needs a shared direct identifier or a recorded source link; name similarity alone never merges. Merged Profiles keep their own IDs and sources so every value stays traceable.
 
 The hit count of a Case is the number of distinct Profiles, including hits on related parties; it is never the number of candidate rows or news articles. A Profile listed in the source but missing from the candidate table still counts.
 
@@ -69,6 +73,21 @@ Direct identifiers are a full date of birth (DAY precision) and a comparable doc
 - Two values from different records or sources are not independent unless their source relationship is known; otherwise the explanation states "source relationship unknown". Several reports of the same event are one piece of evidence.
 - Precision is never lowered: a full DOB is not rewritten as a year, and a year match is never a full-date match.
 - When the Profile lists several DOB values, the best agreeing value is used at its own precision; the other values are source ambiguity (`PROFILE_MULTIPLE_DOB`), not a conflict. A conflict needs every Profile value to disagree.
+
+## Comparison measures
+
+Per evidence group (step 6 of the [operating architecture](system-overview.md#operating-architecture)):
+
+| Group | Measure | Built |
+|---|---|---|
+| NAME | exact after normalization and controlled variants; romanization variants and Jaro-Winkler / Levenshtein as `PARTIAL` features inside the group | yes; a romanization match is `PARTIAL` with `ROMANIZATION_VARIANT`, otherwise the best similarity is shown with the PARTIAL; no threshold yet |
+| DATE_OF_BIRTH | precision-aware comparison and conflict check | yes |
+| DOCUMENT | type + issuing country/authority + number | no (subject side extracted; Profile side has no document in the samples) |
+| ADDRESS | structured Taiwan address fields; token Jaccard for unstructured text | no (country presence only, recorded as a soft difference; 台北縣 mapping and postal-code-only check built) |
+| EMPLOYMENT | occupation and employer company, same period only | no (recorded as uncertain or missing) |
+| RELATIONSHIP / COMPANY_ASSOCIATION | spouse, parents, related companies named on both sides | no (subject-side data not supplied) |
+
+Similarity values only grade `PARTIAL` within a group; they are never summed across groups or turned into a likelihood ([ADR-0001](../adr/0001-evidence-driven-adjudication.md)). Thresholds are set from labelled cases, not by default.
 
 ## Attribution
 
@@ -202,12 +221,8 @@ Only registered codes may appear in decisions. New codes are added here with the
 | `AGE_DIFFERENCE_AT_REPORT` | IdentityDecisionPolicy | stated age differs by more than 2 years; soft conflict |
 | `ART22_FOREIGN_PEP_PRESUMPTION` | DispositionPolicy | Article 22 ① presumption; identity unchanged |
 | `ART22_ADVERSE_UNRELATED` | DispositionPolicy | Article 22 ②; an ADVERSE_MEDIA condition set aside |
-| `ART22_BACKGROUND_CLEARLY_DIFFERENT` | reviewer | Article 22 ① exception |
-| `ART22_UNRESOLVED_ESCALATION` | reviewer | Article 22 ③; senior approval required |
 
-Article 22 codes are defined in [review and disposition](review-and-disposition.md).
-
-Reviewer reason codes remain an [open question](../plan/open-questions.md#human-review).
+Article 22 codes are defined in [disposition recommendation](review-and-disposition.md).
 
 ## Explainability
 

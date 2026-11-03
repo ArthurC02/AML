@@ -1,26 +1,17 @@
-# Review and Disposition
+# Disposition Recommendation
 
-> Module: Case and Adjudication Management. Design baseline 2.0-PoC, 2026-11-02. Source: bank operating procedure Article 22 and the legacy name-screening rules ([ADR-0017](../adr/0017-article-22-disposition-policy.md)).
+> Module: Source Screening and Risk Assessment. Design baseline 2.0-PoC, 2026-11-03. Source: bank operating procedure Article 22 and the legacy name-screening rules ([ADR-0017](../adr/0017-article-22-disposition-policy.md)).
 
 ## Three results, read separately
 
 | Result | Question | Produced by |
 |---|---|---|
 | IdentityDecision | Is this the same person? | IdentityDecisionPolicy ([identity adjudication](identity-adjudication.md)) |
-| DispositionRecommendation | What does Article 22 tell the reviewer to select? | DispositionPolicy (this spec) |
-| FinalDisposition | What was actually decided, and on which basis? | human, in Phase 1 |
+| DispositionRecommendation | What does Article 22 recommend selecting? | DispositionPolicy (this spec) |
+
+The system focuses on identification ([ADR-0020](../adr/0020-identification-only.md)): it produces the identity decision and an advisory recommendation. Final disposition, reviewer actions and approvals happen outside the system and are not modelled.
 
 A NOT_ON_LIST recommendation does not prove a different person, and an ON_LIST presumption does not prove the same person. Neither may be derived from the other.
-
-## Roles
-
-| Role | Bank title | Responsibility |
-|---|---|---|
-| Reviewer | 經辦 | records HumanDecision, verification records and reason codes |
-| Approver | 覆核主管 | approves the reviewer's decision; required before CLOSED |
-| Senior approver | 上階主管 | approves unresolved cases under Article 22 ③ |
-
-Only people with the role perform the bank-internal channels: the AML system selection, the Fubon subsidiary customer cross-check platform (子公司既有客戶跨查平台) and asking the customer. Without an execution record, the system lists them as pending; it never reports them as done.
 
 ## Article 22 mapping
 
@@ -30,10 +21,9 @@ Article 22 covers message scanning (AML SWIFT/RTGS) and name screening of indivi
 |---|---|
 | Individual initial check: name, nationality, DOB | NAME, NATIONALITY, DATE_OF_BIRTH groups; all three are always compared |
 | Legal person / group initial check: name and responsible person's name | non-person Profile; REVIEW in Phase 1 ([system overview](system-overview.md#excluded-for-phase-1)); never compared with a natural person's nationality and DOB |
-| On list: every item the same | identity MATCH; automatic MATCH is disabled in Phase 1, so a human confirms |
+| On list: every item the same | identity MATCH; automatic MATCH is disabled in Phase 1, so the pair stays REVIEW |
 | On list: non-Taiwanese subject hits a foreign PEP and data is insufficient | rule ① below |
-| Not on list: every item different | identity NO_MATCH; automatic only for validated hard conflicts, otherwise a human decides |
-| Not on list: multiple channels used and the subject still appears not to be on the list | HumanDecision NO_MATCH with verification records for each channel used |
+| Not on list: every item different | identity NO_MATCH; automatic only for validated hard conflicts, otherwise REVIEW |
 | Not on list: adverse news unrelated to ML/TF/PF | rule ② below |
 | Cannot be determined | rule ③ below |
 
@@ -66,7 +56,7 @@ Preconditions, all required:
 
 Effect: ON_LIST, reason code `ART22_FOREIGN_PEP_PRESUMPTION`. The identity decision is unchanged. Nationality remains a hit prerequisite: the presumption comes from the rule, not from nationality as evidence.
 
-Exception: same name but a clearly different background (e.g. a known migrant worker) returns to normal review. The system cannot detect this; the reviewer records it with reason code `ART22_BACKGROUND_CLEARLY_DIFFERENT`.
+Exception: same name but a clearly different background (e.g. a known migrant worker) returns to normal review. The system cannot detect this from source data; it is out of scope.
 
 Only nationality values that map unambiguously to a country are used; another party's nationality is never applied to the subject. When manual confirmation is required, "confirm nationality" becomes a pending verification.
 
@@ -74,18 +64,14 @@ Only nationality values that map unambiguously to a country are used; another pa
 
 - `amlRelevance` on an `ADVERSE_MEDIA` condition is `RELATED | UNRELATED | UNCERTAIN`, judged from the concrete conduct and jurisdiction, never from offence keywords alone.
 - A predicate offence counts as RELATED even if the source does not mention money laundering.
-- In Phase 1 the reviewer sets `amlRelevance`; the system defaults to UNCERTAIN.
+- The system defaults `amlRelevance` to UNCERTAIN; it becomes RELATED or UNRELATED only when the source states the conduct and jurisdiction.
 - UNRELATED sets aside that `ADVERSE_MEDIA` condition only, reason code `ART22_ADVERSE_UNRELATED`. If no other HIT condition remains, the recommendation is NOT_ON_LIST; PEP, Sanction or other conditions on the same Profile still apply.
 - The relevance judgement says nothing about identity.
 
 ### Article 22-3: cannot be determined
 
-- Based on the identity decision, not on the recommendation.
-- An unresolved HumanDecision (`UNRESOLVED`) lists at least one pending verification and the channels already used: AML system data, public information, the subsidiary cross-check platform, asking the customer.
-- The FinalDisposition stays binary: the senior approver selects ON_LIST or NOT_ON_LIST; UNRESOLVED is never a disposition.
-- The reviewer records reason code `ART22_UNRESOLVED_ESCALATION`; the pair cannot be closed without senior approval. The explanation keeps the original recommendation, appends "尚待執行的查證：〈事項一〉；〈事項二〉。" and the fixed notice; the Case summary lists each pending item prefixed with its Profile ID. While any pair is unresolved, the notice stays:
-
-> 若窮盡判斷方式後仍無法釐清，屬第22條「無法判斷」案件，建議呈送覆核主管之上階主管簽核。
+- Based on the identity decision: a REVIEW pair that no rule above resolves gets no recommendation.
+- The explanation lists the checks still pending (company registry, other channels) and never reports a pending check as done.
 
 ## Direct identifiers and the 2026-10-14 ruling
 
@@ -95,7 +81,7 @@ The bank ruled on 2026-10-14 that, outside Article 22 ①, a hit lacking a bilat
 
 ## Verification records
 
-Reviewers attach verification records to a HumanDecision.
+Verification records describe checks that confirm or weaken identity. The explanation lists the triggered checks as pending; a result is recorded only for a check actually performed.
 
 | Type | Triggered when | Results |
 |---|---|---|
@@ -105,7 +91,7 @@ Reviewers attach verification records to a HumanDecision.
 | `JUDGMENT_PARTY_IDENTITY` | natural-person Profile with attached news or an ADVERSE_MEDIA condition | ESTABLISHED / NOT_ESTABLISHED / UNCONFIRMED / NOT_MENTIONED / NOT_APPLICABLE |
 | `OTHER` | any other check actually performed | VERIFIED / UNCONFIRMED / NOT_APPLICABLE |
 
-The system pre-fills NOT_APPLICABLE only for checks not triggered; an unmapped list type leaves the trigger to the reviewer. Each record holds method, date, source, findings, attribution, comparison and reasoning.
+The system pre-fills NOT_APPLICABLE only for checks not triggered; an unmapped list type leaves the trigger open. Each record holds method, date, source, findings, attribution, comparison and reasoning.
 
 Rules:
 
@@ -124,7 +110,7 @@ Rules:
 
 - Without the full judgment text, the conclusion cannot be ESTABLISHED or NOT_ESTABLISHED. Masked public judgments with the same name are UNCONFIRMED; clearly contradictory party data can support a different person.
 - Instance level and finality are recorded. Failed lookups are not retried automatically.
-- Conclusions are not rewritten to fit the final disposition.
+- Conclusions are not rewritten to fit a recommendation.
 
 ## Prior manual decisions
 

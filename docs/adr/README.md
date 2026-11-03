@@ -23,6 +23,7 @@ Each record states context, decision and consequences. Records are never edited 
 | [0017](0017-article-22-disposition-policy.md) | Article 22 as a disposition policy | Accepted |
 | [0018](0018-legacy-ai-report-rules-not-adopted.md) | Legacy AI-report rules not adopted | Accepted |
 | [0019](0019-strength-decision-table-before-fellegi-sunter.md) | Evidence-strength decision table before Fellegi-Sunter | Accepted |
+| [0020](0020-identification-only.md) | The system does identification only | Accepted |
 
 Template:
 

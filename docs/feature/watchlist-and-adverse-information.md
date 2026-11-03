@@ -52,7 +52,7 @@ Only when all three flags are `MISSING`:
 - An SIP subcategory not in the table, or no subcategory (e.g. Regulatory Enforcement List), is unmapped: `UNKNOWN`, never assumed to be adverse media.
 - Other bank-internal list names keep BANK_INTERNAL_LIST only.
 - SIP (Special Interest Person) is not SIE; Dow Jones Special Interest Entity is not SIE either.
-- Unmapped categories are copied verbatim into the explanation and left for the reviewer.
+- Unmapped categories are copied verbatim into the explanation and left as UNKNOWN for review.
 
 ### RCA
 
@@ -114,7 +114,7 @@ Reads authority, list type, list status, decision number/date and alleged offenc
 
 Reads approved source classifications and keywords. `Financial Crime` does not automatically mean `Fraud`.
 
-Sets `amlRelevance` to `UNCERTAIN`; the reviewer decides RELATED or UNRELATED for Article 22 ② ([review and disposition](review-and-disposition.md#article-22-2-adverse-news-unrelated-to-mltfpf)).
+Sets `amlRelevance` to `UNCERTAIN` unless the source states the conduct and jurisdiction; RELATED or UNRELATED drives Article 22 ② ([disposition recommendation](review-and-disposition.md#article-22-2-adverse-news-unrelated-to-mltfpf)).
 
 ## Subject attribution
 

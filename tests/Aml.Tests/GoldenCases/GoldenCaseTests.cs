@@ -1,5 +1,4 @@
 using Aml.Core.Cases;
-using Aml.Core.Disposition;
 using Aml.Core.Identity;
 using Aml.Core.Screening;
 using Aml.Core.Shared;
@@ -84,9 +83,8 @@ public class GoldenCaseTests
         Assert.Equal([ReasonCodes.NoNonPrerequisiteSupport, ReasonCodes.NoBilateralDirectIdentifier], id.ReasonCodes);
         Assert.Equal(ScreeningAssessment.Review, hit.PairResult);
 
-        // Legacy decision is imported only; the human decision is the reviewer's.
+        // Legacy decision is imported only, never evidence.
         Assert.Contains(input.LegacyDecisions, d => d.Value == "確認後不符合" && !d.IndependentlyVerified);
-        Assert.Equal(FinalDisposition.NotOnList, DispositionPolicy.Decide(HumanDecision.NoMatch, [ApprovalRole.Approver]));
     }
 
     [Fact]
@@ -114,7 +112,6 @@ public class GoldenCaseTests
         Assert.Equal([ReasonCodes.ConsistentAtAvailablePrecision, ReasonCodes.NoBilateralDirectIdentifier], id.ReasonCodes);
         Assert.Equal(ScreeningAssessment.Review, hit.PairResult);
 
-        Assert.Equal(FinalDisposition.OnList, DispositionPolicy.Decide(HumanDecision.Match, [ApprovalRole.Approver]));
     }
 
     [Fact]
@@ -153,11 +150,10 @@ public class GoldenCaseTests
         Assert.Equal(ScreeningAssessment.Review, hit.PairResult);
 
         Assert.Contains(input.LegacyDecisions, d => d.Value == "確認後符合" && !d.IndependentlyVerified);
-        Assert.Equal(FinalDisposition.OnList, DispositionPolicy.Decide(HumanDecision.Match, [ApprovalRole.Approver]));
     }
 
     [Fact]
-    public void GC12_related_party_with_common_name_is_review_row_6_and_unresolved_needs_senior_approval()
+    public void GC12_related_party_with_common_name_is_review_row_6()
     {
         var (input, a) = Run("GC-12");
 
@@ -189,10 +185,5 @@ public class GoldenCaseTests
         Assert.Equal(6, id.Stage3Row);
         Assert.Equal(IdentityDecision.Review, id.Decision);
         Assert.Equal([ReasonCodes.NoNonPrerequisiteSupport, ReasonCodes.NoBilateralDirectIdentifier], id.ReasonCodes);
-
-        Assert.Throws<InvalidOperationException>(() =>
-            DispositionPolicy.Decide(HumanDecision.Unresolved, [ApprovalRole.Approver], FinalDisposition.NotOnList));
-        Assert.Equal(FinalDisposition.NotOnList,
-            DispositionPolicy.Decide(HumanDecision.Unresolved, [ApprovalRole.Approver, ApprovalRole.SeniorApprover], FinalDisposition.NotOnList));
     }
 }

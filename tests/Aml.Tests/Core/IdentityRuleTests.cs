@@ -40,6 +40,61 @@ public class IdentityRuleTests
     }
 
     [Theory]
+    [InlineData("CHUNG JEN-SHENG", "Zhong Ren Sheng")]   // Taiwanese passport vs Hanyu Pinyin
+    [InlineData("JHONG JENN SHENG", "Ren Sheng Zhong")]  // Tongyong-style spelling, given-first order
+    [InlineData("Hsieh Chih-Ming", "XIE ZHI MING")]       // Wade-Giles
+    public void Romanization_variants_are_partial_and_disclosed(string subject, string profile) =>
+        Assert.Equal((Partial, Findings.RomanizationVariant), Normalize.CompareNames([subject], [profile]));
+
+    [Fact]
+    public void Romanization_needs_every_syllable_and_never_reaches_chinese()
+    {
+        Assert.NotEqual(Findings.RomanizationVariant, Normalize.CompareNames(["CHUNG JEN"], ["Zhong Ren Sheng"]).Detail);
+        Assert.NotEqual(Findings.RomanizationVariant, Normalize.CompareNames(["CHUNG JEN SHENG"], ["Zhong Lin Sheng"]).Detail);
+        Assert.NotEqual(Findings.RomanizationVariant, Normalize.CompareNames(["CHUNG JEN SHENG"], ["鍾仁聲"]).Detail);
+    }
+
+    [Fact]
+    public void Name_similarity_is_disclosed_on_partial_only()
+    {
+        var (status, detail) = Normalize.CompareNames(["陳志明"], ["陳志銘"]);
+        Assert.Equal(Partial, status);
+        Assert.Equal("NOT_IDENTICAL_AFTER_NORMALIZATION（Jaro-Winkler 0.82，Levenshtein 1）", detail);
+        Assert.Equal(3, Similarity.Levenshtein("KITTEN", "SITTING"));
+        Assert.Equal(0.961, Similarity.JaroWinkler("MARTHA", "MARHTA"), 3);
+    }
+
+    [Fact]
+    public void Full_dob_conflict_is_row_1_review_never_no_match()
+    {
+        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DatesOfBirth = [new PartialDate(1981, 5, 20)] });
+        Assert.Equal(ComparisonStatus.Conflict, r.Evidence[EvidenceGroup.DateOfBirth].Status);
+        Assert.Null(r.HardConflict);
+        Assert.Equal((1, IdentityDecision.Review), (r.Stage3Row, r.Decision));
+        Assert.Equal(ReasonCodes.FullDobConflict, r.ReasonCodes[0]);
+
+        var year = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DatesOfBirth = [new PartialDate(1975)] });
+        Assert.Equal(ReasonCodes.DobConflict, year.ReasonCodes[0]);
+    }
+
+    [Fact]
+    public void One_agreeing_dob_among_several_is_support_not_conflict()
+    {
+        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"),
+            Profile("陳志明") with { DatesOfBirth = [new PartialDate(1975, 1, 1), new PartialDate(1980, 5, 20)] });
+        Assert.Equal(Exact, r.Evidence[EvidenceGroup.DateOfBirth].Status);
+        Assert.Equal(4, r.Stage3Row);
+    }
+
+    [Fact]
+    public void Support_without_agreeing_prerequisites_is_row_5()
+    {
+        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志銘") with { DatesOfBirth = [new PartialDate(1980)] });
+        Assert.Equal((5, IdentityDecision.Review), (r.Stage3Row, r.Decision));
+        Assert.Equal(ReasonCodes.PartialSupportOnly, r.ReasonCodes[0]);
+    }
+
+    [Theory]
     [InlineData("陳志明（45歲）涉嫌詐欺", 45)]
     [InlineData("負責人陳志明今年46歲。", 46)]
     [InlineData("47歲的陳志明遭起訴", 47)]

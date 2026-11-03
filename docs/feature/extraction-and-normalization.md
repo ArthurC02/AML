@@ -8,6 +8,21 @@ Extractors report what the source states. They do not decide identity or screeni
 
 Data arrives through `ICustomerSource` / `IProfileSource`; the PoC implements HTML-file sources only ([ADR-0012](../adr/0012-source-acquisition-behind-ports.md)). HTML parsing lives in Infra (AngleSharp); normalization rules live in Core.
 
+## Sources and refresh
+
+Steps 1 to 3 of the [operating architecture](system-overview.md#operating-architecture) process list and public data only, never customer data:
+
+| Source | Examples | Format |
+|---|---|---|
+| official lists | Sanction, PEP, RCA | PDF, HTML, API |
+| public news and court rulings | adverse media, indictments, judgments | PDF, HTML |
+| other public sources | registries, government sites | HTML, API |
+
+- Each source gets its own adapter behind `IProfileSource` ([ADR-0012](../adr/0012-source-acquisition-behind-ports.md)); the PoC builds the `.txt` export reader, then the HTML adapter when samples arrive. PDF and API adapters follow when a source needs them.
+- PDF text is read only from the text layer; scanned PDFs need OCR, which is out of scope ([system overview](system-overview.md#excluded-for-phase-1)).
+- Structured parsing extracts person, event, role and legal status, with evidence locations.
+- List data refreshes on a schedule or on an event (a source update). Each refresh keeps the previous snapshot; a changed Profile triggers re-analysis of the Cases that used it, producing a new revision ([case management](case-management.md)). Schedule and triggers are [open](../plan/open-questions.md#technology-governance).
+
 ## HTML processing
 
 1. preserve raw source and content hash;
@@ -54,11 +69,11 @@ Preserve original name, language/script when known, components, source alias typ
 Processing may include:
 
 - Unicode NFKC;
-- case and whitespace normalization;
+- case, full-width/half-width and whitespace normalization;
 - controlled Traditional/Simplified Chinese comparison variants;
 - Vietnamese diacritic-preserving and diacritic-free forms;
 - controlled given/family-name order variants;
-- romanization variants of Chinese names for retrieval: Hanyu Pinyin, Wade-Giles, Tongyong, Taiwanese passport spellings (e.g. JENN, JEN, REN for 仁; JONG, JHONG, CHUNG, ZHONG for 鍾/鐘);
+- romanization variants of Chinese names for retrieval: Hanyu Pinyin, Wade-Giles, Tongyong, Taiwanese passport spellings (e.g. JENN, JEN, REN for 仁; JONG, JHONG, CHUNG, ZHONG for 鍾/鐘); every syllable must share a Pinyin reading from a controlled table (`Romanization`), and a match is PARTIAL with `ROMANIZATION_VARIANT`, never EXACT;
 - variant characters with the same reading (鍾/鐘) as comparison variants;
 - hyphen and punctuation variants.
 

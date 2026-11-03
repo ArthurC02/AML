@@ -9,7 +9,7 @@ Name-screening systems often reduce identity to one similarity score. A score ca
 
 ## Decision
 
-Model adjudication around explicit records: CandidateProfile, Evidence, Conflict, SystemDecision, HumanDecision and FinalDisposition, rather than a single similarity score.
+Model adjudication around explicit records: CandidateProfile, Evidence, Conflict and SystemDecision, rather than a single similarity score.
 
 ## Consequences
 

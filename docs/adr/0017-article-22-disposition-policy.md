@@ -17,13 +17,13 @@ Writing these into the identity decision would make identity mean "policy outcom
 
 - A separate `DispositionPolicy` produces a `DispositionRecommendation` per pair: `ON_LIST | NOT_ON_LIST`, with a basis and reason codes. It reads the IdentityComparison and SourceConditionResults and never changes them.
 - ② works per source condition: only the unrelated `ADVERSE_MEDIA` condition is set aside; other HIT conditions on the same Profile still count.
-- ③ is a review-routing rule: an unresolved HumanDecision needs senior approval.
-- In Phase 1 every recommendation is confirmed by a human; the FinalDisposition records which rule it relied on.
+- ③ yields no recommendation; the explanation lists the pending checks.
+- The recommendation is advisory; the final selection happens outside the system ([ADR-0020](0020-identification-only.md)).
 
-Details: [review and disposition](../feature/review-and-disposition.md).
+Details: [disposition recommendation](../feature/review-and-disposition.md).
 
 ## Consequences
 
-- Reviewers see both "who is this person" and "what the procedure requires", with the policy basis named.
+- The explanation shows both "who is this person" and "what the procedure requires", with the policy basis named.
 - The legacy precedence (② overriding ① for the whole hit) is not carried over; per-condition handling replaces it, pending business confirmation ([open questions](../plan/open-questions.md#article-22)).
 - GC-09 and GC-10 are added to the validation backlog for ① and ②.

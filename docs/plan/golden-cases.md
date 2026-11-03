@@ -4,7 +4,7 @@
 
 ## Summary
 
-| ID | Scenario | Expected system result | Final/human result |
+| ID | Scenario | Expected system result | Human outcome (label) |
 |---|---|---|---|
 | GC-01 | Same name, impossible age/role | NO_MATCH | Not matched |
 | GC-02 | Fraud HIT, identity insufficient | REVIEW | Human NO_MATCH |
@@ -60,7 +60,7 @@ Synthetic sample: [samples/golden/GC-02](../../samples/golden/GC-02/expected.yam
 - source condition: `conditionType: ADVERSE_MEDIA`, `HIT`, `riskCategories: [FRAUD, TAX_EVASION]`;
 - system identity decision: `REVIEW`;
 - imported decision: `NO_MATCH`, `independentlyVerified=false`;
-- final disposition may use the documented human decision, while preserving system REVIEW.
+- the documented human outcome (NO_MATCH) is a label for measurement; the system result stays REVIEW.
 
 ### Regression assertions
 
@@ -156,14 +156,14 @@ Real case, anonymized; business label 無法判斷. Inputs and expected results:
 - the reference number must not become a document;
 - a common-name exact match must add no support;
 - the other couple's sentencing request must not be attributed to the subject;
-- `UNRESOLVED` must not close without senior approval, and `NOT_ON_LIST` must not be reported as a different person.
+- `NOT_ON_LIST` must not be reported as a different person.
 
 ## Cross-case regression rules
 
 - retrieval score is never identity probability;
 - aliases do not multiply risk;
 - source HIT and identity decision remain separate;
-- every final disposition identifies evidence and decision lineage;
+- every system decision identifies evidence and decision lineage;
 - incomplete data remains visible.
 
 ## Validation backlog

@@ -4,9 +4,9 @@ What the system does, per module and cross-cutting concern.
 
 | Spec | Covers |
 |---|---|
-| [System overview](system-overview.md) | objective, scope, capability exposure, layers, modules, write ownership, deployment |
+| [System overview](system-overview.md) | objective, scope, operating architecture (9 steps), capability exposure, layers, modules, write ownership, deployment |
 | [Case management](case-management.md) | lifecycle, transitions, versions, case-level result, decision records |
-| [Review and disposition](review-and-disposition.md) | roles, Article 22 mapping, DispositionPolicy, verification records |
+| [Disposition recommendation](review-and-disposition.md) | Article 22 mapping, advisory DispositionPolicy, verification records |
 | [Data contracts](data-contracts.md) | identifiers, snapshots, evidence, comparisons, source conditions, combination matrix, field wrapper |
 | [Extraction and normalization](extraction-and-normalization.md) | HTML processing, names, dates, countries, documents, Taiwan addresses, quality findings |
 | [Identity adjudication](identity-adjudication.md) | retrieval, deduplication, evidence groups, hard conflict gate, decision policy, reason codes |

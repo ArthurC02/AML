@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using Aml.Core.Shared;
@@ -30,7 +31,11 @@ public static partial class Normalize
         yield return NameKey(tokens[^1] + " " + string.Join(' ', tokens[..^1]), foldVariants);
     }
 
-    /// <summary>EXACT on source characters, EXACT with VARIANT_CHARACTERS after controlled folding, else PARTIAL.</summary>
+    /// <summary>
+    /// EXACT on source characters, EXACT with VARIANT_CHARACTERS after controlled folding. Otherwise PARTIAL:
+    /// ROMANIZATION_VARIANT when the spellings differ only by romanization system, else with the best similarity disclosed.
+    /// Similarity only grades PARTIAL; it is never support and has no threshold.
+    /// </summary>
     public static (ComparisonStatus Status, string? Detail) CompareNames(IEnumerable<string> subject, IEnumerable<string> profile)
     {
         var s = subject.ToList();
@@ -38,9 +43,15 @@ public static partial class Normalize
         if (s.Count == 0) return (ComparisonStatus.SubjectMissing, null);
         if (p.Count == 0) return (ComparisonStatus.ProfileMissing, null);
         bool Match(bool fold) => s.SelectMany(n => NameKeys(n, fold)).Intersect(p.SelectMany(n => NameKeys(n, fold))).Any();
-        return Match(false) ? (ComparisonStatus.Exact, null)
-            : Match(true) ? (ComparisonStatus.Exact, Findings.VariantCharacters)
-            : (ComparisonStatus.Partial, "NOT_IDENTICAL_AFTER_NORMALIZATION");
+        if (Match(false)) return (ComparisonStatus.Exact, null);
+        if (Match(true)) return (ComparisonStatus.Exact, Findings.VariantCharacters);
+        if (s.Any(a => p.Any(b => Romanization.SameReading(a, b)))) return (ComparisonStatus.Partial, Findings.RomanizationVariant);
+
+        var pairs = s.SelectMany(a => NameKeys(a, true)).SelectMany(_ => p.SelectMany(b => NameKeys(b, true)), (a, b) => (a, b)).ToList();
+        var jw = pairs.Max(x => Similarity.JaroWinkler(x.a, x.b));
+        var lev = pairs.Min(x => Similarity.Levenshtein(x.a, x.b));
+        return (ComparisonStatus.Partial, string.Create(CultureInfo.InvariantCulture,
+            $"NOT_IDENTICAL_AFTER_NORMALIZATION（Jaro-Winkler {jw:0.00}，Levenshtein {lev}）"));
     }
 
     // ponytail: controlled list of same-reading variants and simplified forms seen in name data; it needs business

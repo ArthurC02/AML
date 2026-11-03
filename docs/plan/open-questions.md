@@ -14,6 +14,7 @@ Questions that need a bank decision. When one is answered, record the answer her
 ## Identity policy
 
 - Approve the controlled variant-character list used for name comparison (`Normalize.CjkVariants`: 鍾/鐘/钟 and common simplified forms; distinct surnames such as 涂/塗 are never folded). A name matched only after folding is EXACT with `VARIANT_CHARACTERS` disclosed.
+- Approve the controlled romanization table (`Romanization`: Wade-Giles, Tongyong and passport spellings to Pinyin readings) and decide whether Jaro-Winkler / Levenshtein need a threshold, set from labelled cases.
 - Minimum plausible age for an attributed adult role (hard conflict `IMPOSSIBLE_AGE_AT_REPORTED_EVENT`): the code uses 14 (`HardConflictGate.MinimumRoleAge`); GC-01 needs anything above 6.
 - Which complete DOB conflicts qualify as hard conflicts?
 - Which unique-identifier combinations permit automatic MATCH?
@@ -34,13 +35,7 @@ Questions that need a bank decision. When one is answered, record the answer her
 - When ① and ② both apply, is per-condition handling (PEP presumption survives an unrelated adverse-news condition) approved? The legacy system let ② override the whole hit.
 - For a hit with Sanction or PEP plus unrelated adverse news, does ② set aside only the adverse-news condition?
 - Which channels must be used before "exhausted" (③) may be claimed?
-- Final domain allowlist for reviewer lookups and the attached-URL exemption wording.
-
-## Human review
-
-- Required reason-code taxonomy?
-- What evidence must a reviewer attach?
-- When does a new revision invalidate earlier review?
+- Final domain allowlist for lookups and the attached-URL exemption wording.
 
 ## Case and execution
 
@@ -53,7 +48,9 @@ Questions that need a bank decision. When one is answered, record the answer her
 - Is .NET approved for production support?
 - Will production use Microsoft SQL Server or Oracle, and which version?
 - Which container platform, identity provider and CI/CD controls are standard?
-- Are timed batch triggers (e.g. nightly re-screening) required?
+- List data refreshes on a schedule or on an event ([operating architecture](../feature/system-overview.md#operating-architecture), 2026-11-03). What schedule, and which source events trigger a refresh and re-analysis?
+- The operating architecture includes a list database with a search index (BM25 / n-gram); the PoC decision of 2026-11-02 excludes it. In which phase does it enter scope?
+- Which name and address similarity thresholds (Jaro-Winkler, Levenshtein, Jaccard) does the bank accept, and from which labelled cases are they set?
 - What are required SAST, SCA, SBOM and patch SLAs?
 
 ## Answered

@@ -30,7 +30,7 @@ public class AugmentedCaseTests
             foreach (var (file, find, replace) in edits)
             {
                 var path = Path.Combine(dir.FullName, file);
-                var text = File.ReadAllText(path);
+                var text = File.ReadAllText(path).ReplaceLineEndings("\n"); // Windows checkouts may have CRLF
                 Assert.True(text.Split(find).Length == 2, $"{gc}/{file}: '{find}' must occur exactly once");
                 File.WriteAllText(path, text.Replace(find, replace, StringComparison.Ordinal));
             }

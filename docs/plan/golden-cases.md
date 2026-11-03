@@ -217,4 +217,21 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-12-03 | GC-12 | Profile record type Entity | `NON_PERSON_SUBJECT_REVIEW` | REVIEW |
 | AUG-03-01 | GC-03 | Profile category → Politically Exposed Person (both sides Vietnamese) | Article 22 ① | ON_LIST presumption, identity unchanged |
 | AUG-03-02 | GC-03 | as AUG-03-01, customer nationality removed | Article 22 ① nationality missing | no recommendation, `CONFIRM_NATIONALITY` pending |
+| AUG-03-03 | GC-03 | Profile category → Politically Exposed Person / Former PEP | former PEP | `FORMER_PEP`, ON_LIST presumption kept |
+| AUG-03-04 | GC-03 | as AUG-03-01, customer nationality → Taiwan | Article 22 ① not applicable | nationality conflict, row 5 REVIEW, no recommendation, no `CONFIRM_NATIONALITY` |
+| AUG-03-05 | GC-03 | as AUG-03-01, Profile DOB removed | PEP identity check | `IDENTITY_CHECK` pending |
+| AUG-03-06 | GC-03 | Profile category → Relative or Close Associate | RCA | `RCA_UNCONFIRMED`, REVIEW, no presumption |
+| AUG-03-07 | GC-03 | Profile category → Sanctions Lists, active named measure | sanction measure | Sanction HIT with program and jurisdiction, REVIEW, HIGH priority |
+| AUG-03-08 | GC-03 | as AUG-03-07, measure status Delisted | `SANCTION_MEASURE_NOT_CONFIRMED` | UNKNOWN, `SOURCE_CONDITION_UNKNOWN`, REVIEW |
+| AUG-03-09 | GC-03 | wanted list status Removed | inactive official list | OTHER_OFFICIAL_LIST, legal stage not WANTED |
 | AUG-01-01 | GC-01 | customer DOB 1985 → 1972 (18 when named chairman in 1990) | `IMPOSSIBLE_ROLE_AT_REPORTED_EVENT` | fires, REVIEW (not NO_MATCH); Case IN_REVIEW |
+| AUG-01-02 | GC-01 | customer DOB 1985 → 1977/3/18 (13 as chairman, 14 as general manager) | `MinimumRoleAge` boundary | chairman NO_MATCH; general manager no conflict, row 6 REVIEW; Case IN_REVIEW |
+| AUG-01-03 | GC-01 | customer DOB 1985 → 1960 | plausible age | no hard conflict, row 6 REVIEW on both Profiles |
+| AUG-02-01 | GC-02 | Profile DOB 1975/9 | month-precision DOB agreement | PARTIAL, MEDIUM support, row 4 PROBABLE_MATCH, still no direct identifier |
+| AUG-02-02 | GC-02 | Profile DOB 1980 | `DOB_CONFLICT` | row 1 REVIEW, not FULL_DOB_CONFLICT, no hard conflict |
+| AUG-02-03 | GC-02 | news states 林美玲（49歲） | stated age compatible | `AGE_COMPATIBLE_AT_REPORT`, neutral, row 6 unchanged |
+| AUG-02-04 | GC-02 | news states 林美玲（30歲） | `AGE_DIFFERENCE_AT_REPORT` | soft conflict, row 1 REVIEW, never NO_MATCH |
+| AUG-02-05 | GC-02 | news 分案偵辦 → 起訴 | legal stage | INDICTED; `amlRelevance` stays UNCERTAIN |
+| AUG-02-06 | GC-02 | keyword Money Laundering added | keyword risk category | `MONEY_LAUNDERING` added to risk categories |
+| AUG-02-07 | GC-02 | SIP subcategory Fraud → Gambling | `UNMAPPED_CATEGORY` | UNKNOWN, `SOURCE_CONDITION_UNKNOWN`, REVIEW; relevance checks stay open |
+| AUG-02-08 | GC-02 | Profile names 林美齡 / Lin Mei-Lin | near name | NAME PARTIAL `NOT_IDENTICAL_AFTER_NORMALIZATION`, row 6 REVIEW |

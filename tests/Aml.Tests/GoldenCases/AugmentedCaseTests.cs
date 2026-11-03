@@ -178,6 +178,125 @@ public class AugmentedCaseTests
         Assert.Equal(CaseStatus.InReview, CaseLifecycle.AfterAnalysis(a, CaseStatus.Open)); // GC-01 closes; a pending rule cannot
     }
 
+    [Fact]
+    public void AUG_01_02_minimum_role_age_boundary_splits_the_two_profiles()
+    {
+        // Born 1977/3/18: at most 13 in 1990/7 (chairman), at most 14 in 1991/3 (general manager, month precision).
+        var (_, a) = Augment("GC-01", [("客戶-背景資料.txt", "1985/3/18", "1977/3/18")]);
+        var chairman = Identity(a, "DJ:90000001");
+        Assert.Equal((ReasonCodes.ImpossibleAgeAtReportedEvent, IdentityDecision.NoMatch), (chairman.HardConflict, chairman.Decision));
+        var manager = Identity(a, "DJ:90000002");
+        Assert.Null(manager.HardConflict); // 14 is not below MinimumRoleAge, and 總經理 is not adult-only
+        Assert.Equal((6, IdentityDecision.Review), (manager.Stage3Row, manager.Decision));
+        Assert.Equal(CaseStatus.InReview, CaseLifecycle.AfterAnalysis(a, CaseStatus.Open));
+    }
+
+    [Fact]
+    public void AUG_01_03_plausible_age_removes_the_hard_conflict_and_adds_no_support()
+    {
+        var (_, a) = Augment("GC-01", [("客戶-背景資料.txt", "1985/3/18", "1960/3/18")]);
+        foreach (var key in new[] { "DJ:90000001", "DJ:90000002" })
+        {
+            var id = Identity(a, key);
+            Assert.Null(id.HardConflict);
+            Assert.Equal((6, IdentityDecision.Review), (id.Stage3Row, id.Decision)); // temporal plausibility is not support
+        }
+        Assert.All(a.Hits, h => Assert.Equal(ScreeningAssessment.Review, h.PairResult));
+    }
+
+    // GC-02: Taiwanese customer 林美玲 born 1975/9/2; Profile SIP / Fraud, keywords Fraud and Tax Evasion, no DOB;
+    // news of 2025/3/12 says the case is under investigation (分案偵辦).
+
+    private const string Profile21 = "名單資料_90000021.txt";
+    private const string News21 = "新聞資訊_90000021.txt";
+
+    private static HitResult Hit21(CaseAnalysis a) => a.Hits.Single(h => h.Profile.ProfileKey == "DJ:90000021");
+
+    [Fact]
+    public void AUG_02_01_month_precision_dob_agreement_is_medium_support_row_4()
+    {
+        var (_, a) = Augment("GC-02", [Before(Profile21, "狀態:\tActive", "日期:\n編號\t類型\t日期\n1\tDate of Birth\t1975/9")]);
+        var id = Hit21(a).Identity;
+        Assert.Equal((Partial, Strength.Medium), (id.Evidence[EvidenceGroup.DateOfBirth].Status, id.Evidence[EvidenceGroup.DateOfBirth].Strength));
+        Assert.Equal((4, IdentityDecision.ProbableMatch), (id.Stage3Row, id.Decision));
+        Assert.Contains(ReasonCodes.NoBilateralDirectIdentifier, id.ReasonCodes); // month precision is not a direct identifier
+    }
+
+    [Fact]
+    public void AUG_02_02_year_only_dob_conflict_is_dob_conflict_not_full_dob_conflict()
+    {
+        var (_, a) = Augment("GC-02", [Before(Profile21, "狀態:\tActive", "日期:\n編號\t類型\t日期\n1\tDate of Birth\t1980")]);
+        var id = Hit21(a).Identity;
+        Assert.Equal((1, IdentityDecision.Review), (id.Stage3Row, id.Decision));
+        Assert.Equal(ReasonCodes.DobConflict, id.ReasonCodes[0]);
+        Assert.Null(id.HardConflict); // never a stage 1 hard conflict
+    }
+
+    [Fact]
+    public void AUG_02_03_stated_age_consistent_with_the_customer_is_compatible_not_support()
+    {
+        var (_, a) = Augment("GC-02", [(News21, "負責人林美玲涉嫌", "負責人林美玲（49歲）涉嫌")]);
+        var id = Hit21(a).Identity;
+        var age = id.Evidence[EvidenceGroup.StatedAge];
+        Assert.Equal((Exact, Direction.Neutral, ReasonCodes.AgeCompatibleAtReport), (age.Status, age.Direction, age.Detail));
+        Assert.Equal((6, IdentityDecision.Review), (id.Stage3Row, id.Decision)); // unchanged from GC-02
+    }
+
+    [Fact]
+    public void AUG_02_04_stated_age_far_from_the_customer_is_a_soft_conflict_row_1()
+    {
+        var (_, a) = Augment("GC-02", [(News21, "負責人林美玲涉嫌", "負責人林美玲（30歲）涉嫌")]);
+        var id = Hit21(a).Identity;
+        Assert.Equal(ComparisonStatus.Conflict, id.Evidence[EvidenceGroup.StatedAge].Status);
+        Assert.Null(id.HardConflict); // soft, never NO_MATCH
+        Assert.Equal((1, IdentityDecision.Review), (id.Stage3Row, id.Decision));
+        Assert.Equal(ReasonCodes.AgeDifferenceAtReport, id.ReasonCodes[0]);
+    }
+
+    [Fact]
+    public void AUG_02_05_indictment_in_the_news_sets_legal_stage_indicted()
+    {
+        var (_, a) = Augment("GC-02", [(News21, "檢方已分案偵辦", "檢方已依詐欺罪嫌起訴")]);
+        var condition = Assert.Single(Hit21(a).Conditions);
+        Assert.Equal((ListType.AdverseMedia, LegalStage.Indicted), (condition.Type, condition.LegalStage));
+        Assert.Equal(AmlRelevance.Uncertain, condition.AmlRelevance); // ② is not decided by extraction
+    }
+
+    [Fact]
+    public void AUG_02_06_money_laundering_keyword_adds_a_risk_category()
+    {
+        var (_, a) = Augment("GC-02", [(Profile21, "關鍵字:\tFraud; Tax Evasion", "關鍵字:\tFraud; Tax Evasion; Money Laundering")]);
+        Assert.Equal(["FRAUD", "TAX_EVASION", "MONEY_LAUNDERING"], Assert.Single(Hit21(a).Conditions).RiskCategories);
+    }
+
+    [Fact]
+    public void AUG_02_07_unmapped_category_is_unknown_and_keeps_every_relevance_check_open()
+    {
+        var (_, a) = Augment("GC-02", [(Profile21, "Special Interest Person (SIP)\tFraud", "Special Interest Person (SIP)\tGambling")]);
+        var hit = Hit21(a);
+        var condition = Assert.Single(hit.Conditions);
+        Assert.Equal((ListType.Unknown, ConditionStatus.Unknown), (condition.Type, condition.Status));
+        Assert.Equal((ScreeningAssessment.Review, true), (hit.PairResult, hit.PairReasonCodes.Contains(AssessmentPolicy.SourceConditionUnknown)));
+        Assert.Null(hit.Disposition.Recommendation); // Taiwanese customer: no foreign PEP presumption
+        Assert.Contains(DispositionPolicy.EmploymentRelevance, hit.Disposition.PendingChecks);
+        Assert.Contains(DispositionPolicy.RegionRelevance, hit.Disposition.PendingChecks);
+    }
+
+    [Fact]
+    public void AUG_02_08_near_name_is_partial_and_never_support()
+    {
+        var (_, a) = Augment("GC-02",
+        [
+            (Profile21, "OSN\t林美玲", "OSN\t林美齡"),
+            (Profile21, "1\tMei-Ling\tLin", "1\tMei-Lin\tLin"),
+        ]);
+        var id = Hit21(a).Identity;
+        var name = id.Evidence[EvidenceGroup.Name];
+        Assert.Equal((Direction.Prerequisite, Partial), (name.Direction, name.Status));
+        Assert.StartsWith("NOT_IDENTICAL_AFTER_NORMALIZATION", name.Detail, StringComparison.Ordinal);
+        Assert.Equal((6, IdentityDecision.Review), (id.Stage3Row, id.Decision));
+    }
+
     // GC-03: Vietnamese customer and Profile (citizenship Viet Nam), active official wanted list, PROBABLE_MATCH.
 
     private static readonly (string, string, string) ToPep =
@@ -204,5 +323,84 @@ public class AugmentedCaseTests
         var hit = Assert.Single(a.Hits);
         Assert.Null(hit.Disposition.Recommendation);
         Assert.Equal(DispositionPolicy.ConfirmNationality, hit.Disposition.PendingChecks[0]);
+    }
+
+    [Fact]
+    public void AUG_03_03_former_pep_keeps_the_presumption()
+    {
+        var (_, a) = Augment("GC-03", [("名單資料_90000031.txt", "1\tOther Official List\t", "1\tPolitically Exposed Person\tFormer PEP")]);
+        var hit = Assert.Single(a.Hits);
+        Assert.Equal((ListType.Pep, "FORMER_PEP"), (Assert.Single(hit.Conditions).Type, hit.Conditions[0].PepType));
+        Assert.Equal(Recommendation.OnList, hit.Disposition.Recommendation);
+    }
+
+    [Fact]
+    public void AUG_03_04_pep_with_a_taiwanese_customer_gets_no_presumption()
+    {
+        var (_, a) = Augment("GC-03", [ToPep, ("客戶-背景資料.txt", "國籍 1\nViet Nam", "國籍 1\nTaiwan")]);
+        var hit = Assert.Single(a.Hits);
+        Assert.Equal(ComparisonStatus.Conflict, hit.Identity.Evidence[EvidenceGroup.Nationality].Status);
+        Assert.Equal((5, IdentityDecision.Review), (hit.Identity.Stage3Row, hit.Identity.Decision)); // prerequisites disagree: row 4 out
+        Assert.Null(hit.Disposition.Recommendation);
+        Assert.Equal(DispositionPolicy.NotDetermined, hit.Disposition.ReasonCodes[^1]);
+        Assert.DoesNotContain(DispositionPolicy.ConfirmNationality, hit.Disposition.PendingChecks);
+    }
+
+    [Fact]
+    public void AUG_03_05_pep_profile_without_dob_needs_an_identity_check()
+    {
+        var (_, a) = Augment("GC-03", [ToPep, ("名單資料_90000031.txt", "1\tDate of Birth\t1992\n", "")]);
+        var hit = Assert.Single(a.Hits);
+        Assert.Equal(ComparisonStatus.ProfileMissing, hit.Identity.Evidence[EvidenceGroup.DateOfBirth].Status);
+        Assert.Contains(DispositionPolicy.IdentityCheck, hit.Disposition.PendingChecks);
+    }
+
+    [Fact]
+    public void AUG_03_06_rca_has_no_presumption_and_stays_under_release_control()
+    {
+        var (_, a) = Augment("GC-03", [("名單資料_90000031.txt", "1\tOther Official List\t", "1\tRelative or Close Associate (RCA)\t")]);
+        var hit = Assert.Single(a.Hits);
+        var condition = Assert.Single(hit.Conditions);
+        Assert.Equal((ListType.Rca, "RCA_UNCONFIRMED"), (condition.Type, condition.PepType));
+        Assert.Equal(ScreeningAssessment.Review, hit.PairResult);
+        Assert.Null(hit.Disposition.Recommendation); // ① covers PEP only
+    }
+
+    [Fact]
+    public void AUG_03_07_active_named_sanction_measure_is_a_high_priority_hit()
+    {
+        var (_, a) = Augment("GC-03",
+        [
+            ("名單資料_90000031.txt", "1\tOther Official List\t", "1\tSanctions Lists\t"),
+            ("名單資料_90000031.txt", "Example Provincial Police\tWanted Persons List", "Example Ministry of Finance\tExample Sanctions List"),
+        ]);
+        var hit = Assert.Single(a.Hits);
+        var condition = Assert.Single(hit.Conditions);
+        Assert.Equal((ListType.Sanction, ConditionStatus.Hit), (condition.Type, condition.Status));
+        Assert.Equal(("Example Sanctions List", "Example Ministry of Finance"), (condition.Program, condition.Jurisdiction));
+        Assert.Equal((ScreeningAssessment.Review, ReviewPriority.High), (hit.PairResult, hit.ReviewPriority));
+    }
+
+    [Fact]
+    public void AUG_03_08_sanction_without_an_active_measure_is_unknown()
+    {
+        var (_, a) = Augment("GC-03",
+        [
+            ("名單資料_90000031.txt", "1\tOther Official List\t", "1\tSanctions Lists\t"),
+            ("名單資料_90000031.txt", "Wanted Persons List\tActive", "Wanted Persons List\tDelisted"),
+        ]);
+        var hit = Assert.Single(a.Hits);
+        var condition = Assert.Single(hit.Conditions);
+        Assert.Equal((ConditionStatus.Unknown, SourceConditions.SanctionMeasureNotConfirmed), (condition.Status, condition.ReasonCodes[0]));
+        Assert.Contains(AssessmentPolicy.SourceConditionUnknown, hit.PairReasonCodes);
+        Assert.Equal(ScreeningAssessment.Review, hit.PairResult);
+    }
+
+    [Fact]
+    public void AUG_03_09_inactive_wanted_list_is_not_described_as_wanted()
+    {
+        var (_, a) = Augment("GC-03", [("名單資料_90000031.txt", "Wanted Persons List\tActive", "Wanted Persons List\tRemoved")]);
+        var condition = Assert.Single(Assert.Single(a.Hits).Conditions);
+        Assert.Equal((ListType.OtherOfficialList, LegalStage.Unknown), (condition.Type, condition.LegalStage));
     }
 }

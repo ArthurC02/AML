@@ -16,6 +16,9 @@ Questions that need a bank decision. When one is answered, record the answer her
 - Approve the controlled variant-character list used for name comparison (`Normalize.CjkVariants`: 鍾/鐘/钟 and common simplified forms; distinct surnames such as 涂/塗 are never folded). A name matched only after folding is EXACT with `VARIANT_CHARACTERS` disclosed.
 - Approve the controlled romanization table (`Romanization`: Wade-Giles, Tongyong and passport spellings to Pinyin readings) and decide whether Jaro-Winkler / Levenshtein need a threshold, set from labelled cases.
 - Minimum plausible age for an attributed adult role (hard conflict `IMPOSSIBLE_AGE_AT_REPORTED_EVENT`): the code uses 14 (`HardConflictGate.MinimumRoleAge`); GC-01 needs anything above 6.
+- Approve the role constraints for `IMPOSSIBLE_ROLE_AT_REPORTED_EVENT` (`HardConflictGate.AdultOnlyTitles`: 董事, 監察人) and supply a Golden Case for it, for `DOCUMENT_IDENTITY_CONFLICT` and for `DEATH_BEFORE_CUSTOMER_BIRTH`.
+- Does the Profile export carry identity documents? The reader assumes a `身分證明` table (編號, 類型, 號碼, 國家); no sample has one.
+- Can the bank supply the subject's employer with periods and named relatives (spouse, parents, related companies)? EMPLOYMENT and RELATIONSHIP comparisons are built but have no subject-side data.
 - Which complete DOB conflicts qualify as hard conflicts?
 - Which unique-identifier combinations permit automatic MATCH?
 - What temporal-role rules are approved?

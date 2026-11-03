@@ -114,7 +114,7 @@ public class ExplanationTests
         Assert.Equal(SubjectMissing, Row(h, "中文姓名").Status);
         var address = Row(h, "地址");
         Assert.Equal(Uncertain, address.Status);
-        Assert.Equal("VN", address.ProfileValue);
+        Assert.Equal("Thôn Example, Xã An Hòa, Tỉnh Example（VN）", address.ProfileValue);
         Assert.Equal("SOFT_DIFFERENCE", address.Difference);
         Assert.Contains("OFFICIAL_WANTED_LIST（法律階段 WANTED）", h.Summary.ExternalData, StringComparison.Ordinal);
     }

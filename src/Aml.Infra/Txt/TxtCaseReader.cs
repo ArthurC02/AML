@@ -109,7 +109,7 @@ public static partial class TxtCaseReader
 
         return new ScreenedSubject(
             SubjectRole.Customer, null, names, Normalize.Gender(V("性別")), PartialDate.Parse(V("出生日期")),
-            nationalities, docNumber is null ? null : new Document(DocumentType(V("證件種類")), docNumber),
+            nationalities, docNumber is null ? null : new Document(DocumentType(V("證件種類")), docNumber, IssuingCountry(V("發照地"))),
             null, taxId, Occupation(V("職業")), Dedupe(addresses, out var dup), dup ? [Findings.DuplicatedAddressLine] : []);
     }
 
@@ -135,7 +135,7 @@ public static partial class TxtCaseReader
             SubjectRole.RelatedParty, relationship, new[] { V("姓名/名稱") }.OfType<string>().ToList(),
             Normalize.Gender(V("性別")), PartialDate.Parse(V("出生日期")),
             new[] { V("國籍") }.OfType<string>().Select(Normalize.Country).ToList(),
-            docNumber is null ? null : new Document(DocumentType(V("證件種類")), docNumber),
+            docNumber is null ? null : new Document(DocumentType(V("證件種類")), docNumber, IssuingCountry(V("發照地"))),
             referenceNumber ?? V("參考號碼"), null, null, Dedupe(addresses, out var dup), dup ? [Findings.DuplicatedAddressLine] : []);
     }
 
@@ -160,7 +160,24 @@ public static partial class TxtCaseReader
     {
         "身分證統一編號" => "TW_NATIONAL_ID",
         "居留證" => "TW_RESIDENT_CERTIFICATE",
+        "護照" => "PASSPORT",
         _ => raw,
+    };
+
+    // "國家: [TW] Taiwan" → TW
+    private static string? IssuingCountry(string? raw) =>
+        raw is null ? null : CountryCode().Match(raw) is { Success: true } m ? m.Groups[1].Value : Normalize.Country(raw);
+
+    [GeneratedRegex(@"\[([A-Z]{2})\]")]
+    private static partial Regex CountryCode();
+
+    // Profile ID type + country → the bank's document type, so both sides share one key.
+    private static string ProfileDocumentType(string type, string country) => (type.Trim().ToUpperInvariant(), country) switch
+    {
+        ("NATIONAL ID" or "NATIONAL IDENTIFICATION NUMBER", "TW") => "TW_NATIONAL_ID",
+        ("RESIDENT CERTIFICATE", "TW") => "TW_RESIDENT_CERTIFICATE",
+        ("PASSPORT" or "PASSPORT NO.", _) => "PASSPORT",
+        var (other, _) => other,
     };
 
     // "批發及零售業(6)" → "批發及零售業"
@@ -203,10 +220,15 @@ public static partial class TxtCaseReader
 
         var countries = T("國家資料").Where(Numbered).ToList();
         var dobs = T("日期").Where(r => Numbered(r) && r[1] == "Date of Birth").Select(r => PartialDate.Parse(r[2])).OfType<PartialDate>().ToList();
-        var roles = T("職位").Where(Numbered).Select(r => new ProfileRole(r[1], r[2], PartialDate.Parse(r.ElementAtOrDefault(3)))).ToList();
+        var roles = T("職位").Where(Numbered)
+            .Select(r => new ProfileRole(r[1], r[2], PartialDate.Parse(r.ElementAtOrDefault(3)), PartialDate.Parse(r.ElementAtOrDefault(4)))).ToList();
         var relationships = tables.Where(t => t.Value.FirstOrDefault()?.Contains("Profile_ID") == true)
             .SelectMany(t => t.Value.Where(Numbered))
-            .Select(r => new ProfileRelationship(r[1], r[2], r[4])).ToList();
+            .Select(r => new ProfileRelationship(r[1], r[2], r[4], r[3] == "Entity")).ToList();
+        var death = T("日期").Where(r => Numbered(r) && r[1] == "Date of Death").Select(r => PartialDate.Parse(r[2])).OfType<PartialDate>().FirstOrDefault();
+        // ponytail: the ID table layout (編號 類型 號碼 國家) is assumed until an export shows one; no sample has it yet.
+        var documents = T("身分證明").Where(r => Numbered(r) && r.Length >= 4)
+            .Select(r => { var c = Normalize.Country(r[3]); return new Document(ProfileDocumentType(r[1], c), r[2], c); }).ToList();
         var official = T("名單資訊").Where(r => r[0] != "機關" && r.Length >= 5)
             .Select(r => new OfficialListEntry(r[0], r[1], r[2], Normalize.NullIfPlaceholder(r[4]))).FirstOrDefault();
 
@@ -223,7 +245,11 @@ public static partial class TxtCaseReader
             Relationships: relationships,
             OfficialList: official,
             Findings: dobs.Count > 1 ? [Findings.ProfileMultipleDob] : [],
-            Sources: T("來源").Where(Numbered).Select(r => Source($"DJ:{scalars["Profile_ID"]}#source-{r[0]}", r[1], r.ElementAtOrDefault(2))).ToList());
+            Sources: T("來源").Where(Numbered).Select(r => Source($"DJ:{scalars["Profile_ID"]}#source-{r[0]}", r[1], r.ElementAtOrDefault(2))).ToList(),
+            Documents: documents,
+            AddressLines: T("地址").Where(Numbered).Select(r => string.Join(", ", r[1..^1].Where(x => Normalize.NullIfPlaceholder(x) is not null))).ToList(),
+            DateOfDeath: death is { Year: > 0 } ? death : null,
+            RecordType: scalars.GetValueOrDefault("記錄類型", "Person"));
     }
 
     // "Liberty Times (Chinese - Traditional), 06-Sep-2026, on Factiva.com (https://…)" + "2026/9/10 下午 01:00:15"

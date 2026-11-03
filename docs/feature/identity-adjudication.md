@@ -82,10 +82,10 @@ Per evidence group (step 6 of the [operating architecture](system-overview.md#op
 |---|---|---|
 | NAME | exact after normalization and controlled variants; romanization variants and Jaro-Winkler / Levenshtein as `PARTIAL` features inside the group | yes; a romanization match is `PARTIAL` with `ROMANIZATION_VARIANT`, otherwise the best similarity is shown with the PARTIAL; no threshold yet |
 | DATE_OF_BIRTH | precision-aware comparison and conflict check | yes |
-| DOCUMENT | type + issuing country/authority + number | no (subject side extracted; Profile side has no document in the samples) |
-| ADDRESS | structured Taiwan address fields; token Jaccard for unstructured text | no (country presence only, recorded as a soft difference; 台北縣 mapping and postal-code-only check built) |
-| EMPLOYMENT | occupation and employer company, same period only | no (recorded as uncertain or missing) |
-| RELATIONSHIP / COMPANY_ASSOCIATION | spouse, parents, related companies named on both sides | no (subject-side data not supplied) |
+| DOCUMENT | type + issuing country/authority + number | yes: same key and number is `UNIQUE` support (row 2), same key with a different number is `DOCUMENT_IDENTITY_CONFLICT` (row 1), anything else `NOT_COMPARABLE`; no sample Profile carries a document yet |
+| ADDRESS | structured Taiwan address fields; token Jaccard for unstructured text | yes: city to floor key (old names and full-width digits folded), else Jaccard over words and CJK bigrams; always UNCERTAIN (`SAME_ADDRESS_NO_PERIOD` or `SOFT_DIFFERENCE`), since neither source gives validity periods |
+| EMPLOYMENT | occupation and employer company, same period only | yes: same organization with overlapping periods on both sides is `MEDIUM` support; without periods `SAME_ORGANIZATION_NO_COMMON_PERIOD`; a different employer is never a conflict. The bank export has an occupation category only, so subject employments are not yet extracted |
+| RELATIONSHIP / COMPANY_ASSOCIATION | spouse, parents, related companies named on both sides | yes: same relation and an EXACT name is support (`MEDIUM` for relatives, `LOW` for companies); the employer goes to EMPLOYMENT. Subject-side relatives are not in the bank export yet |
 
 Similarity values only grade `PARTIAL` within a group; they are never summed across groups or turned into a likelihood ([ADR-0001](../adr/0001-evidence-driven-adjudication.md)). Thresholds are set from labelled cases, not by default.
 
@@ -127,7 +127,7 @@ Stage 1 of the three-stage policy ([ADR-0002](../adr/0002-three-stage-identity-p
 | comparable document-identity conflict | `DOCUMENT_IDENTITY_CONFLICT` | pending (no dedicated case) | REVIEW |
 | source-record death preceding customer birth | `DEATH_BEFORE_CUSTOMER_BIRTH` | pending (no dedicated case) | REVIEW |
 
-A pending rule still fires and records its reason code, so reviewers see it; it only cannot close the pair automatically. A rule moves to automatic NO_MATCH when its Golden Case is validated and the policy version is released.
+A pending rule still fires and records its reason code; it only cannot close the pair automatically. Impossible role and death before birth are checked in the gate (`HardConflictGate`); a full DOB or document conflict reaches REVIEW through stage 3 row 1. Impossible role uses a controlled title list pending approval: directors and supervisors (董事, 監察人) need full legal capacity, adulthood being 20 before 2023-01-01 and 18 since. Death before birth needs every date the death value can stand for to precede every date the DOB can stand for. A rule moves to automatic NO_MATCH when its Golden Case is validated and the policy version is released.
 
 Each rule must name its evidence and policy version. Source-quality concerns can downgrade a potential hard conflict to REVIEW.
 

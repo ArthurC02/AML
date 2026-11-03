@@ -93,7 +93,8 @@ public static class ExplanationBuilder
                 + $"無法比對：{Show(Join(unknown), "無")}。",
             KeyEvidenceOrGaps: KeyEvidence(h, support),
             Conclusion: $"系統身分判斷 {Snake(h.Identity.Decision)}"
-                + (h.Identity.HardConflict is { } hc ? $"（第一階段硬衝突 {hc}）" : $"（第三階段第 {h.Identity.Stage3Row} 列）")
+                + (h.Identity.HardConflict is { } hc ? $"（第一階段硬衝突 {hc}）"
+                    : h.Identity.Stage3Row is { } row ? $"（第三階段第 {row} 列）" : $"（{h.Identity.ReasonCodes[0]}）")
                 + $"；對外結果 {Snake(h.PairResult)}" + (h.ReviewPriority is { } pr ? $"（複核優先序 {Snake(pr)}）" : "")
                 + $"；理由碼 {Join(h.Identity.ReasonCodes.Concat(h.PairReasonCodes))}。名單條件與身分判斷各自獨立。");
 
@@ -119,9 +120,13 @@ public static class ExplanationBuilder
             new("出生日期", s.DateOfBirth?.ToString(), Opt(Join(p.DatesOfBirth.Select(d => d.ToString()))), St(EvidenceGroup.DateOfBirth),
                 DobDifference(e, p)),
             new("性別", Gender(s.Gender), Gender(p.Gender), St(EvidenceGroup.Gender), null),
-            new("證件", s.Document is { } d ? $"{d.Type} {Mask(d.Number)}" : null, null, St(EvidenceGroup.Document), null),
-            new("地址", Opt(Join(addresses)), Opt(Join(p.AddressCountries)), St(EvidenceGroup.Address), Detail(EvidenceGroup.Address)),
-            new("職業／雇主", s.Occupation, Opt(Join(roles)), St(EvidenceGroup.Employment), null),
+            new("證件", s.Document is { } d ? $"{d.Type} {Mask(d.Number)}" : null,
+                Opt(Join((p.Documents ?? []).Select(x => $"{x.Type} {Mask(x.Number)}"))), St(EvidenceGroup.Document), Detail(EvidenceGroup.Document)),
+            new("地址", Opt(Join(addresses)), Opt(Join(p.AddressLines is { Count: > 0 } lines ? lines.Zip(p.AddressCountries, (l, c) => $"{l}（{c}）") : p.AddressCountries)),
+                St(EvidenceGroup.Address), Detail(EvidenceGroup.Address)),
+            new("職業／雇主", Opt(Join(new[] { s.Occupation }.OfType<string>()
+                    .Concat((s.Employments ?? []).Select(x => $"{x.Title}，{x.Organization}" + (x.From is { } f ? $"（{f} 起）" : ""))))),
+                Opt(Join(roles)), St(EvidenceGroup.Employment), Detail(EvidenceGroup.Employment)),
             new("其他識別碼", s.ReferenceNumber is { } r ? $"參考號碼 {Mask(r)}" : null, null, St(EvidenceGroup.OtherIdentifier),
                 s.ReferenceNumber is null ? null : "NOT_A_DOCUMENT"),
         ];
@@ -148,7 +153,8 @@ public static class ExplanationBuilder
     private static string KeyEvidence(HitResult h, List<Evidence> support)
     {
         var sb = new StringBuilder();
-        if (h.Identity.HardConflict is { } hc) sb.Append(CultureInfo.InvariantCulture, $"硬衝突 {hc}，足以排除。");
+        if (h.Identity.HardConflict is { } hc)
+            sb.Append("硬衝突 " + hc + (HardConflictGate.Validated.Contains(hc) ? "，足以排除。" : "，規則尚待驗證，不自動排除。"));
         sb.Append(support.Count == 0
             ? "除姓名、國籍、性別等前提條件外，沒有任何佐證。"
             : "佐證：" + Join(support.Select(v => $"{Snake(v.Group)}（{Snake(v.Strength)}{(v.Detail is null ? "" : "，" + v.Detail)}）")) + "。");

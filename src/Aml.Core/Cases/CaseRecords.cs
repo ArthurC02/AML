@@ -16,9 +16,6 @@ public sealed record AnalysisRecord(
 
 public static class CaseLifecycle
 {
-    // Hard-conflict rules validated by a Golden Case may close a pair automatically.
-    private static readonly HashSet<string> ValidatedAutomaticRules = [Shared.ReasonCodes.ImpossibleAgeAtReportedEvent];
-
     /// <summary>Case-level aggregate by precedence NOT_EVALUATED > HIT > REVIEW > NO_HIT > NOT_APPLICABLE; zero hits is NO_HIT.</summary>
     public static ScreeningAssessment Aggregate(CaseAnalysis a) =>
         a.NotEvaluatedProfiles.Count > 0 ? ScreeningAssessment.NotEvaluated
@@ -35,7 +32,7 @@ public static class CaseLifecycle
         ScreeningAssessment.NotEvaluated => current,
         ScreeningAssessment.Hit or ScreeningAssessment.Review => CaseStatus.InReview,
         _ when a.Hits.Where(h => h.PairResult == ScreeningAssessment.NoHit)
-                     .All(h => h.Identity.Decision == IdentityDecision.NoMatch && ValidatedAutomaticRules.Contains(h.Identity.HardConflict ?? "")) => CaseStatus.Closed,
+                     .All(h => h.Identity.Decision == IdentityDecision.NoMatch && HardConflictGate.Validated.Contains(h.Identity.HardConflict ?? "")) => CaseStatus.Closed,
         _ => CaseStatus.InReview,
     };
 }

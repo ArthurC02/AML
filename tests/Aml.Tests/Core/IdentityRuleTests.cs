@@ -94,6 +94,114 @@ public class IdentityRuleTests
         Assert.Equal(ReasonCodes.PartialSupportOnly, r.ReasonCodes[0]);
     }
 
+    private static readonly Document NationalId = new("TW_NATIONAL_ID", "A123456789");
+
+    [Fact]
+    public void Same_document_key_is_unique_support_row_2()
+    {
+        var r = IdentityDecisionPolicy.Decide(Subject("陳志明") with { Document = NationalId },
+            Profile("陳志明") with { Documents = [new("TW_NATIONAL_ID", "a123456789", "TW")] });
+        Assert.Equal(Strength.Unique, r.Evidence[EvidenceGroup.Document].Strength);
+        Assert.Equal((2, IdentityDecision.ProbableMatch), (r.Stage3Row, r.Decision));
+        Assert.Equal([ReasonCodes.UniqueIdentifierAgreement], r.ReasonCodes); // a bilateral document is a direct identifier
+    }
+
+    [Fact]
+    public void Different_number_for_the_same_key_is_a_conflict_and_other_documents_are_not_comparable()
+    {
+        var conflict = IdentityDecisionPolicy.Decide(Subject("陳志明") with { Document = NationalId },
+            Profile("陳志明") with { Documents = [new("TW_NATIONAL_ID", "A223456788", "TW")] });
+        Assert.Equal((1, IdentityDecision.Review), (conflict.Stage3Row, conflict.Decision));
+        Assert.Equal(ReasonCodes.DocumentIdentityConflict, conflict.ReasonCodes[0]);
+
+        var passport = IdentityDecisionPolicy.Decide(Subject("陳志明") with { Document = NationalId },
+            Profile("陳志明") with { Documents = [new("PASSPORT", "A123456789", "TW")] });
+        Assert.Equal((Uncertain, "NOT_COMPARABLE"), (passport.Evidence[EvidenceGroup.Document].Status, passport.Evidence[EvidenceGroup.Document].Detail));
+    }
+
+    [Fact]
+    public void Same_employer_in_a_common_period_is_support_and_with_full_dob_reaches_row_3()
+    {
+        var profile = Profile("陳志明") with
+        {
+            DatesOfBirth = [new PartialDate(1980, 5, 20)],
+            Roles = [new ProfileRole("總經理", "宏遠投資股份有限公司", new PartialDate(2015), new PartialDate(2020))],
+        };
+        var r = IdentityDecisionPolicy.Decide(Subject("陳志明") with
+            { Employments = [new Employment("宏遠投資股份有限公司", "經理", new PartialDate(2018, 3), null)] }, profile);
+        Assert.Equal((Exact, Strength.Medium), (r.Evidence[EvidenceGroup.Employment].Status, r.Evidence[EvidenceGroup.Employment].Strength));
+        Assert.Equal((3, IdentityDecision.ProbableMatch), (r.Stage3Row, r.Decision));
+
+        var undated = IdentityDecisionPolicy.Decide(Subject("陳志明") with
+            { Employments = [new Employment("宏遠投資股份有限公司", null, null, null)] }, profile);
+        Assert.Equal("SAME_ORGANIZATION_NO_COMMON_PERIOD", undated.Evidence[EvidenceGroup.Employment].Detail);
+        Assert.False(undated.Evidence[EvidenceGroup.Employment].IsSupport);
+    }
+
+    [Fact]
+    public void Relative_and_related_company_named_on_both_sides_are_support()
+    {
+        var profile = Profile("陳志明") with
+        {
+            Relationships = [new ProfileRelationship("2", "許雅婷", "Wife"), new ProfileRelationship("3", "宏遠投資股份有限公司", "Shareholder", IsEntity: true)],
+        };
+        var r = IdentityDecisionPolicy.Decide(Subject("陳志明") with
+            { Relatives = [new Relative("許雅婷", "配偶"), new Relative("宏遠投資股份有限公司", "Shareholder", IsEntity: true)] }, profile);
+        Assert.Equal(Strength.Medium, r.Evidence[EvidenceGroup.Relationship].Strength);
+        Assert.Equal(Strength.Low, r.Evidence[EvidenceGroup.CompanyAssociation].Strength);
+        Assert.Equal(5, r.Stage3Row); // no full DOB on the Profile: support without the strong combination
+
+        var otherRelation = IdentityDecisionPolicy.Decide(Subject("陳志明") with { Relatives = [new Relative("許雅婷", "母親")] }, profile);
+        Assert.Equal(Uncertain, otherRelation.Evidence[EvidenceGroup.Relationship].Status);
+    }
+
+    [Fact]
+    public void Structured_taiwan_address_matches_across_old_names_and_full_width_digits()
+    {
+        Assert.Equal(AddressCompare.TaiwanKey("242台北縣新莊市中平里１２鄰中華路３５巷８號３樓"), AddressCompare.TaiwanKey("新北市新莊區中華路35巷8號3樓"));
+        Assert.NotEqual(AddressCompare.TaiwanKey("新北市新莊區中華路35巷8號"), AddressCompare.TaiwanKey("新北市新莊區中華路35巷10號"));
+        Assert.Null(AddressCompare.TaiwanKey("Thôn Example, Xã An Hòa"));
+    }
+
+    [Fact]
+    public void Same_address_without_periods_is_never_support_and_a_different_one_is_a_soft_difference()
+    {
+        var subject = Subject("陳志明") with { Addresses = [new Address("永久地址", "新北市新莊區中華路35巷8號3樓", null, "TW")] };
+        var same = IdentityDecisionPolicy.Decide(subject, Profile("陳志明") with
+            { AddressCountries = ["TW"], AddressLines = ["台北縣新莊市中華路３５巷８號３樓"] });
+        Assert.Equal((Uncertain, "SAME_ADDRESS_NO_PERIOD"), (same.Evidence[EvidenceGroup.Address].Status, same.Evidence[EvidenceGroup.Address].Detail));
+        Assert.Equal(6, same.Stage3Row);
+
+        var other = IdentityDecisionPolicy.Decide(subject, Profile("陳志明") with
+            { AddressCountries = ["TW"], AddressLines = ["臺北市大安區信義路四段1號"] });
+        Assert.StartsWith("SOFT_DIFFERENCE（Jaccard 0.", other.Evidence[EvidenceGroup.Address].Detail, StringComparison.Ordinal);
+        Assert.NotEqual(ComparisonStatus.Conflict, other.Evidence[EvidenceGroup.Address].Status);
+    }
+
+    [Fact]
+    public void Pending_hard_conflicts_fire_but_keep_the_pair_in_review()
+    {
+        // Born 1980-05-20: 16 when named director in 1997 (adulthood was 20 then), so the role is impossible but the age is not.
+        var role = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with
+            { Roles = [new ProfileRole("董事", "宏遠投資股份有限公司", new PartialDate(1997, 1))] });
+        Assert.Equal((ReasonCodes.ImpossibleRoleAtReportedEvent, IdentityDecision.Review), (role.HardConflict, role.Decision));
+
+        var death = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DateOfDeath = new PartialDate(1979) });
+        Assert.Equal((ReasonCodes.DeathBeforeCustomerBirth, IdentityDecision.Review), (death.HardConflict, death.Decision));
+
+        var sameYear = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DateOfDeath = new PartialDate(1980) });
+        Assert.Null(sameYear.HardConflict); // precision too coarse to say death came first
+        Assert.True(HardConflictGate.Before(new PartialDate(1980, 4), new PartialDate(1980, 5, 20)));
+    }
+
+    [Fact]
+    public void Non_person_profile_stays_in_review()
+    {
+        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { RecordType = "Entity" });
+        Assert.Equal((IdentityDecision.Review, (int?)null), (r.Decision, r.Stage3Row));
+        Assert.Equal([ReasonCodes.NonPersonSubjectReview], r.ReasonCodes);
+    }
+
     [Theory]
     [InlineData("陳志明（45歲）涉嫌詐欺", 45)]
     [InlineData("負責人陳志明今年46歲。", 46)]

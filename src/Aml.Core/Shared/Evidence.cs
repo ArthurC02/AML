@@ -1,6 +1,6 @@
 namespace Aml.Core.Shared;
 
-public enum EvidenceGroup { Name, Gender, Nationality, DateOfBirth, Document, OtherIdentifier, Employment, Relationship, Address, StatedAge }
+public enum EvidenceGroup { Name, Gender, Nationality, DateOfBirth, Document, OtherIdentifier, Employment, Relationship, CompanyAssociation, Address, StatedAge }
 
 public enum Direction { Prerequisite, Support, Conflict, Neutral }
 
@@ -30,6 +30,9 @@ public static class ReasonCodes
     public const string AgeCompatibleAtReport = "AGE_COMPATIBLE_AT_REPORT";
     public const string AgeDifferenceAtReport = "AGE_DIFFERENCE_AT_REPORT";
     public const string AgeNotComparable = "AGE_NOT_COMPARABLE";
+    public const string ImpossibleRoleAtReportedEvent = "IMPOSSIBLE_ROLE_AT_REPORTED_EVENT";
+    public const string DeathBeforeCustomerBirth = "DEATH_BEFORE_CUSTOMER_BIRTH";
+    public const string NonPersonSubjectReview = "NON_PERSON_SUBJECT_REVIEW";
 }
 
 public static class Findings

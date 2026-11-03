@@ -152,6 +152,19 @@ public class GoldenCaseTests
         Assert.Contains(input.LegacyDecisions, d => d.Value == "確認後符合" && !d.IndependentlyVerified);
     }
 
+    // Advisory Article 22 recommendation; GC-03 and GC-11 PROBABLE_MATCH stays undetermined because automatic MATCH is disabled.
+    [Theory]
+    [InlineData("GC-01", "NotOnList")]
+    [InlineData("GC-02", null)]
+    [InlineData("GC-03", null)]
+    [InlineData("GC-11", null)]
+    [InlineData("GC-12", null)]
+    public void Article_22_recommendation(string gc, string? expected)
+    {
+        var (_, a) = Run(gc);
+        Assert.All(a.Hits, h => Assert.Equal(expected, h.Disposition.Recommendation?.ToString()));
+    }
+
     [Fact]
     public void GC12_related_party_with_common_name_is_review_row_6()
     {

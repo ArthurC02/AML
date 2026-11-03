@@ -221,6 +221,8 @@ Only registered codes may appear in decisions. New codes are added here with the
 | `AGE_DIFFERENCE_AT_REPORT` | IdentityDecisionPolicy | stated age differs by more than 2 years; soft conflict |
 | `ART22_FOREIGN_PEP_PRESUMPTION` | DispositionPolicy | Article 22 ① presumption; identity unchanged |
 | `ART22_ADVERSE_UNRELATED` | DispositionPolicy | Article 22 ②; an ADVERSE_MEDIA condition set aside |
+| `ART22_IDENTITY_NO_MATCH` | DispositionPolicy | default; identity NO_MATCH, NOT_ON_LIST |
+| `ART22_NOT_DETERMINED` | DispositionPolicy | Article 22 ③; no recommendation, pending checks listed |
 
 Article 22 codes are defined in [disposition recommendation](review-and-disposition.md).
 

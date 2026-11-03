@@ -11,7 +11,8 @@ public sealed record HitResult(
     IdentityResult Identity,
     ScreeningAssessment PairResult,
     ReviewPriority? ReviewPriority,
-    IReadOnlyList<string> PairReasonCodes);
+    IReadOnlyList<string> PairReasonCodes,
+    DispositionRecommendation Disposition);
 
 /// <summary>Hits, plus candidate Profiles that could not be evaluated (no Profile data): those make the revision incomplete.</summary>
 public sealed record CaseAnalysis(IReadOnlyList<HitResult> Hits, IReadOnlyList<string> NotEvaluatedProfiles, IReadOnlyList<ImportedDecision> ImportedDecisions);
@@ -32,7 +33,8 @@ public static class CaseAnalyzer
                 // One identity comparison per pair, reused by every condition (PEP, Sanction, adverse media).
                 var identity = IdentityDecisionPolicy.Decide(input.Subject, profile, news);
                 var pair = AssessmentPolicy.Assess(conditions, identity);
-                return new HitResult(profile, g.Count(), conditions, identity, pair.Result, pair.Priority, pair.ReasonCodes);
+                var disposition = DispositionPolicy.Recommend(input.Subject, profile, conditions, identity, news is not null);
+                return new HitResult(profile, g.Count(), conditions, identity, pair.Result, pair.Priority, pair.ReasonCodes, disposition);
             })
             .ToList();
         var notEvaluated = groups.Where(g => !input.Profiles.ContainsKey(g.Key)).Select(g => "DJ:" + g.Key).ToList();

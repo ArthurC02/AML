@@ -1,5 +1,6 @@
 using Aml.Core.Cases;
 using Aml.Core.Identity;
+using Aml.Core.Screening;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
 using Aml.Infra.Txt;
@@ -175,5 +176,33 @@ public class AugmentedCaseTests
         Assert.Equal((ReasonCodes.ImpossibleRoleAtReportedEvent, IdentityDecision.Review), (chairman.HardConflict, chairman.Decision));
         Assert.Null(Identity(a, "DJ:90000002").HardConflict); // 18 or 19 as general manager: no adult-only constraint
         Assert.Equal(CaseStatus.InReview, CaseLifecycle.AfterAnalysis(a, CaseStatus.Open)); // GC-01 closes; a pending rule cannot
+    }
+
+    // GC-03: Vietnamese customer and Profile (citizenship Viet Nam), active official wanted list, PROBABLE_MATCH.
+
+    private static readonly (string, string, string) ToPep =
+        ("名單資料_90000031.txt", "1\tOther Official List\t", "1\tPolitically Exposed Person\t");
+
+    [Fact]
+    public void AUG_03_01_foreign_pep_is_presumed_on_list_article_22_1()
+    {
+        var (_, a) = Augment("GC-03", [ToPep]);
+        var hit = Assert.Single(a.Hits);
+        Assert.Equal(ListType.Pep, Assert.Single(hit.Conditions).Type);
+        Assert.Equal(IdentityDecision.ProbableMatch, hit.Identity.Decision); // unchanged by the presumption
+        Assert.Equal((Recommendation.OnList, DispositionPolicy.ForeignPepPresumption), (hit.Disposition.Recommendation, hit.Disposition.ReasonCodes[0]));
+    }
+
+    [Fact]
+    public void AUG_03_02_foreign_pep_with_customer_nationality_missing_needs_confirmation()
+    {
+        var (_, a) = Augment("GC-03",
+        [
+            ToPep,
+            ("客戶-背景資料.txt", "國籍 1\nViet Nam", "國籍 1\n-"),
+        ]);
+        var hit = Assert.Single(a.Hits);
+        Assert.Null(hit.Disposition.Recommendation);
+        Assert.Equal(DispositionPolicy.ConfirmNationality, hit.Disposition.PendingChecks[0]);
     }
 }

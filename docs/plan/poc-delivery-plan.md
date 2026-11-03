@@ -65,7 +65,6 @@ Prerequisite: supplied HTML samples and real GC-01 to GC-03 data (pending as of 
 
 - obtain GC-06 and GC-07;
 - calibrate hard conflict and PROBABLE_MATCH;
-- confirm reviewer reason codes;
 - settle the [Article 22 questions](open-questions.md#article-22).
 
 ### Gate C: Before category capability acceptance

@@ -96,4 +96,68 @@ public class ScreeningTests
         Assert.Equal(ExecutionStatus.Partial, CaseLifecycle.Execution(a));
         Assert.Equal(CaseStatus.Open, CaseLifecycle.AfterAnalysis(a, CaseStatus.Open));
     }
+
+    private static DispositionRecommendation Recommend(string[] subjectNationality, string[] profileCitizenship, IdentityDecision decision,
+        params SourceCondition[] conditions)
+    {
+        var subject = Subject() with { Nationalities = subjectNationality };
+        var profile = Profile("Politically Exposed Person") with { Citizenship = profileCitizenship };
+        var identity = new IdentityResult(new Dictionary<EvidenceGroup, Evidence>(), null, 6, decision, []);
+        return DispositionPolicy.Recommend(subject, profile, conditions, identity, hasNews: false);
+    }
+
+    private static SourceCondition Condition(ListType type, AmlRelevance? relevance = null) =>
+        new(type, ConditionStatus.Hit, ConditionBasis.CategoryMapping, [], LegalStage.Unknown, relevance, SourceConditions.PolicyVersion, []);
+
+    [Fact]
+    public void Article_22_1_foreign_pep_is_presumed_on_list_without_changing_identity()
+    {
+        var d = Recommend(["VN"], ["VN"], IdentityDecision.Review, Condition(ListType.Pep));
+        Assert.Equal((Recommendation.OnList, DispositionPolicy.ForeignPepPresumption), (d.Recommendation, d.ReasonCodes[0]));
+        Assert.Contains(DispositionPolicy.EmploymentRelevance, d.PendingChecks);
+        Assert.Contains(DispositionPolicy.IdentityCheck, d.PendingChecks); // PEP without DOB and not RCA
+    }
+
+    [Theory]
+    [InlineData("TW", "VN")]
+    [InlineData("VN", "TW")]
+    public void Article_22_1_never_applies_when_either_side_is_taiwanese(string subject, string profile)
+    {
+        var d = Recommend([subject], [profile], IdentityDecision.Review, Condition(ListType.Pep));
+        Assert.Null(d.Recommendation);
+        Assert.DoesNotContain(DispositionPolicy.ConfirmNationality, d.PendingChecks);
+    }
+
+    [Fact]
+    public void Article_22_1_with_missing_or_ambiguous_nationality_needs_confirmation()
+    {
+        var missing = Recommend([], ["VN"], IdentityDecision.Review, Condition(ListType.Pep));
+        Assert.Null(missing.Recommendation);
+        Assert.Equal(DispositionPolicy.ConfirmNationality, missing.PendingChecks[0]);
+        Assert.Null(Recommend(["VN"], ["MYANMAR (BURMA)"], IdentityDecision.Review, Condition(ListType.Pep)).Recommendation);
+    }
+
+    [Fact]
+    public void Article_22_2_sets_aside_only_the_unrelated_adverse_media_condition()
+    {
+        var alone = Recommend(["TW"], ["TW"], IdentityDecision.Review, Condition(ListType.AdverseMedia, AmlRelevance.Unrelated));
+        Assert.Equal((Recommendation.NotOnList, DispositionPolicy.AdverseUnrelated), (alone.Recommendation, alone.ReasonCodes[0]));
+
+        // A PEP condition on the same Profile survives: the foreign presumption still applies.
+        var withPep = Recommend(["VN"], ["VN"], IdentityDecision.Review,
+            Condition(ListType.AdverseMedia, AmlRelevance.Unrelated), Condition(ListType.Pep));
+        Assert.Equal(Recommendation.OnList, withPep.Recommendation);
+        Assert.Equal([DispositionPolicy.AdverseUnrelated, DispositionPolicy.ForeignPepPresumption], withPep.ReasonCodes);
+
+        var uncertain = Recommend(["TW"], ["TW"], IdentityDecision.Review, Condition(ListType.AdverseMedia, AmlRelevance.Uncertain));
+        Assert.Equal((Recommendation?)null, uncertain.Recommendation);
+        Assert.Equal([DispositionPolicy.NotDetermined], uncertain.ReasonCodes);
+    }
+
+    [Fact]
+    public void Identity_no_match_is_not_on_list_and_review_alone_gets_no_recommendation()
+    {
+        Assert.Equal(Recommendation.NotOnList, Recommend(["TW"], ["TW"], IdentityDecision.NoMatch, Condition(ListType.AdverseMedia)).Recommendation);
+        Assert.Null(Recommend(["TW"], ["TW"], IdentityDecision.ProbableMatch, Condition(ListType.AdverseMedia)).Recommendation);
+    }
 }

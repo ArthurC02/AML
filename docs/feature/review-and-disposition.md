@@ -68,6 +68,16 @@ Only nationality values that map unambiguously to a country are used; another pa
 - UNRELATED sets aside that `ADVERSE_MEDIA` condition only, reason code `ART22_ADVERSE_UNRELATED`. If no other HIT condition remains, the recommendation is NOT_ON_LIST; PEP, Sanction or other conditions on the same Profile still apply.
 - The relevance judgement says nothing about identity.
 
+### Built
+
+`Screening/DispositionPolicy` (2026-11-03) evaluates the default, ① and ② per pair; the result (`recommendation`, reason codes, pending checks) is on every hit and in the explanation's conclusion, marked advisory.
+
+- Identity MATCH does not occur in Phase 1, so a PROBABLE_MATCH pair without ① or ② gets no recommendation.
+- Nationality is foreign only when every nationality-labelled value maps to a country code other than TW; an unmapped value counts as ambiguous.
+- `amlRelevance` stays UNCERTAIN in the pipeline until the conduct and jurisdiction are extracted from the source (GC-10), so ② is exercised only by unit tests for now.
+- Pending checks follow the verification-record triggers below, plus `CONFIRM_NATIONALITY` when ① needs nationality confirmed.
+- ① is exercised by [AUG-03-01 and AUG-03-02](../plan/golden-cases.md#augmented-cases) until GC-09 arrives.
+
 ### Article 22-3: cannot be determined
 
 - Based on the identity decision: a REVIEW pair that no rule above resolves gets no recommendation.

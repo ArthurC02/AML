@@ -34,6 +34,7 @@ public sealed record HitExplanation(
     ScreeningAssessment PairResult,
     ReviewPriority? ReviewPriority,
     IReadOnlyList<string> PairReasonCodes,
+    DispositionRecommendation Disposition,
     IReadOnlyList<string> ReasonCodes,
     IReadOnlyList<string> DataQualityFindings,
     IReadOnlyList<ExplanationSource> Sources,
@@ -96,11 +97,12 @@ public static class ExplanationBuilder
                 + (h.Identity.HardConflict is { } hc ? $"（第一階段硬衝突 {hc}）"
                     : h.Identity.Stage3Row is { } row ? $"（第三階段第 {row} 列）" : $"（{h.Identity.ReasonCodes[0]}）")
                 + $"；對外結果 {Snake(h.PairResult)}" + (h.ReviewPriority is { } pr ? $"（複核優先序 {Snake(pr)}）" : "")
-                + $"；理由碼 {Join(h.Identity.ReasonCodes.Concat(h.PairReasonCodes))}。名單條件與身分判斷各自獨立。");
+                + $"；理由碼 {Join(h.Identity.ReasonCodes.Concat(h.PairReasonCodes))}。名單條件與身分判斷各自獨立。"
+                + Disposition(h.Disposition));
 
         return new HitExplanation(number, subject, p.ProfileKey, matched, input.Rows.Any(r => "DJ:" + r.ProfileId == p.ProfileKey && r.IsRca),
             categories, h.Conditions, news, rows, support, conflicts, unknown, h.Identity.HardConflict, h.Identity.Stage3Row,
-            h.Identity.Decision, h.PairResult, h.ReviewPriority, h.PairReasonCodes, h.Identity.ReasonCodes, findings, sources, summary);
+            h.Identity.Decision, h.PairResult, h.ReviewPriority, h.PairReasonCodes, h.Disposition, h.Identity.ReasonCodes, findings, sources, summary);
     }
 
     private static List<ComparisonRow> Comparison(ScreenedSubject s, SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence> e)
@@ -162,6 +164,11 @@ public static class ExplanationBuilder
             sb.Append("雙方沒有可共同比對的直接識別資料（完整出生日期或證件）。");
         return sb.ToString();
     }
+
+    // Advisory only: the final selection happens outside the system (ADR-0020).
+    private static string Disposition(DispositionRecommendation d) =>
+        (d.Recommendation is { } r ? $"第 22 條建議 {Snake(r)}（{Join(d.ReasonCodes)}，僅供參考）。" : $"第 22 條無法給建議（{Join(d.ReasonCodes)}）。")
+        + (d.PendingChecks.Count > 0 ? $"待查核：{Join(d.PendingChecks)}（尚未執行）。" : "");
 
     private static string Condition(SourceCondition c)
     {

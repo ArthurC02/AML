@@ -73,12 +73,15 @@ Rules:
 
 Built so far (2026-11-02):
 
-- Api uses minimal APIs in `Program.cs` instead of `Controllers/`; endpoints: `POST /api/cases` (multipart `.txt` upload), `POST /api/cases/{caseId}/analyses`, `GET /api/cases/{caseId}`, `GET /api/cases/{caseId}/analyses/{revision}`, `GET /api/cases/{caseId}/explanation`.
+- Api uses minimal APIs in `Program.cs` instead of `Controllers/`; endpoints: `POST /api/cases` (multipart `.txt` upload), `POST /api/cases/{caseId}/analyses`, `GET /api/cases/{caseId}`, `GET /api/cases/{caseId}/analyses/{revision}`, `GET /api/cases/{caseId}/explanation`, `POST /api/batches`, `GET /api/batches/{batchId}`, `POST /api/batches/{batchId}/rerun`, `GET /health`.
 - The explanation is built in Core (`Explanation/ExplanationBuilder`) with each revision and stored beside the result; document and reference numbers are masked (first 3 and last 2 characters). The five-part summary is in Traditional Chinese for reviewers. Each hit lists its sources: Profile citations (`PROFILE_RECORD`, with publication and retrieval dates and URL) and attached news (`LEGAL_STAGE` when it set the legal stage of an ADVERSE_MEDIA condition).
 - No human workflow in the PoC (decision of 2026-11-02, [system overview](../feature/system-overview.md#excluded-for-phase-1)).
-- Analysis runs synchronously in `CaseService`; the job table exists but `BatchService` and `JobWorker` are not built.
+- `POST /api/cases` analyzes synchronously; `POST /api/batches` queues items in the job table and `Workers/JobWorker` runs them through `BatchService` ([durable batch execution](../feature/pipeline-api-and-batch.md#durable-batch-execution)). The job store is `Infra/Jobs/JobStore` behind `Core/Ports/IJobStore` (named "Store" because CA1711 rejects a "Queue" suffix).
+- Each revision records source condition status and basis, pair result, review priority, pair reason codes and the changes from the previous revision; a missing Profile makes the revision PARTIAL and keeps the previous effective result.
 - Persistence is SQLite-only (`SqliteDatabase`, `SqlCatalog`, `CaseStore`); `IDbConnectionFactory` and `ISqlDialect` are extracted when a second provider is chosen.
-- OpenTelemetry, health checks and authentication are not wired yet.
+- `GET /health` runs `System.Ping`. OpenTelemetry traces, metrics and logs are on (ASP.NET Core plus the `Aml` source and meter: `aml.analyses`, `aml.analysis.duration`, `aml.job.attempts`); OTLP export starts only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set.
+- Authentication is not wired (identity provider pending).
+- Golden Case metrics are computed by `tests/Aml.Tests/GoldenCases/GoldenMetricsTests` ([results](poc-delivery-plan.md#current-results)).
 
 ## Build settings
 

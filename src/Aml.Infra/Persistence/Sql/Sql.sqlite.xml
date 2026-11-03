@@ -57,7 +57,7 @@
       <description>Move the Case to a new revision; guarded so a late revision never overwrites a newer one.</description>
       <sql><![CDATA[
         UPDATE aml_case
-        SET current_revision = @revision, effective_revision = @effectiveRevision,
+        SET current_revision = @revision, effective_revision = COALESCE(@effectiveRevision, effective_revision),
             case_status = @caseStatus, updated_at = @now
         WHERE case_id = @caseId AND current_revision < @revision
       ]]></sql>
@@ -92,6 +92,71 @@
         SET status = 'RUNNING', lease_owner = @leaseOwner, lease_expiry = @leaseExpiry,
             attempt_count = attempt_count + 1
         WHERE job_id = @jobId AND status = 'PENDING'
+      ]]></sql>
+    </statement>
+
+    <statement id="Batch.Enqueue" kind="Insert">
+      <description>New job; a duplicate idempotency key raises a unique violation (item already queued).</description>
+      <sql><![CDATA[
+        INSERT INTO job (job_id, job_type, batch_id, idempotency_key, payload, status, priority, attempt_count, next_attempt_at, created_at)
+        VALUES (@jobId, @jobType, @batchId, @idempotencyKey, @payload, 'PENDING', 0, 0, @now, @now)
+      ]]></sql>
+    </statement>
+
+    <statement id="Batch.GetClaimed" kind="Select">
+      <description>A job this worker just claimed: retry count and durable input.</description>
+      <sql><![CDATA[
+        SELECT job_id, attempt_count, payload FROM job WHERE job_id = @jobId
+      ]]></sql>
+    </statement>
+
+    <statement id="Batch.Complete" kind="Update">
+      <description>Success, with lineage to the Case and revision. Only the lease owner may finish the job.</description>
+      <sql><![CDATA[
+        UPDATE job
+        SET status = 'SUCCEEDED', case_id = @caseId, analysis_revision = @revision, completed_at = @now,
+            lease_owner = NULL, lease_expiry = NULL, error_code = NULL
+        WHERE job_id = @jobId AND lease_owner = @leaseOwner
+      ]]></sql>
+    </statement>
+
+    <statement id="Batch.Fail" kind="Update">
+      <description>Retry later (PENDING) or give up (DEAD_LETTER).</description>
+      <sql><![CDATA[
+        UPDATE job
+        SET status = @status, next_attempt_at = @nextAttemptAt, error_code = @errorCode, completed_at = @completedAt,
+            lease_owner = NULL, lease_expiry = NULL
+        WHERE job_id = @jobId AND lease_owner = @leaseOwner
+      ]]></sql>
+    </statement>
+
+    <statement id="Batch.ReclaimExpired" kind="Update">
+      <description>Jobs whose worker died: back to PENDING, or DEAD_LETTER when the retry budget is spent.</description>
+      <sql><![CDATA[
+        UPDATE job
+        SET status = CASE WHEN attempt_count >= @maxAttempts THEN 'DEAD_LETTER' ELSE 'PENDING' END,
+            completed_at = CASE WHEN attempt_count >= @maxAttempts THEN @now ELSE NULL END,
+            error_code = 'LEASE_EXPIRED', lease_owner = NULL, lease_expiry = NULL, next_attempt_at = @now
+        WHERE status = 'RUNNING' AND lease_expiry < @now
+      ]]></sql>
+    </statement>
+
+    <statement id="Batch.ListItems" kind="Select">
+      <description>Progress of one batch.</description>
+      <sql><![CDATA[
+        SELECT job_id, idempotency_key, status, attempt_count, case_id, analysis_revision, error_code, completed_at
+        FROM job
+        WHERE batch_id = @batchId
+        ORDER BY created_at, job_id
+      ]]></sql>
+    </statement>
+
+    <statement id="Batch.Rerun" kind="Update">
+      <description>Operator re-run: dead-lettered items get a fresh retry budget.</description>
+      <sql><![CDATA[
+        UPDATE job
+        SET status = 'PENDING', attempt_count = 0, next_attempt_at = @now, error_code = NULL, completed_at = NULL
+        WHERE batch_id = @batchId AND status = 'DEAD_LETTER'
       ]]></sql>
     </statement>
   </module>

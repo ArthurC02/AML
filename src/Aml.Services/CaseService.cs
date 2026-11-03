@@ -1,7 +1,10 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Aml.Core.Cases;
 using Aml.Core.Explanation;
+using Aml.Core.Identity;
+using Aml.Core.Screening;
 using Aml.Core.Ports;
 using Aml.Core.Subjects;
 
@@ -46,16 +49,49 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock)
 
     public Task<AnalysisRecord?> GetAnalysisAsync(string caseId, int revision, CancellationToken ct) => store.GetAnalysisAsync(caseId, revision, ct);
 
+    // Reads the pair snapshot back from the previous revision's stored result.
+    private async Task<IReadOnlyList<PairSnapshot>> PreviousSnapshotAsync(CaseRecord c, CancellationToken ct)
+    {
+        var previous = await store.GetAnalysisAsync(c.CaseId, c.CurrentRevision, ct).ConfigureAwait(false);
+        if (previous is null) return [];
+        using var doc = JsonDocument.Parse(previous.ResultJson);
+        return doc.RootElement.GetProperty("hits").EnumerateArray().Select(h => new PairSnapshot(
+            h.GetProperty("profile").GetProperty("profileKey").GetString()!,
+            ParseEnum<ScreeningAssessment>(h.GetProperty("pairResult").GetString()!),
+            ParseEnum<IdentityDecision>(h.GetProperty("identity").GetProperty("decision").GetString()!),
+            h.GetProperty("identity").GetProperty("reasonCodes").EnumerateArray().Select(x => x.GetString()!)
+                .Concat(h.GetProperty("pairReasonCodes").EnumerateArray().Select(x => x.GetString()!)).ToList())).ToList();
+    }
+
+    private static T ParseEnum<T>(string snake) where T : struct, Enum =>
+        Enum.Parse<T>(snake.Replace("_", "", StringComparison.Ordinal), ignoreCase: true);
+
     private async Task<CaseRecord> AnalyzeAsync(CaseRecord c, CaseInput input, CancellationToken ct)
     {
+        using var activity = AmlTelemetry.Source.StartActivity("AnalyzeCase");
+        activity?.SetTag("aml.case_id", c.CaseId);
+        var started = Stopwatch.GetTimestamp();
         var analysis = CaseAnalyzer.Analyze(input);
         var revision = c.CurrentRevision + 1;
-        var status = CaseLifecycle.AfterAnalysis(analysis);
-        var record = new AnalysisRecord(c.CaseId, revision, ExecutionStatus.Completed, CaseLifecycle.Aggregate(analysis),
-            JsonSerializer.Serialize(analysis, Json), JsonSerializer.Serialize(ExplanationBuilder.Build(input, analysis), Json), clock.GetUtcNow());
+        var status = CaseLifecycle.AfterAnalysis(analysis, c.Status);
+        var execution = CaseLifecycle.Execution(analysis);
+        var changes = c.CurrentRevision == 0 ? null
+            : RevisionChanges.Compare(await PreviousSnapshotAsync(c, ct).ConfigureAwait(false), RevisionChanges.Snapshot(analysis));
+        var record = new AnalysisRecord(c.CaseId, revision, execution, CaseLifecycle.Aggregate(analysis),
+            JsonSerializer.Serialize(analysis, Json), JsonSerializer.Serialize(ExplanationBuilder.Build(input, analysis, changes), Json), clock.GetUtcNow());
 
         if (!await store.AcceptAnalysisAsync(record, status, ct).ConfigureAwait(false))
             throw new InvalidOperationException($"Case {c.CaseId} already has a revision newer than {revision}");
-        return c with { CurrentRevision = revision, EffectiveRevision = revision, Status = status, UpdatedAt = record.CreatedAt };
+        AmlTelemetry.AnalysisDuration.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+        AmlTelemetry.Analyses.Add(1, new("case_result", record.CaseResult.ToString()), new("execution_status", execution.ToString()));
+        activity?.SetTag("aml.revision", revision);
+        activity?.SetTag("aml.case_result", record.CaseResult.ToString());
+        return c with
+        {
+            CurrentRevision = revision,
+            EffectiveRevision = execution == ExecutionStatus.Completed ? revision : c.EffectiveRevision,
+            Status = status,
+            UpdatedAt = record.CreatedAt,
+        };
     }
 }

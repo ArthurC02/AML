@@ -47,7 +47,7 @@ public class GoldenCaseTests
             AssertEvidence(hit.Identity, EvidenceGroup.DateOfBirth, ProfileMissing);
             Assert.Equal(ReasonCodes.ImpossibleAgeAtReportedEvent, hit.Identity.HardConflict);
             Assert.Equal(IdentityDecision.NoMatch, hit.Identity.Decision);
-            Assert.Equal(PairResult.NoMatch, hit.PairResult);
+            Assert.Equal(ScreeningAssessment.NoHit, hit.PairResult);
             // Source condition stays independent of identity.
             var c = Assert.Single(hit.Conditions);
             Assert.Equal(ListType.AdverseMedia, c.Type);
@@ -82,7 +82,7 @@ public class GoldenCaseTests
         Assert.Equal(6, id.Stage3Row);
         Assert.Equal(IdentityDecision.Review, id.Decision);
         Assert.Equal([ReasonCodes.NoNonPrerequisiteSupport, ReasonCodes.NoBilateralDirectIdentifier], id.ReasonCodes);
-        Assert.Equal(PairResult.Review, hit.PairResult);
+        Assert.Equal(ScreeningAssessment.Review, hit.PairResult);
 
         // Legacy decision is imported only; the human decision is the reviewer's.
         Assert.Contains(input.LegacyDecisions, d => d.Value == "確認後不符合" && !d.IndependentlyVerified);
@@ -112,7 +112,7 @@ public class GoldenCaseTests
         Assert.Equal(4, id.Stage3Row);
         Assert.Equal(IdentityDecision.ProbableMatch, id.Decision);
         Assert.Equal([ReasonCodes.ConsistentAtAvailablePrecision, ReasonCodes.NoBilateralDirectIdentifier], id.ReasonCodes);
-        Assert.Equal(PairResult.Review, hit.PairResult);
+        Assert.Equal(ScreeningAssessment.Review, hit.PairResult);
 
         Assert.Equal(FinalDisposition.OnList, DispositionPolicy.Decide(HumanDecision.Match, [ApprovalRole.Approver]));
     }
@@ -150,7 +150,7 @@ public class GoldenCaseTests
         Assert.Equal(4, id.Stage3Row);
         Assert.Equal(IdentityDecision.ProbableMatch, id.Decision);
         Assert.Equal([ReasonCodes.ConsistentAtAvailablePrecision, ReasonCodes.NoBilateralDirectIdentifier], id.ReasonCodes);
-        Assert.Equal(PairResult.Review, hit.PairResult);
+        Assert.Equal(ScreeningAssessment.Review, hit.PairResult);
 
         Assert.Contains(input.LegacyDecisions, d => d.Value == "確認後符合" && !d.IndependentlyVerified);
         Assert.Equal(FinalDisposition.OnList, DispositionPolicy.Decide(HumanDecision.Match, [ApprovalRole.Approver]));

@@ -78,6 +78,8 @@ GET  /api/batches/{batchId}
 - source conditions, DispositionRecommendation and verification records;
 - a five-part summary: internal data, external data, agreements and differences, key evidence or gaps, conclusion.
 
+Per pair the response also carries `reviewPriority` (HIGH for PROBABLE_MATCH or Sanction, NORMAL for stage 3 row 5, LOW otherwise) and `pairReasonCodes` (e.g. `RELEASE_CONTROL_HUMAN_REVIEW`, `SOURCE_CONDITION_UNKNOWN`); per Case, `notEvaluatedProfiles` and `changesFromPreviousRevision` (`ADDED`, `REMOVED`, `RESULT_CHANGED`, `IDENTITY_CHANGED`, `REASONS_CHANGED`, each with from and to).
+
 The summary only restates recorded facts; it adds none. Sources are listed with id, name, URL, retrieval date, where used and whether attached to the Profile. Nothing is dropped to shorten the response.
 
 ## Durable batch execution
@@ -101,6 +103,20 @@ Required controls:
 - operator re-run.
 
 Jobs are claimed optimistically ([job claim](persistence.md#job-claim)).
+
+Built (2026-11-03):
+
+| Control | How |
+|---|---|
+| bounded workers | `JobWorker` claims at most `Batch:MaxWorkers` (4) jobs per round and runs them in parallel |
+| timeout and cancellation | `Batch:Timeout` (2 min) per job; host shutdown leaves the job RUNNING until its `Batch:Lease` (5 min) expires |
+| retry budget | `Batch:MaxAttempts` (3); backoff `Batch:RetryDelay` (10 s), doubling per attempt |
+| idempotency key | `ANALYZE_CASE:{triggerEventId}:{subjectRef}`, unique; a repeat is reported as a duplicate, not queued |
+| checkpoint | Case creation is idempotent on trigger and subject, so a retry after a crash reuses the stored revision |
+| failed/dead-letter | `DEAD_LETTER` when the budget is spent or the files are unusable (`INVALID_INPUT`, no retry); `LEASE_EXPIRED` for abandoned jobs |
+| operator re-run | `POST /api/batches/{batchId}/rerun` gives dead-lettered items a fresh budget |
+
+Job statuses: `PENDING`, `RUNNING`, `SUCCEEDED` (with `caseId` and `analysisRevision`), `DEAD_LETTER`. The item payload (subjectRef, triggerEventId, files) is stored in the job row so a restart loses nothing.
 
 ## Idempotency and late results
 

@@ -2,23 +2,37 @@ using Aml.Core.Subjects;
 
 namespace Aml.Core.Screening;
 
+/// <summary>Bank list types (ADR-0016). UNKNOWN: an unmapped source category, left for the reviewer.</summary>
 public enum ListType { Sanction, Pep, Rca, Sie, OfficialWantedList, OtherOfficialList, AdverseMedia, BankInternalList, Unknown }
+
+public enum ConditionStatus { Hit, NotHit, Unknown }
+
+public enum ConditionBasis { Flag, CategoryMapping, Unmapped }
 
 public enum LegalStage { Unknown, Alleged, Indicted, Wanted }
 
 public enum AmlRelevance { Uncertain, Related, Unrelated }
 
+/// <summary>SourceConditionResult (data-contracts.md). Independent of identity.</summary>
 public sealed record SourceCondition(
     ListType Type,
-    string Basis,
+    ConditionStatus Status,
+    ConditionBasis Basis,
     IReadOnlyList<string> RiskCategories,
     LegalStage LegalStage,
-    AmlRelevance AmlRelevance = AmlRelevance.Uncertain);
+    AmlRelevance? AmlRelevance,
+    string PolicyVersion,
+    IReadOnlyList<string> ReasonCodes,
+    string? PepType = null,
+    string? Program = null,
+    string? Jurisdiction = null);
 
 /// <summary>List-type determination (ADR-0016): flags first; category mapping only when all flags are MISSING.</summary>
 public static class SourceConditions
 {
-    public const string CategoryMapping = "CATEGORY_MAPPING";
+    public const string PolicyVersion = "source-policy-0.2";
+    public const string SanctionMeasureNotConfirmed = "SANCTION_MEASURE_NOT_CONFIRMED";
+    public const string UnmappedCategory = "UNMAPPED_CATEGORY";
 
     private static readonly Dictionary<string, string> SipRiskCategories = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -55,12 +69,31 @@ public static class SourceConditions
 
         return types.Select(t => t switch
         {
-            ListType.AdverseMedia => new SourceCondition(t, CategoryMapping, risks, LegalStageFromNews(news)),
-            ListType.OtherOfficialList when IsActiveWantedList(profile.OfficialList) =>
-                new SourceCondition(ListType.OfficialWantedList, CategoryMapping, [], LegalStage.Wanted),
-            _ => new SourceCondition(t, CategoryMapping, [], LegalStage.Unknown),
+            ListType.AdverseMedia => Hit(t) with { RiskCategories = risks, LegalStage = LegalStageFromNews(news), AmlRelevance = AmlRelevance.Uncertain },
+            ListType.OtherOfficialList when IsActive(profile.OfficialList, "Wanted", "通緝") =>
+                Hit(ListType.OfficialWantedList) with { LegalStage = LegalStage.Wanted },
+            ListType.Sanction => Sanction(profile),
+            ListType.Pep => Hit(t) with { PepType = PepType(profile) },
+            ListType.Rca => Hit(t) with { PepType = "RCA_UNCONFIRMED" },
+            ListType.Unknown => new SourceCondition(t, ConditionStatus.Unknown, ConditionBasis.Unmapped, [], LegalStage.Unknown, null, PolicyVersion, [UnmappedCategory]),
+            _ => Hit(t),
         }).ToList();
     }
+
+    private static SourceCondition Hit(ListType t) =>
+        new(t, ConditionStatus.Hit, ConditionBasis.CategoryMapping, [], LegalStage.Unknown, null, PolicyVersion, []);
+
+    /// <summary>A generic Active Profile is not an active sanction measure: HIT needs an active, named measure.</summary>
+    private static SourceCondition Sanction(SourceProfile p) =>
+        p.OfficialList is { } e && e.Status.Equals("Active", StringComparison.OrdinalIgnoreCase)
+            ? Hit(ListType.Sanction) with { Program = e.List, Jurisdiction = e.Authority }
+            : Hit(ListType.Sanction) with { Status = ConditionStatus.Unknown, ReasonCodes = [SanctionMeasureNotConfirmed] };
+
+    // ponytail: only FORMER_PEP is read from the subcategory; PEP_FAMILY / PEP_CLOSE_ASSOCIATE need approved source fields (GC-04).
+    private static string? PepType(SourceProfile p) =>
+        p.Categories.Any(c => c.Category.StartsWith("Politically Exposed", StringComparison.OrdinalIgnoreCase)
+                              && c.Subcategory?.Contains("Former", StringComparison.OrdinalIgnoreCase) == true)
+            ? "FORMER_PEP" : null;
 
     private static ListType MapCategory(SourceCategory c)
     {
@@ -82,10 +115,10 @@ public static class SourceConditions
         return ListType.Unknown;
     }
 
-    private static bool IsActiveWantedList(OfficialListEntry? e) =>
+    private static bool IsActive(OfficialListEntry? e, string english, string chinese) =>
         e is not null
         && e.Status.Equals("Active", StringComparison.OrdinalIgnoreCase)
-        && (e.List.Contains("Wanted", StringComparison.OrdinalIgnoreCase) || e.List.Contains("通緝", StringComparison.Ordinal));
+        && (e.List.Contains(english, StringComparison.OrdinalIgnoreCase) || e.List.Contains(chinese, StringComparison.Ordinal));
 
     // ponytail: keyword heuristic on attached news; 求刑 is a sentencing request and never a judgment.
     // Replace with approved legal-stage extraction when judgment wording appears in a Golden Case.

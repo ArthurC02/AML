@@ -1,4 +1,5 @@
 using Aml.Core.Cases;
+using Aml.Core.Screening;
 using Aml.Infra.Persistence;
 using Aml.Infra.Persistence.Repositories;
 using Microsoft.Data.Sqlite;
@@ -29,7 +30,7 @@ public sealed class CaseStoreTests : IDisposable
         new(Guid.CreateVersion7().ToString(), "subject-1", trigger, CaseStatus.Open, 0, null, T0, T0);
 
     private static AnalysisRecord Analysis(string caseId, int revision) =>
-        new(caseId, revision, ExecutionStatus.Completed, CaseResult.Review, "{\"hits\":[]}", "{}", T0.AddMinutes(revision));
+        new(caseId, revision, ExecutionStatus.Completed, ScreeningAssessment.Review, "{\"hits\":[]}", "{}", T0.AddMinutes(revision));
 
     [Fact]
     public async Task Round_trip_and_idempotent_create()
@@ -58,6 +59,6 @@ public sealed class CaseStoreTests : IDisposable
         Assert.Equal(CaseStatus.InReview, loaded.Status);
         // The late revision is kept as history.
         Assert.NotNull(await _store.GetAnalysisAsync(c.CaseId, 1, ct));
-        Assert.Equal(CaseResult.Review, (await _store.GetAnalysisAsync(c.CaseId, 2, ct))!.CaseResult);
+        Assert.Equal(ScreeningAssessment.Review, (await _store.GetAnalysisAsync(c.CaseId, 2, ct))!.CaseResult);
     }
 }

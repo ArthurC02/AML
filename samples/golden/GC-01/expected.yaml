@@ -57,7 +57,7 @@ identity:
     stage1: { hardConflict: IMPOSSIBLE_AGE_AT_REPORTED_EVENT, detail: "general manager from 1991-03; customer age 5 or 6" }
     identityDecision: NO_MATCH
 
-pairResults: { DJ:90000001: NO_MATCH, DJ:90000002: NO_MATCH }
+pairResults: { DJ:90000001: NO_HIT, DJ:90000002: NO_HIT }   # combination matrix: HIT × NO_MATCH
 finalDisposition: { disposition: NOT_ON_LIST, basis: IDENTITY }
 
 regressionAssertions:

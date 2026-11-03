@@ -31,7 +31,9 @@ public sealed record HitExplanation(
     string? HardConflict,
     int? Stage3Row,
     IdentityDecision IdentityDecision,
-    PairResult PairResult,
+    ScreeningAssessment PairResult,
+    ReviewPriority? ReviewPriority,
+    IReadOnlyList<string> PairReasonCodes,
     IReadOnlyList<string> ReasonCodes,
     IReadOnlyList<string> DataQualityFindings,
     IReadOnlyList<ExplanationSource> Sources,
@@ -40,15 +42,23 @@ public sealed record HitExplanation(
 /// <summary>A source behind a hit: what it is, where it is and what the system used it for.</summary>
 public sealed record ExplanationSource(string Id, string Name, string? Url, string? PublishedOn, string? RetrievedOn, string UsedFor, bool AttachedToProfile);
 
-public sealed record CaseExplanation(CaseResult CaseResult, IReadOnlyList<HitExplanation> Hits, IReadOnlyList<ImportedDecision> ImportedDecisions);
+public sealed record CaseExplanation(
+    ScreeningAssessment CaseResult,
+    IReadOnlyList<HitExplanation> Hits,
+    IReadOnlyList<string> NotEvaluatedProfiles,
+    IReadOnlyList<ImportedDecision> ImportedDecisions,
+    IReadOnlyList<PairChange>? ChangesFromPreviousRevision);
 
 /// <summary>Builds the reviewer and audit view (pipeline-api-and-batch.md, explanation contents).</summary>
 public static class ExplanationBuilder
 {
-    public static CaseExplanation Build(CaseInput input, CaseAnalysis analysis) =>
+    /// <param name="changes">Differences from the previous revision; null on the first analysis.</param>
+    public static CaseExplanation Build(CaseInput input, CaseAnalysis analysis, IReadOnlyList<PairChange>? changes = null) =>
         new(CaseLifecycle.Aggregate(analysis),
             analysis.Hits.Select((h, i) => Hit(i + 1, input, h)).ToList(),
-            input.LegacyDecisions);
+            analysis.NotEvaluatedProfiles,
+            input.LegacyDecisions,
+            changes);
 
     private static HitExplanation Hit(int number, CaseInput input, HitResult h)
     {
@@ -84,11 +94,12 @@ public static class ExplanationBuilder
             KeyEvidenceOrGaps: KeyEvidence(h, support),
             Conclusion: $"系統身分判斷 {Snake(h.Identity.Decision)}"
                 + (h.Identity.HardConflict is { } hc ? $"（第一階段硬衝突 {hc}）" : $"（第三階段第 {h.Identity.Stage3Row} 列）")
-                + $"；對外結果 {Snake(h.PairResult)}；理由碼 {Join(h.Identity.ReasonCodes)}。名單條件與身分判斷各自獨立。");
+                + $"；對外結果 {Snake(h.PairResult)}" + (h.ReviewPriority is { } pr ? $"（複核優先序 {Snake(pr)}）" : "")
+                + $"；理由碼 {Join(h.Identity.ReasonCodes.Concat(h.PairReasonCodes))}。名單條件與身分判斷各自獨立。");
 
         return new HitExplanation(number, subject, p.ProfileKey, matched, input.Rows.Any(r => "DJ:" + r.ProfileId == p.ProfileKey && r.IsRca),
             categories, h.Conditions, news, rows, support, conflicts, unknown, h.Identity.HardConflict, h.Identity.Stage3Row,
-            h.Identity.Decision, h.PairResult, h.Identity.ReasonCodes, findings, sources, summary);
+            h.Identity.Decision, h.PairResult, h.ReviewPriority, h.PairReasonCodes, h.Identity.ReasonCodes, findings, sources, summary);
     }
 
     private static List<ComparisonRow> Comparison(ScreenedSubject s, SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence> e)
@@ -151,6 +162,7 @@ public static class ExplanationBuilder
         var parts = new List<string>();
         if (c.RiskCategories.Count > 0) parts.Add(Join(c.RiskCategories));
         if (c.LegalStage != LegalStage.Unknown) parts.Add("法律階段 " + Snake(c.LegalStage));
+        if (c.Status != ConditionStatus.Hit) parts.Add("條件狀態 " + Snake(c.Status) + (c.ReasonCodes.Count > 0 ? "，" + Join(c.ReasonCodes) : ""));
         return Snake(c.Type) + (parts.Count > 0 ? $"（{string.Join("；", parts)}）" : "");
     }
 

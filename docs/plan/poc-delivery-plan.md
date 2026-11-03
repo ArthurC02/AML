@@ -31,6 +31,24 @@ Measure separately:
 
 No target percentage or latency is committed before representative data and bank tolerance are agreed.
 
+### Current results
+
+2026-11-03, five Golden Cases (GC-01 to GC-03 synthetic, GC-11 and GC-12 anonymized real), six pairs. Too few cases for any rate to mean more than "the rules reproduce the cases".
+
+| Metric | Value | Note |
+|---|---|---|
+| Duplicate Hit Rate | 0% | 9 candidate rows fold into 6 hits, one per Profile |
+| Auto-NO_MATCH Precision | 100% (2/2) | both GC-01 pairs |
+| Auto-MATCH Precision | n/a | automatic MATCH is disabled in Phase 1 |
+| Review Rate | 67% (4/6) | |
+| Probable-Match Yield | 100% (2/2) | GC-03, GC-11 |
+| Evidence Completeness | 100% | 9 comparison rows per pair |
+| Decision Traceability | 100% | reason codes and a conclusion on every pair |
+| Missing / ambiguous / conflict rate | 52% / 6% / 0% | comparison cells; missing is mostly Profile DOB, document and address |
+| Re-adjudication Stability | 100% | an unchanged re-run lists no changes |
+
+Not measured yet: field extraction correctness and Recall@K (need the HTML samples and labeled extraction), Human Override Rate (no human workflow in the PoC), batch completion, retry recovery and latency (need representative volume; the `aml.*` metrics collect them).
+
 ## Delivery gates
 
 ### Gate A: Start now

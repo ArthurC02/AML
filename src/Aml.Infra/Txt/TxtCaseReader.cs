@@ -12,6 +12,25 @@ namespace Aml.Infra.Txt;
 /// </summary>
 public static partial class TxtCaseReader
 {
+    /// <summary>Reads uploaded or queued files (name → content) through a private temp folder; names are reduced to their last segment.</summary>
+    public static CaseInput ReadFiles(IReadOnlyDictionary<string, string> files)
+    {
+        var folder = Directory.CreateTempSubdirectory("aml-input-");
+        try
+        {
+            foreach (var (name, content) in files) File.WriteAllText(Path.Combine(folder.FullName, Path.GetFileName(name)), content);
+            return Read(folder.FullName);
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
+    /// <summary>The exceptions <see cref="Read"/> throws for incomplete or malformed input.</summary>
+    public static bool IsInputError(Exception e) =>
+        e is InvalidOperationException or FileNotFoundException or IndexOutOfRangeException or KeyNotFoundException;
+
     public static CaseInput Read(string folder)
     {
         var caseFile = Directory.GetFiles(folder, "案件資訊*.txt").Single();
@@ -21,8 +40,11 @@ public static partial class TxtCaseReader
             ? ReadCustomer(folder)
             : ReadRelatedParty(Path.Combine(folder, "客戶-關聯人背景資料.txt"), subjectRow.Category, subjectRow.ReferenceNumber);
 
+        // A candidate whose Profile file is missing is left out here and reported as NOT_EVALUATED by the analyzer.
         var profiles = rows.Select(r => r.ProfileId).Distinct()
-            .ToDictionary(id => id, id => ReadProfile(Path.Combine(folder, $"名單資料_{id}.txt")));
+            .Select(id => (id, path: Path.Combine(folder, $"名單資料_{id}.txt")))
+            .Where(x => File.Exists(x.path))
+            .ToDictionary(x => x.id, x => ReadProfile(x.path));
 
         var news = rows.Select(r => r.ProfileId).Distinct()
             .Select(id => (id, path: Path.Combine(folder, $"新聞資訊_{id}.txt")))

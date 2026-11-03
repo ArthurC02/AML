@@ -1,6 +1,7 @@
 using System.Globalization;
 using Aml.Core.Cases;
 using Aml.Core.Ports;
+using Aml.Core.Screening;
 using Dapper;
 using Microsoft.Data.Sqlite;
 
@@ -52,7 +53,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
             caseResult = Enum(analysis.CaseResult), resultJson = analysis.ResultJson, explanationJson = analysis.ExplanationJson, now,
         }, tx, cancellationToken: ct)).ConfigureAwait(false);
 
-        // Only a COMPLETED revision becomes the effective (published) result.
+        // Only a COMPLETED revision becomes the effective (published) result; otherwise the previous one stays.
         var effective = analysis.ExecutionStatus == ExecutionStatus.Completed ? analysis.Revision : (int?)null;
         var moved = await c.ExecuteAsync(new CommandDefinition(db.Sql["Case.AcceptAnalysis"], new
         {
@@ -68,20 +69,20 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
         var row = await c.QuerySingleOrDefaultAsync<AnalysisRow>(new CommandDefinition(db.Sql["Case.GetAnalysis"], new { caseId, revision }, cancellationToken: ct)).ConfigureAwait(false);
         return row is null ? null : new AnalysisRecord(row.CaseId, (int)row.Revision,
-            Parse<ExecutionStatus>(row.ExecutionStatus), Parse<CaseResult>(row.CaseResult), row.ResultJson, row.ExplanationJson, ParseTime(row.CreatedAt));
+            Parse<ExecutionStatus>(row.ExecutionStatus), Parse<ScreeningAssessment>(row.CaseResult), row.ResultJson, row.ExplanationJson, ParseTime(row.CreatedAt));
     }
 
     private static CaseRecord Map(CaseRow r) => new(r.CaseId, r.SubjectRef, r.TriggerEventId, Parse<CaseStatus>(r.CaseStatus),
         (int)r.CurrentRevision, (int?)r.EffectiveRevision, ParseTime(r.CreatedAt), ParseTime(r.UpdatedAt));
 
     // Enums stored as UPPER_SNAKE strings, e.g. InReview → IN_REVIEW.
-    private static string Enum<T>(T value) where T : struct, System.Enum =>
+    internal static string Enum<T>(T value) where T : struct, System.Enum =>
         string.Concat(value.ToString().Select((ch, i) => i > 0 && char.IsUpper(ch) ? "_" + ch : ch.ToString())).ToUpperInvariant();
 
-    private static T Parse<T>(string s) where T : struct, System.Enum =>
+    internal static T Parse<T>(string s) where T : struct, System.Enum =>
         System.Enum.Parse<T>(s.Replace("_", "", StringComparison.Ordinal), ignoreCase: true);
 
-    private static string Time(DateTimeOffset t) => t.UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
+    internal static string Time(DateTimeOffset t) => t.UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
 
-    private static DateTimeOffset ParseTime(string s) => DateTimeOffset.Parse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
+    internal static DateTimeOffset ParseTime(string s) => DateTimeOffset.Parse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
 }

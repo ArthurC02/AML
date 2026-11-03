@@ -1,12 +1,19 @@
+using Aml.Api.Workers;
 using Aml.Core.Cases;
 using Aml.Core.Ports;
 using Aml.Core.Subjects;
+using Aml.Infra.Jobs;
 using Aml.Infra.Persistence;
 using Aml.Infra.Persistence.Repositories;
 using Aml.Infra.Txt;
 using Aml.Services;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Diagnostics.HealthChecks;
+using OpenTelemetry;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,13 +23,37 @@ builder.Services.AddSingleton(db);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ICaseStore, CaseStore>();
 builder.Services.AddSingleton<CaseService>();
+builder.Services.AddSingleton<IJobStore, JobStore>();
+builder.Services.AddSingleton(builder.Configuration.GetSection("Batch").Get<BatchOptions>() ?? new BatchOptions());
+builder.Services.AddSingleton<Func<IReadOnlyDictionary<string, string>, CaseInput>>(TxtCaseReader.ReadFiles);
+builder.Services.AddSingleton<BatchService>();
+builder.Services.AddHostedService<JobWorker>();
 builder.Services.AddOpenApi();
+
+// Liveness and the database round-trip (System.Ping).
+builder.Services.AddHealthChecks().AddAsyncCheck("database", async ct =>
+{
+    await using var c = await db.OpenAsync(ct);
+    await using var cmd = c.CreateCommand();
+    cmd.CommandText = db.Sql["System.Ping"];
+    await cmd.ExecuteScalarAsync(ct);
+    return HealthCheckResult.Healthy();
+});
+
+// Traces, metrics and logs; exported over OTLP only when OTEL_EXPORTER_OTLP_ENDPOINT is set.
+var otel = builder.Services.AddOpenTelemetry()
+    .ConfigureResource(r => r.AddService("aml-api"))
+    .WithTracing(t => t.AddAspNetCoreInstrumentation().AddSource(AmlTelemetry.Name))
+    .WithMetrics(m => m.AddAspNetCoreInstrumentation().AddMeter(AmlTelemetry.Name))
+    .WithLogging();
+if (!string.IsNullOrEmpty(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"])) otel.UseOtlpExporter();
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
     foreach (var c in CaseService.Json.Converters) o.SerializerOptions.Converters.Add(c);
 });
 
 var app = builder.Build();
+app.MapHealthChecks("/health");
 app.MapOpenApi();
 app.UseSwaggerUI(o => o.SwaggerEndpoint("/openapi/v1.json", "AML PoC"));
 
@@ -64,9 +95,31 @@ cases.MapGet("/{caseId}/explanation", async Task<Results<ContentHttpResult, NotF
         : TypedResults.NotFound())
 .WithSummary("Reviewer and audit view of the effective revision: hit reason, comparison table, evidence, reason codes and a five-part summary");
 
+var batches = app.MapGroup("/api/batches");
+
+batches.MapPost("/", async Task<Results<Accepted<BatchSubmitted>, BadRequest<string>>> (BatchItemRequest[] items, BatchService service, CancellationToken ct) =>
+{
+    const int maxBytes = 5 * 1024 * 1024;
+    if (items.Length == 0) return TypedResults.BadRequest("No items");
+    if (items.Any(i => i.Files is null || i.Files.Count == 0 || i.Files.Any(f => !f.Key.EndsWith(".txt", StringComparison.OrdinalIgnoreCase) || f.Value.Length > maxBytes)))
+        return TypedResults.BadRequest("Every item needs .txt files up to 5 MB each");
+    var b = await service.SubmitAsync(items, ct);
+    return TypedResults.Accepted($"/api/batches/{b.BatchId}", b);
+})
+.WithSummary("Queue many Cases for analysis")
+.WithDescription("Each item has subjectRef, triggerEventId and files (file name → text content), the same inputs as POST /api/cases. Items already queued under the same triggerEventId and subjectRef are listed as duplicates and not queued again.");
+
+batches.MapGet("/{batchId}", async Task<Results<Ok<BatchStatus>, NotFound>> (string batchId, BatchService service, CancellationToken ct) =>
+    await service.GetAsync(batchId, ct) is { } b ? TypedResults.Ok(b) : TypedResults.NotFound())
+.WithSummary("Batch progress: counts per status and each item with its Case, revision, attempts and error code");
+
+batches.MapPost("/{batchId}/rerun", async (string batchId, BatchService service, CancellationToken ct) =>
+    TypedResults.Ok(new { requeued = await service.RerunAsync(batchId, ct) }))
+.WithSummary("Operator re-run: dead-lettered items of the batch go back to the queue with a fresh retry budget");
+
 app.Run();
 
-// Saves the upload to a private temp folder (file names reduced to their last segment), reads it, deletes it.
+// Reads the upload in memory and parses it through TxtCaseReader.ReadFiles (file names reduced to their last segment).
 static async Task<(CaseInput? Input, string? Error)> ReadUploadAsync(IFormFileCollection files, CancellationToken ct)
 {
     const long maxBytes = 5 * 1024 * 1024;
@@ -74,23 +127,19 @@ static async Task<(CaseInput? Input, string? Error)> ReadUploadAsync(IFormFileCo
     if (files.Any(f => !f.FileName.EndsWith(".txt", StringComparison.OrdinalIgnoreCase) || f.Length > maxBytes))
         return (null, "Only .txt files up to 5 MB are accepted");
 
-    var folder = Directory.CreateTempSubdirectory("aml-upload-");
+    var contents = new Dictionary<string, string>();
+    foreach (var f in files)
+    {
+        using var reader = new StreamReader(f.OpenReadStream());
+        contents[Path.GetFileName(f.FileName)] = await reader.ReadToEndAsync(ct);
+    }
     try
     {
-        foreach (var f in files)
-        {
-            await using var target = File.Create(Path.Combine(folder.FullName, Path.GetFileName(f.FileName)));
-            await f.CopyToAsync(target, ct);
-        }
-        return (TxtCaseReader.Read(folder.FullName), null);
+        return (TxtCaseReader.ReadFiles(contents), null);
     }
-    catch (Exception e) when (e is InvalidOperationException or FileNotFoundException or IndexOutOfRangeException or KeyNotFoundException)
+    catch (Exception e) when (TxtCaseReader.IsInputError(e))
     {
         return (null, "Input files are incomplete or not in the expected .txt layout");
-    }
-    finally
-    {
-        folder.Delete(recursive: true);
     }
 }
 

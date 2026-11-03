@@ -188,3 +188,31 @@ productionImpact: BLOCKING_FOR_RELEVANT_AUTO_DECISION
 ```
 
 These are non-blocking for core Phase 1 development but block claims of validated automatic decisions in their respective areas.
+
+## Augmented cases
+
+Rules without a Golden Case are exercised by augmented cases: one controlled change to a Golden Case, run end to end through the reader and the analyzer ([AugmentedCaseTests](../../tests/Aml.Tests/GoldenCases/AugmentedCaseTests.cs)). The base folder is copied and never modified.
+
+They are not Golden Cases:
+
+- not authoritative: their expected values follow the current policy and change with it;
+- no human label, so they stay out of the [metrics](poc-delivery-plan.md);
+- they cannot validate a hard-conflict rule, which still needs a real case to become an automatic NO_MATCH;
+- a real case for the same rule replaces the augmented one.
+
+Changes use the samples' dummy values (`A123456789`, `A223456788` failing the checksum on purpose); no real identifier is introduced. Employment and relatives are not in the bank export, so those cases add them to the subject after reading.
+
+| ID | Base | Change | Rule | Expected |
+|---|---|---|---|---|
+| AUG-11-01 | GC-11 | Profile ID table with the customer's national ID | document agreement | UNIQUE support, row 2 PROBABLE_MATCH |
+| AUG-11-02 | GC-11 | Profile national ID with another number | `DOCUMENT_IDENTITY_CONFLICT` | row 1 REVIEW |
+| AUG-11-03 | GC-11 | Profile passport only | document not comparable | UNCERTAIN, row 4 blocked, row 5 REVIEW |
+| AUG-11-04 | GC-11 | Profile DOB 1973 → 1973/6/12 | full DOB agreement | HIGH support, row 4, direct identifier present |
+| AUG-11-05 | GC-11 | Profile DOB 1973 → 1973/8/1 | `FULL_DOB_CONFLICT` (GC-06 stand-in) | row 1 REVIEW |
+| AUG-11-06 | GC-11 | Profile deceased, died 1970 | `DEATH_BEFORE_CUSTOMER_BIRTH` | fires, REVIEW, Case IN_REVIEW |
+| AUG-11-07 | GC-11 | Profile address = customer address in current form | structured address | `SAME_ADDRESS_NO_PERIOD`, never support, row 4 unchanged |
+| AUG-11-08 | GC-11 | full DOB plus the same company with overlapping periods | employment support | row 3 PROBABLE_MATCH |
+| AUG-12-01 | GC-12 | subject's spouse named as on the Profile | relationship support | MEDIUM support, row 5 REVIEW |
+| AUG-12-02 | GC-12 | subject employer = Profile employer, undated | employment without period | UNCERTAIN, row 6 |
+| AUG-12-03 | GC-12 | Profile record type Entity | `NON_PERSON_SUBJECT_REVIEW` | REVIEW |
+| AUG-01-01 | GC-01 | customer DOB 1985 → 1972 (18 when named chairman in 1990) | `IMPOSSIBLE_ROLE_AT_REPORTED_EVENT` | fires, REVIEW (not NO_MATCH); Case IN_REVIEW |

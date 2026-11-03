@@ -122,10 +122,10 @@ Stage 1 of the three-stage policy ([ADR-0002](../adr/0002-three-stage-identity-p
 | Rule | Reason code | Validation | Phase 1 effect |
 |---|---|---|---|
 | impossible age at explicitly attributed event | `IMPOSSIBLE_AGE_AT_REPORTED_EVENT` | GC-01 | automatic NO_MATCH |
-| impossible role at explicitly attributed event | `IMPOSSIBLE_ROLE_AT_REPORTED_EVENT` | pending (no dedicated case) | REVIEW |
-| reliable exact DOB conflict | `FULL_DOB_CONFLICT` | GC-06 pending | REVIEW |
-| comparable document-identity conflict | `DOCUMENT_IDENTITY_CONFLICT` | pending (no dedicated case) | REVIEW |
-| source-record death preceding customer birth | `DEATH_BEFORE_CUSTOMER_BIRTH` | pending (no dedicated case) | REVIEW |
+| impossible role at explicitly attributed event | `IMPOSSIBLE_ROLE_AT_REPORTED_EVENT` | pending; exercised by [AUG-01-01](../plan/golden-cases.md#augmented-cases) | REVIEW |
+| reliable exact DOB conflict | `FULL_DOB_CONFLICT` | GC-06 pending; exercised by AUG-11-05 | REVIEW |
+| comparable document-identity conflict | `DOCUMENT_IDENTITY_CONFLICT` | pending; exercised by AUG-11-02 | REVIEW |
+| source-record death preceding customer birth | `DEATH_BEFORE_CUSTOMER_BIRTH` | pending; exercised by AUG-11-06 | REVIEW |
 
 A pending rule still fires and records its reason code; it only cannot close the pair automatically. Impossible role and death before birth are checked in the gate (`HardConflictGate`); a full DOB or document conflict reaches REVIEW through stage 3 row 1. Impossible role uses a controlled title list pending approval: directors and supervisors (董事, 監察人) need full legal capacity, adulthood being 20 before 2023-01-01 and 18 since. Death before birth needs every date the death value can stand for to precede every date the DOB can stand for. A rule moves to automatic NO_MATCH when its Golden Case is validated and the policy version is released.
 

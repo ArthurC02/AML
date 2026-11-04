@@ -1,6 +1,6 @@
 namespace Aml.Core.Shared;
 
-public enum EvidenceGroup { Name, Gender, Nationality, DateOfBirth, Document, OtherIdentifier, Employment, Relationship, CompanyAssociation, Address, StatedAge }
+public enum EvidenceGroup { Name, Gender, Nationality, DateOfBirth, Document, OtherIdentifier, Employment, Relationship, CompanyAssociation, Address, StatedAge, TemporalRole }
 
 public enum Direction { Prerequisite, Support, Conflict, Neutral }
 
@@ -15,6 +15,7 @@ public sealed record Evidence(EvidenceGroup Group, Direction Direction, Comparis
 
 public static class ReasonCodes
 {
+    public const string TemporallyPlausible = "TEMPORALLY_PLAUSIBLE";
     public const string ImpossibleAgeAtReportedEvent = "IMPOSSIBLE_AGE_AT_REPORTED_EVENT";
     public const string FullDobConflict = "FULL_DOB_CONFLICT";
     public const string DobConflict = "DOB_CONFLICT";

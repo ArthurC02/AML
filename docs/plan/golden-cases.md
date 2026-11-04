@@ -212,9 +212,13 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-11-06 | GC-11 | Profile deceased, died 1970 | `DEATH_BEFORE_CUSTOMER_BIRTH` | fires, REVIEW, Case IN_REVIEW |
 | AUG-11-07 | GC-11 | Profile address = customer address in current form | structured address | `SAME_ADDRESS_NO_PERIOD`, never support, row 4 unchanged |
 | AUG-11-08 | GC-11 | full DOB plus the same company with overlapping periods | employment support | row 3 PROBABLE_MATCH |
+| AUG-11-09 | GC-11 | an image file and a `.txt` holding page source added | attachment inventory | `UNSUPPORTED_ATTACHMENT` for both; type decided by content |
+| AUG-11-10 | GC-11 | 客戶檢核處理紀錄 table appended to 案件資訊 | legacy processing record | ImportedDecision only; no extra candidate row |
+| AUG-11-11 | GC-11 | as AUG-11-10, free text after the table | record boundary | `LEGACY_RECORD_BOUNDARY_UNCLEAR` |
 | AUG-12-01 | GC-12 | subject's spouse named as on the Profile | relationship support | MEDIUM support, row 5 REVIEW |
 | AUG-12-02 | GC-12 | subject employer = Profile employer, undated | employment without period | UNCERTAIN, row 6 |
 | AUG-12-03 | GC-12 | Profile record type Entity | `NON_PERSON_SUBJECT_REVIEW` | REVIEW |
+| AUG-12-04 | GC-12 | Profile 其他識別碼 with the related party's reference number | OTHER_IDENTIFIER | LOW support, never DOCUMENT, row 5 REVIEW |
 | AUG-03-01 | GC-03 | Profile category → Politically Exposed Person (both sides Vietnamese) | Article 22 ① | ON_LIST presumption, identity unchanged |
 | AUG-03-02 | GC-03 | as AUG-03-01, customer nationality removed | Article 22 ① nationality missing | no recommendation, `CONFIRM_NATIONALITY` pending |
 | AUG-03-03 | GC-03 | Profile category → Politically Exposed Person / Former PEP | former PEP | `FORMER_PEP`, ON_LIST presumption kept |
@@ -224,6 +228,7 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-03-07 | GC-03 | Profile category → Sanctions Lists, active named measure | sanction measure | Sanction HIT with program and jurisdiction, REVIEW, HIGH priority |
 | AUG-03-08 | GC-03 | as AUG-03-07, measure status Delisted | `SANCTION_MEASURE_NOT_CONFIRMED` | UNKNOWN, `SOURCE_CONDITION_UNKNOWN`, REVIEW |
 | AUG-03-09 | GC-03 | wanted list status Removed | inactive official list | OTHER_OFFICIAL_LIST, legal stage not WANTED |
+| AUG-03-10 | GC-03 | address block country Taiwan → Viet Nam | `FIELD_CONFLICT` | finding recorded; field and text both kept |
 | AUG-01-01 | GC-01 | customer DOB 1985 → 1972 (18 when named chairman in 1990) | `IMPOSSIBLE_ROLE_AT_REPORTED_EVENT` | fires, REVIEW (not NO_MATCH); Case IN_REVIEW |
 | AUG-01-02 | GC-01 | customer DOB 1985 → 1977/3/18 (13 as chairman, 14 as general manager) | `MinimumRoleAge` boundary | chairman NO_MATCH; general manager no conflict, row 6 REVIEW; Case IN_REVIEW |
 | AUG-01-03 | GC-01 | customer DOB 1985 → 1960 | plausible age | no hard conflict, row 6 REVIEW on both Profiles |
@@ -235,3 +240,7 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-02-06 | GC-02 | keyword Money Laundering added | keyword risk category | `MONEY_LAUNDERING` added to risk categories |
 | AUG-02-07 | GC-02 | SIP subcategory Fraud → Gambling | `UNMAPPED_CATEGORY` | UNKNOWN, `SOURCE_CONDITION_UNKNOWN`, REVIEW; relevance checks stay open |
 | AUG-02-08 | GC-02 | Profile names 林美齡 / Lin Mei-Lin | near name | NAME PARTIAL `NOT_IDENTICAL_AFTER_NORMALIZATION`, row 6 REVIEW |
+| AUG-02-09 | GC-02 | news: 法院一審判處林美玲有期徒刑 | judgment naming the person | legal stage CONVICTED |
+| AUG-02-10 | GC-02 | news: indicted, a co-defendant sentenced | judgment attribution | INDICTED; the co-defendant's sentence is not the subject's |
+| AUG-02-11 | GC-02 | news states 林美玲（四十九歲） | Chinese-numeral stated age | `AGE_COMPATIBLE_AT_REPORT` |
+| AUG-02-12 | GC-02 | customer DOB written 1975年9月2日 | unparseable value | `UNPARSEABLE:出生日期`, DOB SUBJECT_MISSING |

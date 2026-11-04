@@ -20,13 +20,15 @@ public class AugmentedCaseTests
 
     /// <summary>Copies the base case, applies each edit (the text must occur exactly once) and analyzes the result.</summary>
     private static (CaseInput Input, CaseAnalysis Analysis) Augment(string gc, (string File, string Find, string Replace)[] edits,
-        Func<ScreenedSubject, ScreenedSubject>? subject = null)
+        Func<ScreenedSubject, ScreenedSubject>? subject = null, IReadOnlyDictionary<string, string>? addFiles = null)
     {
         var dir = Directory.CreateTempSubdirectory("aml-aug-");
         try
         {
             foreach (var f in Directory.GetFiles(GoldenCaseTests.Folder(gc)))
                 File.Copy(f, Path.Combine(dir.FullName, Path.GetFileName(f)));
+            foreach (var (name, content) in addFiles ?? new Dictionary<string, string>())
+                File.WriteAllText(Path.Combine(dir.FullName, name), content);
             foreach (var (file, find, replace) in edits)
             {
                 var path = Path.Combine(dir.FullName, file);
@@ -137,7 +139,49 @@ public class AugmentedCaseTests
         Assert.Equal(ReasonCodes.StrongSupportCombination, id.ReasonCodes[0]);
     }
 
+    [Fact]
+    public void AUG_11_09_unread_attachments_are_disclosed()
+    {
+        var (input, _) = Augment("GC-11", [], addFiles: new Dictionary<string, string>
+        {
+            ["截圖.png"] = "not really an image",
+            ["名單資料_90000099.txt"] = "<html><body>page source</body></html>",
+        });
+        Assert.Contains("UNSUPPORTED_ATTACHMENT:截圖.png", input.Subject.Findings);
+        Assert.Contains("UNSUPPORTED_ATTACHMENT:名單資料_90000099.txt", input.Subject.Findings); // decided by content, not name
+    }
+
+    private const string Case11LastRow = "2\t钟仁声\t100\tDJ ALT\t90000011\t未符合\t符合\t確認後符合\t不是";
+
+    [Fact]
+    public void AUG_11_10_processing_record_is_imported_decision_only()
+    {
+        var (input, a) = Augment("GC-11",
+            [("案件資訊.txt", Case11LastRow, Case11LastRow + "\n\n客戶檢核處理紀錄\n日期\t人員\t結果\n2026/9/12\t專員甲\t確認後符合")]);
+        Assert.Contains(input.LegacyDecisions, d => d.Field == "客戶檢核處理紀錄" && d.Value.Contains("確認後符合", StringComparison.Ordinal));
+        Assert.Equal(2, Assert.Single(a.Hits).CandidateRows); // the record table never becomes a candidate row
+        Assert.DoesNotContain("LEGACY_RECORD_BOUNDARY_UNCLEAR", input.Subject.Findings);
+    }
+
+    [Fact]
+    public void AUG_11_11_text_after_the_processing_record_makes_the_boundary_unclear()
+    {
+        var (input, _) = Augment("GC-11",
+            [("案件資訊.txt", Case11LastRow, Case11LastRow + "\n\n客戶檢核處理紀錄\n日期\t人員\t結果\n2026/9/12\t專員甲\t確認後符合\n經查與名單人物為同一人")]);
+        Assert.Contains("LEGACY_RECORD_BOUNDARY_UNCLEAR", input.Subject.Findings);
+    }
+
     // GC-12: related party 陳志明, no gender; Profile has an Employer entity and a Wife, no DOB.
+
+    [Fact]
+    public void AUG_12_04_same_reference_number_on_the_profile_is_low_support_row_5()
+    {
+        var (_, a) = Augment("GC-12", [Before(Profile12, "狀態:\tActive", "其他識別碼:\n編號\t類型\t號碼\n1\tReference\tB123456780")]);
+        var id = Identity(a, "DJ:90000012");
+        Assert.Equal((Exact, Strength.Low), (id.Evidence[EvidenceGroup.OtherIdentifier].Status, id.Evidence[EvidenceGroup.OtherIdentifier].Strength));
+        Assert.Equal(ComparisonStatus.SubjectMissing, id.Evidence[EvidenceGroup.Document].Status); // never DOCUMENT evidence
+        Assert.Equal((5, IdentityDecision.Review), (id.Stage3Row, id.Decision));
+    }
 
     [Fact]
     public void AUG_12_01_spouse_named_on_both_sides_is_support_row_5()
@@ -297,6 +341,35 @@ public class AugmentedCaseTests
         Assert.Equal((6, IdentityDecision.Review), (id.Stage3Row, id.Decision));
     }
 
+    [Fact]
+    public void AUG_02_09_judgment_naming_the_person_is_convicted()
+    {
+        var (_, a) = Augment("GC-02", [(News21, "檢方已分案偵辦", "法院一審判處林美玲有期徒刑二年")]);
+        Assert.Equal(LegalStage.Convicted, Assert.Single(Hit21(a).Conditions).LegalStage);
+    }
+
+    [Fact]
+    public void AUG_02_10_a_co_defendants_sentence_is_not_attributed()
+    {
+        var (_, a) = Augment("GC-02", [(News21, "檢方已分案偵辦。", "檢方已起訴。同案另一名被告已判處有期徒刑二年。")]);
+        Assert.Equal(LegalStage.Indicted, Assert.Single(Hit21(a).Conditions).LegalStage);
+    }
+
+    [Fact]
+    public void AUG_02_11_stated_age_in_chinese_numerals_is_compared()
+    {
+        var (_, a) = Augment("GC-02", [(News21, "負責人林美玲涉嫌", "負責人林美玲（四十九歲）涉嫌")]);
+        Assert.Equal(ReasonCodes.AgeCompatibleAtReport, Hit21(a).Identity.Evidence[EvidenceGroup.StatedAge].Detail);
+    }
+
+    [Fact]
+    public void AUG_02_12_unparseable_customer_dob_is_disclosed()
+    {
+        var (input, a) = Augment("GC-02", [("客戶-背景資料.txt", "1975/9/2", "1975年9月2日")]);
+        Assert.Contains("UNPARSEABLE:出生日期", input.Subject.Findings);
+        Assert.Equal(ComparisonStatus.SubjectMissing, Hit21(a).Identity.Evidence[EvidenceGroup.DateOfBirth].Status);
+    }
+
     // GC-03: Vietnamese customer and Profile (citizenship Viet Nam), active official wanted list, PROBABLE_MATCH.
 
     private static readonly (string, string, string) ToPep =
@@ -402,5 +475,13 @@ public class AugmentedCaseTests
         var (_, a) = Augment("GC-03", [("名單資料_90000031.txt", "Wanted Persons List\tActive", "Wanted Persons List\tRemoved")]);
         var condition = Assert.Single(Assert.Single(a.Hits).Conditions);
         Assert.Equal((ListType.OtherOfficialList, LegalStage.Unknown), (condition.Type, condition.LegalStage));
+    }
+
+    [Fact]
+    public void AUG_03_10_address_country_contradicting_the_text_is_a_field_conflict()
+    {
+        var (input, _) = Augment("GC-03", [("客戶-聯絡資料.txt", "國家\nTaiwan", "國家\nViet Nam")]);
+        Assert.Contains("FIELD_CONFLICT:永久地址", input.Subject.Findings);
+        Assert.Equal("VN", Assert.Single(input.Subject.Addresses).Country); // both facts kept: the field says VN, the text stays Taiwanese
     }
 }

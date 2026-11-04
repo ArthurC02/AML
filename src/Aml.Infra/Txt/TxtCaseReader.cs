@@ -34,11 +34,13 @@ public static partial class TxtCaseReader
     public static CaseInput Read(string folder)
     {
         var caseFile = Directory.GetFiles(folder, "案件資訊*.txt").Single();
-        var (subjectRow, rows) = ReadCaseTable(File.ReadAllLines(caseFile));
+        var (subjectRow, rows, records, caseFindings) = ReadCaseTable(File.ReadAllLines(caseFile));
 
         var subject = subjectRow.Category == "客戶"
             ? ReadCustomer(folder)
             : ReadRelatedParty(Path.Combine(folder, "客戶-關聯人背景資料.txt"), subjectRow.Category, subjectRow.ReferenceNumber);
+        // Case-level findings travel with the subject, so the explanation shows them on every hit.
+        subject = subject with { Findings = [.. subject.Findings, .. caseFindings, .. Inventory(folder)] };
 
         // A candidate whose Profile file is missing is left out here and reported as NOT_EVALUATED by the analyzer.
         var profiles = rows.Select(r => r.ProfileId).Distinct()
@@ -54,27 +56,92 @@ public static partial class TxtCaseReader
         var legacy = new List<ImportedDecision>();
         if (subjectRow.ListMatch is { } m) legacy.Add(new("是否符合名單", m));
         foreach (var reason in rows.Select(r => r.LegacyReason).OfType<string>().Distinct()) legacy.Add(new("理由", reason));
+        legacy.AddRange(records.Select(r => new ImportedDecision(ProcessingRecord, r)));
 
         return new CaseInput(subject, rows, profiles, news, legacy);
+    }
+
+    public const string UnsupportedAttachment = "UNSUPPORTED_ATTACHMENT";
+    public const string LegacyRecordBoundaryUnclear = "LEGACY_RECORD_BOUNDARY_UNCLEAR";
+    public const string Unparseable = "UNPARSEABLE";
+    public const string FieldConflict = "FIELD_CONFLICT";
+    private const string ProcessingRecord = "客戶檢核處理紀錄";
+
+    [GeneratedRegex("^(案件資訊.*|名單資料_\\d+|新聞資訊_\\d+|客戶-背景資料|客戶-聯絡資料|客戶-關聯人背景資料)\\.txt$")]
+    private static partial Regex KnownFile();
+
+    /// <summary>
+    /// Every file is inventoried; one the reader does not read is disclosed as unread, never treated as "no data".
+    /// The type is decided by content: a .txt holding page source is not an export.
+    /// </summary>
+    private static IEnumerable<string> Inventory(string folder)
+    {
+        foreach (var path in Directory.GetFiles(folder))
+        {
+            var name = Path.GetFileName(path);
+            if (name == "expected.yaml") continue; // the Golden Case label beside the inputs, not an attachment
+            if (!KnownFile().IsMatch(name) || LooksLikeMarkup(path)) yield return $"{UnsupportedAttachment}:{name}";
+        }
+    }
+
+    private static bool LooksLikeMarkup(string path)
+    {
+        using var reader = new StreamReader(path);
+        var head = new char[256];
+        var n = reader.Read(head, 0, head.Length);
+        return new string(head, 0, n).TrimStart('﻿', ' ', '\r', '\n', '\t').StartsWith('<');
+    }
+
+    private static readonly string[] CustomerFields = ["本地名稱", "客戶名稱", "性別", "出生日期", "國籍 1", "證件號碼"];
+    private static readonly string[] RelatedPartyFields = ["姓名/名稱", "性別", "出生日期", "國籍", "證件號碼"];
+
+    /// <summary>MISSING with its cause (absent, blank, placeholder) for the fields identity uses.</summary>
+    private static IEnumerable<string> MissingFields(IEnumerable<(string Field, bool Present, string? Raw)> fields) =>
+        fields.Where(f => !f.Present || Normalize.NullIfPlaceholder(f.Raw) is null).Select(f =>
+            !f.Present ? $"FIELD_ABSENT:{f.Field}"
+            : string.IsNullOrWhiteSpace(f.Raw) ? $"FIELD_BLANK:{f.Field}"
+            : f.Raw!.Trim() == "-" ? $"PLACEHOLDER_DASH:{f.Field}"
+            : $"PLACEHOLDER_TEXT:{f.Field}");
+
+    private static PartialDate? Date(string field, string? raw, List<string> findings)
+    {
+        var d = PartialDate.Parse(raw);
+        if (d is null && raw is not null) findings.Add($"{Unparseable}:{field}");
+        return d;
     }
 
     private sealed record SubjectRow(string Category, string? ReferenceNumber, string? ListMatch);
 
     // ponytail: candidate column order and the PEP/黑名單/負面新聞 flags are pending confirmation; flags are treated as MISSING.
-    private static (SubjectRow, List<CandidateRow>) ReadCaseTable(string[] lines)
+    private static (SubjectRow, List<CandidateRow>, List<string> Records, List<string> Findings) ReadCaseTable(string[] lines)
     {
         var s = lines[1].Split('\t');
         var subject = new SubjectRow(s[2].Trim(), Normalize.NullIfPlaceholder(s.ElementAtOrDefault(3)), Normalize.NullIfPlaceholder(s.ElementAtOrDefault(5)));
 
         var start = Array.FindIndex(lines, l => l.StartsWith("疑似符合的名單資料", StringComparison.Ordinal));
+        var recordStart = Array.FindIndex(lines, l => l.Trim().StartsWith(ProcessingRecord, StringComparison.Ordinal));
         var rows = new List<CandidateRow>();
-        foreach (var line in lines.Skip(start + 1))
+        foreach (var line in lines.Skip(start + 1).Take((recordStart < 0 ? lines.Length : recordStart) - start - 1))
         {
             var c = line.Split('\t');
             if (c.Length < 9 || !int.TryParse(c[0], out _)) continue;
             rows.Add(new CandidateRow(c[1].Trim(), c[4].Trim(), Normalize.NullIfPlaceholder(c[7]), c[8].Trim() == "是"));
         }
-        return (subject, rows);
+        var (records, findings) = recordStart < 0 ? (new List<string>(), new List<string>()) : ReadProcessingRecord(lines[(recordStart + 1)..]);
+        return (subject, rows, records, findings);
+    }
+
+    /// <summary>
+    /// 客戶檢核處理紀錄: its table rows become ImportedDecision only. The exclusion ends where the table ends; a heading
+    /// without a table, or text after the table that may continue it, is flagged for the reviewer to confirm.
+    /// </summary>
+    private static (List<string>, List<string>) ReadProcessingRecord(string[] lines)
+    {
+        var body = lines.SkipWhile(string.IsNullOrWhiteSpace).ToList();
+        var table = body.TakeWhile(l => l.Contains('\t', StringComparison.Ordinal)).ToList();
+        var rest = body.Skip(table.Count).Where(l => !string.IsNullOrWhiteSpace(l)).ToList();
+        var records = table.Skip(1).Select(l => string.Join(" | ", l.Split('\t').Select(c => c.Trim()).Where(c => c.Length > 0))).ToList();
+        return (records, table.Count < 2 || rest.Count > 0 ? [LegacyRecordBoundaryUnclear] : []);
     }
 
     // Customer files: label line followed by value line.
@@ -104,13 +171,29 @@ public static partial class TxtCaseReader
             var ct = File.ReadAllLines(contactPath).Select(l => l.Trim()).ToArray();
             for (var i = 0; i + 2 < ct.Length; i++)
                 if (ct[i].EndsWith("(國家)", StringComparison.Ordinal) && ct[i + 1] == "地址" && Normalize.NullIfPlaceholder(ct[i + 2]) is { } raw)
-                    addresses.Add(MakeAddress(ct[i][..^4], raw));
+                {
+                    // The block's own 國家 line, before the next "(國家)" heading.
+                    var end = Array.FindIndex(ct, i + 1, l => l.EndsWith("(國家)", StringComparison.Ordinal));
+                    var k = Array.FindIndex(ct, i + 3, (end < 0 ? ct.Length : end) - i - 3, l => l == "國家");
+                    addresses.Add(MakeAddress(ct[i][..^4], raw, k >= 0 && k + 1 < ct.Length ? Normalize.NullIfPlaceholder(ct[k + 1]) : null));
+                }
         }
 
+        var findings = MissingFields(CustomerFields
+            .Select(f => (f, Array.IndexOf(bg, f) >= 0, Array.IndexOf(bg, f) is var i and >= 0 && i + 1 < bg.Length ? bg[i + 1] : null))).ToList();
+        var dob = Date("出生日期", V("出生日期"), findings);
+
         return new ScreenedSubject(
-            SubjectRole.Customer, null, names, Normalize.Gender(V("性別")), PartialDate.Parse(V("出生日期")),
+            SubjectRole.Customer, null, names, Normalize.Gender(V("性別")), dob,
             nationalities, docNumber is null ? null : new Document(DocumentType(V("證件種類")), docNumber, IssuingCountry(V("發照地"))),
-            null, taxId, Occupation(V("職業")), Dedupe(addresses, out var dup), dup ? [Findings.DuplicatedAddressLine] : []);
+            null, taxId, Occupation(V("職業")), Dedupe(addresses, out var dup), AddressFindings(addresses, dup, findings));
+    }
+
+    private static List<string> AddressFindings(List<Address> addresses, bool duplicated, List<string> findings)
+    {
+        if (duplicated) findings.Add(Findings.DuplicatedAddressLine);
+        findings.AddRange(addresses.Where(a => a.Conflict).Select(a => $"{FieldConflict}:{a.Role}").Distinct());
+        return findings;
     }
 
     // Related-party file: "key ：" lines, value on the following line(s); an empty value is followed directly by the next key.
@@ -127,27 +210,44 @@ public static partial class TxtCaseReader
 
         var addresses = fields
             .Where(f => f.Value is not null && AddressKey().IsMatch(f.Key))
-            .Select(f => MakeAddress(AddressKey().Match(f.Key).Groups[1].Value, f.Value!))
+            .Select(f =>
+            {
+                var role = AddressKey().Match(f.Key).Groups[1].Value;
+                return MakeAddress(role, f.Value!, V(role + "(國家)"));
+            })
             .ToList();
         var docNumber = V("證件號碼");
+        var findings = MissingFields(RelatedPartyFields
+            .Select(k => (k, fields.Any(f => f.Key == k), fields.FirstOrDefault(f => f.Key == k).Value))).ToList();
+        var dob = Date("出生日期", V("出生日期"), findings);
 
         return new ScreenedSubject(
             SubjectRole.RelatedParty, relationship, new[] { V("姓名/名稱") }.OfType<string>().ToList(),
-            Normalize.Gender(V("性別")), PartialDate.Parse(V("出生日期")),
+            Normalize.Gender(V("性別")), dob,
             new[] { V("國籍") }.OfType<string>().Select(Normalize.Country).ToList(),
             docNumber is null ? null : new Document(DocumentType(V("證件種類")), docNumber, IssuingCountry(V("發照地"))),
-            referenceNumber ?? V("參考號碼"), null, null, Dedupe(addresses, out var dup), dup ? [Findings.DuplicatedAddressLine] : []);
+            referenceNumber ?? V("參考號碼"), null, null, Dedupe(addresses, out var dup), AddressFindings(addresses, dup, findings));
     }
 
     [GeneratedRegex("^(永久地址|通訊位址) \\d$")]
     private static partial Regex AddressKey();
 
-    private static Address MakeAddress(string role, string raw)
+    /// <summary>
+    /// The country comes from the address block's own country field; without one, only a Taiwan city or county in the
+    /// text makes it TW. A country field that contradicts the text is FIELD_CONFLICT; both facts are kept.
+    /// </summary>
+    private static Address MakeAddress(string role, string raw, string? countryField)
     {
         if (Normalize.IsPostalCodeOnly(raw)) return new Address(role, raw, null, null, ValueState.Ambiguous, Findings.PostalCodeOnly);
         var (normalized, finding) = Normalize.TaiwanAddress(raw);
-        return new Address(role, raw, normalized, "TW", ValueState.Present, finding);
+        var taiwan = TaiwanCity().IsMatch(normalized);
+        var country = countryField is null ? (taiwan ? "TW" : null) : Normalize.Country(countryField);
+        var conflict = countryField is not null && (country == "TW" ? !raw.Any(c => c is >= '㐀' and <= '鿿') : taiwan);
+        return new Address(role, raw, normalized, country, ValueState.Present, finding) { Conflict = conflict };
     }
+
+    [GeneratedRegex("^\\d{0,6}\\s?(?:[台臺]北|新北|桃園|[台臺]中|[台臺]南|高雄|基隆|新竹|嘉義)市|^\\d{0,6}\\s?(?:新竹|苗栗|彰化|南投|雲林|嘉義|屏東|宜蘭|花蓮|[台臺]東|澎湖|金門|連江)縣")]
+    private static partial Regex TaiwanCity();
 
     private static List<Address> Dedupe(List<Address> addresses, out bool duplicated)
     {
@@ -219,7 +319,11 @@ public static partial class TxtCaseReader
         }
 
         var countries = T("國家資料").Where(Numbered).ToList();
-        var dobs = T("日期").Where(r => Numbered(r) && r[1] == "Date of Birth").Select(r => PartialDate.Parse(r[2])).OfType<PartialDate>().ToList();
+        var dobRows = T("日期").Where(r => Numbered(r) && r[1] == "Date of Birth").Select(r => r.ElementAtOrDefault(2)).ToList();
+        var dobs = dobRows.Select(PartialDate.Parse).OfType<PartialDate>().ToList();
+        var findings = new List<string>();
+        if (dobs.Count > 1) findings.Add(Findings.ProfileMultipleDob);
+        if (dobs.Count < dobRows.Count) findings.Add($"{Unparseable}:Date of Birth");
         var roles = T("職位").Where(Numbered)
             .Select(r => new ProfileRole(r[1], r[2], PartialDate.Parse(r.ElementAtOrDefault(3)), PartialDate.Parse(r.ElementAtOrDefault(4)))).ToList();
         var relationships = tables.Where(t => t.Value.FirstOrDefault()?.Contains("Profile_ID") == true)
@@ -244,12 +348,14 @@ public static partial class TxtCaseReader
             Roles: roles,
             Relationships: relationships,
             OfficialList: official,
-            Findings: dobs.Count > 1 ? [Findings.ProfileMultipleDob] : [],
+            Findings: findings,
             Sources: T("來源").Where(Numbered).Select(r => Source($"DJ:{scalars["Profile_ID"]}#source-{r[0]}", r[1], r.ElementAtOrDefault(2))).ToList(),
             Documents: documents,
             AddressLines: T("地址").Where(Numbered).Select(r => string.Join(", ", r[1..^1].Where(x => Normalize.NullIfPlaceholder(x) is not null))).ToList(),
             DateOfDeath: death is { Year: > 0 } ? death : null,
-            RecordType: scalars.GetValueOrDefault("記錄類型", "Person"));
+            RecordType: scalars.GetValueOrDefault("記錄類型", "Person"),
+            // ponytail: the 其他識別碼 table layout (編號 類型 號碼) is assumed; no sample has one yet.
+            OtherIdentifiers: T("其他識別碼").Where(r => Numbered(r) && r.Length >= 3).Select(r => new OtherIdentifier(r[1], r[2])).ToList());
     }
 
     // "Liberty Times (Chinese - Traditional), 06-Sep-2026, on Factiva.com (https://…)" + "2026/9/10 下午 01:00:15"

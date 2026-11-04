@@ -77,6 +77,9 @@ public class GoldenCaseTests
         AssertEvidence(id, EvidenceGroup.Document, ProfileMissing);
         AssertEvidence(id, EvidenceGroup.Employment, ProfileMissing);
         AssertEvidence(id, EvidenceGroup.Address, ProfileMissing);
+        // temporal: TEMPORALLY_PLAUSIBLE (aged 49 at the 2025 report); compatible, never support.
+        Assert.Equal((Direction.Neutral, ReasonCodes.TemporallyPlausible),
+            (id.Evidence[EvidenceGroup.TemporalRole].Direction, id.Evidence[EvidenceGroup.TemporalRole].Detail));
         Assert.Null(id.HardConflict);
         Assert.Equal(6, id.Stage3Row);
         Assert.Equal(IdentityDecision.Review, id.Decision);
@@ -93,6 +96,7 @@ public class GoldenCaseTests
         var (input, a) = Run("GC-03");
 
         Assert.Equal(2, input.Rows.Count);
+        Assert.Contains("PLACEHOLDER_DASH:本地名稱", input.Subject.Findings); // localName MISSING, detail PLACEHOLDER_DASH
         var hit = Assert.Single(a.Hits);
         var c = Assert.Single(hit.Conditions);
         Assert.Equal(ListType.OfficialWantedList, c.Type);
@@ -176,6 +180,7 @@ public class GoldenCaseTests
         Assert.Equal("B123456780", s.ReferenceNumber);
         Assert.Null(s.Document);
         Assert.Null(s.Gender);
+        Assert.Contains("FIELD_ABSENT:性別", s.Findings); // the related-party file has no gender field at all
         Assert.Contains(Findings.DuplicatedAddressLine, s.Findings);
         Assert.Contains(s.Addresses, x => x.State == ValueState.Ambiguous && x.Detail == Findings.PostalCodeOnly);
 

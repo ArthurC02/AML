@@ -187,6 +187,19 @@ A country-field/address-text inconsistency produces `FIELD_CONFLICT`, preserving
 
 Quality findings must remain visible to adjudication and explanations.
 
+## Built
+
+2026-11-04, in the `.txt` reader and `Normalize`:
+
+- missing values: whole-value placeholders only (`Normalize.IsPlaceholder`); the cause is recorded per identity field as `FIELD_ABSENT:<field>`, `FIELD_BLANK:<field>`, `PLACEHOLDER_DASH:<field>` or `PLACEHOLDER_TEXT:<field>`;
+- unparseable dates: `UNPARSEABLE:<field>` (customer, related party and Profile DOB);
+- ages: Arabic and Chinese numerals (`Normalize.ChineseNumber`), 足歲/周歲/週歲, `aged 44`, `44-year-old`, `(44)`, and 「甲、乙分別為 44 歲、45 歲」; approximations, ranges and thresholds are rejected;
+- Taiwan addresses: Chinese numerals before 段/巷/弄/號/樓/鄰 become digits; the 2010 and 2014 county mergers map with table `tw-admin-2014-12-25`;
+- address country comes from the block's own country field, else from a Taiwan city or county in the text; a contradiction is `FIELD_CONFLICT:<address role>`;
+- attachment inventory: any file the reader does not read, or a `.txt` holding markup, is `UNSUPPORTED_ATTACHMENT:<file>`;
+- 客戶檢核處理紀錄 rows are ImportedDecision; a heading without a table, or text after it, is `LEGACY_RECORD_BOUNDARY_UNCLEAR`;
+- Profile `其他識別碼` table (layout assumed: 編號 類型 號碼) feeds OTHER_IDENTIFIER.
+
 ## Source text preservation
 
 Pre-filled source text, career history, multiple birth years, relationships and notes are preserved even when not mapped to a field. "No related-party information" is shown only after confirming the source has none, never because parsing failed. Explanations may summarise, but names, compared values and quotations keep the source characters.

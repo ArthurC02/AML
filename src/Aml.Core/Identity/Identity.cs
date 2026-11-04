@@ -36,8 +36,8 @@ public static class EvidenceBuilder
 
         // A reference number never becomes DOCUMENT evidence.
         e[EvidenceGroup.Document] = DocumentEvidence(s.Document, p.Documents ?? []);
-        if (s.ReferenceNumber is not null)
-            Add(EvidenceGroup.OtherIdentifier, Direction.Neutral, ComparisonStatus.ProfileMissing);
+        if (OtherIdentifierEvidence(s.ReferenceNumber, p.OtherIdentifiers ?? []) is { } other) e[EvidenceGroup.OtherIdentifier] = other;
+        if (TemporalEvidence(s, p, news) is { } temporal) e[EvidenceGroup.TemporalRole] = temporal;
 
         e[EvidenceGroup.Employment] = EmploymentEvidence(s, p);
         if (RelativeEvidence(EvidenceGroup.Relationship, s.Relatives?.Where(r => !r.IsEntity).ToList() ?? [],
@@ -65,6 +65,41 @@ public static class EvidenceBuilder
     }
 
     private static string DocumentNumber(string n) => Normalize.NameKey(Normalize.HalfWidth(n));
+
+    /// <summary>
+    /// A labelled identifier that is not an identity document: the same number on both sides is LOW support (its nature is
+    /// unconfirmed); a different number is never a conflict.
+    /// </summary>
+    public static Evidence? OtherIdentifierEvidence(string? subject, IReadOnlyList<OtherIdentifier> profile)
+    {
+        const EvidenceGroup g = EvidenceGroup.OtherIdentifier;
+        if (subject is null) return profile.Count > 0 ? new(g, Direction.Neutral, ComparisonStatus.SubjectMissing) : null;
+        if (profile.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.ProfileMissing);
+        return profile.Any(x => DocumentNumber(x.Number) == DocumentNumber(subject))
+            ? new(g, Direction.Support, ComparisonStatus.Exact, Strength.Low, "SAME_IDENTIFIER_NATURE_UNCONFIRMED")
+            : new(g, Direction.Neutral, ComparisonStatus.Uncertain);
+    }
+
+    /// <summary>
+    /// Age at every dated event (role start, report date) against the approved role constraints. Plausible is recorded as
+    /// TEMPORALLY_PLAUSIBLE and is never support; an impossible age or role carries the hard-conflict code.
+    /// </summary>
+    public static Evidence? TemporalEvidence(ScreenedSubject s, SourceProfile p, NewsItem? news)
+    {
+        const EvidenceGroup g = EvidenceGroup.TemporalRole;
+        if (s.DateOfBirth is not { Precision: DatePrecision.Day } dob) return null;
+        var events = p.Roles.Select(r => r.From).OfType<PartialDate>().ToList();
+        if (news?.PublishedOn is { } at) events.Add(at);
+        if (events.Count == 0) return null;
+        var hard = HardConflictGate.Check(s, p);
+        if (hard is ReasonCodes.ImpossibleAgeAtReportedEvent or ReasonCodes.ImpossibleRoleAtReportedEvent)
+            return new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, hard);
+        var youngest = events.Min(d => HardConflictGate.MaxAgeAt(dob, d));
+        return youngest >= HardConflictGate.MinimumRoleAge
+            ? new(g, Direction.Neutral, ComparisonStatus.Exact, Strength.None, ReasonCodes.TemporallyPlausible,
+                $"最早事件時最多 {youngest} 歲")
+            : new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, null, $"最早事件時最多 {youngest} 歲");
+    }
 
     /// <summary>
     /// Same organization counts only when both sides state overlapping periods; without periods it stays UNCERTAIN.
@@ -183,7 +218,7 @@ public static class StatedAgeCheck
 
     public static Evidence? Check(ScreenedSubject s, SourceProfile p, NewsItem? news)
     {
-        if (news is null || FindStatedAge(news.Text, p.Names.Where(n => n.Any(c => c is >= '㐀' and <= '鿿'))) is not { } stated)
+        if (news is null || FindStatedAge(news.Text, p.Names) is not { } stated)
             return null;
         if (s.DateOfBirth is not { Precision: DatePrecision.Day } dob || news.PublishedOn is not { Precision: DatePrecision.Day } at)
             return new Evidence(EvidenceGroup.StatedAge, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, ReasonCodes.AgeNotComparable,
@@ -196,18 +231,46 @@ public static class StatedAgeCheck
             : new Evidence(EvidenceGroup.StatedAge, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.AgeDifferenceAtReport, note);
     }
 
-    /// <summary>"陳志明（45歲）", "陳志明今年45歲", "45歲的陳志明", within one sentence and adjacent to the name.</summary>
+    // Arabic or Chinese numerals; 足歲, 周歲 and 週歲 mean 歲. A number followed by 多/餘 never reaches 歲, so ranges drop out.
+    private const string Num = "(?<n>\\d{1,3}|[〇零一二兩三四五六七八九十廿卅百]{1,5})";
+    private const string Years = "\\s?(?:足|周|週)?歲";
+    // Thresholds and approximations before the number (未滿 18 歲, 約 40 歲) are not a stated age.
+    private const string NotThreshold = "(?<![\\d〇零一二兩三四五六七八九十廿卅百]|滿|約|逾|近|超過|未滿|年滿)";
+
+    /// <summary>
+    /// "陳志明（45歲）", "陳志明今年四十五歲", "45歲的陳志明", "Chen Chih-Ming, aged 45", "45-year-old Chen Chih-Ming",
+    /// "甲、乙分別為 44 歲、45 歲" (one age per person, in order); within one sentence and adjacent to the name.
+    /// </summary>
     public static int? FindStatedAge(string text, IEnumerable<string> names)
     {
-        foreach (var sentence in text.Split('。', '！', '？', '\n'))
-        foreach (var name in names)
+        var list = names.Where(n => n.Length > 0).ToList();
+        foreach (var sentence in text.Split('。', '！', '？', '\n', '；'))
         {
-            var n = Regex.Escape(name);
-            var m = Regex.Match(sentence, $@"{n}[（(，,]?(?:今年|現年|時年)?(\d{{1,3}})歲|(\d{{1,3}})歲的?{n}");
-            if (m.Success)
-                return int.Parse(m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value, CultureInfo.InvariantCulture);
+            if (Respectively(sentence, list) is { } each) return each;
+            foreach (var name in list)
+            {
+                var n = Regex.Escape(name);
+                var m = Regex.Match(sentence,
+                    $@"{n}\s?[（(，,]?\s?(?:今年|現年|時年)?\s?{Num}{Years}|{NotThreshold}{Num}{Years}的?{n}"
+                    + $@"|{n},?\s+aged\s+(?<n>\d{{1,3}})\b|\b(?<n>\d{{1,3}})-year-old\s+{n}|{n}\s?\((?<n>\d{{1,3}})\)",
+                    RegexOptions.IgnoreCase);
+                if (m.Success && Normalize.ChineseNumber(m.Groups["n"].Value) is { } age) return age;
+            }
         }
         return null;
+    }
+
+    // "甲、乙分別為44歲、45歲" or "甲和乙分別44、45歲": the names before 分別 and the ages after it pair up in order.
+    private static int? Respectively(string sentence, IReadOnlyList<string> names)
+    {
+        var at = sentence.IndexOf("分別", StringComparison.Ordinal);
+        if (at <= 0) return null;
+        var who = Regex.Match(sentence[..at], "[\\p{IsCJKUnifiedIdeographs}、和及與]+$").Value.Split('、', '和', '及', '與');
+        var ages = Regex.Matches(sentence[(at + 2)..].TrimStart('為', ' '), $"\\G{Num}(?:{Years})?\\s?[、，,和及]?\\s?")
+            .Select(m => Normalize.ChineseNumber(m.Groups["n"].Value)).ToList();
+        if (ages.Count != who.Length || ages.Any(a => a is null)) return null;
+        var index = Array.FindIndex(who, w => names.Any(n => w.EndsWith(n, StringComparison.Ordinal)));
+        return index >= 0 ? ages[index] : null;
     }
 }
 

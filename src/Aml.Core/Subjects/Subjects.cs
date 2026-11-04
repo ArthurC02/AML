@@ -4,7 +4,11 @@ namespace Aml.Core.Subjects;
 
 public enum SubjectRole { Customer, RelatedParty }
 
-public sealed record Address(string Role, string Raw, string? Normalized, string? Country, ValueState State = ValueState.Present, string? Detail = null);
+public sealed record Address(string Role, string Raw, string? Normalized, string? Country, ValueState State = ValueState.Present, string? Detail = null)
+{
+    /// <summary>The block's country field contradicts the address text (FIELD_CONFLICT).</summary>
+    public bool Conflict { get; init; }
+}
 
 /// <summary>An identity document. A Taiwan document type implies issuing country TW.</summary>
 public sealed record Document(string? Type, string Number, string? IssuingCountry = null)
@@ -41,6 +45,9 @@ public sealed record ProfileRole(string Title, string Organization, PartialDate?
 
 public sealed record ProfileRelationship(string ProfileId, string Name, string Relation, bool IsEntity = false);
 
+/// <summary>A labelled identifier that is not an identity document (reference number, registry key).</summary>
+public sealed record OtherIdentifier(string Label, string Number);
+
 public sealed record OfficialListEntry(string Authority, string List, string Status, string? Offence);
 
 public sealed record SourceProfile(
@@ -60,7 +67,8 @@ public sealed record SourceProfile(
     IReadOnlyList<Document>? Documents = null,
     IReadOnlyList<string>? AddressLines = null,
     PartialDate? DateOfDeath = null,
-    string RecordType = "Person");
+    string RecordType = "Person",
+    IReadOnlyList<OtherIdentifier>? OtherIdentifiers = null);
 
 /// <summary>A source the Profile cites. Dates are ISO strings as far as the source states them.</summary>
 public sealed record SourceReference(string Id, string Name, string? Url, string? PublishedOn, string? RetrievedOn);

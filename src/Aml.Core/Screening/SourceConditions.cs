@@ -9,7 +9,7 @@ public enum ConditionStatus { Hit, NotHit, Unknown }
 
 public enum ConditionBasis { Flag, CategoryMapping, Unmapped }
 
-public enum LegalStage { Unknown, Alleged, Indicted, Wanted }
+public enum LegalStage { Unknown, Alleged, Indicted, Wanted, Convicted, Acquitted }
 
 public enum AmlRelevance { Uncertain, Related, Unrelated }
 
@@ -69,7 +69,7 @@ public static class SourceConditions
 
         return types.Select(t => t switch
         {
-            ListType.AdverseMedia => Hit(t) with { RiskCategories = risks, LegalStage = LegalStageFromNews(news), AmlRelevance = AmlRelevance.Uncertain },
+            ListType.AdverseMedia => Hit(t) with { RiskCategories = risks, LegalStage = LegalStageFromNews(news, profile.Names), AmlRelevance = AmlRelevance.Uncertain },
             ListType.OtherOfficialList when IsActive(profile.OfficialList, "Wanted", "通緝") =>
                 Hit(ListType.OfficialWantedList) with { LegalStage = LegalStage.Wanted },
             ListType.Sanction => Sanction(profile),
@@ -122,11 +122,18 @@ public static class SourceConditions
 
     // ponytail: keyword heuristic on attached news; 求刑 is a sentencing request and never a judgment.
     // Replace with approved legal-stage extraction when judgment wording appears in a Golden Case.
-    private static LegalStage LegalStageFromNews(string? news) => news switch
+    // A judgment counts only in a sentence that names the Profile person: co-defendants' sentences are not theirs (GC-12).
+    private static LegalStage LegalStageFromNews(string? news, IReadOnlyList<string> names)
     {
-        null => LegalStage.Unknown,
-        _ when news.Contains("起訴", StringComparison.Ordinal) => LegalStage.Indicted,
-        _ when news.Contains("偵辦", StringComparison.Ordinal) || news.Contains("調查", StringComparison.Ordinal) => LegalStage.Alleged,
-        _ => LegalStage.Unknown,
-    };
+        if (news is null) return LegalStage.Unknown;
+        var own = news.Split('。', '！', '？', '\n', '；')
+            .Where(s => names.Any(n => n.Length > 1 && s.Contains(n, StringComparison.OrdinalIgnoreCase))).ToList();
+        if (own.Any(s => Conviction.Any(w => s.Contains(w, StringComparison.Ordinal)))) return LegalStage.Convicted;
+        if (own.Any(s => s.Contains("無罪", StringComparison.Ordinal))) return LegalStage.Acquitted;
+        if (news.Contains("起訴", StringComparison.Ordinal)) return LegalStage.Indicted;
+        if (news.Contains("偵辦", StringComparison.Ordinal) || news.Contains("調查", StringComparison.Ordinal)) return LegalStage.Alleged;
+        return LegalStage.Unknown;
+    }
+
+    private static readonly string[] Conviction = ["判處", "判刑", "判決有罪", "有罪確定", "定讞"];
 }

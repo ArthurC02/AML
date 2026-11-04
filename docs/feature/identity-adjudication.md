@@ -1,6 +1,6 @@
 # Candidate Retrieval and Identity Adjudication
 
-> Module: Candidate and Identity Adjudication. Design baseline 2.0-PoC, 2026-11-02.
+> Module: Candidate and Identity Adjudication.
 
 ## Separate concerns
 
@@ -13,20 +13,20 @@ BM25 and displayed similarity values are not identity probabilities ([ADR-0001](
 
 ## Retrieval modes
 
-- DIRECT_REFERENCE for known Profile ID;
-- CONTROLLED_SET for small PoC datasets (the PoC default; no search index);
-- INDEX_SEARCH for large source sets;
-- PREVIOUS_LINK for re-analysis after source updates.
+| Mode | Candidates come from | Use |
+|---|---|---|
+| CONTROLLED_SET | the bank's case table | input of `POST /api/cases`; the PoC default |
+| DIRECT_REFERENCE | a known Profile ID | a named Profile |
+| INDEX_SEARCH | a name query over the list database | large source sets |
+| PREVIOUS_LINK | the Profiles used by the Case's latest input | re-analysis after a source update |
 
-Possible routes include exact alias, word BM25, character n-gram and prior Case/Profile links.
-
-INDEX_SEARCH (steps 3 and 5 of the [operating architecture](system-overview.md#operating-architecture)) needs a list database of structured Profiles and a search index over names and aliases (BM25 words, character n-grams, alias table). A name query returns the Top N Profiles, counted after deduplication; candidate data is then fetched for the named or retrieved Profiles. The PoC uses CONTROLLED_SET: the bank's case table supplies the candidates. Built (2026-11-04, [ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)): `Core/Retrieval/ProfileIndex` (exact alias after variant folding, word BM25 with k1 1.2 / b 0.75, character bigram or trigram Jaccard from 0.3) over the list database, and `GET /api/lists/candidates?mode=` for INDEX_SEARCH, DIRECT_REFERENCE, CONTROLLED_SET and PREVIOUS_LINK.
+All four are served by `GET /api/lists/candidates?mode=` ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)). INDEX_SEARCH (steps 3 and 5 of the [operating architecture](system-overview.md#operating-architecture)) runs `Core/Retrieval/ProfileIndex` over the structured Profiles of the list database: exact alias after variant folding, word BM25 (k1 1.2, b 0.75) and character bigram or trigram Jaccard from 0.3. A name query returns the Top N Profiles, counted after deduplication; candidate data is then fetched for the named or retrieved Profiles. Index search does not feed a Case automatically; whether it should, and with which Top N, is an [open question](../plan/open-questions.md#technology-governance).
 
 ## Profile-level deduplication
 
 All hits with the same `sourceNamespace + profileId` become one CandidateProfile. Top K is counted by Profile, not alias rows.
 
-Merging different Profiles that describe the same person (across Profile IDs or sources) happens when the list database is built, not per Case. A merge needs a shared direct identifier or a recorded source link; name similarity alone never merges. Merged Profiles keep their own IDs and sources so every value stays traceable. Built as `ProfileMerge` (`SHARED_DOCUMENT_KEY`, `RECORDED_SOURCE_LINK`), served by `GET /api/lists/merges`.
+Merging different Profiles that describe the same person (across Profile IDs or sources) happens when the list database is built, not per Case. A merge needs a shared direct identifier or a recorded source link; name similarity alone never merges. Merged Profiles keep their own IDs and sources so every value stays traceable. Implemented by `ProfileMerge` (`SHARED_DOCUMENT_KEY`, `RECORDED_SOURCE_LINK`), served by `GET /api/lists/merges`.
 
 The hit count of a Case is the number of distinct Profiles, including hits on related parties; it is never the number of candidate rows or news articles. A Profile listed in the source but missing from the candidate table still counts.
 
@@ -78,7 +78,7 @@ Direct identifiers are a full date of birth (DAY precision) and a comparable doc
 
 Per evidence group (step 6 of the [operating architecture](system-overview.md#operating-architecture)):
 
-| Group | Measure | Built |
+| Group | Measure | Implementation |
 |---|---|---|
 | NAME | exact after normalization and controlled variants; romanization variants and Jaro-Winkler / Levenshtein as `PARTIAL` features inside the group | yes; a romanization match is `PARTIAL` with `ROMANIZATION_VARIANT`, otherwise the best similarity is shown with the PARTIAL; no threshold yet |
 | DATE_OF_BIRTH | precision-aware comparison and conflict check | yes |
@@ -213,7 +213,7 @@ Only registered codes may appear in decisions. New codes are added here with the
 | `DEATH_BEFORE_CUSTOMER_BIRTH` | IdentityDecisionPolicy | hard conflict; pending validation |
 | `BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE` | IdentityDecisionPolicy | years agree, but at least one side has YEAR precision only |
 | `SOURCE_QUALITY_DOWNGRADE` | IdentityDecisionPolicy | a validated hard conflict kept in REVIEW because of a source-quality concern |
-| `NON_PERSON_SUBJECT_REVIEW` | IdentityDecisionPolicy | organization, vessel or other Profile; Phase 1 forces REVIEW |
+| `NON_PERSON_SUBJECT_REVIEW` | IdentityDecisionPolicy | organization, vessel or other Profile with no comparable entity identifier, or compared with a natural-person subject; REVIEW |
 | `NO_BILATERAL_DIRECT_IDENTIFIER` | IdentityDecisionPolicy | neither full DOB nor document key is present on both sides |
 | `UNIQUE_IDENTIFIER_AGREEMENT` | IdentityDecisionPolicy | comparable document key agrees |
 | `STRONG_SUPPORT_COMBINATION` | IdentityDecisionPolicy | full DOB agrees plus another non-prerequisite support |

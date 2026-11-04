@@ -1,6 +1,6 @@
 # PEP and RCA Screening
 
-> Module: Source Screening and Risk Assessment. Design baseline 2.0-PoC, 2026-11-02.
+> Module: Source Screening and Risk Assessment.
 
 ## Principle
 
@@ -48,9 +48,12 @@ The same IdentityComparison is reused across PEP, Sanction and other classificat
 
 A foreign PEP hit on a non-Taiwanese subject may receive the Article 22 ① presumption ([disposition recommendation](review-and-disposition.md#article-22-1-foreign-pep-presumption)); the identity decision is unchanged.
 
-The explanation lists an employment-relevance check for every PEP HIT, and an identity check (published birth year or age) when the PEP flag is explicitly Yes, `Is RCA?` is not Yes and the Profile has no DOB or age as pending ([verification records](review-and-disposition.md#verification-records)).
+The explanation lists these checks as pending ([verification records](review-and-disposition.md#verification-records)):
+
+- an employment-relevance check for every PEP HIT;
+- an identity check against a published birth year or age when the PEP flag is explicitly Yes, `Is RCA?` is not Yes and the Profile has no DOB or age.
 
 Until GC-04 is validated:
 
 - all PEP/RCA candidates remain REVIEW;
-- former-PEP duration and RCA relationship scope are configurable and not hardcoded;
+- former-PEP duration and RCA relationship scope are configurable and not hardcoded.

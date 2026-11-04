@@ -1,6 +1,6 @@
 # Sanctions Screening
 
-> Module: Source Screening and Risk Assessment. Design baseline 2.0-PoC, 2026-11-02.
+> Module: Source Screening and Risk Assessment.
 
 ## Two independent questions
 

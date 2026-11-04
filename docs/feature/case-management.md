@@ -1,6 +1,6 @@
 # Case Management
 
-> Module: Case and Adjudication Management. Design baseline 2.0-PoC, 2026-11-02.
+> Module: Case and Adjudication Management.
 
 ## Case lifecycle
 
@@ -27,7 +27,7 @@ A COMPLETED analysis can still produce REVIEW.
 ## Version model
 
 - `currentAnalysisRevision`: latest accepted analysis.
-- `effectiveResultRevision`: latest explicitly published result.
+- `effectiveResultRevision`: latest published result; a revision is published automatically when it is complete ([case-level result](#case-level-result)).
 - Technical retry with identical inputs and policies reuses the revision.
 - Changed customer data, source Profile, scope or policy creates a new revision.
 - Late results are retained in their original revision and cannot overwrite newer effective results.

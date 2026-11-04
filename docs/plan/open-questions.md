@@ -4,8 +4,8 @@ Questions that need a bank decision. When one is answered, record the answer her
 
 ## Data and source
 
-- What are the stable HTML/source schemas and source versions?
-- Are the `.txt` exports (as in GC-11) the production input, or derived from HTML? A `.txt` reader is needed if they are.
+- What are the stable HTML/source schemas and source versions? The HTML conversion assumes the pages use the `.txt` export's labels.
+- Are the `.txt` exports (as in GC-11) the production input, or derived from HTML? Both are read today.
 - What is the column order of the candidate table in 案件資訊 (two header lines: decision columns and PEP/blacklist/adverse-news flags)? GC-11 and GC-12 assume the flags are empty.
 - Does the Profile export carry dated roles (`職位`), keywords (`關鍵字`) and official-list details (`名單資訊`) as structured fields? The synthetic GC-01 to GC-03 samples assume so.
 - Which source fields are authoritative for classifications and status?
@@ -51,8 +51,8 @@ Questions that need a bank decision. When one is answered, record the answer her
 - Is .NET approved for production support?
 - Will production use Microsoft SQL Server or Oracle, and which version?
 - Which container platform, identity provider and CI/CD controls are standard?
-- List data refreshes on a schedule or on an event ([operating architecture](../feature/system-overview.md#operating-architecture), 2026-11-03). What schedule, and which source events trigger a refresh and re-analysis?
-- The list database and search index are built ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)); should index search feed Cases automatically, and with which Top N?
+- List data refreshes on a schedule or on an event ([operating architecture](../feature/system-overview.md#operating-architecture)). What schedule, and which source events trigger a refresh and re-analysis?
+- Should index search over the list database ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)) feed Cases automatically, and with which Top N?
 - Calibrate the Fellegi-Sunter shadow (m and u per group) and approve, or not, an AML risk policy; neither affects decisions today.
 - Approve the entity evidence groups (registration number, IMO) with an entity Golden Case.
 - Which name and address similarity thresholds (Jaro-Winkler, Levenshtein, Jaccard) does the bank accept, and from which labelled cases are they set?
@@ -66,9 +66,9 @@ Questions that need a bank decision. When one is answered, record the answer her
 | GC-12's label says 無法判斷 but the legacy column says 確認後不符合; which is the outcome? | 無法判斷: the case is a grey area and identity cannot be decided. The legacy 理由 text is ImportedDecision only and never an identity outcome. | 2026-11-02 |
 | When the hit is on a related party, is the account holder's data part of the input? | Yes, as case context only. Identity adjudication uses the hit related party's own data; the two people's data are never mixed. | 2026-11-02 |
 | UI or API? | API + Swagger only | 2026-11-02 |
-| PoC input format? | supplied HTML files; API or crawler possible later | 2026-11-02 |
+| PoC input format? | supplied HTML files and their `.txt` exports; API or crawler possible later | 2026-11-02 |
 | PoC database? | SQLite until insufficient; later SQL Server or Oracle | 2026-11-02 |
-| Need search index? | no, data volume is small | 2026-11-02 |
+| Need search index? | not for the PoC input, which uses the case-table candidates; the index is available for the other retrieval modes ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)) | 2026-11-02 |
 | Legacy `Rule.md` rules? | merged where evidence-based; probabilities, Excel report and LLM flow not adopted ([ADR-0018](../adr/0018-legacy-ai-report-rules-not-adopted.md)) | 2026-11-02 |
 | List-type vocabulary? | bank's seven types plus official wanted list, flags first ([ADR-0016](../adr/0016-bank-list-type-vocabulary.md)) | 2026-11-02 |
 | Photo comparison? | not used; bank specification | 2026-11-02 |

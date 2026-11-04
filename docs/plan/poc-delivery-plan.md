@@ -1,7 +1,5 @@
 # PoC Delivery Plan
 
-> Design baseline 2.0-PoC, 2026-11-02.
-
 ## Validation dimensions
 
 Measure separately:
@@ -31,9 +29,9 @@ Measure separately:
 
 No target percentage or latency is committed before representative data and bank tolerance are agreed.
 
-### Current results
+### Golden Case results
 
-2026-11-03, five Golden Cases (GC-01 to GC-03 synthetic, GC-11 and GC-12 anonymized real), six pairs. Too few cases for any rate to mean more than "the rules reproduce the cases".
+`tests/Aml.Tests/GoldenCases/GoldenMetricsTests` computes these over the Golden Cases in `samples/golden` (GC-01 to GC-03 synthetic, GC-11 and GC-12 anonymized real; six pairs). Augmented cases are excluded. Five cases are too few for any rate to mean more than "the rules reproduce the cases".
 
 | Metric | Value | Note |
 |---|---|---|
@@ -47,11 +45,11 @@ No target percentage or latency is committed before representative data and bank
 | Missing / ambiguous / conflict rate | 52% / 6% / 0% | comparison cells; missing is mostly Profile DOB, document and address |
 | Re-adjudication Stability | 100% | an unchanged re-run lists no changes |
 
-Not measured yet: field extraction correctness and Recall@K (need the HTML samples and labeled extraction), Human Override Rate (no human workflow in the PoC), batch completion, retry recovery and latency (need representative volume; the `aml.*` metrics collect them).
+Not measured: field extraction correctness and Recall@K (need HTML samples and labeled extraction), Human Override Rate (no human workflow in the PoC), batch completion, retry recovery and latency (need representative volume; the `aml.*` metrics collect them).
 
 ## Delivery gates
 
-### Gate A: Start now
+### Gate A: Core build
 
 - contracts and schema;
 - extraction/normalization;
@@ -59,7 +57,7 @@ Not measured yet: field extraction correctness and Recall@K (need the HTML sampl
 - evidence and decisions;
 - GC-01 to GC-03, GC-11 and GC-12 regression tests.
 
-Prerequisite: supplied HTML samples and real GC-01 to GC-03 data (pending as of 2026-11-02); synthetic GC-01 to GC-03 samples stand in until then. GC-11 and GC-12 sample data are in place (`.txt` export, anonymized). Build follows the [implementation baseline](implementation-baseline.md).
+The build follows the [implementation baseline](implementation-baseline.md). GC-11 and GC-12 are anonymized real cases (`.txt` export); GC-01 to GC-03 are synthetic until the real data is supplied. Closing Gate A also needs the supplied HTML samples, so that the HTML conversion is checked against real pages.
 
 ### Gate B: Before integrated PoC acceptance
 

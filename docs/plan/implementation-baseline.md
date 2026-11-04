@@ -1,6 +1,6 @@
 # Implementation Baseline
 
-> Agreed for PoC Phase 1, 2026-11-02. Subject to bank technology governance.
+> Agreed for PoC Phase 1. Subject to bank technology governance.
 
 ## PoC implementation decisions
 
@@ -8,10 +8,10 @@
 |---|---|---|
 | Runtime | C#, .NET 10 LTS, ASP.NET Core | [0007](../adr/0007-dotnet-technology-stack.md) |
 | Delivery | API + OpenAPI / Swagger UI, no UI | [0009](../adr/0009-api-only.md) |
-| Input | supplied HTML files; API or crawler later behind ports | [0012](../adr/0012-source-acquisition-behind-ports.md) |
-| Database | SQLite now; SQL Server or Oracle later | [0010](../adr/0010-replaceable-persistence.md) |
+| Input | supplied `.txt` exports and HTML pages; API or crawler later behind ports | [0012](../adr/0012-source-acquisition-behind-ports.md) |
+| Database | SQLite in the PoC; SQL Server or Oracle for production | [0010](../adr/0010-replaceable-persistence.md) |
 | Data access | Dapper + DbUp; SQL in `Sql.<provider>.xml` | [0010](../adr/0010-replaceable-persistence.md), [0014](../adr/0014-per-provider-xml-sql-catalog.md) |
-| Volume | small; no search index, CONTROLLED_SET retrieval | |
+| Retrieval | case-table candidates (CONTROLLED_SET) feed Cases; the list database and index serve the other modes on request | [0021](../adr/0021-deferred-capabilities-built-behind-controls.md) |
 | Batch | DB job table + `BackgroundService` | [0011](../adr/0011-database-job-table-for-batch.md) |
 | Structure | Core / Services / Infra / Api | [0013](../adr/0013-four-project-solution.md) |
 | Libraries | no commercially licensed packages | [0015](../adr/0015-no-commercially-licensed-libraries.md) |
@@ -34,34 +34,33 @@ AML/
 │   └── golden/GC-01..03, 11, 12/ # anonymized inputs + expected.yaml per Golden Case
 ├── src/
 │   ├── Aml.Core/                 # zero dependencies
-│   │   ├── Shared/               # FieldValue, Evidence, ReasonCode, enums
-│   │   ├── Cases/                # Case, AnalysisRevision, decisions, transition rules
-│   │   ├── Subjects/             # CustomerSnapshot, SourceProfileSnapshot
-│   │   ├── Normalization/        # names, date precision, country roles, documents, Taiwan addresses
-│   │   ├── Identity/             # EvidenceBuilder, HardConflictGate, IdentityDecisionPolicy
-│   │   ├── Screening/            # Sanction/Pep/OfficialList/AdverseInformation policies, list-type mapping, combination matrix
-│   │   ├── Disposition/          # DispositionPolicy (Article 22), verification record rules
-│   │   └── Ports/                # IProfileSource, ICustomerSource, ICaseRepository, IJobQueue
+│   │   ├── Shared/               # Evidence, reason codes, findings, enums
+│   │   ├── Subjects/             # screened subject, source Profile, documents, roles
+│   │   ├── Normalization/        # names, romanization, similarity, dates, countries, Taiwan addresses
+│   │   ├── Identity/             # evidence groups, HardConflictGate, IdentityDecisionPolicy, Fellegi-Sunter shadow
+│   │   ├── Screening/            # source-condition policies, combination matrix, DispositionPolicy, risk scoring
+│   │   ├── Retrieval/            # ProfileIndex, ProfileMerge
+│   │   ├── Cases/                # CaseAnalyzer, Case records, revision changes
+│   │   ├── Explanation/          # ExplanationBuilder
+│   │   └── Ports/                # ICaseStore, IJobStore, IListStore
 │   ├── Aml.Services/             # orchestration
 │   │   ├── CaseService.cs        # sole writer of Case state
-│   │   ├── AnalyzeCaseHandler.cs # AnalyzeCase flow
-│   │   ├── CandidateService.cs, ReviewService.cs, DispositionService.cs
-│   │   └── ExplanationService.cs, BatchService.cs
+│   │   ├── BatchService.cs       # job-table batches
+│   │   └── ListService.cs        # list database, retrieval, re-analysis on Profile change
 │   ├── Aml.Infra/                # implements Core/Ports
 │   │   ├── Persistence/          # see feature/persistence.md
-│   │   ├── Txt/                  # .txt export reader (Golden Case samples)
-│   │   ├── Html/                 # AngleSharp sources and page-template parsers
-│   │   └── Jobs/                 # job-table IJobQueue
+│   │   ├── Txt/                  # .txt export reader
+│   │   ├── Html/                 # HTML page to export layout (AngleSharp)
+│   │   └── Jobs/                 # JobStore
 │   └── Aml.Api/                  # composition root
-│       ├── Program.cs            # DI, OpenAPI, OpenTelemetry, health checks
-│       ├── Controllers/
+│       ├── Program.cs            # minimal API endpoints, DI, OpenAPI, OpenTelemetry, health check
 │       └── Workers/JobWorker.cs  # BackgroundService
 └── tests/
     └── Aml.Tests/
-        ├── Core/                 # policies, matrix, normalization; no database
-        ├── Infra/                # HTML extraction against samples/
-        ├── Persistence/          # repository contract tests
-        └── GoldenCases/          # GC-01..03, 11, 12 end to end
+        ├── Core/                 # extraction, identity, screening, retrieval and scoring rules; no database
+        ├── Api/                  # endpoints through WebApplicationFactory
+        ├── Persistence/          # repository and batch tests
+        └── GoldenCases/          # Golden Cases end to end, augmented cases, explanation, metrics
 ```
 
 Rules:
@@ -71,18 +70,18 @@ Rules:
 - Case state mutators are `internal` with `InternalsVisibleTo("Aml.Services")`; within Services, `CaseService` remains the only writer by review.
 - Api holds no business logic.
 
-Built so far (2026-11-02):
+Implementation notes:
 
-- Api uses minimal APIs in `Program.cs` instead of `Controllers/`; endpoints: `POST /api/cases` (multipart `.txt` upload), `POST /api/cases/{caseId}/analyses`, `GET /api/cases/{caseId}`, `GET /api/cases/{caseId}/analyses/{revision}`, `GET /api/cases/{caseId}/explanation`, `POST /api/batches`, `GET /api/batches/{batchId}`, `POST /api/batches/{batchId}/rerun`, `GET /health`.
+- Api uses minimal APIs in `Program.cs`; the endpoints are listed in [REST resources](../feature/pipeline-api-and-batch.md#rest-resources), plus `GET /health`. Uploads are multipart `.txt` or `.html` files.
 - The explanation is built in Core (`Explanation/ExplanationBuilder`) with each revision and stored beside the result; document and reference numbers are masked (first 3 and last 2 characters). The five-part summary is in Traditional Chinese for reviewers. Each hit lists its sources: Profile citations (`PROFILE_RECORD`, with publication and retrieval dates and URL) and attached news (`LEGAL_STAGE` when it set the legal stage of an ADVERSE_MEDIA condition).
-- No human workflow in the PoC (decision of 2026-11-02, [system overview](../feature/system-overview.md#excluded-for-phase-1)).
+- No human workflow in the PoC ([ADR-0020](../adr/0020-identification-only.md)).
 - `POST /api/cases` analyzes synchronously; `POST /api/batches` queues items in the job table and `Workers/JobWorker` runs them through `BatchService` ([durable batch execution](../feature/pipeline-api-and-batch.md#durable-batch-execution)). The job store is `Infra/Jobs/JobStore` behind `Core/Ports/IJobStore` (named "Store" because CA1711 rejects a "Queue" suffix).
 - Each revision records source condition status and basis, pair result, review priority, pair reason codes and the changes from the previous revision; a missing Profile makes the revision PARTIAL and keeps the previous effective result.
 - Persistence is SQLite-only (`SqliteDatabase`, `SqlCatalog`, `CaseStore`); `IDbConnectionFactory` and `ISqlDialect` are extracted when a second provider is chosen.
 - `GET /health` runs `System.Ping`. OpenTelemetry traces, metrics and logs are on (ASP.NET Core plus the `Aml` source and meter: `aml.analyses`, `aml.analysis.duration`, `aml.job.attempts`); OTLP export starts only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set.
-- List database and retrieval (2026-11-04, [ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)): `POST /api/lists/profiles`, `GET /api/lists/profiles/{profileId}/versions`, `GET /api/lists/candidates`, `GET /api/lists/merges`; uploads accept `.txt` and `.html`; each revision stores its input files.
+- The list database (`list_profile`) and each revision's input files (`case_input`) are stored for retrieval and re-analysis ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)).
 - Authentication is not wired (identity provider pending).
-- Golden Case metrics are computed by `tests/Aml.Tests/GoldenCases/GoldenMetricsTests` ([results](poc-delivery-plan.md#current-results)).
+- Golden Case metrics are computed by `tests/Aml.Tests/GoldenCases/GoldenMetricsTests` ([results](poc-delivery-plan.md#golden-case-results)).
 
 ## Build settings
 
@@ -97,7 +96,7 @@ NuGet Audit and the built-in .NET analyzers are enabled without extra packages.
 
 ## Packages
 
-Versions as of 2026-11-02.
+Versions are pinned in `Directory.Packages.props`; this table lists them for review.
 
 | Project | Package | Version | Purpose |
 |---|---|---|---|

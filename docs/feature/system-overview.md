@@ -1,6 +1,6 @@
 # System Overview
 
-> Design baseline 2.0-PoC, 2026-11-02. Validated with GC-01 to GC-03, GC-11 and GC-12; seven scenarios remain in the [validation backlog](../plan/golden-cases.md#validation-backlog).
+> Validated with GC-01 to GC-03, GC-11 and GC-12; seven scenarios remain in the [validation backlog](../plan/golden-cases.md#validation-backlog).
 
 ## Objective
 
@@ -10,7 +10,7 @@ Build a traceable identity adjudication flow for customer and related-party scre
 
 ### Included
 
-- structured HTML or controlled source documents (PoC input: supplied HTML files);
+- structured HTML or controlled source documents (PoC input: the supplied `.txt` exports and HTML pages);
 - multilingual names, partial dates, nationality, document and address evidence;
 - candidate retrieval and Profile-level deduplication;
 - MATCH, NO_MATCH, REVIEW and internal PROBABLE_MATCH;
@@ -24,7 +24,7 @@ Build a traceable identity adjudication flow for customer and related-party scre
 - unrestricted web search;
 - OCR where structured HTML is available;
 - universal news event extraction;
-- automatic identity decisions for organization, vessel and other non-person Profiles: they are retrieved, deduplicated and preserved with their source conditions, but their identity decision is always REVIEW until entity evidence groups (registration number, jurisdiction, IMO number, etc.) are designed and validated;
+- automatic identity decisions for organization, vessel and other non-person Profiles: they are retrieved, deduplicated and preserved with their source conditions; entity identifiers (registration number with jurisdiction, IMO number) can raise review priority, but the external result stays REVIEW until the entity rules are validated with an entity Golden Case;
 - LLM-based identity or legal adjudication, and AI-assigned match probabilities ([ADR-0018](../adr/0018-legacy-ai-report-rules-not-adopted.md));
 - photo or face comparison;
 - unapproved AML scoring weights;
@@ -43,17 +43,17 @@ Build a traceable identity adjudication flow for customer and related-party scre
 
 ## Operating architecture
 
-The project flow (2026-11-03): rules and algorithms only, no LLM. It has two halves split by personal data.
+Rules and algorithms only, no LLM. It has two halves split by personal data.
 
 - **Data Processing** handles lists and public data (official lists for Sanction/PEP/RCA, public news and court rulings, other public sources). It holds no customer personal data and refreshes on a schedule or on an event.
 - **Runtime Query** analyzes and adjudicates one Case. Customer personal data enters here and stays inside the bank ([security and privacy](security-and-privacy.md#personal-data-boundary)).
 
 | Step | Half | Content | Module and spec | PoC status |
 |---|---|---|---|---|
-| 1 Acquisition and pre-processing | Data Processing | fetch files or data (PDF / HTML / API), clean and convert formats, parse structure (person, event, role, legal status) | Extraction and Data Quality ([extraction](extraction-and-normalization.md#sources-and-refresh)) | `.txt` export only; HTML waits for samples; PDF and API later |
+| 1 Acquisition and pre-processing | Data Processing | fetch files or data (PDF / HTML / API), clean and convert formats, parse structure (person, event, role, legal status) | Extraction and Data Quality ([extraction](extraction-and-normalization.md#sources-and-refresh)) | `.txt` export reader; HTML pages converted to the export layout, with labels assumed until HTML samples arrive; no PDF or API adapter |
 | 2 Normalization | Data Processing | text (case, full/half width, Traditional/Simplified, romanization), date precision, fields (country, document, address) | Extraction and Data Quality ([extraction](extraction-and-normalization.md#name-normalization)) | built; Traditional/Simplified and romanization use controlled lists only |
 | 3 List index and Profile | Data Processing | list database of structured Profiles, search index (BM25 / n-gram / alias), Profile deduplication (merge the same person) | Candidate and Identity Adjudication ([identity](identity-adjudication.md#retrieval-modes)) | built ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)): `list_profile` versions with SHA-256, alias / BM25 / n-gram index, merge on shared document or recorded link; a changed Profile re-analyzes its Cases |
-| 4 Case input | Runtime Query | customer data (name, DOB, document, address, occupation, related parties) and case settings (chosen sources, query conditions) | Case and Adjudication Management ([pipeline](pipeline-api-and-batch.md#rest-resources)) | `POST /api/cases` and `/api/batches`; case settings not built |
+| 4 Case input | Runtime Query | customer data (name, DOB, document, address, occupation, related parties) and case settings (chosen sources, query conditions) | Case and Adjudication Management ([pipeline](pipeline-api-and-batch.md#rest-resources)) | `POST /api/cases` and `/api/batches`; no case settings: every source in the input is used |
 | 5 Candidate retrieval and deduplication | Runtime Query | name search (exact / BM25 / n-gram), Top N candidate list, merge into one Profile, fetch candidate data (named or automatic) | Candidate and Identity Adjudication ([identity](identity-adjudication.md#profile-level-deduplication)) | case table (CONTROLLED_SET) feeds `POST /api/cases`; INDEX_SEARCH, DIRECT_REFERENCE and PREVIOUS_LINK via `GET /api/lists/candidates`; Profile-level deduplication built |
 | 6 Field comparison and evidence | Runtime Query | name (Jaro-Winkler / Levenshtein), DOB (precision / conflict), document (type / issuer / number), address (structured / Jaccard), occupation (job / company), related parties (spouse / parents / related companies) | Candidate and Identity Adjudication ([identity](identity-adjudication.md#comparison-measures)) | all measures built; employment and relatives have no subject-side data in the bank export yet |
 | 7 Hard conflict and identity decision | Runtime Query | hard-conflict rules (DOB / document / event time), combined evidence decision (same person / different person / cannot tell) | Candidate and Identity Adjudication ([identity](identity-adjudication.md#hard-conflict-gate)) | built |

@@ -1,6 +1,6 @@
 # Data Contracts
 
-> Shared by all modules. Design baseline 2.0-PoC, 2026-11-02.
+> Shared by all modules.
 
 ## Core identifiers
 
@@ -156,7 +156,7 @@ sourceRefs: []
 reasoning: null
 ```
 
-Result values and rules are in [disposition recommendation](review-and-disposition.md#verification-records).
+The system emits a triggered check as pending: its type, with the result fields empty. The result fields are filled by checks performed outside the system ([ADR-0020](../adr/0020-identification-only.md)). Result values and rules are in [disposition recommendation](review-and-disposition.md#verification-records).
 
 ## Field value wrapper
 

@@ -1,6 +1,6 @@
 # Watchlist and Adverse Information Screening
 
-> Module: Source Screening and Risk Assessment. Design baseline 2.0-PoC, 2026-11-02.
+> Module: Source Screening and Risk Assessment.
 
 ## Scope
 
@@ -32,7 +32,9 @@ When any of the PEP, blacklist or adverse-news flags has a value (`NO` counts as
 - blacklist flag `YES` → SANCTION, OFFICIAL_WANTED_LIST or OTHER_OFFICIAL_LIST, decided from approved source fields; if they do not decide it, the type is UNKNOWN and goes to review;
 - a flag that contradicts the category wins; the conflict is recorded in the explanation, and the flag is never overwritten.
 
-Built (2026-11-04): the flags are read per candidate row (`Normalize.Flag`) and merged per Profile (YES, then UNPARSEABLE, then NO). Column order is assumed until the bank confirms it: … 理由, Is RCA?, Name Property, PEP, 黑名單, 負面新聞; the samples stop at Is RCA?, so their flags are MISSING. NO gives a NOT_HIT condition, UNPARSEABLE an UNKNOWN one with `FLAG_UNPARSEABLE`, a 黑名單 type the source fields cannot decide `BLACKLIST_TYPE_UNDECIDED`, and a category the flags do not raise `FLAG_CATEGORY_CONFLICT`.
+The flags are read per candidate row (`Normalize.Flag`, [source flags](extraction-and-normalization.md#source-flags)) and merged per Profile: YES wins over UNPARSEABLE, which wins over NO. NO gives a NOT_HIT condition; UNPARSEABLE gives an UNKNOWN one with `FLAG_UNPARSEABLE`; a 黑名單 type the source fields cannot decide gives `BLACKLIST_TYPE_UNDECIDED`; a category the flags do not raise gives `FLAG_CATEGORY_CONFLICT`.
+
+The column order is assumed until the bank confirms it ([open questions](../plan/open-questions.md#data-and-source)): … 理由, Is RCA?, Name Property, PEP, 黑名單, 負面新聞. The samples stop at Is RCA?, so their flags are MISSING and the category mapping below applies.
 
 ### Category mapping
 
@@ -116,7 +118,7 @@ Reads authority, list type, list status, decision number/date and alleged offenc
 
 Reads approved source classifications and keywords. `Financial Crime` does not automatically mean `Fraud`.
 
-Sets `amlRelevance` to `UNCERTAIN` unless the source states the conduct and jurisdiction; RELATED or UNRELATED drives Article 22 ② ([disposition recommendation](review-and-disposition.md#article-22-2-adverse-news-unrelated-to-mltfpf)).
+Sets `amlRelevance` to `UNCERTAIN`, or to `UNRELATED` when the attached news states a jurisdiction and a non-predicate conduct; UNRELATED drives Article 22 ② ([disposition recommendation](review-and-disposition.md#article-22-2-adverse-news-unrelated-to-mltfpf)). RELATED is left to the reviewer.
 
 ## Subject attribution
 
@@ -132,7 +134,7 @@ A news item attached to a Profile counts as attached news; the Profile's own des
 
 ## Phase 1 constraint
 
-General free-news event understanding is out of scope. Structured Profile fields, bounded Notes sections and explicit citations are used. LLM output cannot be the sole identity or legal basis.
+General free-news event understanding is out of scope. Structured Profile fields, bounded Notes sections and explicit citations are used; no LLM is involved ([ADR-0018](../adr/0018-legacy-ai-report-rules-not-adopted.md)).
 
 When news content is used:
 

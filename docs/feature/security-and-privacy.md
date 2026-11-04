@@ -1,6 +1,6 @@
 # Security and Privacy
 
-> Cross-cutting. Design baseline 2.0-PoC, 2026-11-02.
+> Cross-cutting.
 
 ## Controls
 
@@ -22,7 +22,7 @@ The [operating architecture](system-overview.md#operating-architecture) separate
 
 ## External lookups
 
-The system performs no web search in Phase 1. Lookups recorded as [verification records](review-and-disposition.md#verification-records) follow these rules:
+The system performs no web search or external lookup in Phase 1. Lookups made outside the system for [verification records](review-and-disposition.md#verification-records) follow these rules:
 
 - New sources come only from a maintainer-managed domain allowlist: company registry (MOEA), government sites (Judicial Yuan, FSC, Banking Bureau), mainstream media. No forums, blogs, content farms, aggregators or wikis. A search engine is only an entry point; the cited URL must be on the allowlist.
 - URLs attached to the Profile or case are recorded as "attached" and exempt from the allowlist; that exemption does not mean the full text was read or that the content supports identity. A newly found URL is never marked as attached.

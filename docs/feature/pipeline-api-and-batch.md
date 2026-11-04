@@ -1,6 +1,6 @@
 # Pipeline, API and Batch
 
-> Modules: all; Batch and Work Management owns execution. Design baseline 2.0-PoC, 2026-11-02.
+> Modules: all; Batch and Work Management owns execution.
 
 ## AnalyzeCase flow
 
@@ -30,14 +30,13 @@ All triggers are events; timed triggers are an [open question](../plan/open-ques
 
 ## Services
 
-| Service | Module |
-|---|---|
-| CaseService | Case and Adjudication Management |
-| BatchService | Batch and Work Management |
-| ExtractionService | Extraction and Data Quality |
-| CandidateService, IdentityAdjudicationService | Candidate and Identity Adjudication |
-| SourceScreeningService, DispositionService | Source Screening and Risk Assessment |
-| ExplanationService | Explanation and Reporting |
+| Service (Aml.Services) | Serves | Calls |
+|---|---|---|
+| CaseService | `/api/cases` | the readers (Extraction and Data Quality), `CaseAnalyzer` (Candidate and Identity Adjudication, Source Screening and Risk Assessment), `Explanation` (Explanation and Reporting) |
+| BatchService | `/api/batches` | CaseService, through the job table (Batch and Work Management) |
+| ListService | `/api/lists` | the list database, `ProfileIndex` and `ProfileMerge`; re-analysis of Cases whose Profile changed |
+
+The module policies in Aml.Core are plain functions called by these services; they hold no state.
 
 ## REST resources
 
@@ -46,14 +45,20 @@ POST /api/cases
 POST /api/cases/{caseId}/analyses
 GET  /api/cases/{caseId}
 GET  /api/cases/{caseId}/analyses/{revision}
-POST /api/cases/{caseId}/imported-decisions
 GET  /api/cases/{caseId}/explanation
 POST /api/batches
 GET  /api/batches/{batchId}
+POST /api/batches/{batchId}/rerun
+POST /api/lists/profiles
+GET  /api/lists/profiles/{profileId}/versions
+GET  /api/lists/candidates?mode=
+GET  /api/lists/merges
 ```
 
+Uploads accept `.txt` and `.html` files; each revision stores its input files for re-analysis.
+
 - Publication has no endpoint: step 14 publishes automatically when the version and completeness checks of the [case-level result](case-management.md#case-level-result) pass.
-- Imported decisions are stored with `independentlyVerified` and never become SystemDecisions.
+- Imported decisions are read from the input files, stored with `independentlyVerified` and never become SystemDecisions; there is no endpoint to submit decisions ([ADR-0020](../adr/0020-identification-only.md)).
 - `GET …/explanation` is the explanation and audit view ([ADR-0009](../adr/0009-api-only.md)).
 - Authentication is OIDC/OAuth 2.0 with policy-based authorization, wired once the identity provider is known.
 
@@ -64,7 +69,7 @@ GET  /api/batches/{batchId}
 - hit reason: hit number, screened subject (`customer` or `related party` with name), Profile ID, list types, Name Property, `Is RCA?`, matched field, similarity type and why the flags or category were used;
 - comparison table in fixed order: Chinese name (with aliases, former and maiden names), English name / romanization / order, nationality, DOB or age, gender, document, address, occupation or employer, other identifiers; each row has subject value, Profile value, comparisonStatus and difference;
 - evidence, conflicts, unknown fields and reason codes;
-- source conditions, DispositionRecommendation and verification records;
+- source conditions, DispositionRecommendation and the pending verification checks;
 - a five-part summary: internal data, external data, agreements and differences, key evidence or gaps, conclusion.
 
 Per pair the response also carries `reviewPriority` (HIGH for PROBABLE_MATCH or Sanction, NORMAL for stage 3 row 5, LOW otherwise) and `pairReasonCodes` (e.g. `RELEASE_CONTROL_HUMAN_REVIEW`, `SOURCE_CONDITION_UNKNOWN`); per Case, `notEvaluatedProfiles` and `changesFromPreviousRevision` (`ADDED`, `REMOVED`, `RESULT_CHANGED`, `IDENTITY_CHANGED`, `REASONS_CHANGED`, each with from and to).
@@ -81,19 +86,7 @@ attemptCount, nextAttemptAt, leaseOwner, leaseExpiry,
 createdAt, completedAt, errorCode
 ```
 
-Required controls:
-
-- bounded workers;
-- timeout and cancellation;
-- retry budget;
-- idempotency key;
-- checkpoint;
-- failed/dead-letter status;
-- operator re-run.
-
-Jobs are claimed optimistically ([job claim](persistence.md#job-claim)).
-
-Built (2026-11-03):
+Jobs are claimed optimistically ([job claim](persistence.md#job-claim)). Controls:
 
 | Control | How |
 |---|---|

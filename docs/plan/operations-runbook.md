@@ -1,6 +1,6 @@
 # Operations Runbook (Gate D draft)
 
-> Draft for [Gate D](poc-delivery-plan.md#gate-d-before-production), 2026-11-03. It describes the PoC as built; items marked **Pending** wait for bank decisions ([open questions](open-questions.md)).
+> Draft for [Gate D](poc-delivery-plan.md#gate-d-before-production). It describes the PoC as built; items marked **Pending** wait for bank decisions ([open questions](open-questions.md)).
 
 ## Service
 
@@ -32,7 +32,8 @@
 
 - Every analysis revision is kept (`case_analysis`); nothing is overwritten. A late revision never replaces a newer effective one.
 - Each revision stores the full result and the explanation as JSON: evidence, source conditions with basis and policy version, identity decision, reason codes, review priority and the changes from the previous revision.
-- Document and reference numbers are masked in the explanation (first 3 and last 2 characters). Raw input files are not stored, except as batch job payloads.
+- Document and reference numbers are masked in the explanation (first 3 and last 2 characters). The input files of every revision are stored (`case_input`) for re-analysis, as are batch job payloads; they hold unmasked personal data, so database access is restricted accordingly.
+- Every captured Profile version is kept with its SHA-256 (`list_profile`); a changed Profile re-analyzes the Cases whose latest input used it into a new revision.
 - Imported legacy decisions are kept as `ImportedDecision` and never used as evidence.
 - **Pending:** retention period for revisions and job payloads; who may read the audit view once roles exist.
 

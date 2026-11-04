@@ -1,6 +1,6 @@
 # Persistence
 
-> Cross-cutting, lives in Aml.Infra. Implementation baseline for PoC Phase 1, 2026-11-02.
+> Cross-cutting, lives in Aml.Infra.
 
 SQLite for the PoC, replaced later by Microsoft SQL Server or Oracle; Dapper + DbUp, no EF Core ([ADR-0010](../adr/0010-replaceable-persistence.md)).
 
@@ -8,19 +8,24 @@ SQLite for the PoC, replaced later by Microsoft SQL Server or Oracle; Dapper + D
 
 ```text
 Aml.Infra/Persistence/
-├── IDbConnectionFactory.cs   # only place aware of the provider
-├── ISqlDialect.cs            # parameter prefix rewrite, unique-violation detection
-├── Dialects/SqliteDialect.cs
+├── SqliteDatabase.cs         # connections, DbUp upgrade, the only place aware of the provider
 ├── SqlCatalog.cs             # loads Sql.<provider>.xml
-├── Repositories/
-├── TypeHandlers/             # Guid, UTC time, bool, JSON
+├── Repositories/             # CaseStore, ListStore
 ├── Sql/                      # Sql.xsd, Sql.sqlite.xml
 └── Scripts/Sqlite/           # DbUp DDL: 0001_init.sql, ...
 ```
 
-Tables: `aml_case`, `case_analysis`, `job` (0001 to 0003); `list_profile` (every captured Profile version with its SHA-256) and `case_input` (the files of each revision, for re-analysis after a source update) from 0004 ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)).
+When a second provider is chosen, the provider-specific parts of `SqliteDatabase` move behind `IDbConnectionFactory` and an `ISqlDialect` (parameter prefix rewrite, unique-violation detection).
 
-Configuration: `"Database": { "Provider": "Sqlite", "ConnectionString": "..." }`. SQLite-specific connection settings (WAL, busy timeout) stay in the connection factory.
+| Table | Holds |
+|---|---|
+| `aml_case` | one row per Case |
+| `case_analysis` | every analysis revision with its result and explanation |
+| `job` | batch jobs and their payloads |
+| `list_profile` | every captured Profile version with its SHA-256 ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)) |
+| `case_input` | the input files of each revision, for re-analysis after a source update |
+
+Configuration: `"Database": { "Provider": "Sqlite", "ConnectionString": "..." }`. SQLite-specific connection settings (foreign keys, busy timeout) stay in `SqliteDatabase`.
 
 ## Writing rules
 
@@ -103,4 +108,4 @@ DDL is not in the catalog; it stays in versioned DbUp scripts under `Scripts/<Pr
 
 ## Repository contract tests
 
-`tests/Aml.Tests/Persistence/` verifies repository behaviour: round-trip, idempotency keys, exclusive job claim, and late revisions not overwriting a newer effective result. It runs on SQLite now. Replacing the database means running the same suite against SQL Server or Oracle (Testcontainers); passing it is the acceptance criterion.
+`tests/Aml.Tests/Persistence/` verifies repository behaviour: round-trip, idempotency keys, exclusive job claim, and late revisions not overwriting a newer effective result. It runs on SQLite. Replacing the database means running the same suite against SQL Server or Oracle (Testcontainers); passing it is the acceptance criterion.

@@ -204,6 +204,40 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 
 | ID | Base | Change | Rule | Expected |
 |---|---|---|---|---|
+| AUG-01-01 | GC-01 | customer DOB 1985 → 1972 (18 when named chairman in 1990) | `IMPOSSIBLE_ROLE_AT_REPORTED_EVENT` | fires, REVIEW (not NO_MATCH); Case IN_REVIEW |
+| AUG-01-02 | GC-01 | customer DOB 1985 → 1977/3/18 (13 as chairman, 14 as general manager) | `MinimumRoleAge` boundary | chairman NO_MATCH; general manager no conflict, row 6 REVIEW; Case IN_REVIEW |
+| AUG-01-03 | GC-01 | customer DOB 1985 → 1960 | plausible age | no hard conflict, row 6 REVIEW on both Profiles |
+| AUG-01-04 | GC-01 | chairman from 1990 (year only) | `SOURCE_QUALITY_DOWNGRADE` | REVIEW; the other Profile stays NO_MATCH |
+| AUG-02-01 | GC-02 | Profile DOB 1975/9 | month-precision DOB agreement | PARTIAL, MEDIUM support, row 4 PROBABLE_MATCH, still no direct identifier |
+| AUG-02-02 | GC-02 | Profile DOB 1980 | `DOB_CONFLICT` | row 1 REVIEW, not FULL_DOB_CONFLICT, no hard conflict |
+| AUG-02-03 | GC-02 | news states 林美玲（49歲） | stated age compatible | `AGE_COMPATIBLE_AT_REPORT`, neutral, row 6 unchanged |
+| AUG-02-04 | GC-02 | news states 林美玲（30歲） | `AGE_DIFFERENCE_AT_REPORT` | soft conflict, row 1 REVIEW, never NO_MATCH |
+| AUG-02-05 | GC-02 | news 分案偵辦 → 起訴 | legal stage | INDICTED; `amlRelevance` stays UNCERTAIN |
+| AUG-02-06 | GC-02 | keyword Money Laundering added | keyword risk category | `MONEY_LAUNDERING` added to risk categories |
+| AUG-02-07 | GC-02 | SIP subcategory Fraud → Gambling | `UNMAPPED_CATEGORY` | UNKNOWN, `SOURCE_CONDITION_UNKNOWN`, REVIEW; relevance checks stay open |
+| AUG-02-08 | GC-02 | Profile names 林美齡 / Lin Mei-Lin | near name | NAME PARTIAL `NOT_IDENTICAL_AFTER_NORMALIZATION`, row 6 REVIEW |
+| AUG-02-09 | GC-02 | news: 法院一審判處林美玲有期徒刑 | judgment naming the person | legal stage CONVICTED |
+| AUG-02-10 | GC-02 | news: indicted, a co-defendant sentenced | judgment attribution | INDICTED; the co-defendant's sentence is not the subject's |
+| AUG-02-11 | GC-02 | news states 林美玲（四十九歲） | Chinese-numeral stated age | `AGE_COMPATIBLE_AT_REPORT` |
+| AUG-02-12 | GC-02 | customer DOB written 1975年9月2日 | unparseable value | `UNPARSEABLE:出生日期`, DOB SUBJECT_MISSING |
+| AUG-02-13 | GC-02 | category Adverse Media, no keywords, news on drunk driving | Article 22 ② | UNRELATED, set aside, NOT_ON_LIST; identity unchanged |
+| AUG-02-14 | GC-02 | news adds 酒駕 to the fraud report | predicate offence | stays UNCERTAIN |
+| AUG-03-01 | GC-03 | Profile category → Politically Exposed Person (both sides Vietnamese) | Article 22 ① | ON_LIST presumption, identity unchanged |
+| AUG-03-02 | GC-03 | as AUG-03-01, customer nationality removed | Article 22 ① nationality missing | no recommendation, `CONFIRM_NATIONALITY` pending |
+| AUG-03-03 | GC-03 | Profile category → Politically Exposed Person / Former PEP | former PEP | `FORMER_PEP`, ON_LIST presumption kept |
+| AUG-03-04 | GC-03 | as AUG-03-01, customer nationality → Taiwan | Article 22 ① not applicable | nationality conflict, row 5 REVIEW, no recommendation, no `CONFIRM_NATIONALITY` |
+| AUG-03-05 | GC-03 | as AUG-03-01, Profile DOB removed | PEP identity check | `IDENTITY_CHECK` pending |
+| AUG-03-06 | GC-03 | Profile category → Relative or Close Associate | RCA | `RCA_UNCONFIRMED`, REVIEW, no presumption |
+| AUG-03-07 | GC-03 | Profile category → Sanctions Lists, active named measure | sanction measure | Sanction HIT with program and jurisdiction, REVIEW, HIGH priority |
+| AUG-03-08 | GC-03 | as AUG-03-07, measure status Delisted | `SANCTION_MEASURE_NOT_CONFIRMED` | UNKNOWN, `SOURCE_CONDITION_UNKNOWN`, REVIEW |
+| AUG-03-09 | GC-03 | wanted list status Removed | inactive official list | OTHER_OFFICIAL_LIST, legal stage not WANTED |
+| AUG-03-10 | GC-03 | address block country Taiwan → Viet Nam | `FIELD_CONFLICT` | finding recorded; field and text both kept |
+| AUG-03-11 | GC-03 | candidate row PEP flag 是, 黑名單 and 負面新聞 否 | flags first | PEP HIT by FLAG with `FLAG_CATEGORY_CONFLICT`; NO gives NOT_HIT; ① ON_LIST |
+| AUG-03-12 | GC-03 | every flag 否 | explicit NO | all NOT_HIT, NOT_APPLICABLE |
+| AUG-03-13 | GC-03 | PEP flag 待確認 | `FLAG_UNPARSEABLE` | UNKNOWN |
+| AUG-03-14 | GC-03 | 黑名單 flag 是 | blacklist type from source fields | OFFICIAL_WANTED_LIST, WANTED |
+| AUG-03-15 | GC-03 | customer and Profile supplied as HTML pages | HTML reader | same result as the export; raw pages hashed |
+| AUG-03-16 | GC-03 | case table as HTML with flag checkboxes | checkbox flags | PEP HIT by FLAG; unchecked Is RCA? is NO |
 | AUG-11-01 | GC-11 | Profile ID table with the customer's national ID | document agreement | UNIQUE support, row 2 PROBABLE_MATCH |
 | AUG-11-02 | GC-11 | Profile national ID with another number | `DOCUMENT_IDENTITY_CONFLICT` | row 1 REVIEW |
 | AUG-11-03 | GC-11 | Profile passport only | document not comparable | UNCERTAIN, row 4 blocked, row 5 REVIEW |
@@ -219,38 +253,4 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-12-02 | GC-12 | subject employer = Profile employer, undated | employment without period | UNCERTAIN, row 6 |
 | AUG-12-03 | GC-12 | Profile record type Entity | `NON_PERSON_SUBJECT_REVIEW` | REVIEW |
 | AUG-12-04 | GC-12 | Profile 其他識別碼 with the related party's reference number | OTHER_IDENTIFIER | LOW support, never DOCUMENT, row 5 REVIEW |
-| AUG-03-01 | GC-03 | Profile category → Politically Exposed Person (both sides Vietnamese) | Article 22 ① | ON_LIST presumption, identity unchanged |
-| AUG-03-02 | GC-03 | as AUG-03-01, customer nationality removed | Article 22 ① nationality missing | no recommendation, `CONFIRM_NATIONALITY` pending |
-| AUG-03-03 | GC-03 | Profile category → Politically Exposed Person / Former PEP | former PEP | `FORMER_PEP`, ON_LIST presumption kept |
-| AUG-03-04 | GC-03 | as AUG-03-01, customer nationality → Taiwan | Article 22 ① not applicable | nationality conflict, row 5 REVIEW, no recommendation, no `CONFIRM_NATIONALITY` |
-| AUG-03-05 | GC-03 | as AUG-03-01, Profile DOB removed | PEP identity check | `IDENTITY_CHECK` pending |
-| AUG-03-06 | GC-03 | Profile category → Relative or Close Associate | RCA | `RCA_UNCONFIRMED`, REVIEW, no presumption |
-| AUG-03-07 | GC-03 | Profile category → Sanctions Lists, active named measure | sanction measure | Sanction HIT with program and jurisdiction, REVIEW, HIGH priority |
-| AUG-03-08 | GC-03 | as AUG-03-07, measure status Delisted | `SANCTION_MEASURE_NOT_CONFIRMED` | UNKNOWN, `SOURCE_CONDITION_UNKNOWN`, REVIEW |
-| AUG-03-09 | GC-03 | wanted list status Removed | inactive official list | OTHER_OFFICIAL_LIST, legal stage not WANTED |
-| AUG-03-10 | GC-03 | address block country Taiwan → Viet Nam | `FIELD_CONFLICT` | finding recorded; field and text both kept |
-| AUG-01-01 | GC-01 | customer DOB 1985 → 1972 (18 when named chairman in 1990) | `IMPOSSIBLE_ROLE_AT_REPORTED_EVENT` | fires, REVIEW (not NO_MATCH); Case IN_REVIEW |
-| AUG-01-02 | GC-01 | customer DOB 1985 → 1977/3/18 (13 as chairman, 14 as general manager) | `MinimumRoleAge` boundary | chairman NO_MATCH; general manager no conflict, row 6 REVIEW; Case IN_REVIEW |
-| AUG-01-03 | GC-01 | customer DOB 1985 → 1960 | plausible age | no hard conflict, row 6 REVIEW on both Profiles |
-| AUG-02-01 | GC-02 | Profile DOB 1975/9 | month-precision DOB agreement | PARTIAL, MEDIUM support, row 4 PROBABLE_MATCH, still no direct identifier |
-| AUG-02-02 | GC-02 | Profile DOB 1980 | `DOB_CONFLICT` | row 1 REVIEW, not FULL_DOB_CONFLICT, no hard conflict |
-| AUG-02-03 | GC-02 | news states 林美玲（49歲） | stated age compatible | `AGE_COMPATIBLE_AT_REPORT`, neutral, row 6 unchanged |
-| AUG-02-04 | GC-02 | news states 林美玲（30歲） | `AGE_DIFFERENCE_AT_REPORT` | soft conflict, row 1 REVIEW, never NO_MATCH |
-| AUG-02-05 | GC-02 | news 分案偵辦 → 起訴 | legal stage | INDICTED; `amlRelevance` stays UNCERTAIN |
-| AUG-02-06 | GC-02 | keyword Money Laundering added | keyword risk category | `MONEY_LAUNDERING` added to risk categories |
-| AUG-02-07 | GC-02 | SIP subcategory Fraud → Gambling | `UNMAPPED_CATEGORY` | UNKNOWN, `SOURCE_CONDITION_UNKNOWN`, REVIEW; relevance checks stay open |
-| AUG-02-08 | GC-02 | Profile names 林美齡 / Lin Mei-Lin | near name | NAME PARTIAL `NOT_IDENTICAL_AFTER_NORMALIZATION`, row 6 REVIEW |
-| AUG-02-09 | GC-02 | news: 法院一審判處林美玲有期徒刑 | judgment naming the person | legal stage CONVICTED |
-| AUG-02-10 | GC-02 | news: indicted, a co-defendant sentenced | judgment attribution | INDICTED; the co-defendant's sentence is not the subject's |
-| AUG-02-11 | GC-02 | news states 林美玲（四十九歲） | Chinese-numeral stated age | `AGE_COMPATIBLE_AT_REPORT` |
-| AUG-02-12 | GC-02 | customer DOB written 1975年9月2日 | unparseable value | `UNPARSEABLE:出生日期`, DOB SUBJECT_MISSING |
-| AUG-03-11 | GC-03 | candidate row PEP flag 是, 黑名單 and 負面新聞 否 | flags first | PEP HIT by FLAG with `FLAG_CATEGORY_CONFLICT`; NO gives NOT_HIT; ① ON_LIST |
-| AUG-03-12 | GC-03 | every flag 否 | explicit NO | all NOT_HIT, NOT_APPLICABLE |
-| AUG-03-13 | GC-03 | PEP flag 待確認 | `FLAG_UNPARSEABLE` | UNKNOWN |
-| AUG-03-14 | GC-03 | 黑名單 flag 是 | blacklist type from source fields | OFFICIAL_WANTED_LIST, WANTED |
-| AUG-03-15 | GC-03 | customer and Profile supplied as HTML pages | HTML reader | same result as the export; raw pages hashed |
-| AUG-03-16 | GC-03 | case table as HTML with flag checkboxes | checkbox flags | PEP HIT by FLAG; unchecked Is RCA? is NO |
-| AUG-02-13 | GC-02 | category Adverse Media, no keywords, news on drunk driving | Article 22 ② | UNRELATED, set aside, NOT_ON_LIST; identity unchanged |
-| AUG-02-14 | GC-02 | news adds 酒駕 to the fraud report | predicate offence | stays UNCERTAIN |
-| AUG-01-04 | GC-01 | chairman from 1990 (year only) | `SOURCE_QUALITY_DOWNGRADE` | REVIEW; the other Profile stays NO_MATCH |
 | AUG-12-05 | GC-12 | none | 2026-10-14 ruling | `ART22_RULING_20261014_MAY_APPLY`, recommendation NONE |

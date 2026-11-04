@@ -1,8 +1,8 @@
 # Disposition Recommendation
 
-> Module: Source Screening and Risk Assessment. Design baseline 2.0-PoC, 2026-11-03. Source: bank operating procedure Article 22 and the legacy name-screening rules ([ADR-0017](../adr/0017-article-22-disposition-policy.md)).
+> Module: Source Screening and Risk Assessment. Source: bank operating procedure Article 22 and the legacy name-screening rules ([ADR-0017](../adr/0017-article-22-disposition-policy.md)).
 
-## Three results, read separately
+## Two results, read separately
 
 | Result | Question | Produced by |
 |---|---|---|
@@ -31,14 +31,16 @@ Article 22 covers message scanning (AML SWIFT/RTGS) and name screening of indivi
 
 ## DispositionPolicy
 
-Evaluated after source-condition policies. Inputs are the IdentityComparison and the SourceConditionResults of one pair.
+`Screening/DispositionPolicy` is evaluated per pair after the source-condition policies. Its inputs are the IdentityComparison and the SourceConditionResults of one pair; its result (`recommendation`, reason codes, pending checks) is on every hit and in the explanation's conclusion, marked advisory.
 
 ### Default
 
 - identity MATCH with at least one remaining HIT condition → ON_LIST;
 - identity MATCH with no HIT condition left (all NOT_HIT or set aside) → NOT_ON_LIST;
-- identity NO_MATCH → NOT_ON_LIST;
+- identity NO_MATCH → NOT_ON_LIST, reason code `ART22_IDENTITY_NO_MATCH`;
 - otherwise no automatic recommendation; the pair stays REVIEW.
+
+Automatic MATCH is disabled in Phase 1, so the two MATCH rows never apply in Phase 1: a PROBABLE_MATCH pair that ① and ② do not resolve gets no recommendation.
 
 ### Article 22-1: foreign PEP presumption
 
@@ -58,41 +60,33 @@ Effect: ON_LIST, reason code `ART22_FOREIGN_PEP_PRESUMPTION`. The identity decis
 
 Exception: same name but a clearly different background (e.g. a known migrant worker) returns to normal review. The system cannot detect this from source data; it is out of scope.
 
-Only nationality values that map unambiguously to a country are used; another party's nationality is never applied to the subject. When manual confirmation is required, "confirm nationality" becomes a pending verification.
+A side is non-Taiwanese only when every nationality-labelled value maps to a country code other than TW; an unmapped value counts as ambiguous. Another party's nationality is never applied to the subject. When manual confirmation is required, `CONFIRM_NATIONALITY` is added to the pending checks.
+
+① is exercised by [AUG-03-01 and AUG-03-02](../plan/golden-cases.md#augmented-cases); GC-09 is in the validation backlog.
 
 ### Article 22-2: adverse news unrelated to ML/TF/PF
 
 - `amlRelevance` on an `ADVERSE_MEDIA` condition is `RELATED | UNRELATED | UNCERTAIN`, judged from the concrete conduct and jurisdiction, never from offence keywords alone.
 - A predicate offence counts as RELATED even if the source does not mention money laundering.
-- The system defaults `amlRelevance` to UNCERTAIN; it becomes RELATED or UNRELATED only when the source states the conduct and jurisdiction.
+- `amlRelevance` defaults to UNCERTAIN. The system extracts UNRELATED only when the attached news states a jurisdiction (dateline or `Country of Reported Allegation`) and a conduct from a controlled non-predicate list (酒駕, 公共危險, 妨害名譽 …), with no predicate conduct and no SIP crime category or risk keyword. RELATED is never extracted; it is the reviewer's judgement (GC-02 and GC-11 stay UNCERTAIN).
 - UNRELATED sets aside that `ADVERSE_MEDIA` condition only, reason code `ART22_ADVERSE_UNRELATED`. If no other HIT condition remains, the recommendation is NOT_ON_LIST; PEP, Sanction or other conditions on the same Profile still apply.
 - The relevance judgement says nothing about identity.
-
-### Built
-
-`Screening/DispositionPolicy` (2026-11-03) evaluates the default, ① and ② per pair; the result (`recommendation`, reason codes, pending checks) is on every hit and in the explanation's conclusion, marked advisory.
-
-- Identity MATCH does not occur in Phase 1, so a PROBABLE_MATCH pair without ① or ② gets no recommendation.
-- Nationality is foreign only when every nationality-labelled value maps to a country code other than TW; an unmapped value counts as ambiguous.
-- `amlRelevance` (2026-11-04): UNRELATED is extracted only when the attached news states a jurisdiction (dateline or `Country of Reported Allegation`) and a conduct from a controlled non-predicate list (酒駕, 公共危險, 妨害名譽 …) with no predicate conduct and no SIP crime category or risk keyword. RELATED is left to the reviewer, since GC-02 and GC-11 keep UNCERTAIN. ② is exercised by AUG-02-13 until GC-10 arrives.
-- The 2026-10-14 ruling is flagged, not applied: a row 6 pair with `NO_BILATERAL_DIRECT_IDENTIFIER` and no other recommendation records `ART22_RULING_20261014_MAY_APPLY` (GC-12 keeps recommendation NONE).
-- Pending checks follow the verification-record triggers below, plus `CONFIRM_NATIONALITY` when ① needs nationality confirmed.
-- ① is exercised by [AUG-03-01 and AUG-03-02](../plan/golden-cases.md#augmented-cases) until GC-09 arrives.
+- ② is exercised by [AUG-02-13](../plan/golden-cases.md#augmented-cases); GC-10 is in the validation backlog.
 
 ### Article 22-3: cannot be determined
 
-- Based on the identity decision: a REVIEW pair that no rule above resolves gets no recommendation.
-- The explanation lists the checks still pending (company registry, other channels) and never reports a pending check as done.
+- A REVIEW pair that no rule above resolves gets no recommendation, reason code `ART22_NOT_DETERMINED`.
+- The explanation lists the checks still pending, following the [verification-record](#verification-records) triggers plus `CONFIRM_NATIONALITY` from ①, and never reports a pending check as done.
 
 ## Direct identifiers and the 2026-10-14 ruling
 
 A direct identifier is a full date of birth (DAY precision) or a comparable document key. It counts only when the same identifier is present on both sides; a DOB on one side and a document on the other does not. The absence is recorded as `NO_BILATERAL_DIRECT_IDENTIFIER`.
 
-The bank ruled on 2026-10-14 that, outside Article 22 ①, a hit lacking a bilateral direct identifier with a match likelihood below 65% is not on list. This system has no likelihood ([ADR-0018](../adr/0018-legacy-ai-report-rules-not-adopted.md)); how the ruling applies to REVIEW and PROBABLE_MATCH pairs is an [open question](../plan/open-questions.md#article-22).
+The bank ruled on 2026-10-14 that, outside Article 22 ①, a hit lacking a bilateral direct identifier with a match likelihood below 65% is not on list. This system has no likelihood ([ADR-0018](../adr/0018-legacy-ai-report-rules-not-adopted.md)); how the ruling applies to REVIEW and PROBABLE_MATCH pairs is an [open question](../plan/open-questions.md#article-22). Until it is answered the ruling is flagged, not applied: a row 6 pair with `NO_BILATERAL_DIRECT_IDENTIFIER` and no other recommendation records `ART22_RULING_20261014_MAY_APPLY` and keeps no recommendation (GC-12).
 
 ## Verification records
 
-Verification records describe checks that confirm or weaken identity. The explanation lists the triggered checks as pending; a result is recorded only for a check actually performed.
+Verification records describe checks that confirm or weaken identity. The checks are performed outside the system; the explanation lists the triggered ones as pending and never invents a result.
 
 | Type | Triggered when | Results |
 |---|---|---|
@@ -102,9 +96,7 @@ Verification records describe checks that confirm or weaken identity. The explan
 | `JUDGMENT_PARTY_IDENTITY` | natural-person Profile with attached news or an ADVERSE_MEDIA condition | ESTABLISHED / NOT_ESTABLISHED / UNCONFIRMED / NOT_MENTIONED / NOT_APPLICABLE |
 | `OTHER` | any other check actually performed | VERIFIED / UNCONFIRMED / NOT_APPLICABLE |
 
-The system pre-fills NOT_APPLICABLE only for checks not triggered; an unmapped list type leaves the trigger open. Each record holds method, date, source, findings, attribution, comparison and reasoning.
-
-Rules:
+A check that is not triggered is not listed; an unmapped list type leaves the trigger open. A performed check is reported with method, date, source, findings, attribution, comparison and reasoning, under these rules:
 
 - Employment is compared for the same period; a past office against a current occupation with no same-period data is UNDETERMINED. Different employment or region is weak evidence and never alone a different person.
 - Identity checks look up the Profile person only (name plus office), not spouse or relatives.

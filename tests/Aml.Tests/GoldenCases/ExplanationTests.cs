@@ -135,4 +135,48 @@ public class ExplanationTests
         Assert.Equal("SOFT_DIFFERENCE", address.Difference);
         Assert.Contains("OFFICIAL_WANTED_LIST（法律階段 WANTED）", h.Summary.ExternalData, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void GC03_lists_what_a_document_or_full_dob_would_change()
+    {
+        var h = Hit("GC-03");
+
+        Assert.Equal(4, h.Stage3Row);
+        // A full DOB that agrees keeps row 4, so it is not listed.
+        Assert.Equal(
+            [
+                (EvidenceGroup.Document, Assumption.Agree, 2, ReasonCodes.UniqueIdentifierAgreement),
+                (EvidenceGroup.Document, Assumption.Conflict, 1, ReasonCodes.DocumentIdentityConflict),
+                (EvidenceGroup.DateOfBirth, Assumption.Conflict, 1, ReasonCodes.FullDobConflict),
+            ],
+            h.WouldChangeIf.Select(w => (w.Field, w.Assumption, w.Stage3Row, w.ReasonCode)));
+        Assert.Equal("若同類證件相符：身分判斷移至第三階段第 2 列 UNIQUE_IDENTIFIER_AGREEMENT", h.WouldChangeIf[0].Text);
+        Assert.All(h.WouldChangeIf, w => Assert.DoesNotContain("REVIEW", w.Text, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void GC12_names_the_profile_cites_sources_by_ref_and_lists_related_parties()
+    {
+        var h = Hit("GC-12");
+
+        Assert.Contains(h.ProfileName!, Row(h, "中文姓名").ProfileValue + Row(h, "英文姓名／拼音").ProfileValue, StringComparison.Ordinal);
+        Assert.Equal(["S1", "S2"], h.Sources.Select(s => s.Ref));
+        Assert.Contains("）[S1]判定為", h.Summary.ExternalData, StringComparison.Ordinal);
+        Assert.EndsWith("附加新聞有[S2]。", h.Summary.ExternalData, StringComparison.Ordinal);
+        Assert.Contains(h.RelatedParties, r => r is { Side: "PROFILE", Relation: "Employer" });
+    }
+
+    [Fact]
+    public void A_stated_age_keeps_codes_in_difference_and_the_reckoning_in_note()
+    {
+        var subject = new ScreenedSubject(SubjectRole.Customer, null, ["陳志明"], Gender.Male, new PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
+        var profile = new SourceProfile("DJ:1", Gender.Male, ["陳志明"], [new PartialDate(1980)], ["TW"], [],
+            [new SourceCategory("Special Interest Person (SIP)", "Fraud")], [], [], [], null, [], []);
+        var input = new CaseInput(subject, [new CandidateRow("陳志明", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
+            new Dictionary<string, NewsItem> { ["1"] = new("1", "DOC1", "標題", "某報", new PartialDate(2026, 3, 1), "陳志明（45歲）涉案。") }, []);
+        var dob = Row(Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input)).Hits), "出生日期");
+
+        Assert.Equal($"{ReasonCodes.BirthYearMatchFullDateNotComparable}；{ReasonCodes.AgeCompatibleAtReport}", dob.Difference);
+        Assert.Contains("推算 45 歲", dob.Note, StringComparison.Ordinal);
+    }
 }

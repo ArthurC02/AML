@@ -72,6 +72,67 @@
       ]]></sql>
     </statement>
 
+    <statement id="Case.InsertLineage" kind="Insert">
+      <description>What one revision was computed from.</description>
+      <sql><![CDATA[
+        INSERT INTO analysis_lineage (case_id, revision, schema_version, source_policy_version, model_version, code_catalog_version,
+                                      app_version, input_files_json, profiles_json)
+        VALUES (@caseId, @revision, @schemaVersion, @sourcePolicyVersion, @modelVersion, @codeCatalogVersion, @appVersion, @inputFilesJson, @profilesJson)
+      ]]></sql>
+    </statement>
+
+    <statement id="Case.GetLineage" kind="Select">
+      <description>Lineage of one revision.</description>
+      <sql><![CDATA[
+        SELECT l.input_files_json, l.profiles_json, l.source_policy_version, l.model_version, l.code_catalog_version, l.schema_version, l.app_version
+        FROM analysis_lineage l
+        WHERE l.case_id = @caseId AND l.revision = @revision
+      ]]></sql>
+    </statement>
+
+    <statement id="Case.InsertQuality" kind="Insert">
+      <description>Data quality of one revision.</description>
+      <sql><![CDATA[
+        INSERT INTO analysis_quality (case_id, revision, hits, comparison_cells, missing_cells, uncertain_cells, conflict_cells, not_evaluated, findings_json)
+        VALUES (@caseId, @revision, @hits, @comparisonCells, @missingCells, @uncertainCells, @conflictCells, @notEvaluated, @findingsJson)
+      ]]></sql>
+    </statement>
+
+    <statement id="Case.GetQuality" kind="Select">
+      <description>Data quality of one revision.</description>
+      <sql><![CDATA[
+        SELECT q.hits, q.comparison_cells, q.missing_cells, q.uncertain_cells, q.conflict_cells, q.not_evaluated, q.findings_json
+        FROM analysis_quality q
+        WHERE q.case_id = @caseId AND q.revision = @revision
+      ]]></sql>
+    </statement>
+
+    <statement id="Case.InsertHit" kind="Insert">
+      <description>Queryable facts of one hit.</description>
+      <sql><![CDATA[
+        INSERT INTO case_hit (case_id, revision, hit_number, profile_id, condition_types, legal_stage, identity_decision,
+                              stage3_row, hard_conflict, pair_result, review_priority)
+        VALUES (@caseId, @revision, @hitNumber, @profileId, @conditionTypes, @legalStage, @identityDecision,
+                @stage3Row, @hardConflict, @pairResult, @reviewPriority)
+      ]]></sql>
+    </statement>
+
+    <statement id="Case.InsertEvidence" kind="Insert">
+      <description>One evidence group of one hit.</description>
+      <sql><![CDATA[
+        INSERT INTO hit_evidence (case_id, revision, hit_number, evidence_group, direction, comparison_status, strength, detail_code)
+        VALUES (@caseId, @revision, @hitNumber, @evidenceGroup, @direction, @comparisonStatus, @strength, @detailCode)
+      ]]></sql>
+    </statement>
+
+    <statement id="Case.InsertReason" kind="Insert">
+      <description>One reason code of one hit, in emitted order.</description>
+      <sql><![CDATA[
+        INSERT INTO hit_reason (case_id, revision, hit_number, reason_kind, seq, reason_code)
+        VALUES (@caseId, @revision, @hitNumber, @reasonKind, @seq, @reasonCode)
+      ]]></sql>
+    </statement>
+
     <statement id="Case.InsertInput" kind="Insert">
       <description>Store the input files of one analysis revision.</description>
       <sql><![CDATA[

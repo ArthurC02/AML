@@ -20,6 +20,10 @@ The [operating architecture](system-overview.md#operating-architecture) separate
 - Runtime Query receives customer and related-party data and keeps it inside the bank: no external calls carry it, and results stay in the Case store.
 - No LLM or external AI service is used in either half.
 
+## Data classification
+
+The JSON Schemas of the stored records ([published schemas](data-contracts.md#published-schemas)) mark personal data with `x-sensitivity`: `PERSONAL` for names, dates of birth and death, addresses and summary text quoting them; `IDENTIFIER` for document, registration and reference numbers, masked or not, and any field that can hold one (the subject and Profile values of a comparison row). A consumer that passes data on, for example to a model, uses the marks to leave fields out.
+
 ## Stored inputs
 
 - The input files of every revision (`case_input`) and the `ANALYZE_CASE` job payloads are stored unmasked, so a later re-analysis can run on them; database access is restricted accordingly.

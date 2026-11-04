@@ -94,7 +94,7 @@ public static partial class Normalize
         var lev = pairs.Min(x => Similarity.Levenshtein(x.a, x.b));
         var threshold = best.Cjk ? NameSimilarityThresholdCjk : NameSimilarityThresholdLatin;
         return (ComparisonStatus.Partial, string.Create(CultureInfo.InvariantCulture,
-            $"NOT_IDENTICAL_AFTER_NORMALIZATION（Jaro-Winkler {jw:0.00}，Levenshtein {lev}，{(jw >= threshold ? "SIMILAR" : "DISSIMILAR")}）"));
+            $"{EvidenceDetails.NotIdenticalAfterNormalization}（Jaro-Winkler {jw:0.00}，Levenshtein {lev}，{(jw >= threshold ? "SIMILAR" : "DISSIMILAR")}）"));
     }
 
     // ponytail: placeholder thresholds, one per script, pending calibration from labelled cases (open question); they only
@@ -136,12 +136,46 @@ public static partial class Normalize
         var map = DataLines("hans-hant.txt").Select(l => l.EnumerateRunes().ToArray()).ToDictionary(r => r[0].Value, r => r[1].Value);
         foreach (var (k, v) in new Dictionary<char, char>
         {
-            ['鍾'] = '鐘', ['钟'] = '鐘', ['声'] = '聲', ['陈'] = '陳', ['张'] = '張', ['刘'] = '劉', ['杨'] = '楊',
-            ['黄'] = '黃', ['吴'] = '吳', ['赵'] = '趙', ['郑'] = '鄭', ['许'] = '許', ['邓'] = '鄧', ['冯'] = '馮',
-            ['韩'] = '韓', ['萧'] = '蕭', ['叶'] = '葉', ['苏'] = '蘇', ['卢'] = '盧', ['罗'] = '羅', ['谢'] = '謝',
-            ['钱'] = '錢', ['孙'] = '孫', ['马'] = '馬', ['龙'] = '龍', ['东'] = '東', ['国'] = '國', ['华'] = '華',
-            ['伟'] = '偉', ['丽'] = '麗', ['庄'] = '莊', ['荣'] = '榮', ['宁'] = '寧', ['台'] = '臺', ['阳'] = '陽',
-            ['贵'] = '貴', ['宝'] = '寶', ['凤'] = '鳳', ['兰'] = '蘭', ['颖'] = '穎',
+            ['鍾'] = '鐘',
+            ['钟'] = '鐘',
+            ['声'] = '聲',
+            ['陈'] = '陳',
+            ['张'] = '張',
+            ['刘'] = '劉',
+            ['杨'] = '楊',
+            ['黄'] = '黃',
+            ['吴'] = '吳',
+            ['赵'] = '趙',
+            ['郑'] = '鄭',
+            ['许'] = '許',
+            ['邓'] = '鄧',
+            ['冯'] = '馮',
+            ['韩'] = '韓',
+            ['萧'] = '蕭',
+            ['叶'] = '葉',
+            ['苏'] = '蘇',
+            ['卢'] = '盧',
+            ['罗'] = '羅',
+            ['谢'] = '謝',
+            ['钱'] = '錢',
+            ['孙'] = '孫',
+            ['马'] = '馬',
+            ['龙'] = '龍',
+            ['东'] = '東',
+            ['国'] = '國',
+            ['华'] = '華',
+            ['伟'] = '偉',
+            ['丽'] = '麗',
+            ['庄'] = '莊',
+            ['荣'] = '榮',
+            ['宁'] = '寧',
+            ['台'] = '臺',
+            ['阳'] = '陽',
+            ['贵'] = '貴',
+            ['宝'] = '寶',
+            ['凤'] = '鳳',
+            ['兰'] = '蘭',
+            ['颖'] = '穎',
         })
             map[k] = v;
         foreach (var c in "涂塗云雲余餘后後")
@@ -194,7 +228,11 @@ public static partial class Normalize
     // Counties merged into special municipalities: 2010-12-25 (新北, 臺中, 臺南, 高雄) and 2014-12-25 (桃園).
     private static readonly Dictionary<string, string> MergedCounties = new()
     {
-        ["臺北縣"] = "新北市", ["臺中縣"] = "臺中市", ["臺南縣"] = "臺南市", ["高雄縣"] = "高雄市", ["桃園縣"] = "桃園市",
+        ["臺北縣"] = "新北市",
+        ["臺中縣"] = "臺中市",
+        ["臺南縣"] = "臺南市",
+        ["高雄縣"] = "高雄市",
+        ["桃園縣"] = "桃園市",
     };
 
     [GeneratedRegex("(?<county>[台臺]北縣|[台臺]中縣|[台臺]南縣|高雄縣|桃園縣)(?<town>\\p{IsCJKUnifiedIdeographs}{1,3}?)[市鄉鎮]")]

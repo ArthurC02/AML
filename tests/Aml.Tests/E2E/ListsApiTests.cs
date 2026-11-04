@@ -73,6 +73,7 @@ public sealed class ListsApiTests(ApiHost api) : IClassFixture<ApiHost>
 
         var missing = await http.GetAsync("/api/lists/candidates?mode=IndexSearch", ct);
         Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+        Assert.Equal("/api/codes/INVALID_REQUEST", (await missing.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("type").GetString());
 
         // Wiring: an HTML page and its .txt export hash to one Profile version; merges list refused merges apart.
         await http.PostAsync("/api/lists/profiles", Files(("名單資料_123.txt", "Profile_ID:\t123\nGender:\tMale\n")), ct);

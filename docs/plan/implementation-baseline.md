@@ -36,29 +36,31 @@ AML/
 ├── THIRD-PARTY-NOTICES.md        # attribution for the embedded third-party data
 ├── src/
 │   ├── Aml.Core/                 # zero dependencies
-│   │   ├── Shared/               # Evidence, reason codes, findings, enums
+│   │   ├── Shared/               # Evidence, reason codes, evidence details, findings, sensitivity marks, enums
+│   │   ├── Codes/                # CodeCatalog: every emitted code with its meaning
 │   │   ├── Subjects/             # screened subject, source Profile, documents, roles
 │   │   ├── Normalization/        # names, romanization, similarity, dates, Taiwan addresses
 │   │   │   ├── Countries.cs      # ISO 3166-1 codes and common English / Chinese names, Taiwan aliases
 │   │   │   └── Data/*.txt        # embedded reference tables (see Third-party data)
-│   │   ├── Identity/             # evidence groups, HardConflictGate, IdentityDecisionPolicy, Fellegi-Sunter shadow
+│   │   ├── Identity/             # evidence groups, HardConflictGate, IdentityDecisionPolicy (with Contrast), Fellegi-Sunter shadow
 │   │   ├── Screening/            # source-condition policies, combination matrix, DispositionPolicy, risk scoring
 │   │   ├── Retrieval/            # ProfileIndex (alias, BM25, n-gram, reading-key routes), ProfileMerge
-│   │   ├── Cases/                # CaseAnalyzer, Case records, revision changes
+│   │   ├── Cases/                # CaseAnalyzer, Case records, revision changes, lineage, quality, CaseJson (JSON form and schemas)
 │   │   ├── Explanation/          # ExplanationBuilder
 │   │   └── Ports/                # ICaseStore, IJobStore, IListStore
 │   ├── Aml.Services/             # orchestration
-│   │   ├── CaseService.cs        # sole writer of Case state
+│   │   ├── CaseService.cs        # sole writer of Case state; builds each revision's lineage and quality
+│   │   ├── ProfileFiles.cs       # Profile file names and the list content hash
 │   │   ├── BatchService.cs       # job-table batches
 │   │   └── ListService.cs        # list database, retrieval, merges, REANALYZE_CASE jobs on Profile change
 │   ├── Aml.Infra/                # implements Core/Ports
 │   │   ├── Persistence/          # see feature/persistence.md
-│   │   ├── Txt/                  # .txt export reader (UTF-8, CP950 fallback)
+│   │   ├── Txt/                  # .txt export reader (UTF-8, CP950 fallback), CaseInputException
 │   │   ├── Html/                 # HTML page to export layout (AngleSharp)
 │   │   └── Jobs/                 # JobStore
 │   └── Aml.Api/                  # composition root
 │       ├── Program.cs            # DI, OpenAPI, OpenTelemetry, health check, endpoint registration
-│       ├── Endpoints/            # minimal API endpoints per resource (cases, batches, lists) and upload reading
+│       ├── Endpoints/            # minimal API endpoints per resource (cases, batches, lists, codes), upload reading, problems
 │       └── Workers/JobWorker.cs  # BackgroundService
 └── tests/
     └── Aml.Tests/
@@ -79,16 +81,17 @@ Rules:
 
 Implementation notes:
 
-- Api uses minimal APIs, one module per resource in `Endpoints/` (`MapCases`, `MapBatches`, `MapLists`) with the shared upload reading in `Uploads`, registered from `Program.cs`; the endpoints are listed in [REST resources](../feature/pipeline-api-and-batch.md#rest-resources), plus `GET /health`. Uploads are multipart `.txt`, `.html` or `.htm` files, read as raw bytes: an export is strict UTF-8, else CP950 (Big5) with an `ENCODING_FALLBACK` finding; an HTML page's encoding is decided by AngleSharp (BOM, then meta charset). A Case keeps the SHA-256 of each uploaded file's bytes as its source hash.
+- Api uses minimal APIs, one module per resource in `Endpoints/` (`MapCases`, `MapBatches`, `MapLists`, `MapCodes`) with the shared upload reading in `Uploads` and the RFC 9457 responses in `Problems`, registered from `Program.cs`; errors are problems ([errors](../feature/pipeline-api-and-batch.md#errors)); the endpoints are listed in [REST resources](../feature/pipeline-api-and-batch.md#rest-resources), plus `GET /health`. Uploads are multipart `.txt`, `.html` or `.htm` files, read as raw bytes: an export is strict UTF-8, else CP950 (Big5) with an `ENCODING_FALLBACK` finding; an HTML page's encoding is decided by AngleSharp (BOM, then meta charset). A Case keeps the SHA-256 of each uploaded file's bytes as its source hash.
 - The explanation is built in Core (`Explanation/ExplanationBuilder`) with each revision and stored beside the result; document and reference numbers are masked (first 3 and last 2 characters). The five-part summary is in Traditional Chinese for reviewers. Each hit lists its sources: Profile citations (`PROFILE_RECORD`, with publication and retrieval dates and URL) and attached news (`LEGAL_STAGE` when it set the legal stage of an ADVERSE_MEDIA condition).
 - No human workflow in the PoC ([ADR-0020](../adr/0020-identification-only.md)).
 - `POST /api/cases` analyzes synchronously; `POST /api/batches` queues items in the job table and `Workers/JobWorker` runs them through `BatchService` ([durable batch execution](../feature/pipeline-api-and-batch.md#durable-batch-execution)). The job store is `Infra/Jobs/JobStore` behind `Core/Ports/IJobStore` (named "Store" because CA1711 rejects a "Queue" suffix).
 - Each revision records source condition status and basis, pair result, review priority, pair reason codes and the changes from the previous revision; a missing Profile makes the revision PARTIAL and keeps the previous effective result.
-- Persistence is SQLite-only (`SqliteDatabase`, `SqlCatalog`, `CaseStore`); `IDbConnectionFactory` and `ISqlDialect` are extracted when a second provider is chosen.
+- Persistence is SQLite-only (`SqliteDatabase`, `SqlCatalog`, `CaseStore`) with one schema script, `0001_schema.sql`; the PoC database is rebuilt when the schema or stored format changes ([ADR-0023](../adr/0023-ai-ready-data.md)). `IDbConnectionFactory` and `ISqlDialect` are extracted when a second provider is chosen.
+- Stored results are Core records, serialized with `CaseJson.Options` and read back into their types; `CaseJson.Schema` generates their JSON Schemas (`GET /api/schemas/{name}`) with field descriptions and `x-sensitivity`. Each revision also stores its lineage, data quality and hit facts ([lineage and quality](../feature/pipeline-api-and-batch.md#lineage-and-quality)).
 - `GET /health` runs `System.Ping`. OpenTelemetry traces, metrics and logs are on (ASP.NET Core plus the `Aml` source and meter: `aml.analyses`, `aml.analysis.duration`, `aml.job.attempts`); OTLP export starts only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set.
 - The list database (`list_profile`) and each revision's input files (`case_input`, decoded text) are stored for retrieval and re-analysis ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)). A Profile version is hashed on its export text, so an HTML page and its `.txt` export are one version. `POST /api/lists/profiles` stores a changed Profile as a new version and, in the same transaction, queues a `REANALYZE_CASE` job for every Case whose latest input holds a different version of it; the jobs run through `BatchService` and are tracked as one batch (`GET /api/batches/{batchId}`).
 - Authentication is not wired (identity provider pending).
-- Golden Case metrics are computed by `tests/Aml.Tests/GoldenCases/GoldenMetricsTests` ([results](poc-delivery-plan.md#golden-case-results)).
+- Golden Case metrics are computed by `tests/Aml.Tests/GoldenCases/GoldenMetricsTests` ([results](poc-delivery-plan.md#golden-case-results)); its comparison-cell rates come from `AnalysisQuality.Of`, the function each revision's quality is stored with.
 
 ## Testing
 

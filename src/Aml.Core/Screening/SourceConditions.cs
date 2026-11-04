@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.RegularExpressions;
 using Aml.Core.Subjects;
 
@@ -16,17 +17,17 @@ public enum AmlRelevance { Uncertain, Related, Unrelated }
 
 /// <summary>SourceConditionResult (data-contracts.md). Independent of identity.</summary>
 public sealed record SourceCondition(
-    ListType Type,
-    ConditionStatus Status,
-    ConditionBasis Basis,
-    IReadOnlyList<string> RiskCategories,
-    LegalStage LegalStage,
-    AmlRelevance? AmlRelevance,
-    string PolicyVersion,
-    IReadOnlyList<string> ReasonCodes,
-    string? PepType = null,
-    string? Program = null,
-    string? Jurisdiction = null);
+    [property: Description("名單類型")] ListType Type,
+    [property: Description("條件狀態：HIT、NOT_HIT 或 UNKNOWN")] ConditionStatus Status,
+    [property: Description("依據：旗標、類別對應或未對應")] ConditionBasis Basis,
+    [property: Description("風險類別，見 /api/codes")] IReadOnlyList<string> RiskCategories,
+    [property: Description("法律階段")] LegalStage LegalStage,
+    [property: Description("與洗錢資恐的關聯")] AmlRelevance? AmlRelevance,
+    [property: Description("名單條件規則版本")] string PolicyVersion,
+    [property: Description("條件的理由碼")] IReadOnlyList<string> ReasonCodes,
+    [property: Description("PEP 子類型，見 /api/codes")] string? PepType = null,
+    [property: Description("制裁計畫")] string? Program = null,
+    [property: Description("管轄地")] string? Jurisdiction = null);
 
 /// <summary>List-type determination (ADR-0016): a flag with a value decides its types; a mapped category whose flag is MISSING keeps its category condition.</summary>
 public static partial class SourceConditions
@@ -37,18 +38,34 @@ public static partial class SourceConditions
 
     private static readonly Dictionary<string, string> SipRiskCategories = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["Financial Crime"] = "FINANCIAL_CRIME", ["Tax Crime"] = "TAX_CRIME", ["Trafficking"] = "TRAFFICKING",
-        ["Human Trafficking"] = "HUMAN_TRAFFICKING", ["Narcotics"] = "DRUG_TRAFFICKING", ["Drug Trafficking"] = "DRUG_TRAFFICKING",
-        ["Organised Crime"] = "ORGANISED_CRIME", ["Terror"] = "TERRORISM", ["Terrorism"] = "TERRORISM",
-        ["Corruption"] = "CORRUPTION", ["Bribery & Corruption"] = "BRIBERY", ["Money Laundering"] = "MONEY_LAUNDERING",
-        ["Fraud"] = "FRAUD", ["War Crimes"] = "WAR_CRIMES", ["Cybercrime"] = "CYBERCRIME",
-        ["Environmental Crime"] = "ENVIRONMENTAL_CRIME", ["Corporate Crime"] = "CORPORATE_CRIME",
+        ["Financial Crime"] = "FINANCIAL_CRIME",
+        ["Tax Crime"] = "TAX_CRIME",
+        ["Trafficking"] = "TRAFFICKING",
+        ["Human Trafficking"] = "HUMAN_TRAFFICKING",
+        ["Narcotics"] = "DRUG_TRAFFICKING",
+        ["Drug Trafficking"] = "DRUG_TRAFFICKING",
+        ["Organised Crime"] = "ORGANISED_CRIME",
+        ["Terror"] = "TERRORISM",
+        ["Terrorism"] = "TERRORISM",
+        ["Corruption"] = "CORRUPTION",
+        ["Bribery & Corruption"] = "BRIBERY",
+        ["Money Laundering"] = "MONEY_LAUNDERING",
+        ["Fraud"] = "FRAUD",
+        ["War Crimes"] = "WAR_CRIMES",
+        ["Cybercrime"] = "CYBERCRIME",
+        ["Environmental Crime"] = "ENVIRONMENTAL_CRIME",
+        ["Corporate Crime"] = "CORPORATE_CRIME",
     };
 
     private static readonly Dictionary<string, string> KeywordRiskCategories = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["Fraud"] = "FRAUD", ["Tax Evasion"] = "TAX_EVASION", ["Bribery"] = "BRIBERY", ["Corruption"] = "CORRUPTION",
-        ["Forgery"] = "FORGERY", ["Breach of Trust"] = "BREACH_OF_TRUST", ["Money Laundering"] = "MONEY_LAUNDERING",
+        ["Fraud"] = "FRAUD",
+        ["Tax Evasion"] = "TAX_EVASION",
+        ["Bribery"] = "BRIBERY",
+        ["Corruption"] = "CORRUPTION",
+        ["Forgery"] = "FORGERY",
+        ["Breach of Trust"] = "BREACH_OF_TRUST",
+        ["Money Laundering"] = "MONEY_LAUNDERING",
     };
 
     public const string FlagUnparseable = "FLAG_UNPARSEABLE";
@@ -56,6 +73,10 @@ public static partial class SourceConditions
     public const string BlacklistTypeUndecided = "BLACKLIST_TYPE_UNDECIDED";
     public const string FlagIsRca = "IS_RCA_FLAG";
     public const string RcaOutsideStatutoryScope = "RCA_OUTSIDE_STATUTORY_SCOPE";
+    public const string PepFamily = "PEP_FAMILY";
+    public const string PepCloseAssociate = "PEP_CLOSE_ASSOCIATE";
+    public const string RcaUnconfirmed = "RCA_UNCONFIRMED";
+    public const string FormerPep = "FORMER_PEP";
 
     /// <summary>
     /// A flag with a value (NO counts) decides its own list types; a mapped category whose flag is MISSING keeps its category
@@ -131,7 +152,9 @@ public static partial class SourceConditions
     {
         ListType.AdverseMedia => Hit(t) with
         {
-            RiskCategories = risks, LegalStage = LegalStageFromNews(news, profile.Names), AmlRelevance = Relevance(risks, news, profile),
+            RiskCategories = risks,
+            LegalStage = LegalStageFromNews(news, profile.Names),
+            AmlRelevance = Relevance(risks, news, profile),
         },
         ListType.OtherOfficialList or ListType.OfficialWantedList when IsActive(profile.OfficialList, "Wanted", "通緝") =>
             Hit(ListType.OfficialWantedList) with { LegalStage = LegalStage.Wanted },
@@ -139,7 +162,8 @@ public static partial class SourceConditions
         ListType.Sanction => Sanction(profile),
         ListType.Pep or ListType.Rca => Hit(t) with
         {
-            PepType = PepType(profile, t), ReasonCodes = OutsideStatutoryScope(profile) ? [RcaOutsideStatutoryScope] : [],
+            PepType = PepType(profile, t),
+            ReasonCodes = OutsideStatutoryScope(profile) ? [RcaOutsideStatutoryScope] : [],
         },
         ListType.Unknown => new SourceCondition(t, ConditionStatus.Unknown, ConditionBasis.Unmapped, [], LegalStage.Unknown, null, PolicyVersion, []),
         _ => Hit(t),
@@ -178,10 +202,10 @@ public static partial class SourceConditions
     private static string? PepType(SourceProfile p, ListType type)
     {
         bool Says(params string[] words) => Subcategories(p, type).Any(s => words.Any(w => s.Contains(w, StringComparison.OrdinalIgnoreCase)));
-        if (!OutsideStatutoryScope(p) && Says("Family", "Relative", "Spouse", "Child", "Parent", "Sibling")) return "PEP_FAMILY";
-        if (Says("Associate")) return "PEP_CLOSE_ASSOCIATE";
-        if (type == ListType.Rca) return "RCA_UNCONFIRMED";
-        return IsFormerPep(p, ownRoles: true) ? "FORMER_PEP" : null;
+        if (!OutsideStatutoryScope(p) && Says("Family", "Relative", "Spouse", "Child", "Parent", "Sibling")) return PepFamily;
+        if (Says("Associate")) return PepCloseAssociate;
+        if (type == ListType.Rca) return RcaUnconfirmed;
+        return IsFormerPep(p, ownRoles: true) ? FormerPep : null;
     }
 
     private static IEnumerable<string> Subcategories(SourceProfile p, ListType type)

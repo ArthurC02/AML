@@ -12,10 +12,10 @@ internal static class ListsEndpoints
     {
         var lists = app.MapGroup("/api/lists").DisableAntiforgery();
 
-        lists.MapPost("/profiles", async Task<Results<Ok<ImportReport>, BadRequest<string>>> (IFormFileCollection files, ListService service, CancellationToken ct) =>
+        lists.MapPost("/profiles", async Task<Results<Ok<ImportReport>, ProblemHttpResult>> (IFormFileCollection files, ListService service, CancellationToken ct) =>
         {
             var (contents, error) = await ReadFilesAsync(files, ct);
-            return contents is null ? TypedResults.BadRequest(error) : TypedResults.Ok(await service.ImportAsync(contents, ct));
+            return contents is null ? error! : TypedResults.Ok(await service.ImportAsync(contents, ct));
         })
         .WithSummary("Capture Profiles into the list database; a changed Profile queues re-analysis of the Cases that used it")
         .WithDescription("Upload 名單資料_<id>.txt (or .html). An unchanged file keeps its version; a changed one becomes a new version, the old one is kept, and every Case whose latest input used it gets a queued re-analysis job (track it with GET /api/batches/{batchId}). A file whose name and Profile_ID differ, or one Profile in two formats, is rejected.");
@@ -26,7 +26,7 @@ internal static class ListsEndpoints
                 : TypedResults.NotFound())
         .WithSummary("Every captured version of one Profile, with its content hash");
 
-        lists.MapGet("/candidates", async Task<Results<Ok<IReadOnlyList<RetrievedCandidate>>, BadRequest<string>>> (
+        lists.MapGet("/candidates", async Task<Results<Ok<IReadOnlyList<RetrievedCandidate>>, ProblemHttpResult>> (
             RetrievalMode mode, string? name, string? profileId, string? caseId, int? top, ListService service, CancellationToken ct) =>
         {
             try
@@ -35,7 +35,7 @@ internal static class ListsEndpoints
             }
             catch (ArgumentException e)
             {
-                return TypedResults.BadRequest(e.Message);
+                return Problems.Of(Problems.InvalidRequest, e.Message, "INDEX_SEARCH needs name, DIRECT_REFERENCE profileId, CONTROLLED_SET and PREVIOUS_LINK caseId.");
             }
         })
         .WithSummary("Retrieve candidate Profiles: INDEX_SEARCH (name), DIRECT_REFERENCE (profileId), CONTROLLED_SET or PREVIOUS_LINK (caseId)")

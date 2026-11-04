@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Aml.Core.Identity;
 using Aml.Core.Screening;
 
@@ -8,7 +9,11 @@ public sealed record PairSnapshot(string ProfileKey, ScreeningAssessment PairRes
 
 public enum PairChangeKind { Added, Removed, ResultChanged, IdentityChanged, ReasonsChanged }
 
-public sealed record PairChange(string ProfileKey, PairChangeKind Kind, string? From, string? To);
+public sealed record PairChange(
+    [property: Description("名單鍵")] string ProfileKey,
+    [property: Description("變更種類")] PairChangeKind Kind,
+    [property: Description("變更前")] string? From,
+    [property: Description("變更後")] string? To);
 
 /// <summary>
 /// Re-adjudication (GC-08 capability): a new revision never silently rewrites the previous one; every difference is listed.

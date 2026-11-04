@@ -307,4 +307,15 @@ Every decision includes:
 - match policy version;
 - retrieval scope and limitations.
 
+Every code a decision or explanation emits is in the code catalog, served by `GET /api/codes` with its meaning and the section that defines it.
+
+### Contrastive explanation
+
+`IdentityDecisionPolicy.Contrast` answers "what would change the decision": for a document of the same type and issuing country, and for a full DOB, each not yet comparable on both sides, it assumes agreement and conflict in turn and re-runs the [stage 3 table](#stage-3-table) with every other piece of evidence fixed. An outcome on the current row is left out. For GC-03 (row 4): a document that agrees moves the pair to row 2 `UNIQUE_IDENTIFIER_AGREEMENT`, one that conflicts to row 1 `DOCUMENT_IDENTITY_CONFLICT`, and a full DOB that conflicts to row 1 `FULL_DOB_CONFLICT`; a full DOB that agrees keeps row 4 and is not listed.
+
+- It is empty for non-Person records, a pair with a hard conflict, rows 1 and 2, and a Profile whose DOBs are scattered (`PROFILE_MULTIPLE_DOB`).
+- It names the row, the identity decision and the code only, never the external result: Phase 1 shows every PROBABLE_MATCH as REVIEW.
+- Only stage 3 is re-run. A full DOB would in reality also reach the stage 1 checks (age at a dated role), which are not re-run.
+- The wording of each line (`若同類證件相符：身分判斷移至第三階段第 2 列 …`) is on the business confirmation list; changing it touches the text only, not the rule.
+
 A name similarity score is shown only for names located in a single source field. A full score means the names are identical after normalization; a missing score does not mean the source has no name. The score is never converted into a likelihood.

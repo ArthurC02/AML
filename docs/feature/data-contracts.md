@@ -2,6 +2,15 @@
 
 > Shared by all modules.
 
+## Published schemas
+
+The stored analysis result and explanation, and each revision's lineage and quality, are Core records serialized with `CaseJson.Options` (camelCase, enums as UPPER_SNAKE strings, nulls left out). Their JSON Schemas are generated from the records with the .NET `JsonSchemaExporter` and served by `GET /api/schemas/{name}`; they are the reference for field names and meanings, and this page describes concepts only.
+
+- Every field carries a description, taken from `[Description]` on the record.
+- `schemaVersion` is in every stored result and explanation and in the schema `$id` (`aml:CaseAnalysis:v1`). A changed record raises it, and the PoC database is rebuilt ([persistence](persistence.md#structure)).
+- Personal data is marked `x-sensitivity`: `PERSONAL` for names, dates of birth and death, addresses and text quoting them; `IDENTIFIER` for document and identifier numbers, masked or not. A field that can hold either, such as the subject and Profile values of a comparison row, carries `IDENTIFIER`. An unmarked field is public ([security and privacy](security-and-privacy.md#data-classification)).
+- Codes in any field are explained by `GET /api/codes` ([code catalog](pipeline-api-and-batch.md#rest-resources)).
+
 ## Core identifiers
 
 - `caseId`

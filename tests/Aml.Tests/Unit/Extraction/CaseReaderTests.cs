@@ -126,8 +126,19 @@ public class CaseReaderTests
     [Fact]
     public void Missing_candidate_section_is_an_input_error()
     {
-        var e = Assert.ThrowsAny<Exception>(() => Read("GC-11", [(Case, "疑似符合的名單資料\n", "")]));
-        Assert.True(TxtCaseReader.IsInputError(e));
+        var e = Assert.Throws<CaseInputException>(() => Read("GC-11", [(Case, "疑似符合的名單資料\n", "")]));
+        Assert.Equal(("疑似符合的名單資料", CaseInputException.MissingSection), (e.Table, e.Problem));
+    }
+
+    [Fact]
+    public void A_file_the_reader_cannot_parse_is_malformed_against_that_file_with_a_fixed_message()
+    {
+        // An address block whose value is the next block's heading: the country lookup gets a negative range.
+        var contact = Encoding.UTF8.GetBytes("戶籍(國家)\n地址\n通訊(國家)\n");
+        var e = Assert.Throws<CaseInputException>(() => Read("GC-11", [], new Dictionary<string, byte[]> { ["客戶-聯絡資料.txt"] = contact }));
+        Assert.Equal(("客戶-聯絡資料.txt", CaseInputException.Malformed), (e.File, e.Problem));
+        Assert.Equal("客戶-聯絡資料.txt is not in the export layout.", e.Message);
+        Assert.NotNull(e.InnerException);
     }
 
     // Candidate table header.
@@ -209,13 +220,24 @@ public class CaseReaderTests
 
     // Input inventory.
 
+    [Theory]
+    [InlineData(null, "", "案件資訊.txt", CaseInputException.Missing)]
+    [InlineData(null, "案件資訊.txt|案件資訊_2.txt", "案件資訊.txt", CaseInputException.Duplicate)]
+    [InlineData(null, "案件資訊.txt", null, null)]                                     // category not read yet
+    [InlineData("客戶", "案件資訊.txt|名單資料_1.txt", "客戶-背景資料.txt", CaseInputException.Missing)]
+    [InlineData("客戶", "案件資訊.txt|客戶-背景資料.txt", null, null)]                    // a missing Profile file is not a problem
+    [InlineData("帳戶持有人的法定代理人", "案件資訊.txt|客戶-背景資料.txt", "客戶-關聯人背景資料.txt", CaseInputException.Missing)]
+    [InlineData("帳戶持有人的法定代理人", "案件資訊.txt|客戶-關聯人背景資料.txt", null, null)] // GC-12 has no 客戶-背景資料
+    public void Required_files_are_one_case_file_and_the_subjects_own_file(string? category, string names, string? file, string? problem) =>
+        Assert.Equal(file is null ? null : (file, problem!), TxtCaseReader.RequiredFileProblem(names.Split('|', StringSplitOptions.RemoveEmptyEntries), category));
+
     [Fact]
     public void Html_and_txt_of_the_same_export_file_are_rejected()
     {
         var files = Directory.GetFiles(GoldenCaseTests.Folder("GC-11")).ToDictionary(f => Path.GetFileName(f), File.ReadAllBytes);
         files["名單資料_90000011.html"] = Encoding.UTF8.GetBytes("<table><tr><th>Profile_ID</th><td>90000011</td></tr></table>");
-        var e = Assert.Throws<InvalidOperationException>(() => TxtCaseReader.ReadFiles(files));
-        Assert.True(TxtCaseReader.IsInputError(e));
+        var e = Assert.Throws<CaseInputException>(() => TxtCaseReader.ReadFiles(files));
+        Assert.Equal(("名單資料_90000011.txt", CaseInputException.Duplicate), (e.File, e.Problem));
     }
 
     // HTML pages.

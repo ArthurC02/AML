@@ -1,3 +1,4 @@
+using System.ComponentModel;
 namespace Aml.Core.Shared;
 
 public enum EvidenceGroup { Name, Gender, Nationality, DateOfBirth, Document, OtherIdentifier, Employment, Relationship, CompanyAssociation, Address, StatedAge, TemporalRole, EntityIdentifier }
@@ -8,8 +9,15 @@ public enum ComparisonStatus { Exact, Partial, Conflict, Uncertain, SubjectMissi
 
 public enum Strength { None, Low, Medium, High, Unique }
 
-public sealed record Evidence(EvidenceGroup Group, Direction Direction, ComparisonStatus Status, Strength Strength = Strength.None, string? Detail = null, string? Note = null)
+public sealed record Evidence(
+    [property: Description("證據群組")] EvidenceGroup Group,
+    [property: Description("方向：前提、支持、衝突或中性")] Direction Direction,
+    [property: Description("比對狀態")] ComparisonStatus Status,
+    [property: Description("支持強度（UNIQUE > HIGH > MEDIUM > LOW > NONE）")] Strength Strength = Strength.None,
+    [property: Description("細節代碼，見 /api/codes")] string? Detail = null,
+    [property: Description("給複核人員的說明文字")][property: Sensitivity(Sensitivity.Personal)] string? Note = null)
 {
+    [property: Description("是否為支持同一人的證據")]
     public bool IsSupport => Direction == Direction.Support;
 }
 
@@ -37,6 +45,22 @@ public static class ReasonCodes
     public const string SourceQualityDowngrade = "SOURCE_QUALITY_DOWNGRADE";
     public const string EntityIdentifierAgreement = "ENTITY_IDENTIFIER_AGREEMENT";
     public const string EntityIdentifierConflict = "ENTITY_IDENTIFIER_CONFLICT";
+}
+
+/// <summary>Evidence detail codes that are not reason codes.</summary>
+public static class EvidenceDetails
+{
+    public const string NotComparable = "NOT_COMPARABLE";
+    public const string NotADocument = "NOT_A_DOCUMENT";
+    public const string SameIdentifierNatureUnconfirmed = "SAME_IDENTIFIER_NATURE_UNCONFIRMED";
+    public const string DifferentOrganization = "DIFFERENT_ORGANIZATION";
+    public const string SameOrganizationSamePeriod = "SAME_ORGANIZATION_SAME_PERIOD";
+    public const string SameOrganizationNoCommonPeriod = "SAME_ORGANIZATION_NO_COMMON_PERIOD";
+    /// <summary>Followed by the relation: SAME_NAMED_RELATIVE:SPOUSE.</summary>
+    public const string SameNamedRelative = "SAME_NAMED_RELATIVE";
+    public const string SoftDifference = "SOFT_DIFFERENCE";
+    public const string SameAddressNoPeriod = "SAME_ADDRESS_NO_PERIOD";
+    public const string NotIdenticalAfterNormalization = "NOT_IDENTICAL_AFTER_NORMALIZATION";
 }
 
 public static class Findings

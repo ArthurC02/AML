@@ -1,7 +1,4 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using Aml.Core.Cases;
 using Aml.Core.Ports;
 using Aml.Core.Retrieval;
@@ -25,7 +22,7 @@ public sealed record ImportReport(IReadOnlyList<ProfileImport> Profiles, string?
 /// REANALYZE_CASE job, queued in the same transaction; history is never overwritten.
 /// </summary>
 /// <param name="exportText">Turns a Profile file (export or HTML page) into the export text; the content hash is taken on it.</param>
-public sealed partial class ListService(
+public sealed class ListService(
     IListStore lists, ICaseStore caseStore, CaseService cases,
     Func<string, SourceProfile> parseProfile, Func<IReadOnlyDictionary<string, string>, CaseInput> readCase, TimeProvider clock,
     Func<string, string>? exportText = null)
@@ -33,9 +30,6 @@ public sealed partial class ListService(
     private sealed record CachedIndex(long Version, ProfileIndex Index);
 
     private CachedIndex? _index;
-
-    [GeneratedRegex(@"^名單資料_(\d+)\.(txt|html?)$", RegexOptions.IgnoreCase)]
-    private static partial Regex ProfileFile();
 
     public async Task<ImportReport> ImportAsync(IReadOnlyDictionary<string, string> files, CancellationToken ct)
     {
@@ -67,7 +61,7 @@ public sealed partial class ListService(
             {
                 planned = affected.Select(caseId => new ReanalysisJob(Guid.CreateVersion7().ToString(), caseId, id, version)).ToList();
                 return planned.Select(j => new NewJob(j.JobId, BatchService.ReanalyzeCase, batchId,
-                    $"REANALYZE:{j.CaseId}:{id}:{version}", JsonSerializer.Serialize(j, CaseService.Json))).ToList();
+                    $"REANALYZE:{j.CaseId}:{id}:{version}", JsonSerializer.Serialize(j, CaseJson.Options))).ToList();
             }, ct).ConfigureAwait(false);
             imported.Add(new ProfileImport(current.ProfileId, current.Version, changed));
             queued.AddRange(planned.Where(j => jobIds.Contains(j.JobId)));
@@ -145,8 +139,7 @@ public sealed partial class ListService(
         return index;
     }
 
-    private static string? ProfileIdOf(string fileName) =>
-        ProfileFile().Match(Path.GetFileName(fileName)) is { Success: true } m ? m.Groups[1].Value : null;
+    private static string? ProfileIdOf(string fileName) => ProfileFiles.IdOf(fileName);
 
     private static IEnumerable<KeyValuePair<string, string>> FilesOf(IReadOnlyDictionary<string, string> files, string profileId) =>
         files.Where(f => ProfileIdOf(f.Key) == profileId);
@@ -165,12 +158,5 @@ public sealed partial class ListService(
     }
 #pragma warning restore CA1031
 
-    // Hash of the normalized export text: one newline style, no BOM, no trailing blanks, so CRLF and LF copies, or the
-    // .txt and .html of the same Profile, are one version.
-    private string Hash(string content)
-    {
-        var text = (exportText ?? (s => s))(content.TrimStart('﻿')).TrimStart('﻿');
-        var normalized = string.Join('\n', text.ReplaceLineEndings("\n").Split('\n').Select(l => l.TrimEnd())).TrimEnd('\n');
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)));
-    }
+    private string Hash(string content) => ProfileFiles.Hash(content, exportText);
 }

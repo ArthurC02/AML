@@ -12,18 +12,25 @@ Aml.Infra/Persistence/
 ├── SqlCatalog.cs             # loads Sql.<provider>.xml
 ├── Repositories/             # CaseStore, ListStore (JobStore lives in Aml.Infra/Jobs)
 ├── Sql/                      # Sql.xsd, Sql.sqlite.xml
-└── Scripts/Sqlite/           # DbUp DDL: 0001_init.sql, ...
+└── Scripts/Sqlite/           # DbUp DDL: 0001_schema.sql
 ```
 
 When a second provider is chosen, the provider-specific parts of `SqliteDatabase` move behind `IDbConnectionFactory` and an `ISqlDialect` (parameter prefix rewrite, unique-violation detection).
 
 | Table | Holds |
 |---|---|
-| `aml_case` | one row per Case |
-| `case_analysis` | every analysis revision with its result and explanation |
-| `job` | batch jobs (`ANALYZE_CASE`, `REANALYZE_CASE`) and their payloads |
-| `list_profile` | every captured Profile version with the SHA-256 of its normalized export text ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)); rows are never updated or deleted |
+| `aml_case` | one row per Case; indexed by `subject_ref` |
+| `case_analysis` | every analysis revision with its result and explanation as JSON, read back into their Core types |
 | `case_input` | the input files (decoded text) of each revision, for re-analysis after a source update |
+| `analysis_lineage` | what a revision was computed from: input file names and SHA-256, each Profile with its list version or `CASE_FILES`, and the source-policy, model, code-catalog, schema and application versions |
+| `analysis_quality` | data quality of a revision: comparison cells by status, Profiles not evaluated, findings counted by code |
+| `case_hit`, `hit_evidence`, `hit_reason` | queryable facts of each hit (identity decision, stage 3 row, hard conflict, pair result, priority; each evidence group's direction, status, strength and detail code; identity, pair and disposition reason codes in order) |
+| `job` | batch jobs (`ANALYZE_CASE`, `REANALYZE_CASE`) and their payloads; indexed by `(batch_id, status)` and, for claiming, `(status, next_attempt_at)` |
+| `list_profile` | every captured Profile version with the SHA-256 of its normalized export text ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)); rows are never updated or deleted |
+
+The schema is one DbUp script, `0001_schema.sql`. The PoC database is disposable ([ADR-0023](../adr/0023-ai-ready-data.md)): when the schema or the stored JSON format changes (`CaseJson.SchemaVersion`), the script changes and the database file is deleted and created again. Old formats are never read; a stored record that does not read as its type fails. Before a production database exists, an ADR switches to add-only migrations starting from this schema.
+
+The JSON in `case_analysis` is the full record; the fact tables are an index of it for calibration and monitoring queries, written in the same transaction, so they never disagree with it.
 
 Configuration: `"Database": { "Provider": "Sqlite", "ConnectionString": "..." }`. SQLite-specific settings stay in `SqliteDatabase`: foreign keys and busy timeout (5 s) on every connection, and write-ahead logging (`journal_mode = WAL`), set once after the upgrade and kept in the database file, so readers do not wait for the writer.
 
@@ -60,14 +67,14 @@ Multilingual names on SQL Server require `nvarchar`; `varchar` without a UTF-8 c
 
 | Repository call | One transaction | Statements |
 |---|---|---|
-| `CaseStore.AcceptAnalysisAsync` | the analysis revision, its input files and the move of the Case to it; a revision is never stored without the input it was run on | `Case.InsertAnalysis`, `Case.InsertInput`, `Case.AcceptAnalysis` |
+| `CaseStore.AcceptAnalysisAsync` | the analysis revision with its lineage, quality and hit facts, its input files and the move of the Case to it; a revision is never stored without the input it was run on | `Case.InsertAnalysis`, `Case.InsertLineage`, `Case.InsertQuality`, `Case.InsertHit`, `Case.InsertEvidence`, `Case.InsertReason`, `Case.InsertInput`, `Case.AcceptAnalysis` |
 | `ListStore.CaptureAsync` | a new Profile version and the `REANALYZE_CASE` jobs it causes (transactional outbox) | `Extraction.GetLatestProfile`, `Extraction.InsertProfile`, `Batch.Enqueue` |
 
 Revision numbers are allocated optimistically: `CaseService` takes the Case's current revision + 1, and the primary key of `case_analysis` rejects a number another analysis already took. The repository then stores nothing and returns false; `CaseService` re-reads the Case, recomputes the number, status and changes, and tries again, at most `CaseService.MaxRevisionAttempts` (3) times before failing. `Case.AcceptAnalysis` moves the Case only while `current_revision < @revision`, so a late revision is kept as history and never overwrites a newer one.
 
 In the outbox, a job whose idempotency key is already in the job table is skipped (unique violation on that statement only); the version and the other jobs still commit.
 
-Other statements used by these flows: `Case.LatestInput` and `Case.LatestInputs` read the latest stored input of one Case or of every Case; `Extraction.ListVersion` counts `list_profile` rows, which, because the table is append-only, changes with every capture and keys the cached retrieval index.
+Other statements used by these flows: `Case.GetAnalysis`, `Case.GetLineage` and `Case.GetQuality` read one revision back; `Case.LatestInput` and `Case.LatestInputs` read the latest stored input of one Case or of every Case; `Extraction.ListVersion` counts `list_profile` rows, which, because the table is append-only, changes with every capture and keys the cached retrieval index.
 
 ## Job claim
 
@@ -122,8 +129,8 @@ Startup checks in `SqlCatalog` (beyond XSD 1.0):
 
 Any failure stops the application at startup. The catalog is an embedded resource, validated with the built-in `XmlReaderSettings` schema validation, and cached per id after the dialect rewrite. The database health check executes `System.Ping`.
 
-DDL is not in the catalog; it stays in versioned DbUp scripts under `Scripts/<Provider>/`.
+DDL is not in the catalog; it stays in the DbUp script under `Scripts/<Provider>/`.
 
 ## Repository contract tests
 
-`tests/Aml.Tests/Integration/` verifies repository behaviour: round-trip, idempotency keys, exclusive job claim, and late revisions not overwriting a newer effective result. It runs on SQLite. Replacing the database means running the same suite against SQL Server or Oracle (Testcontainers); passing it is the acceptance criterion.
+`tests/Aml.Tests/Integration/` verifies repository behaviour: round-trip, idempotency keys, exclusive job claim, late revisions not overwriting a newer effective result, fact tables that rebuild every decision in the stored JSON of each Golden Case, and lineage that follows a Profile into a new list version. It runs on SQLite. Replacing the database means running the same suite against SQL Server or Oracle (Testcontainers); passing it is the acceptance criterion.

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 using Aml.Core.Normalization;
 
@@ -15,8 +16,12 @@ public sealed record FieldValue(string? Value, ValueState State, string? Detail 
 }
 
 /// <summary>A date known to YEAR, MONTH or DAY precision.</summary>
-public readonly record struct PartialDate(int Year, int? Month = null, int? Day = null)
+public readonly record struct PartialDate(
+    [property: Description("年")] int Year,
+    [property: Description("月；只知道年時為 null")] int? Month = null,
+    [property: Description("日；只知道年或年月時為 null")] int? Day = null)
 {
+    [property: Description("精度：YEAR、MONTH 或 DAY")]
     public DatePrecision Precision => Day is not null ? DatePrecision.Day : Month is not null ? DatePrecision.Month : DatePrecision.Year;
 
     /// <summary>
@@ -47,6 +52,7 @@ public readonly record struct PartialDate(int Year, int? Month = null, int? Day 
     }
 
     /// <summary>The last day the date can stand for: 1973 is read as up to 1973-12-31, 1973/6 as up to 1973-06-30.</summary>
+    [property: Description("此日期可能代表的最晚一天")]
     public DateOnly LatestDay => new(Year, Month ?? 12, Day ?? DateTime.DaysInMonth(Year, Month ?? 12));
 
     /// <summary>True when both dates agree at the coarser of the two precisions.</summary>

@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Aml.Core.Identity;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
@@ -11,8 +12,12 @@ public enum Recommendation { OnList, NotOnList }
 /// pair (③); the pending checks are listed instead. It never changes the identity decision or the source conditions.
 /// Advisory is always true, so machine-readable output says the recommendation is for reference only.
 /// </summary>
-public sealed record DispositionRecommendation(Recommendation? Recommendation, IReadOnlyList<string> ReasonCodes, IReadOnlyList<string> PendingChecks)
+public sealed record DispositionRecommendation(
+    [property: Description("建議：ON_LIST 或 NOT_ON_LIST；無法判定時為 null")] Recommendation? Recommendation,
+    [property: Description("第 22 條理由碼")] IReadOnlyList<string> ReasonCodes,
+    [property: Description("尚未執行的查核事項")] IReadOnlyList<string> PendingChecks)
 {
+    [property: Description("永遠為 true：建議僅供參考")]
     public bool Advisory { get; init; } = true;
 }
 

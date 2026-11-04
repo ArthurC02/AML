@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Aml.Core.Identity;
 
 namespace Aml.Core.Screening;
@@ -17,7 +18,11 @@ public sealed record RiskPolicy(
 
 public enum RiskLevel { Low, Medium, High }
 
-public sealed record RiskAssessment(string PolicyVersion, int Score, RiskLevel Level, IReadOnlyList<string> Contributions);
+public sealed record RiskAssessment(
+    [property: Description("風險政策版本")] string PolicyVersion,
+    [property: Description("分數")] int Score,
+    [property: Description("風險等級")] RiskLevel Level,
+    [property: Description("分數組成")] IReadOnlyList<string> Contributions);
 
 /// <summary>
 /// Downstream of identity: a pair is scored only when identity is not NO_MATCH, and the score never feeds back.

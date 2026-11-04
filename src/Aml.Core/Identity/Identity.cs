@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Aml.Core.Normalization;
@@ -8,12 +9,26 @@ namespace Aml.Core.Identity;
 
 public enum IdentityDecision { NoMatch, Review, ProbableMatch }
 
+public enum Assumption { Agree, Conflict }
+
+/// <summary>
+/// What stage 3 would decide if one direct identifier became comparable on both sides. It names the row and code only,
+/// never the external result, and holds every other piece of evidence fixed.
+/// </summary>
+public sealed record WouldChangeIf(
+    [property: Description("假設的項目：DOCUMENT 或 DATE_OF_BIRTH")] EvidenceGroup Field,
+    [property: Description("假設相符（AGREE）或衝突（CONFLICT）")] Assumption Assumption,
+    [property: Description("假設成立時的第三階段列號")] int Stage3Row,
+    [property: Description("假設成立時的身分判斷（不是對外結果）")] IdentityDecision Decision,
+    [property: Description("假設成立時的理由碼")] string ReasonCode,
+    [property: Description("中文說明")] string Text);
+
 public sealed record IdentityResult(
-    IReadOnlyDictionary<EvidenceGroup, Evidence> Evidence,
-    string? HardConflict,
-    int? Stage3Row,
-    IdentityDecision Decision,
-    IReadOnlyList<string> ReasonCodes);
+    [property: Description("各證據群組的比對結果")] IReadOnlyDictionary<EvidenceGroup, Evidence> Evidence,
+    [property: Description("第一階段硬衝突代碼")] string? HardConflict,
+    [property: Description("第三階段決策表列號（1～6）；硬衝突或非自然人規則時可能為 null")] int? Stage3Row,
+    [property: Description("身分判斷")] IdentityDecision Decision,
+    [property: Description("身分判斷的理由碼，第一個是決定的理由")] IReadOnlyList<string> ReasonCodes);
 
 /// <summary>Builds per-group evidence for one screened subject versus one Profile.</summary>
 public static class EvidenceBuilder
@@ -53,7 +68,7 @@ public static class EvidenceBuilder
 
     /// <summary>Comparable only for the same type and issuing country; equal numbers are unique support, different ones a conflict.</summary>
     /// <summary>Detail of a value present on both sides that cannot be compared (other document type or country, occupation category only).</summary>
-    public const string NotComparable = "NOT_COMPARABLE";
+    public const string NotComparable = EvidenceDetails.NotComparable;
 
     public static Evidence DocumentEvidence(Document? subject, IReadOnlyList<Document> profile)
     {
@@ -79,7 +94,7 @@ public static class EvidenceBuilder
         if (subject is null) return profile.Count > 0 ? new(g, Direction.Neutral, ComparisonStatus.SubjectMissing) : null;
         if (profile.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.ProfileMissing);
         return profile.Any(x => DocumentNumber(x.Number) == DocumentNumber(subject))
-            ? new(g, Direction.Support, ComparisonStatus.Exact, Strength.Low, "SAME_IDENTIFIER_NATURE_UNCONFIRMED")
+            ? new(g, Direction.Support, ComparisonStatus.Exact, Strength.Low, EvidenceDetails.SameIdentifierNatureUnconfirmed)
             : new(g, Direction.Neutral, ComparisonStatus.Uncertain);
     }
 
@@ -124,10 +139,10 @@ public static class EvidenceBuilder
 
         var same = subject.SelectMany(a => profile, (a, b) => (a, b))
             .Where(x => Normalize.NameKey(x.a.Organization, true) == Normalize.NameKey(x.b.Organization, true)).ToList();
-        if (same.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, "DIFFERENT_ORGANIZATION");
+        if (same.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, EvidenceDetails.DifferentOrganization);
         return same.Any(x => Overlap(x.a, x.b))
-            ? new(g, Direction.Support, ComparisonStatus.Exact, Strength.Medium, "SAME_ORGANIZATION_SAME_PERIOD")
-            : new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, "SAME_ORGANIZATION_NO_COMMON_PERIOD");
+            ? new(g, Direction.Support, ComparisonStatus.Exact, Strength.Medium, EvidenceDetails.SameOrganizationSamePeriod)
+            : new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, EvidenceDetails.SameOrganizationNoCommonPeriod);
     }
 
     // Both periods need a start; an open end runs to the present. Compared by year, the coarsest common precision.
@@ -146,7 +161,7 @@ public static class EvidenceBuilder
         var same = subject.FirstOrDefault(a => profile.Any(b => Relation(a.Relation) == Relation(b.Relation)
             && Normalize.CompareNames([a.Name], [b.Name]).Status == ComparisonStatus.Exact));
         return same is not null
-            ? new(g, Direction.Support, ComparisonStatus.Exact, strength, "SAME_NAMED_" + Relation(same.Relation))
+            ? new(g, Direction.Support, ComparisonStatus.Exact, strength, $"{EvidenceDetails.SameNamedRelative}:{Relation(same.Relation)}")
             : new(g, Direction.Neutral, ComparisonStatus.Uncertain);
     }
 
@@ -175,14 +190,14 @@ public static class EvidenceBuilder
         var subjectText = s.Addresses.Where(a => a.State == ValueState.Present).Select(a => a.Normalized ?? a.Raw).ToList();
         var profileText = p.AddressLines ?? [];
         if (!s.Addresses.Any(a => a.Country is { } c && p.AddressCountries.Contains(c)) || subjectText.Count == 0 || profileText.Count == 0)
-            return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, "SOFT_DIFFERENCE");
+            return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, EvidenceDetails.SoftDifference);
 
         var keys = subjectText.Select(AddressCompare.TaiwanKey).OfType<string>().ToHashSet();
         if (profileText.Select(AddressCompare.TaiwanKey).Any(k => k is not null && keys.Contains(k)))
-            return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, "SAME_ADDRESS_NO_PERIOD");
+            return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, EvidenceDetails.SameAddressNoPeriod);
         var jaccard = subjectText.SelectMany(a => profileText, AddressCompare.Jaccard).Max();
         return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None,
-            string.Create(CultureInfo.InvariantCulture, $"SOFT_DIFFERENCE（Jaccard {jaccard:0.00}，{(jaccard >= AddressCompare.JaccardThreshold ? "SIMILAR" : "DISSIMILAR")}）"));
+            string.Create(CultureInfo.InvariantCulture, $"{EvidenceDetails.SoftDifference}（Jaccard {jaccard:0.00}，{(jaccard >= AddressCompare.JaccardThreshold ? "SIMILAR" : "DISSIMILAR")}）"));
     }
 
     private static void AddDateOfBirth(ScreenedSubject s, SourceProfile p, Action<EvidenceGroup, Direction, ComparisonStatus, Strength, string?> add)
@@ -410,6 +425,41 @@ public static class IdentityDecisionPolicy
         }
         e[g] = new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.EntityIdentifierConflict);
         return new IdentityResult(e, null, 1, IdentityDecision.Review, [ReasonCodes.EntityIdentifierConflict]);
+    }
+
+    /// <summary>
+    /// Contrastive explanation: the same document type and a full DOB, each assumed to agree and to conflict, re-run through
+    /// stage 3 only (a full DOB would also reach the stage 1 checks, which are not re-run). Outcomes on the current row are
+    /// left out. Empty outside rows 3 to 6 (which also leaves out hard conflicts and non-Person records) and for Profiles
+    /// with scattered DOBs. On rows 3 to 6 a document is never comparable (agreeing is row 2, conflicting row 1), and a full
+    /// DOB is comparable only when it agrees.
+    /// </summary>
+    public static IReadOnlyList<WouldChangeIf> Contrast(IdentityResult r)
+    {
+        if (r.Stage3Row is not (3 or 4 or 5 or 6)) return [];
+        var dob = r.Evidence.GetValueOrDefault(EvidenceGroup.DateOfBirth);
+        if (dob?.Detail == Findings.ProfileMultipleDob) return [];
+
+        var assumptions = new List<(Evidence Evidence, Assumption Assumption, string Label)>
+        {
+            (new(EvidenceGroup.Document, Direction.Support, ComparisonStatus.Exact, Strength.Unique), Assumption.Agree, "同類證件相符"),
+            (new(EvidenceGroup.Document, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.DocumentIdentityConflict), Assumption.Conflict, "同類證件不符"),
+        };
+        if (dob?.Status != ComparisonStatus.Exact)
+        {
+            assumptions.Add((new(EvidenceGroup.DateOfBirth, Direction.Support, ComparisonStatus.Exact, Strength.High), Assumption.Agree, "完整出生日期相符"));
+            assumptions.Add((new(EvidenceGroup.DateOfBirth, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.FullDobConflict), Assumption.Conflict, "完整出生日期不符"));
+        }
+
+        var result = new List<WouldChangeIf>();
+        foreach (var (evidence, assumption, label) in assumptions)
+        {
+            var e = new Dictionary<EvidenceGroup, Evidence>(r.Evidence) { [evidence.Group] = evidence };
+            var (row, decision, code) = Stage3(e);
+            if (row != r.Stage3Row)
+                result.Add(new(evidence.Group, assumption, row, decision, code, $"若{label}：身分判斷移至第三階段第 {row} 列 {code}"));
+        }
+        return result;
     }
 
     private static (int, IdentityDecision, string) Stage3(IReadOnlyDictionary<EvidenceGroup, Evidence> e)

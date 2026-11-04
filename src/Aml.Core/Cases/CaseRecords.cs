@@ -1,3 +1,4 @@
+using Aml.Core.Explanation;
 using Aml.Core.Identity;
 using Aml.Core.Screening;
 
@@ -11,8 +12,10 @@ public sealed record CaseRecord(
     string CaseId, string SubjectRef, string TriggerEventId, CaseStatus Status,
     int CurrentRevision, int? EffectiveRevision, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt);
 
+/// <summary>One stored revision: the result and explanation as typed records, with the lineage and data quality it was computed with.</summary>
 public sealed record AnalysisRecord(
-    string CaseId, int Revision, ExecutionStatus ExecutionStatus, ScreeningAssessment CaseResult, string ResultJson, string? ExplanationJson, DateTimeOffset CreatedAt);
+    string CaseId, int Revision, ExecutionStatus ExecutionStatus, ScreeningAssessment CaseResult,
+    CaseAnalysis Result, CaseExplanation? Explanation, AnalysisLineage? Lineage, AnalysisQuality? Quality, DateTimeOffset CreatedAt);
 
 public static class CaseLifecycle
 {

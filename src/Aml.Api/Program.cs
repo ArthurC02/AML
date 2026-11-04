@@ -1,5 +1,6 @@
 using Aml.Api.Endpoints;
 using Aml.Api.Workers;
+using Aml.Core.Cases;
 using Aml.Core.Ports;
 using Aml.Core.Subjects;
 using Aml.Infra.Html;
@@ -34,6 +35,15 @@ builder.Services.AddSingleton<Func<string, string>>(c =>
 builder.Services.AddSingleton<ListService>();
 builder.Services.AddHostedService<JobWorker>();
 builder.Services.AddOpenApi();
+// Every 4xx and 5xx is application/problem+json; a status without a handler-written problem gets its catalog type here.
+builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx =>
+{
+    if (ctx.ProblemDetails.Type is null || ctx.ProblemDetails.Type.StartsWith("https://", StringComparison.Ordinal))
+    {
+        var code = Problems.CodeOf(ctx.ProblemDetails.Status ?? ctx.HttpContext.Response.StatusCode);
+        (ctx.ProblemDetails.Type, ctx.ProblemDetails.Title) = (Problems.Type(code), Problems.Title(code));
+    }
+});
 
 // Liveness and the database round-trip (System.Ping).
 builder.Services.AddHealthChecks().AddAsyncCheck("database", async ct =>
@@ -54,10 +64,12 @@ var otel = builder.Services.AddOpenTelemetry()
 if (!string.IsNullOrEmpty(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"])) otel.UseOtlpExporter();
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
-    foreach (var c in CaseService.Json.Converters) o.SerializerOptions.Converters.Add(c);
+    foreach (var c in CaseJson.Options.Converters) o.SerializerOptions.Converters.Add(c);
 });
 
 var app = builder.Build();
+app.UseExceptionHandler(new ExceptionHandlerOptions { StatusCodeSelector = e => e is BadHttpRequestException b ? b.StatusCode : StatusCodes.Status500InternalServerError });
+app.UseStatusCodePages();
 app.MapHealthChecks("/health");
 app.MapOpenApi();
 app.UseSwaggerUI(o => o.SwaggerEndpoint("/openapi/v1.json", "AML PoC"));
@@ -65,6 +77,7 @@ app.UseSwaggerUI(o => o.SwaggerEndpoint("/openapi/v1.json", "AML PoC"));
 app.MapCases();
 app.MapBatches();
 app.MapLists();
+app.MapCodes();
 
 app.Run();
 

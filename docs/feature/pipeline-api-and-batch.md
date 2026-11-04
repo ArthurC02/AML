@@ -53,11 +53,31 @@ POST /api/lists/profiles
 GET  /api/lists/profiles/{profileId}/versions
 GET  /api/lists/candidates?mode=
 GET  /api/lists/merges
+GET  /api/codes?kind=
+GET  /api/codes/{code}
+GET  /api/schemas
+GET  /api/schemas/{name}
 ```
 
-An unknown case, revision, batch or Profile id returns 404.
+`/api/codes` is the code catalog (`Core/Codes/CodeCatalog`): every code the system emits, with its kind, Chinese name, one-line meaning, the rule that emits it and the document section that defines it. A value with detail attached is listed under its key (`SOFT_DIFFERENCE（Jaccard …）` → `SOFT_DIFFERENCE`, `ENCODING_FALLBACK:<file>` → `ENCODING_FALLBACK`); a value joined with `；` is looked up part by part. `/api/schemas` publishes the JSON Schemas of the stored records (`case-analysis`, `case-explanation`, `analysis-lineage`, `analysis-quality`; [data contracts](data-contracts.md#published-schemas)); lineage and quality are stored with each revision ([lineage and quality](#lineage-and-quality)) and read from the database.
 
-Uploads accept `.txt`, `.html` and `.htm` files (extension in any case) up to 5 MB each: a multipart file by its own bytes, a batch item's file (sent as JSON text) by its UTF-8 encoding, so the same CP950 export counts larger in a batch. A batch item that is null, lacks `subjectRef` or `triggerEventId`, or has a null file content is refused. Multipart uploads are read as raw bytes: the case reader decodes export files as strict UTF-8 (BOM dropped), else CP950 (Big5) with an `ENCODING_FALLBACK:<file>` finding, and HTML pages by their own declared encoding. The reader records each file's SHA-256 as its source hash on the case input (`SourceHashes`): of the uploaded bytes for an upload, of the UTF-8 encoding of the text for batch items (files sent as JSON text) and re-analyses; the hashes are not stored with the revision. Each revision stores its input files as decoded text for re-analysis.
+## Errors
+
+Every 4xx and 5xx response is an RFC 9457 problem (`application/problem+json`): `type`, `title`, `status` and `detail`, plus `errors[]` (what is wrong where) and `fix` (what to send instead) when the handler knows them. `type` is the problem's entry in the code catalog, `/api/codes/{code}`:
+
+| Code | Status | When |
+|---|---|---|
+| `INVALID_REQUEST` | 400 | a parameter or body the endpoint cannot use: no files, a batch item without ids or files, an unknown retrieval mode; `errors[]` lists the batch items by index |
+| `UNSUPPORTED_FILE` | 400 | an upload that is not `.txt`, `.html` or `.htm`, or over 5 MB; `errors[]` names the files |
+| `INPUT_INCOMPLETE` | 400 | a required input file is missing or not unique: exactly one `案件資訊*.txt`, and the subject's own file (`客戶-背景資料.txt` for a customer, `客戶-關聯人背景資料.txt` for a related party) |
+| `INPUT_UNREADABLE` | 400 | a file that is not in the export layout; `errors[]` gives `file`, `table` and `problem` (`MISSING_SECTION`, `MISSING_COLUMN`, `MALFORMED`) |
+| `NOT_FOUND` | 404 | an unknown case, revision, batch, Profile, code or schema, or no such route |
+| `HTTP_ERROR` | other 4xx | e.g. a method the route does not allow |
+| `INTERNAL_ERROR` | 5xx | an unexpected failure |
+
+A missing Profile file is not an input problem: that candidate is `NOT_EVALUATED` and the revision `PARTIAL`. The required-file check runs in the case reader (`TxtCaseReader.RequiredFileProblem`), which reports every unusable input as `CaseInputException`; the endpoints turn it into a problem, and a batch job into `INVALID_INPUT`.
+
+Uploads accept `.txt`, `.html` and `.htm` files (extension in any case) up to 5 MB each: a multipart file by its own bytes, a batch item's file (sent as JSON text) by its UTF-8 encoding, so the same CP950 export counts larger in a batch. A batch item that is null, lacks `subjectRef` or `triggerEventId`, or has a null file content is refused. Multipart uploads are read as raw bytes: the case reader decodes export files as strict UTF-8 (BOM dropped), else CP950 (Big5) with an `ENCODING_FALLBACK:<file>` finding, and HTML pages by their own declared encoding. The reader records each file's SHA-256 as its source hash on the case input (`SourceHashes`): of the uploaded bytes for an upload, of the UTF-8 encoding of the text for batch items (files sent as JSON text) and re-analyses. The hashes are stored in the revision's lineage ([lineage and quality](#lineage-and-quality)). Each revision stores its input files as decoded text for re-analysis.
 
 - Publication has no endpoint: step 14 publishes automatically when the version and completeness checks of the [case-level result](case-management.md#case-level-result) pass.
 - Imported decisions are read from the input files, stored with `independentlyVerified` and never become SystemDecisions; there is no endpoint to submit decisions ([ADR-0020](../adr/0020-identification-only.md)).
@@ -89,15 +109,24 @@ rejected[]          file names not imported
 
 `GET …/explanation` returns, per pair:
 
-- hit reason: hit number, screened subject (`customer` or `related party` with name), Profile ID, list types, Name Property, `Is RCA?`, matched field, similarity type and why the flags or category were used;
-- comparison table in fixed order: Chinese name (with aliases, former and maiden names), English name / romanization / order, nationality, DOB or age, gender, document, address, occupation or employer, other identifiers; each row has subject value, Profile value, comparisonStatus and difference;
+- hit reason: hit number, screened subject (`customer` or `related party` with name), Profile ID and main name (`profileName`), list types, Name Property, `Is RCA?`, matched field, similarity type and why the flags or category were used;
+- comparison table in fixed order: Chinese name (with aliases, former and maiden names), English name / romanization / order, nationality, DOB or age, gender, document, address, occupation or employer, other identifiers; each row has subject value, Profile value, comparisonStatus, `difference` (codes, joined with `；`) and `note` (reviewer text, such as how a stated age was reckoned);
+- related parties named by the bank data (`SUBJECT`) and by the Profile (`PROFILE`);
 - evidence, conflicts, unknown fields and reason codes;
+- `wouldChangeIf`: the stage 3 row and code the identity decision would move to if a document of the same type, or a full DOB, were comparable and agreed or conflicted ([contrastive explanation](identity-adjudication.md#contrastive-explanation)); it never states an external result;
 - source conditions, DispositionRecommendation and the pending verification checks;
 - a five-part summary: internal data, external data, agreements and differences, key evidence or gaps, conclusion.
 
 Per pair the response also carries `reviewPriority` (HIGH for PROBABLE_MATCH or Sanction, NORMAL for stage 3 row 5, LOW otherwise) and `pairReasonCodes` (e.g. `RELEASE_CONTROL_HUMAN_REVIEW`, `SOURCE_CONDITION_UNKNOWN`); per Case, `notEvaluatedProfiles` and `changesFromPreviousRevision`, compared against the last effective revision (`ADDED`, `REMOVED`, `RESULT_CHANGED`, `IDENTITY_CHANGED`, `REASONS_CHANGED`, each with from and to).
 
-The summary only restates recorded facts; it adds none. Sources are listed with id, name, URL, retrieval date, where used and whether attached to the Profile. Nothing is dropped to shorten the response.
+The summary only restates recorded facts; it adds none. Sources are listed with `ref` (`S1`, `S2`, …), id, name, URL, retrieval date, where used and whether attached to the Profile; the summary's external-data part cites them as `[S1]`. Nothing is dropped to shorten the response.
+
+## Lineage and quality
+
+Each revision is stored with:
+
+- **lineage**: every input file with its SHA-256; every Profile the analysis used, with the list database version holding the same content (`LIST_DATABASE`) or `CASE_FILES` when it came from the Case's files only, and its content hash; the versions of the source policy, the Fellegi-Sunter shadow model, the code catalog, the stored schema and the application;
+- **quality**: comparison cells in total and by missing, uncertain and conflict, with their rates; Profiles not evaluated; data quality findings counted by code, once per hit. The Golden metrics compute their cell rates with the same function (`AnalysisQuality.Of`).
 
 ## Durable batch execution
 

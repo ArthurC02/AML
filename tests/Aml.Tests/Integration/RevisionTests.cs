@@ -107,8 +107,8 @@ public sealed class RevisionTests : ServiceTestBase
         var after = await _caseService.ReanalyzeAsync(c.CaseId, input, ct, files);
 
         Assert.Equal((3, 3), (after!.CurrentRevision, after.EffectiveRevision));
-        using var explanation = JsonDocument.Parse((await _cases.GetAnalysisAsync(c.CaseId, 3, ct))!.ExplanationJson!);
-        Assert.Equal(0, explanation.RootElement.GetProperty("changesFromPreviousRevision").GetArrayLength()); // same input as revision 1
+        var explanation = (await _cases.GetAnalysisAsync(c.CaseId, 3, ct))!.Explanation!;
+        Assert.Empty(explanation.ChangesFromPreviousRevision!); // same input as revision 1
     }
 
     [Fact]

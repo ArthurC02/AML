@@ -2,6 +2,8 @@ using Aml.Core.Cases;
 using Aml.Core.Screening;
 using Aml.Infra.Persistence;
 using Aml.Infra.Persistence.Repositories;
+using Dapper;
+using Microsoft.Data.Sqlite;
 
 namespace Aml.Tests.Integration;
 
@@ -23,7 +25,24 @@ public sealed class CaseStoreTests : IDisposable
         new(Guid.CreateVersion7().ToString(), "subject-1", trigger, CaseStatus.Open, 0, null, T0, T0);
 
     private static AnalysisRecord Analysis(string caseId, int revision) =>
-        new(caseId, revision, ExecutionStatus.Completed, ScreeningAssessment.Review, "{\"hits\":[]}", "{}", T0.AddMinutes(revision));
+        new(caseId, revision, ExecutionStatus.Completed, ScreeningAssessment.Review, new CaseAnalysis([], [], []), null, null, null, T0.AddMinutes(revision));
+
+    [Theory]
+    [InlineData(0)] // an earlier release, before the format was recorded
+    [InlineData(CaseJson.SchemaVersion + 1)]
+    public void A_database_of_another_format_is_refused_and_this_format_upgrades_again(int other)
+    {
+        _test.Db.Upgrade();
+        using (var c = new SqliteConnection(_test.ConnectionString))
+        {
+            c.Open();
+            Assert.Equal(CaseJson.SchemaVersion, c.ExecuteScalar<long>("PRAGMA user_version;"));
+            c.Execute($"PRAGMA user_version = {other};");
+        }
+
+        var e = Assert.Throws<InvalidOperationException>(_test.Db.Upgrade);
+        Assert.Contains("Delete the database file", e.Message, StringComparison.Ordinal);
+    }
 
     [Fact]
     public async Task Round_trip_and_idempotent_create()

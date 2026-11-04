@@ -352,7 +352,7 @@ public class ScreeningPolicyTests
     {
         var input = TxtCaseReader.Read(GoldenCases.GoldenCaseTests.Folder("GC-01"));
         var analysis = CaseAnalyzer.Analyze(input);
-        foreach (var json in new[] { JsonSerializer.Serialize(analysis, CaseService.Json), JsonSerializer.Serialize(ExplanationBuilder.Build(input, analysis), CaseService.Json) })
+        foreach (var json in new[] { JsonSerializer.Serialize(analysis, CaseJson.Options), JsonSerializer.Serialize(ExplanationBuilder.Build(input, analysis), CaseJson.Options) })
         {
             var dispositions = JsonDocument.Parse(json).RootElement.GetProperty("hits").EnumerateArray().Select(h => h.GetProperty("disposition")).ToList();
             Assert.NotEmpty(dispositions);

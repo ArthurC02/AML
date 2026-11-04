@@ -36,9 +36,38 @@ public static partial class TxtCaseReader
         }
     }
 
-    /// <summary>The exceptions <see cref="Read"/> throws for incomplete or malformed input.</summary>
-    public static bool IsInputError(Exception e) =>
-        e is InvalidOperationException or FileNotFoundException or IndexOutOfRangeException or KeyNotFoundException;
+    /// <summary>
+    /// The required file a folder lacks or holds twice: exactly one 案件資訊*.txt, then, once the subject category is known,
+    /// the subject's own file (客戶 → 客戶-背景資料.txt, a related party → 客戶-關聯人背景資料.txt). A missing Profile file is
+    /// not a problem: that candidate is NOT_EVALUATED.
+    /// </summary>
+    public static (string File, string Problem)? RequiredFileProblem(IReadOnlyCollection<string> names, string? subjectCategory)
+    {
+        var caseFiles = names.Count(n => n.StartsWith("案件資訊", StringComparison.Ordinal) && n.EndsWith(".txt", StringComparison.Ordinal));
+        if (caseFiles != 1) return ("案件資訊.txt", caseFiles == 0 ? CaseInputException.Missing : CaseInputException.Duplicate);
+        if (subjectCategory is null) return null;
+        var own = subjectCategory == "客戶" ? "客戶-背景資料.txt" : "客戶-關聯人背景資料.txt";
+        return names.Contains(own) ? null : (own, CaseInputException.Missing);
+    }
+
+    private static void Require(string folder, string? subjectCategory)
+    {
+        if (RequiredFileProblem(Directory.GetFiles(folder).Select(Path.GetFileName).OfType<string>().ToList(), subjectCategory) is var (file, problem))
+            throw new CaseInputException(file, null, problem, $"{file}: {problem}");
+    }
+
+    // Anything else the reader throws on one file is reported against that file as MALFORMED; the cause stays as the inner exception, not in the message.
+    private static T Reading<T>(string file, Func<T> read)
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception e) when (e is IndexOutOfRangeException or KeyNotFoundException or InvalidOperationException or FormatException or ArgumentException or IOException)
+        {
+            throw new CaseInputException(file, null, CaseInputException.Malformed, $"{file} is not in the export layout.", e);
+        }
+    }
 
     /// <summary>
     /// Reads a case folder through a private copy; the source folder is never written. Export files are decoded as strict
@@ -58,10 +87,11 @@ public static partial class TxtCaseReader
             {
                 var known = KnownFile().IsMatch(ExportName(f));
                 var target = Path.Combine(copy.FullName, known ? ExportName(f) : Path.GetFileName(f));
-                if (File.Exists(target)) throw new InvalidOperationException($"Two input files read as {Path.GetFileName(target)}");
+                if (File.Exists(target))
+                    throw new CaseInputException(Path.GetFileName(target), null, CaseInputException.Duplicate, $"Two input files read as {Path.GetFileName(target)}");
                 if (!known) File.Copy(f, target);
                 else if (IsHtmlName(f) || LooksLikeMarkup(f))
-                    File.WriteAllText(target, HtmlExport.ToExportText(File.ReadAllBytes(f), HtmlExport.KindOf(Path.GetFileNameWithoutExtension(target))));
+                    File.WriteAllText(target, Reading(Path.GetFileName(f), () => HtmlExport.ToExportText(File.ReadAllBytes(f), HtmlExport.KindOf(Path.GetFileNameWithoutExtension(target)))));
                 else
                 {
                     File.WriteAllText(target, Decode(File.ReadAllBytes(f), out var fallback));
@@ -103,12 +133,14 @@ public static partial class TxtCaseReader
 
     private static CaseInput ReadExport(string folder, IEnumerable<string> fileFindings)
     {
+        Require(folder, null);
         var caseFile = Directory.GetFiles(folder, "案件資訊*.txt").Single();
-        var (subjectRow, rows, records, caseFindings) = ReadCaseTable(File.ReadAllLines(caseFile));
+        var (subjectRow, rows, records, caseFindings) = Reading(Path.GetFileName(caseFile), () => ReadCaseTable(File.ReadAllLines(caseFile)));
+        Require(folder, subjectRow.Category);
 
         var subject = subjectRow.Category == "客戶"
-            ? ReadCustomer(folder)
-            : ReadRelatedParty(Path.Combine(folder, "客戶-關聯人背景資料.txt"), subjectRow.Category, subjectRow.ReferenceNumber);
+            ? Reading("客戶-背景資料.txt", () => ReadCustomer(folder))
+            : Reading("客戶-關聯人背景資料.txt", () => ReadRelatedParty(Path.Combine(folder, "客戶-關聯人背景資料.txt"), subjectRow.Category, subjectRow.ReferenceNumber));
         // Case-level findings travel with the subject, so the explanation shows them on every hit.
         subject = subject with { Findings = [.. subject.Findings, .. caseFindings, .. fileFindings, .. Inventory(folder)] };
 
@@ -116,12 +148,12 @@ public static partial class TxtCaseReader
         var profiles = rows.Select(r => r.ProfileId).Distinct()
             .Select(id => (id, path: Path.Combine(folder, $"名單資料_{id}.txt")))
             .Where(x => File.Exists(x.path))
-            .ToDictionary(x => x.id, x => ReadProfile(x.path));
+            .ToDictionary(x => x.id, x => Reading(Path.GetFileName(x.path), () => ReadProfile(x.path)));
 
         var news = rows.Select(r => r.ProfileId).Distinct()
             .Select(id => (id, path: Path.Combine(folder, $"新聞資訊_{id}.txt")))
             .Where(x => File.Exists(x.path))
-            .ToDictionary(x => x.id, x => ReadNews(x.id, x.path));
+            .ToDictionary(x => x.id, x => Reading(Path.GetFileName(x.path), () => ReadNews(x.id, x.path)));
 
         var legacy = new List<ImportedDecision>();
         if (subjectRow.ListMatch is { } m) legacy.Add(new("是否符合名單", m));
@@ -139,6 +171,11 @@ public static partial class TxtCaseReader
     public const string Ambiguous = "AMBIGUOUS";
     /// <summary><c>ENCODING_FALLBACK:&lt;file&gt;</c>: the file is not UTF-8 and was read as CP950 (Big5).</summary>
     public const string EncodingFallback = "ENCODING_FALLBACK";
+    public const string FieldAbsent = "FIELD_ABSENT";
+    public const string FieldBlank = "FIELD_BLANK";
+    public const string PlaceholderDash = "PLACEHOLDER_DASH";
+    public const string PlaceholderText = "PLACEHOLDER_TEXT";
+    public const string Malformed = "MALFORMED";
     private const string ProcessingRecord = "客戶檢核處理紀錄";
 
     [GeneratedRegex("^(案件資訊.*|名單資料_\\d+|新聞資訊_\\d+|客戶-背景資料|客戶-聯絡資料|客戶-關聯人背景資料)\\.txt$")]
@@ -172,10 +209,10 @@ public static partial class TxtCaseReader
     /// <summary>MISSING with its cause (absent, blank, placeholder) for the fields identity uses.</summary>
     private static IEnumerable<string> MissingFields(IEnumerable<(string Field, bool Present, string? Raw)> fields) =>
         fields.Where(f => !f.Present || Normalize.NullIfPlaceholder(f.Raw) is null).Select(f =>
-            !f.Present ? $"FIELD_ABSENT:{f.Field}"
-            : string.IsNullOrWhiteSpace(f.Raw) ? $"FIELD_BLANK:{f.Field}"
-            : Normalize.IsDash(f.Raw!) ? $"PLACEHOLDER_DASH:{f.Field}"
-            : $"PLACEHOLDER_TEXT:{f.Field}");
+            !f.Present ? $"{FieldAbsent}:{f.Field}"
+            : string.IsNullOrWhiteSpace(f.Raw) ? $"{FieldBlank}:{f.Field}"
+            : Normalize.IsDash(f.Raw!) ? $"{PlaceholderDash}:{f.Field}"
+            : $"{PlaceholderText}:{f.Field}");
 
     private static PartialDate? Date(string field, string? raw, List<string> findings)
     {
@@ -209,7 +246,8 @@ public static partial class TxtCaseReader
         var subject = new SubjectRow(s[2].Trim(), Normalize.NullIfPlaceholder(s.ElementAtOrDefault(3)), Normalize.NullIfPlaceholder(s.ElementAtOrDefault(5)));
 
         var start = Array.FindIndex(lines, l => l.StartsWith("疑似符合的名單資料", StringComparison.Ordinal));
-        if (start < 0 || start + 1 >= lines.Length) throw new InvalidOperationException("案件資訊 has no 疑似符合的名單資料 section");
+        if (start < 0 || start + 1 >= lines.Length)
+            throw new CaseInputException("案件資訊.txt", "疑似符合的名單資料", CaseInputException.MissingSection, "案件資訊 has no 疑似符合的名單資料 section");
         var recordStart = Array.FindIndex(lines, l => l.Trim().StartsWith(ProcessingRecord, StringComparison.Ordinal));
         var end = recordStart < 0 ? lines.Length : recordStart;
         static string[] Cells(string line) => line.Split('\t').Select(c => c.Trim()).ToArray();
@@ -225,7 +263,7 @@ public static partial class TxtCaseReader
         var flagsReadable = sub is null || sub.Where(c => !header.Contains(c)).SequenceEqual(header.Distinct().Where(SubHeaders.ContainsKey).SelectMany(h => SubHeaders[h]));
         if (!flagsReadable) findings.Add($"{Unparseable}:candidate_header");
         if (RequiredCandidateColumns.FirstOrDefault(r => !columns.Contains(r)) is { } absent)
-            throw new InvalidOperationException($"疑似符合的名單資料 has no {absent} column");
+            throw new CaseInputException("案件資訊.txt", "疑似符合的名單資料", CaseInputException.MissingColumn, $"疑似符合的名單資料 has no {absent} column");
         var minCells = RequiredCandidateColumns.Max(r => Array.IndexOf(columns, r)) + 1;
 
         var rows = new List<CandidateRow>();
@@ -285,24 +323,26 @@ public static partial class TxtCaseReader
         var taxId = V("稅號/統一編號") switch
         {
             null => null,
-            var t when t.Length < 8 => new FieldValue(t, ValueState.Ambiguous, "MALFORMED"),
+            var t when t.Length < 8 => new FieldValue(t, ValueState.Ambiguous, Malformed),
             var t => new FieldValue(t, ValueState.Present),
         };
 
         var addresses = new List<Address>();
         var contactPath = Path.Combine(folder, "客戶-聯絡資料.txt");
         if (File.Exists(contactPath))
-        {
-            var ct = File.ReadAllLines(contactPath).Select(l => l.Trim()).ToArray();
-            for (var i = 0; i + 2 < ct.Length; i++)
-                if (ct[i].EndsWith("(國家)", StringComparison.Ordinal) && ct[i + 1] == "地址" && Normalize.NullIfPlaceholder(ct[i + 2]) is { } raw)
-                {
-                    // The block's own 國家 line, before the next "(國家)" heading.
-                    var end = Array.FindIndex(ct, i + 1, l => l.EndsWith("(國家)", StringComparison.Ordinal));
-                    var k = Array.FindIndex(ct, i + 3, (end < 0 ? ct.Length : end) - i - 3, l => l == "國家");
-                    addresses.Add(MakeAddress(ct[i][..^4], raw, k >= 0 && k + 1 < ct.Length ? Normalize.NullIfPlaceholder(ct[k + 1]) : null, findings));
-                }
-        }
+            Reading(Path.GetFileName(contactPath), () =>
+            {
+                var ct = File.ReadAllLines(contactPath).Select(l => l.Trim()).ToArray();
+                for (var i = 0; i + 2 < ct.Length; i++)
+                    if (ct[i].EndsWith("(國家)", StringComparison.Ordinal) && ct[i + 1] == "地址" && Normalize.NullIfPlaceholder(ct[i + 2]) is { } raw)
+                    {
+                        // The block's own 國家 line, before the next "(國家)" heading.
+                        var end = Array.FindIndex(ct, i + 1, l => l.EndsWith("(國家)", StringComparison.Ordinal));
+                        var k = Array.FindIndex(ct, i + 3, (end < 0 ? ct.Length : end) - i - 3, l => l == "國家");
+                        addresses.Add(MakeAddress(ct[i][..^4], raw, k >= 0 && k + 1 < ct.Length ? Normalize.NullIfPlaceholder(ct[k + 1]) : null, findings));
+                    }
+                return addresses;
+            });
 
         var dob = Date("出生日期", V("出生日期"), findings);
 

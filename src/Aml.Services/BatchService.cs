@@ -53,7 +53,7 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         {
             var key = $"{AnalyzeCase}:{item.TriggerEventId}:{item.SubjectRef}";
             if (!await queue.EnqueueAsync(Guid.CreateVersion7().ToString(), AnalyzeCase, batchId, key,
-                    JsonSerializer.Serialize(item, CaseService.Json), clock.GetUtcNow(), ct).ConfigureAwait(false))
+                    JsonSerializer.Serialize(item, CaseJson.Options), clock.GetUtcNow(), ct).ConfigureAwait(false))
                 duplicates.Add(key);
         }
         return new BatchSubmitted(batchId, items.Count - duplicates.Count, duplicates);
@@ -179,9 +179,9 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         {
             return job.JobType switch
             {
-                AnalyzeCase when JsonSerializer.Deserialize<BatchItemRequest>(job.Payload, CaseService.Json)
+                AnalyzeCase when JsonSerializer.Deserialize<BatchItemRequest>(job.Payload, CaseJson.Options)
                     is { SubjectRef: not null, TriggerEventId: not null, Files: not null } item => (item, null),
-                ReanalyzeCase when JsonSerializer.Deserialize<ReanalysisJob>(job.Payload, CaseService.Json) is { CaseId: not null } r => (null, r),
+                ReanalyzeCase when JsonSerializer.Deserialize<ReanalysisJob>(job.Payload, CaseJson.Options) is { CaseId: not null } r => (null, r),
                 _ => (null, null),
             };
         }

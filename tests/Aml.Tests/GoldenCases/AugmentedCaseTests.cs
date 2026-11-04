@@ -39,7 +39,9 @@ public class AugmentedCaseTests
             }
             var input = TxtCaseReader.Read(dir.FullName);
             if (subject is not null) input = input with { Subject = subject(input.Subject) };
-            return (input, CaseAnalyzer.Analyze(input));
+            var analysis = CaseAnalyzer.Analyze(input);
+            CodeCatalogTests.AssertKnown(input, analysis);
+            return (input, analysis);
         }
         finally
         {

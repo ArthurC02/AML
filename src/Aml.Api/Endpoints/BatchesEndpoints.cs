@@ -10,14 +10,17 @@ internal static class BatchesEndpoints
     {
         var batches = app.MapGroup("/api/batches");
 
-        batches.MapPost("/", async Task<Results<Accepted<BatchSubmitted>, BadRequest<string>>> (BatchItemRequest[] items, BatchService service, CancellationToken ct) =>
+        batches.MapPost("/", async Task<Results<Accepted<BatchSubmitted>, ProblemHttpResult>> (BatchItemRequest[] items, BatchService service, CancellationToken ct) =>
         {
-            if (items.Length == 0) return TypedResults.BadRequest("No items");
+            const string fix = "Give every item subjectRef, triggerEventId and files: file name → text of a .txt, .html or .htm file up to 5 MB.";
+            if (items.Length == 0) return Problems.Of(Problems.InvalidRequest, "No items", fix);
             // A UTF-8 byte count is never below the character count, so the cheap length check runs first.
-            if (items.Any(i => i is null || string.IsNullOrWhiteSpace(i.SubjectRef) || string.IsNullOrWhiteSpace(i.TriggerEventId)
-                || i.Files is null || i.Files.Count == 0
-                || i.Files.Any(f => !Uploads.Accepted(f.Key) || f.Value is null || f.Value.Length > Uploads.MaxBytes || System.Text.Encoding.UTF8.GetByteCount(f.Value) > Uploads.MaxBytes)))
-                return TypedResults.BadRequest("Every item needs subjectRef, triggerEventId and .txt, .html or .htm files up to 5 MB each");
+            var invalid = items.Select((i, n) => (Item: n, Valid: i is not null && !string.IsNullOrWhiteSpace(i.SubjectRef) && !string.IsNullOrWhiteSpace(i.TriggerEventId)
+                    && i.Files is { Count: > 0 }
+                    && i.Files.All(f => Uploads.Accepted(f.Key) && f.Value is not null && f.Value.Length <= Uploads.MaxBytes && System.Text.Encoding.UTF8.GetByteCount(f.Value) <= Uploads.MaxBytes)))
+                .Where(x => !x.Valid).Select(x => new { item = x.Item }).ToArray();
+            if (invalid.Length > 0)
+                return Problems.Of(Problems.InvalidRequest, "Every item needs subjectRef, triggerEventId and .txt, .html or .htm files up to 5 MB each", fix, invalid);
             var b = await service.SubmitAsync(items, ct);
             return TypedResults.Accepted($"/api/batches/{b.BatchId}", b);
         })

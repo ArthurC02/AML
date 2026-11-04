@@ -1,3 +1,4 @@
+using Aml.Core.Cases;
 using Dapper;
 using DbUp;
 using Microsoft.Data.Sqlite;
@@ -28,10 +29,26 @@ public sealed class SqliteDatabase
         return c;
     }
 
+    /// <summary>
+    /// Creates or upgrades the schema in one transaction. The schema script records the format as <c>PRAGMA user_version</c>,
+    /// which must equal <see cref="CaseJson.SchemaVersion"/>;
+    /// a database written by another format is refused, never read (rebuild it: operations runbook).
+    /// </summary>
     public void Upgrade()
     {
+        using (var existing = new SqliteConnection(_connectionString))
+        {
+            existing.Open();
+            var version = existing.ExecuteScalar<long>("PRAGMA user_version;");
+            var used = existing.ExecuteScalar<long>("SELECT count(*) FROM sqlite_master WHERE type = 'table';") > 0;
+            if (used && version != CaseJson.SchemaVersion)
+                throw new InvalidOperationException(
+                    $"The database holds format {version}; this release reads only format {CaseJson.SchemaVersion}. Delete the database file with its -wal and -shm files and restart.");
+        }
+
         var result = DeployChanges.To.SqliteDatabase(_connectionString)
             .WithScriptsEmbeddedInAssembly(typeof(SqliteDatabase).Assembly, n => n.Contains(".Scripts.Sqlite.", StringComparison.Ordinal))
+            .WithTransaction()
             .LogToNowhere()
             .Build()
             .PerformUpgrade();

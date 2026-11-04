@@ -31,7 +31,7 @@ No target percentage or latency is committed before representative data and bank
 
 ### Golden Case results
 
-`tests/Aml.Tests/GoldenCases/GoldenMetricsTests` computes these over the Golden Cases in `samples/golden` (GC-01 to GC-03 synthetic, GC-11 and GC-12 anonymized real; six pairs). Augmented cases are excluded. Five cases are too few for any rate to mean more than "the rules reproduce the cases".
+`tests/Aml.Tests/GoldenCases/GoldenMetricsTests` computes these over the Golden Cases in `samples/golden` (GC-01 to GC-03 synthetic, GC-11 and GC-12 anonymized real; six pairs). The comparison-cell rates come from `AnalysisQuality.Of`, the function that computes the data quality stored with every revision. Augmented cases are excluded. Five cases are too few for any rate to mean more than "the rules reproduce the cases".
 
 | Metric | Value | Note |
 |---|---|---|

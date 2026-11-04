@@ -17,7 +17,11 @@ public class GoldenMetricsTests
     // Identity truth from each expected.yaml finalDisposition.humanDecision (or disposition basis IDENTITY); null = UNRESOLVED.
     private static readonly Dictionary<string, bool?> SamePerson = new()
     {
-        ["GC-01"] = false, ["GC-02"] = false, ["GC-03"] = true, ["GC-11"] = true, ["GC-12"] = null,
+        ["GC-01"] = false,
+        ["GC-02"] = false,
+        ["GC-03"] = true,
+        ["GC-11"] = true,
+        ["GC-12"] = null,
     };
 
     [Fact]
@@ -37,9 +41,8 @@ public class GoldenMetricsTests
 
         var autoNoMatch = pairs.Where(p => p.Hit.PairResult == ScreeningAssessment.NoHit).ToList();
         var probable = pairs.Where(p => p.Hit.Identity.Decision == IdentityDecision.ProbableMatch && p.Truth is not null).ToList();
-        var cells = pairs.SelectMany(p => p.Explanation.Comparison).ToList();
+        var quality = AnalysisQuality.Of(pairs.Select(p => p.Explanation).ToList(), [], 0);
         double Rate(int n, int d) => d == 0 ? double.NaN : (double)n / d;
-        double CellRate(params ComparisonStatus[] s) => Rate(cells.Count(c => s.Contains(c.Status)), cells.Count);
 
         var metrics = new (string Name, double Value)[]
         {
@@ -51,9 +54,9 @@ public class GoldenMetricsTests
             ("Probable-Match Yield", Rate(probable.Count(p => p.Truth == true), probable.Count)),
             ("Evidence Completeness", Rate(pairs.Count(p => p.Explanation.Comparison.Count == 9), pairs.Count)),
             ("Decision Traceability", Rate(pairs.Count(p => p.Explanation.ReasonCodes.Count > 0 && p.Explanation.Summary.Conclusion.Length > 0), pairs.Count)),
-            ("Missing rate (comparison cells)", CellRate(ComparisonStatus.SubjectMissing, ComparisonStatus.ProfileMissing)),
-            ("Ambiguous rate (comparison cells)", CellRate(ComparisonStatus.Uncertain)),
-            ("Conflict rate (comparison cells)", CellRate(ComparisonStatus.Conflict)),
+            ("Missing rate (comparison cells)", quality.MissingRate ?? double.NaN),
+            ("Ambiguous rate (comparison cells)", quality.UncertainRate ?? double.NaN),
+            ("Conflict rate (comparison cells)", quality.ConflictRate ?? double.NaN),
             ("Re-adjudication Stability", Rate(stableCases, SamePerson.Count)),
         };
         foreach (var (name, value) in metrics)
@@ -69,5 +72,18 @@ public class GoldenMetricsTests
         // Review Rate and Probable-Match Yield on this set, as counts so a moved pair shows which way it went.
         Assert.Equal((4, 6), (pairs.Count(p => p.Hit.PairResult == ScreeningAssessment.Review), pairs.Count));
         Assert.Equal((2, 2), (probable.Count(p => p.Truth == true), probable.Count));
+    }
+
+    [Fact]
+    public void GC03_quality_counts_cells_by_status_and_findings_by_code()
+    {
+        var input = TxtCaseReader.Read(GoldenCaseTests.Folder("GC-03"));
+        var a = CaseAnalyzer.Analyze(input);
+        var q = AnalysisQuality.Of(ExplanationBuilder.Build(input, a).Hits, input.Subject.Findings, a.NotEvaluatedProfiles.Count);
+
+        // Nine rows: four with a side missing, the address UNCERTAIN, no conflict; one placeholder dash in the customer data.
+        Assert.Equal((1, 9, 4, 1, 0, 0), (q.Hits, q.ComparisonCells, q.MissingCells, q.UncertainCells, q.ConflictCells, q.NotEvaluatedProfiles));
+        Assert.Equal((4 / 9.0, 1 / 9.0, 0.0), (q.MissingRate!.Value, q.UncertainRate!.Value, q.ConflictRate!.Value));
+        Assert.Equal(new Dictionary<string, int> { ["PLACEHOLDER_DASH"] = 1 }, q.FindingCounts);
     }
 }

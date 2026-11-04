@@ -107,8 +107,9 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
             { new ByteArrayContent([1, 2, 3]), "files", "evil.exe" },
         };
         using var refused = await client.PostAsync("/api/cases", exe, ct);
-        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
-        Assert.Equal("Only .txt, .html or .htm files up to 5 MB are accepted", await refused.Content.ReadFromJsonAsync<string>(ct));
+        var problem = await Problem(refused, HttpStatusCode.BadRequest, "UNSUPPORTED_FILE", ct);
+        Assert.Equal("evil.exe", problem.GetProperty("errors")[0].GetProperty("file").GetString());
+        Assert.False(string.IsNullOrEmpty(problem.GetProperty("fix").GetString()));
 
         using var incomplete = new MultipartFormDataContent
         {
@@ -116,30 +117,52 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
             { new StringContent("x"), "files", "notes.txt" },
         };
         using var unreadable = await client.PostAsync("/api/cases", incomplete, ct);
-        Assert.Equal(HttpStatusCode.BadRequest, unreadable.StatusCode);
-        Assert.Equal("\"Input files are incomplete or not in the expected .txt layout\"", await unreadable.Content.ReadAsStringAsync(ct));
+        var missing = await Problem(unreadable, HttpStatusCode.BadRequest, "INPUT_INCOMPLETE", ct);
+        Assert.Equal(("案件資訊.txt", "MISSING"), (missing.GetProperty("errors")[0].GetProperty("file").GetString(), missing.GetProperty("errors")[0].GetProperty("problem").GetString()));
+
+        using var twice = new MultipartFormDataContent
+        {
+            { new StringContent("s"), "subjectRef" }, { new StringContent("t"), "triggerEventId" },
+            { new StringContent("x"), "files", "案件資訊.txt" }, { new StringContent("x"), "files", "案件資訊_2.txt" },
+        };
+        using var duplicated = await client.PostAsync("/api/cases", twice, ct);
+        var duplicate = await Problem(duplicated, HttpStatusCode.BadRequest, "INPUT_INCOMPLETE", ct);
+        Assert.Equal("DUPLICATE", duplicate.GetProperty("errors")[0].GetProperty("problem").GetString());
+    }
+
+    /// <summary>An RFC 9457 problem: the status, application/problem+json and the type of its catalog entry.</summary>
+    private static async Task<JsonElement> Problem(HttpResponseMessage response, HttpStatusCode status, string code, CancellationToken ct)
+    {
+        Assert.Equal(status, response.StatusCode);
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var problem = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
+        Assert.Equal(($"/api/codes/{code}", (int)status), (problem.GetProperty("type").GetString(), problem.GetProperty("status").GetInt32()));
+        return problem;
     }
 
     [Theory]
-    [InlineData("GET", "/api/cases/unknown", "none", HttpStatusCode.NotFound)]
-    [InlineData("GET", "/api/cases/unknown/analyses/1", "none", HttpStatusCode.NotFound)]
-    [InlineData("GET", "/api/cases/unknown/explanation", "none", HttpStatusCode.NotFound)]
-    [InlineData("POST", "/api/cases/unknown/analyses", "case-files", HttpStatusCode.NotFound)]
-    [InlineData("GET", "/api/batches/unknown", "none", HttpStatusCode.NotFound)]
-    [InlineData("POST", "/api/batches/unknown/rerun", "none", HttpStatusCode.NotFound)]
-    [InlineData("GET", "/api/lists/profiles/unknown/versions", "none", HttpStatusCode.NotFound)]
-    [InlineData("POST", "/api/cases", "no-files", HttpStatusCode.BadRequest)]
-    [InlineData("POST", "/api/cases", "oversize", HttpStatusCode.BadRequest)]
-    [InlineData("POST", "/api/batches", "[]", HttpStatusCode.BadRequest)]
-    [InlineData("POST", "/api/batches", """[{"subjectRef":"s","triggerEventId":"t","files":{}}]""", HttpStatusCode.BadRequest)]
-    [InlineData("POST", "/api/batches", """[{"subjectRef":"s","triggerEventId":"t","files":{"a.exe":"x"}}]""", HttpStatusCode.BadRequest)]
-    [InlineData("POST", "/api/batches", "batch-oversize", HttpStatusCode.BadRequest)]
-    [InlineData("POST", "/api/batches", "batch-null-file", HttpStatusCode.BadRequest)]
-    [InlineData("POST", "/api/batches", "batch-null-item", HttpStatusCode.BadRequest)]
-    [InlineData("POST", "/api/batches", "batch-no-ids", HttpStatusCode.BadRequest)]
-    [InlineData("POST", "/api/batches", """[{"subjectRef":" ","triggerEventId":"t","files":{"a.txt":"x"}}]""", HttpStatusCode.BadRequest)]
-    [InlineData("GET", "/api/lists/candidates?mode=Nickname&name=x", "none", HttpStatusCode.BadRequest)]
-    public async Task Unknown_ids_and_invalid_requests_are_refused(string method, string path, string body, HttpStatusCode expected)
+    [InlineData("GET", "/api/cases/unknown", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/cases/unknown/analyses/1", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/cases/unknown/explanation", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("POST", "/api/cases/unknown/analyses", "case-files", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/batches/unknown", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("POST", "/api/batches/unknown/rerun", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/lists/profiles/unknown/versions", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("POST", "/api/cases", "no-files", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/cases", "oversize", HttpStatusCode.BadRequest, "UNSUPPORTED_FILE")]
+    [InlineData("POST", "/api/batches", "[]", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/batches", """[{"subjectRef":"s","triggerEventId":"t","files":{}}]""", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/batches", """[{"subjectRef":"s","triggerEventId":"t","files":{"a.exe":"x"}}]""", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/batches", "batch-oversize", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/batches", "batch-null-file", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/batches", "batch-null-item", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/batches", "batch-no-ids", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/batches", """[{"subjectRef":" ","triggerEventId":"t","files":{"a.txt":"x"}}]""", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("GET", "/api/lists/candidates?mode=Nickname&name=x", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("GET", "/api/no-such-route", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/codes/NO_SUCH_CODE", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/schemas/no-such-schema", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    public async Task Unknown_ids_and_invalid_requests_are_refused(string method, string path, string body, HttpStatusCode expected, string code)
     {
         var ct = TestContext.Current.CancellationToken;
         using var client = api.CreateClient();
@@ -165,9 +188,9 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         };
         using var request = new HttpRequestMessage(new HttpMethod(method), path) { Content = content };
         using var response = await client.SendAsync(request, ct);
-        Assert.Equal(expected, response.StatusCode);
+        var problem = await Problem(response, expected, code, ct);
         if (body.StartsWith("batch-", StringComparison.Ordinal))
-            Assert.Equal("Every item needs subjectRef, triggerEventId and .txt, .html or .htm files up to 5 MB each", await response.Content.ReadFromJsonAsync<string>(ct));
+            Assert.Equal(0, problem.GetProperty("errors")[0].GetProperty("item").GetInt32());
     }
 
     [Fact]

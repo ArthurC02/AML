@@ -3,6 +3,8 @@
 ## Terms
 
 - **CandidateHit**: one retrieval occurrence from a name or route.
+- **Code catalog**: the meaning of every code the system emits (reason codes, evidence details, findings, problem types), served by `GET /api/codes`; it is the reference for codes, ahead of any list in these documents.
+- **Lineage**: what an analysis revision was computed from: input file hashes, Profile list versions and rule-set versions.
 - **CandidateProfile**: a unique source Profile after hit deduplication.
 - **EvidenceGroup**: correlated evidence for one identity dimension.
 - **HardConflict**: approved, source-supported conflict that can exclude a pair.

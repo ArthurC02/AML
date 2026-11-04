@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Aml.Core.Shared;
 
 namespace Aml.Core.Subjects;
@@ -11,8 +12,12 @@ public sealed record Address(string Role, string Raw, string? Normalized, string
 }
 
 /// <summary>An identity document. A Taiwan document type implies issuing country TW.</summary>
-public sealed record Document(string? Type, string Number, string? IssuingCountry = null)
+public sealed record Document(
+    [property: Description("證件類型，例如 TW_NATIONAL_ID、PASSPORT")] string? Type,
+    [property: Description("證件號碼")][property: Sensitivity(Sensitivity.Identifier)] string Number,
+    [property: Description("發證國（ISO 3166-1 alpha-2）")] string? IssuingCountry = null)
 {
+    [property: Description("發證國；台灣證件類型隱含 TW")]
     public string? Country => IssuingCountry ?? (Type?.StartsWith("TW_", StringComparison.Ordinal) == true ? "TW" : null);
 }
 
@@ -52,40 +57,57 @@ public sealed record ScreenedSubject(
     private static readonly string[] PersonLabels = ["Person", "Individual", "Natural Person"];
 }
 
-public sealed record SourceCategory(string Category, string? Subcategory);
+public sealed record SourceCategory([property: Description("名單類別")] string Category, [property: Description("名單子類別")] string? Subcategory);
 
-public sealed record ProfileRole(string Title, string Organization, PartialDate? From, PartialDate? To = null);
+public sealed record ProfileRole(
+    [property: Description("職稱")] string Title,
+    [property: Description("機構")] string Organization,
+    [property: Description("起始日期")] PartialDate? From,
+    [property: Description("結束日期")] PartialDate? To = null);
 
-public sealed record ProfileRelationship(string ProfileId, string Name, string Relation, bool IsEntity = false);
+public sealed record ProfileRelationship(
+    [property: Description("關係人的名單編號")] string ProfileId,
+    [property: Description("關係人姓名或名稱")][property: Sensitivity(Sensitivity.Personal)] string Name,
+    [property: Description("關係，依來源原文")] string Relation,
+    [property: Description("是否為公司或組織")] bool IsEntity = false);
 
 /// <summary>A labelled identifier that is not an identity document (reference number, registry key).</summary>
-public sealed record OtherIdentifier(string Label, string Number);
+public sealed record OtherIdentifier([property: Description("識別碼名稱")] string Label, [property: Description("號碼")][property: Sensitivity(Sensitivity.Identifier)] string Number);
 
-public sealed record OfficialListEntry(string Authority, string List, string Status, string? Offence);
+public sealed record OfficialListEntry(
+    [property: Description("發布機關")] string Authority,
+    [property: Description("名單名稱")] string List,
+    [property: Description("狀態")] string Status,
+    [property: Description("罪名")] string? Offence);
 
 public sealed record SourceProfile(
-    string ProfileKey,
-    Gender? Gender,
-    IReadOnlyList<string> Names,
-    IReadOnlyList<PartialDate> DatesOfBirth,
-    IReadOnlyList<string> Citizenship,
-    IReadOnlyList<string> AddressCountries,
-    IReadOnlyList<SourceCategory> Categories,
-    IReadOnlyList<string> Keywords,
-    IReadOnlyList<ProfileRole> Roles,
-    IReadOnlyList<ProfileRelationship> Relationships,
-    OfficialListEntry? OfficialList,
-    IReadOnlyList<string> Findings,
-    IReadOnlyList<SourceReference> Sources,
-    IReadOnlyList<Document>? Documents = null,
-    IReadOnlyList<string>? AddressLines = null,
-    PartialDate? DateOfDeath = null,
-    string RecordType = "Person",
-    IReadOnlyList<OtherIdentifier>? OtherIdentifiers = null,
-    IReadOnlyList<string>? AllegationCountries = null);
+    [property: Description("名單鍵（DJ:<名單編號>）")] string ProfileKey,
+    [property: Description("性別")] Gender? Gender,
+    [property: Description("姓名與別名")][property: Sensitivity(Sensitivity.Personal)] IReadOnlyList<string> Names,
+    [property: Description("出生日期（可能只有年或年月）")][property: Sensitivity(Sensitivity.Personal)] IReadOnlyList<PartialDate> DatesOfBirth,
+    [property: Description("國籍（ISO 3166-1 alpha-2）")] IReadOnlyList<string> Citizenship,
+    [property: Description("地址國家")] IReadOnlyList<string> AddressCountries,
+    [property: Description("名單類別")] IReadOnlyList<SourceCategory> Categories,
+    [property: Description("關鍵字")] IReadOnlyList<string> Keywords,
+    [property: Description("職務")] IReadOnlyList<ProfileRole> Roles,
+    [property: Description("關係人")] IReadOnlyList<ProfileRelationship> Relationships,
+    [property: Description("官方名單記錄")] OfficialListEntry? OfficialList,
+    [property: Description("資料品質 finding")] IReadOnlyList<string> Findings,
+    [property: Description("名單引用的來源")] IReadOnlyList<SourceReference> Sources,
+    [property: Description("身分證件")] IReadOnlyList<Document>? Documents = null,
+    [property: Description("地址")][property: Sensitivity(Sensitivity.Personal)] IReadOnlyList<string>? AddressLines = null,
+    [property: Description("死亡日期")][property: Sensitivity(Sensitivity.Personal)] PartialDate? DateOfDeath = null,
+    [property: Description("記錄類型：Person 或組織、船舶等")] string RecordType = "Person",
+    [property: Description("非證件的識別碼")] IReadOnlyList<OtherIdentifier>? OtherIdentifiers = null,
+    [property: Description("指控相關國家")] IReadOnlyList<string>? AllegationCountries = null);
 
 /// <summary>A source the Profile cites. Dates are ISO strings as far as the source states them.</summary>
-public sealed record SourceReference(string Id, string Name, string? Url, string? PublishedOn, string? RetrievedOn);
+public sealed record SourceReference(
+    [property: Description("來源編號")] string Id,
+    [property: Description("來源名稱")] string Name,
+    [property: Description("網址")] string? Url,
+    [property: Description("發布日期（ISO，依來源精度）")] string? PublishedOn,
+    [property: Description("取得日期（ISO）")] string? RetrievedOn);
 
 /// <summary>A news item attached to a Profile in the input.</summary>
 public sealed record NewsItem(string ProfileId, string? DocumentId, string Title, string? Publisher, PartialDate? PublishedOn, string Text);
@@ -114,7 +136,10 @@ public sealed record ListFlags(FlagValue Pep, FlagValue Blacklist, FlagValue Adv
 /// <summary>One row of the candidate table. Legacy columns are ImportedDecision only, never evidence.</summary>
 public sealed record CandidateRow(string MatchedName, string ProfileId, string? LegacyReason, bool IsRca, ListFlags? Flags = null);
 
-public sealed record ImportedDecision(string Field, string Value, bool IndependentlyVerified = false);
+public sealed record ImportedDecision(
+    [property: Description("來源欄位")] string Field,
+    [property: Description("原文內容")][property: Sensitivity(Sensitivity.Personal)] string Value,
+    [property: Description("是否經獨立驗證；舊決定永遠不是系統判斷")] bool IndependentlyVerified = false);
 
 public sealed record CaseInput(
     ScreenedSubject Subject,

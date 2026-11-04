@@ -132,7 +132,7 @@ public class IdentityRuleTests
     public void Dob_conflict_code_comes_before_a_document_conflict_code()
     {
         var r = IdentityDecisionPolicy.Decide(Subject("陳志明") with { Document = NationalId }, Profile("陳志明") with
-            { DatesOfBirth = [new PartialDate(1981, 5, 20)], Documents = [new("TW_NATIONAL_ID", "A223456788", "TW")] });
+        { DatesOfBirth = [new PartialDate(1981, 5, 20)], Documents = [new("TW_NATIONAL_ID", "A223456788", "TW")] });
         Assert.Equal((1, IdentityDecision.Review), (r.Stage3Row, r.Decision));
         Assert.Equal(ReasonCodes.FullDobConflict, r.ReasonCodes[0]);
     }
@@ -144,7 +144,7 @@ public class IdentityRuleTests
     public void Employment_periods_sharing_one_year_overlap(int from, string detail)
     {
         var profile = Profile("陳志明") with
-            { Roles = [new ProfileRole("總經理", "宏遠投資股份有限公司", new PartialDate(2015), new PartialDate(2020))] };
+        { Roles = [new ProfileRole("總經理", "宏遠投資股份有限公司", new PartialDate(2015), new PartialDate(2020))] };
         var subject = Subject("陳志明") with { Employments = [new Employment("宏遠投資股份有限公司", null, new PartialDate(from), null)] };
         Assert.Equal(detail, EvidenceBuilder.EmploymentEvidence(subject, profile).Detail);
     }
@@ -158,12 +158,12 @@ public class IdentityRuleTests
             Roles = [new ProfileRole("總經理", "宏遠投資股份有限公司", new PartialDate(2015), new PartialDate(2020))],
         };
         var r = IdentityDecisionPolicy.Decide(Subject("陳志明") with
-            { Employments = [new Employment("宏遠投資股份有限公司", "經理", new PartialDate(2018, 3), null)] }, profile);
+        { Employments = [new Employment("宏遠投資股份有限公司", "經理", new PartialDate(2018, 3), null)] }, profile);
         Assert.Equal((Exact, Strength.Medium), (r.Evidence[EvidenceGroup.Employment].Status, r.Evidence[EvidenceGroup.Employment].Strength));
         Assert.Equal((3, IdentityDecision.ProbableMatch), (r.Stage3Row, r.Decision));
 
         var undated = IdentityDecisionPolicy.Decide(Subject("陳志明") with
-            { Employments = [new Employment("宏遠投資股份有限公司", null, null, null)] }, profile);
+        { Employments = [new Employment("宏遠投資股份有限公司", null, null, null)] }, profile);
         Assert.Equal("SAME_ORGANIZATION_NO_COMMON_PERIOD", undated.Evidence[EvidenceGroup.Employment].Detail);
         Assert.False(undated.Evidence[EvidenceGroup.Employment].IsSupport);
     }
@@ -188,7 +188,7 @@ public class IdentityRuleTests
             Relationships = [new ProfileRelationship("2", "許雅婷", "Wife"), new ProfileRelationship("3", "宏遠投資股份有限公司", "Shareholder", IsEntity: true)],
         };
         var r = IdentityDecisionPolicy.Decide(Subject("陳志明") with
-            { Relatives = [new Relative("許雅婷", "配偶"), new Relative("宏遠投資股份有限公司", "Shareholder", IsEntity: true)] }, profile);
+        { Relatives = [new Relative("許雅婷", "配偶"), new Relative("宏遠投資股份有限公司", "Shareholder", IsEntity: true)] }, profile);
         Assert.Equal(Strength.Medium, r.Evidence[EvidenceGroup.Relationship].Strength);
         Assert.Equal(Strength.Low, r.Evidence[EvidenceGroup.CompanyAssociation].Strength);
         Assert.Equal(5, r.Stage3Row); // no full DOB on the Profile: support without the strong combination
@@ -198,8 +198,8 @@ public class IdentityRuleTests
 
         // The detail names the relative that matched, not the first one listed.
         var second = IdentityDecisionPolicy.Decide(Subject("陳志明") with
-            { Relatives = [new Relative("王大同", "父親"), new Relative("許雅婷", "配偶")] }, profile);
-        Assert.Equal("SAME_NAMED_SPOUSE", second.Evidence[EvidenceGroup.Relationship].Detail);
+        { Relatives = [new Relative("王大同", "父親"), new Relative("許雅婷", "配偶")] }, profile);
+        Assert.Equal("SAME_NAMED_RELATIVE:SPOUSE", second.Evidence[EvidenceGroup.Relationship].Detail);
     }
 
     [Fact]
@@ -215,18 +215,18 @@ public class IdentityRuleTests
     {
         var subject = Subject("陳志明") with { Addresses = [new Address("永久地址", "新北市新莊區中華路35巷8號3樓", null, "TW")] };
         var same = IdentityDecisionPolicy.Decide(subject, Profile("陳志明") with
-            { AddressCountries = ["TW"], AddressLines = ["台北縣新莊市中華路３５巷８號３樓"] });
+        { AddressCountries = ["TW"], AddressLines = ["台北縣新莊市中華路３５巷８號３樓"] });
         Assert.Equal((Uncertain, "SAME_ADDRESS_NO_PERIOD"), (same.Evidence[EvidenceGroup.Address].Status, same.Evidence[EvidenceGroup.Address].Detail));
         Assert.Equal(6, same.Stage3Row);
 
         var other = IdentityDecisionPolicy.Decide(subject, Profile("陳志明") with
-            { AddressCountries = ["TW"], AddressLines = ["臺北市大安區信義路四段1號"] });
+        { AddressCountries = ["TW"], AddressLines = ["臺北市大安區信義路四段1號"] });
         Assert.Equal((Uncertain, "SOFT_DIFFERENCE（Jaccard 0.04，DISSIMILAR）"),
             (other.Evidence[EvidenceGroup.Address].Status, other.Evidence[EvidenceGroup.Address].Detail));
 
         // Another house number on the same lane: a different structured key, but most of the text is shared.
         var near = IdentityDecisionPolicy.Decide(subject, Profile("陳志明") with
-            { AddressCountries = ["TW"], AddressLines = ["新北市新莊區中華路35巷10號3樓"] });
+        { AddressCountries = ["TW"], AddressLines = ["新北市新莊區中華路35巷10號3樓"] });
         Assert.Equal((Uncertain, "SOFT_DIFFERENCE（Jaccard 0.72，SIMILAR）"),
             (near.Evidence[EvidenceGroup.Address].Status, near.Evidence[EvidenceGroup.Address].Detail));
     }
@@ -236,7 +236,7 @@ public class IdentityRuleTests
     {
         // Born 1980-05-20: 16 when named director in 1997 (adulthood was 20 then), so the role is impossible but the age is not.
         var role = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with
-            { Roles = [new ProfileRole("董事", "宏遠投資股份有限公司", new PartialDate(1997, 1))] });
+        { Roles = [new ProfileRole("董事", "宏遠投資股份有限公司", new PartialDate(1997, 1))] });
         Assert.Equal((ReasonCodes.ImpossibleRoleAtReportedEvent, IdentityDecision.Review), (role.HardConflict, role.Decision));
 
         var death = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DateOfDeath = new PartialDate(1979) });

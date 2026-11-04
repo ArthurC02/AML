@@ -10,7 +10,7 @@ namespace Aml.Infra.Txt;
 
 /// <summary>
 /// Reads one case folder in the supplied .txt export layout (see samples/golden/README.md).
-/// ponytail: .txt only; an HTML reader joins this when the HTML samples arrive (open question: input format).
+/// HTML pages reach this reader after Infra/Html/HtmlExport converts them to the same layout.
 /// </summary>
 public static partial class TxtCaseReader
 {
@@ -146,7 +146,7 @@ public static partial class TxtCaseReader
 
     private sealed record SubjectRow(string Category, string? ReferenceNumber, string? ListMatch);
 
-    // ponytail: candidate column order and the PEP/黑名單/負面新聞 flags are pending confirmation; flags are treated as MISSING.
+    // ponytail: candidate column order and the PEP/黑名單/負面新聞 flags are pending confirmation.
     private static (SubjectRow, List<CandidateRow>, List<string> Records, List<string> Findings) ReadCaseTable(string[] lines)
     {
         var s = lines[1].Split('\t');

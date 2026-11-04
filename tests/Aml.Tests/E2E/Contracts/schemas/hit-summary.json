@@ -1,0 +1,270 @@
+{
+  "$id": "aml:HitSummary:v1",
+  "type": [
+    "object",
+    "null"
+  ],
+  "properties": {
+    "hitNumber": {
+      "description": "hit 編號",
+      "type": [
+        "string",
+        "integer"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    },
+    "revision": {
+      "description": "所屬 revision",
+      "type": [
+        "string",
+        "integer"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    },
+    "profileKey": {
+      "description": "名單鍵（DJ:<名單編號>）",
+      "type": "string"
+    },
+    "profileName": {
+      "description": "名單主要姓名",
+      "type": [
+        "string",
+        "null"
+      ],
+      "x-sensitivity": "PERSONAL"
+    },
+    "sourceConditions": {
+      "description": "成立（HIT）的名單條件類型",
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "enum": [
+          "SANCTION",
+          "PEP",
+          "RCA",
+          "SIE",
+          "OFFICIAL_WANTED_LIST",
+          "OTHER_OFFICIAL_LIST",
+          "ADVERSE_MEDIA",
+          "BANK_INTERNAL_LIST",
+          "UNKNOWN"
+        ]
+      }
+    },
+    "identityDecision": {
+      "description": "系統身分判斷",
+      "enum": [
+        "NO_MATCH",
+        "REVIEW",
+        "PROBABLE_MATCH"
+      ]
+    },
+    "hardConflict": {
+      "description": "第一階段硬衝突代碼；是否因來源品質降級見理由碼",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "stage3Row": {
+      "description": "第三階段決策表列號",
+      "type": [
+        "string",
+        "integer",
+        "null"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    },
+    "pairResult": {
+      "description": "此組合的對外結果",
+      "enum": [
+        "NOT_APPLICABLE",
+        "NO_HIT",
+        "REVIEW",
+        "HIT",
+        "NOT_EVALUATED"
+      ]
+    },
+    "reviewPriority": {
+      "description": "複核優先序",
+      "enum": [
+        "HIGH",
+        "NORMAL",
+        "LOW",
+        null
+      ]
+    },
+    "reasonCodes": {
+      "description": "身分判斷的理由碼，見 /api/codes",
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "decisiveEvidence": {
+      "description": "決定性證據，最多 3 筆：第三階段第 2～5 列為依強度排序的支持，其他情況為細節代碼列在理由碼中的衝突，依理由碼順序",
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "group": {
+            "description": "證據群組",
+            "enum": [
+              "NAME",
+              "GENDER",
+              "NATIONALITY",
+              "DATE_OF_BIRTH",
+              "DOCUMENT",
+              "OTHER_IDENTIFIER",
+              "EMPLOYMENT",
+              "RELATIONSHIP",
+              "COMPANY_ASSOCIATION",
+              "ADDRESS",
+              "STATED_AGE",
+              "TEMPORAL_ROLE",
+              "ENTITY_IDENTIFIER"
+            ]
+          },
+          "status": {
+            "description": "比對狀態",
+            "enum": [
+              "EXACT",
+              "PARTIAL",
+              "CONFLICT",
+              "UNCERTAIN",
+              "SUBJECT_MISSING",
+              "PROFILE_MISSING"
+            ]
+          },
+          "strength": {
+            "description": "強度",
+            "enum": [
+              "NONE",
+              "LOW",
+              "MEDIUM",
+              "HIGH",
+              "UNIQUE"
+            ]
+          },
+          "detail": {
+            "description": "細節代碼，見 /api/codes",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "group",
+          "status",
+          "strength"
+        ]
+      }
+    },
+    "evidenceNote": {
+      "description": "第三階段第 6 列且沒有衝突時的說明",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "wouldChangeIf": {
+      "description": "對比式解釋，見 hit 明細",
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "field": {
+            "description": "假設的項目：DOCUMENT 或 DATE_OF_BIRTH",
+            "enum": [
+              "NAME",
+              "GENDER",
+              "NATIONALITY",
+              "DATE_OF_BIRTH",
+              "DOCUMENT",
+              "OTHER_IDENTIFIER",
+              "EMPLOYMENT",
+              "RELATIONSHIP",
+              "COMPANY_ASSOCIATION",
+              "ADDRESS",
+              "STATED_AGE",
+              "TEMPORAL_ROLE",
+              "ENTITY_IDENTIFIER"
+            ]
+          },
+          "assumption": {
+            "description": "假設相符（AGREE）或衝突（CONFLICT）",
+            "enum": [
+              "AGREE",
+              "CONFLICT"
+            ]
+          },
+          "stage3Row": {
+            "description": "假設成立時的第三階段列號",
+            "type": [
+              "string",
+              "integer"
+            ],
+            "pattern": "^-?(?:0|[1-9]\\d*)$"
+          },
+          "decision": {
+            "description": "假設成立時的身分判斷（不是對外結果）",
+            "enum": [
+              "NO_MATCH",
+              "REVIEW",
+              "PROBABLE_MATCH"
+            ]
+          },
+          "reasonCode": {
+            "description": "假設成立時的理由碼",
+            "type": "string"
+          },
+          "text": {
+            "description": "中文說明",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field",
+          "assumption",
+          "stage3Row",
+          "decision",
+          "reasonCode",
+          "text"
+        ]
+      }
+    },
+    "detail": {
+      "description": "hit 明細的連結",
+      "type": "string"
+    }
+  },
+  "required": [
+    "hitNumber",
+    "revision",
+    "profileKey",
+    "identityDecision",
+    "pairResult",
+    "detail"
+  ]
+}

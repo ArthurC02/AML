@@ -1,0 +1,106 @@
+{
+  "$id": "aml:AnalysisLineage:v1",
+  "type": [
+    "object",
+    "null"
+  ],
+  "properties": {
+    "inputFiles": {
+      "description": "輸入檔與其雜湊",
+      "type": "array",
+      "items": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "name": {
+            "description": "輸入檔名",
+            "type": "string"
+          },
+          "sha256": {
+            "description": "檔案內容的 SHA-256（multipart 為上傳位元組；JSON 輸入與重新分析為文字的 UTF-8）",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "sha256"
+        ]
+      }
+    },
+    "profiles": {
+      "description": "分析用到的每一筆名單與其來源版本",
+      "type": "array",
+      "items": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "profileId": {
+            "description": "名單編號（不含 DJ: 前綴）",
+            "type": "string"
+          },
+          "origin": {
+            "description": "LIST_DATABASE：內容與名單庫某一版相同；CASE_FILES：只來自案件檔",
+            "type": "string"
+          },
+          "listVersion": {
+            "description": "相同內容的名單庫版本；只來自案件檔時為 null",
+            "type": [
+              "string",
+              "integer",
+              "null"
+            ],
+            "pattern": "^-?(?:0|[1-9]\\d*)$"
+          },
+          "contentHash": {
+            "description": "正規化匯出文字的 SHA-256，與名單庫的內容雜湊同一算法",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "profileId",
+          "origin"
+        ]
+      }
+    },
+    "sourcePolicyVersion": {
+      "description": "名單條件規則版本",
+      "type": "string"
+    },
+    "modelVersion": {
+      "description": "Fellegi-Sunter 影子模型版本",
+      "type": "string"
+    },
+    "codeCatalogVersion": {
+      "description": "代碼字典版本",
+      "type": "string"
+    },
+    "schemaVersion": {
+      "description": "儲存格式（JSON Schema）版本",
+      "type": [
+        "string",
+        "integer"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    },
+    "appVersion": {
+      "description": "應用程式版本（組件 informational version）",
+      "type": "string"
+    }
+  },
+  "required": [
+    "inputFiles",
+    "profiles",
+    "sourcePolicyVersion",
+    "modelVersion",
+    "codeCatalogVersion",
+    "schemaVersion",
+    "appVersion"
+  ]
+}

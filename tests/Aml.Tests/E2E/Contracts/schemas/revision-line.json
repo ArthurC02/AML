@@ -1,0 +1,62 @@
+{
+  "$id": "aml:RevisionLine:v1",
+  "type": [
+    "object",
+    "null"
+  ],
+  "properties": {
+    "revision": {
+      "description": "revision 編號",
+      "type": [
+        "string",
+        "integer"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    },
+    "createdAt": {
+      "description": "分析時間",
+      "type": "string",
+      "format": "date-time"
+    },
+    "executionStatus": {
+      "description": "執行狀態",
+      "enum": [
+        "PENDING",
+        "RUNNING",
+        "COMPLETED",
+        "PARTIAL",
+        "FAILED"
+      ]
+    },
+    "caseResult": {
+      "description": "案件層級結果",
+      "enum": [
+        "NOT_APPLICABLE",
+        "NO_HIT",
+        "REVIEW",
+        "HIT",
+        "NOT_EVALUATED"
+      ]
+    },
+    "effective": {
+      "description": "是否為生效 revision",
+      "type": "boolean"
+    },
+    "changes": {
+      "description": "與前一個生效 revision 的變更數；第一次分析或沒有解釋的 revision 為 null",
+      "type": [
+        "string",
+        "integer",
+        "null"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    }
+  },
+  "required": [
+    "revision",
+    "createdAt",
+    "executionStatus",
+    "caseResult",
+    "effective"
+  ]
+}

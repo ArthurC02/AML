@@ -65,6 +65,8 @@ GET  /api/schemas/{name}
 
 `/api/codes` is the code catalog (`Core/Codes/CodeCatalog`): every code the system emits, with its kind, Chinese name, one-line meaning, the rule that emits it and the document section that defines it. A value with detail attached is listed under its key (`SOFT_DIFFERENCE（Jaccard …）` → `SOFT_DIFFERENCE`, `ENCODING_FALLBACK:<file>` → `ENCODING_FALLBACK`); a value joined with `；` is looked up part by part. `/api/schemas` publishes the JSON Schemas of the stored records (`case-analysis`, `case-explanation`, `analysis-lineage`, `analysis-quality`, `revision`) and of the views (`case-summary`, `hit-summary`, `revision-line`, `case-page`; [data contracts](data-contracts.md#published-schemas)).
 
+Every operation in the OpenAPI document (`/openapi/v1.json`) has an `operationId` that serves as its tool name (`createCase`, `getCaseSummary`, `getHit`, …), one tag (`read`, `write` or `operations`) and a description of when to use it and what to call next ([ADR-0022](../adr/0022-layered-api-views.md)). The document and the published schemas are kept as contract snapshots; a test fails on any difference.
+
 `POST /api/cases` takes multipart form fields (`subjectRef`, `triggerEventId`, `files`) or a JSON body shaped as one batch item (`{subjectRef, triggerEventId, files: {name: text}}`). It returns `201` with `Location` when this call created the Case, and `200` when a Case for the trigger and subject already existed: created earlier, left at revision 0 and resumed now, or created by a concurrent request. A request body over `Api:MaxRequestBytes` (100 MB) is refused with `413` (`HTTP_ERROR`).
 
 ## Views

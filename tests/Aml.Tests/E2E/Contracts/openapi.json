@@ -1,0 +1,3749 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Aml.Api | v1",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/codes": {
+      "get": {
+        "tags": [
+          "read"
+        ],
+        "summary": "Every code the system emits: kind, Chinese name, meaning, the rule that emits it and its document section",
+        "description": "Filter with kind (IDENTITY_REASON, EVIDENCE_DETAIL, DATA_QUALITY, PROBLEM, …). A value with detail attached (SOFT_DIFFERENCE（…）, ENCODING_FALLBACK:<file>) is listed under its key. Next: getCode.",
+        "operationId": "listCodes",
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/codes/{code}": {
+      "get": {
+        "tags": [
+          "read"
+        ],
+        "summary": "One code; a value with detail attached is looked up by its key",
+        "description": "Use it to explain a code found in a response: its kind, Chinese name, meaning, the rule that emits it and the document section that defines it. Next: the document section, for the rule in full.",
+        "operationId": "getCode",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CodeEntry"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/schemas": {
+      "get": {
+        "tags": [
+          "read"
+        ],
+        "summary": "Names of the published JSON Schemas and the schema version",
+        "description": "Use it to find the schema of a record or view and the current schemaVersion. Next: getSchema.",
+        "operationId": "listSchemas",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SchemaList"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/schemas/{name}": {
+      "get": {
+        "tags": [
+          "read"
+        ],
+        "summary": "JSON Schema of a stored record: field descriptions, and x-sensitivity (PERSONAL, IDENTIFIER) on personal data",
+        "description": "Use it to validate or interpret a stored record or a view. Next: getCode for the codes a field holds.",
+        "operationId": "getSchema",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/cases": {
+      "post": {
+        "tags": [
+          "write"
+        ],
+        "summary": "Create a Case from the export files and run the first analysis; 201 when created, 200 when it already existed",
+        "description": "Send multipart form fields subjectRef, triggerEventId and files (案件資訊*.txt, 名單資料_<id>.txt, the customer or related-party files and any 新聞資訊_<id>.txt, or the same pages as HTML), or JSON {subjectRef, triggerEventId, files: {name: text}} as one batch item. Repeating the same triggerEventId and subjectRef returns the existing Case with 200. Returns the Case summary. Use it once per alert (trigger event and subject). For new files of an existing Case use reanalyzeCase; for many Cases use submitBatch. Next: getHit through hits[].link, or getRevision through revision. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.",
+        "operationId": "createCase",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "required": [
+                  "subjectRef",
+                  "triggerEventId",
+                  "files"
+                ],
+                "type": "object",
+                "properties": {
+                  "subjectRef": {
+                    "type": "string"
+                  },
+                  "triggerEventId": {
+                    "type": "string"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "required": [
+                  "subjectRef",
+                  "triggerEventId",
+                  "files"
+                ],
+                "type": "object",
+                "properties": {
+                  "subjectRef": {
+                    "type": "string"
+                  },
+                  "triggerEventId": {
+                    "type": "string"
+                  },
+                  "files": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseSummary"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseSummary"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "read"
+        ],
+        "summary": "Find Cases by subject and/or trigger event, oldest first, one page at a time",
+        "description": "Use it to find the caseId of a subject or trigger event; give subjectRef, triggerEventId or both. Returns one page of Cases and nextPageToken when more follow; pass it back as pageToken. Next: getCaseSummary.",
+        "operationId": "findCases",
+        "parameters": [
+          {
+            "name": "subjectRef",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "triggerEventId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CasePage"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cases/{caseId}/analyses": {
+      "post": {
+        "tags": [
+          "write"
+        ],
+        "summary": "Run a new analysis revision with updated input files; returns the Case summary",
+        "description": "Send the full set of export files again, as multipart, as for createCase. Use it when the bank files of an existing Case changed; a changed list Profile is re-analysed by itself after importProfiles. A revision that is not complete does not replace the effective result. Next: listRevisions.",
+        "operationId": "reanalyzeCase",
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "required": [
+                  "files"
+                ],
+                "type": "object",
+                "properties": {
+                  "files": {
+                    "$ref": "#/components/schemas/IFormFileCollection"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseSummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cases/{caseId}": {
+      "get": {
+        "tags": [
+          "read"
+        ],
+        "summary": "What the Case concluded: result, conclusion and one line per hit from the effective revision, with links to the hits and the full revision",
+        "description": "Start here to learn what a Case concluded. It holds no identifier values and, of personal data, only names. Hits are ordered by review priority; at most 10 are listed and the rest counted in omitted. Next: getHit for why a hit was decided, getRevision for the full record. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.",
+        "operationId": "getCaseSummary",
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseSummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cases/{caseId}/hits/{hit}": {
+      "get": {
+        "tags": [
+          "read"
+        ],
+        "summary": "One hit of the effective revision (or ?revision=): view=summary (default) without compared values, view=detail with the full explanation (HitExplanation)",
+        "description": "Use view=summary to learn why the hit was decided: decisive evidence, reason codes and wouldChangeIf. Use view=detail only when the compared subject and Profile values are needed. wouldChangeIf names the stage 3 row a comparable document or full DOB would move the identity decision to; it never states an external result. Example: GC-03 hit 1 is HIT on OFFICIAL_WANTED_LIST, PROBABLE_MATCH at stage 3 row 4. Next: getCode for any code.",
+        "operationId": "getHit",
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "hit",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HitSummary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cases/{caseId}/candidates": {
+      "get": {
+        "tags": [
+          "read"
+        ],
+        "summary": "A Case's candidate Profiles: source=table (CONTROLLED_SET, its own candidate table, the default) or source=previous (PREVIOUS_LINK, the Profiles of its latest input)",
+        "description": "Use it to see which Profiles a Case was screened against; to search the whole list database use searchProfiles. truncated marks a list cut by top. Next: getProfile.",
+        "operationId": "listCaseCandidates",
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "source",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "top",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RetrievedCandidate"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/cases/{caseId}/revisions": {
+      "get": {
+        "tags": [
+          "read"
+        ],
+        "summary": "Every analysis revision: time, execution status, result, whether it is effective and how many changes it made",
+        "description": "Use it to see the history of a Case and which revision is effective. Next: getRevision.",
+        "operationId": "listRevisions",
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RevisionLine"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/cases/{caseId}/revisions/{revision}": {
+      "get": {
+        "tags": [
+          "read"
+        ],
+        "summary": "The full record of one revision: result, explanation, lineage and data quality",
+        "description": "The audit record: nothing is left out, so it is large and holds identifier values. Prefer getCaseSummary and getHit unless the full record is needed. Lineage gives the input file hashes, the Profile versions and the rule versions. Next: getCode for any code, getSchema (revision) for the meaning of a field.",
+        "operationId": "getRevision",
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisRecord"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/batches": {
+      "post": {
+        "tags": [
+          "write"
+        ],
+        "summary": "Queue many Cases for analysis",
+        "description": "Each item has subjectRef, triggerEventId and files (file name → text content), the same inputs as POST /api/cases. Items already queued under the same triggerEventId and subjectRef are listed as duplicates and not queued again. Use it for many Cases at once; for one Case use createCase. Returns 202 with batchId. Next: getBatchStatus.",
+        "operationId": "submitBatch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/BatchItemRequest"
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchSubmitted"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/batches/{batchId}": {
+      "get": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Batch progress: counts per status and one page of items with their Case, revision, attempts and error code",
+        "description": "view=summary (default) lists the items not yet succeeded; view=full lists every item; status= lists one status. Items come oldest first, pageSize (default 20, at most 100) at a time, with nextPageToken when more follow. Next: getCaseSummary for a succeeded item, rerunBatch for dead-lettered items once the cause is fixed.",
+        "operationId": "getBatchStatus",
+        "parameters": [
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "pageSize",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "pageToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/batches/{batchId}/rerun": {
+      "post": {
+        "tags": [
+          "operations"
+        ],
+        "summary": "Operator re-run: dead-lettered items of the batch go back to the queue with a fresh retry budget",
+        "description": "Use it only after fixing the cause of a transient failure (TIMEOUT, LEASE_EXPIRED, or an exception type name such as SqliteException); every dead-lettered item is requeued, and INVALID_INPUT and INVALID_PAYLOAD fail the same way again. Returns how many items were requeued. Next: getBatchStatus.",
+        "operationId": "rerunBatch",
+        "parameters": [
+          {
+            "name": "batchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RerunResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/profiles/import": {
+      "post": {
+        "tags": [
+          "write"
+        ],
+        "summary": "Capture Profiles into the list database; a changed Profile queues re-analysis of the Cases that used it",
+        "description": "Upload 名單資料_<id>.txt (or .html). An unchanged file keeps its version; a changed one becomes a new version, the old one is kept, and every Case whose latest input used it gets a queued re-analysis job (track it with GET /api/batches/{batchId}). A file whose name and Profile_ID differ, or one Profile in two formats, is rejected. Next: getBatchStatus with the returned batchId, when it is not null.",
+        "operationId": "importProfiles",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "required": [
+                  "files"
+                ],
+                "type": "object",
+                "properties": {
+                  "files": {
+                    "$ref": "#/components/schemas/IFormFileCollection"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/profiles/search": {
+      "get": {
+        "tags": [
+          "read"
+        ],
+        "summary": "Search the list database by name (INDEX_SEARCH)",
+        "description": "Counted by Profile, not alias row; exact alias matches come first and are never cut. The score ranks candidates only; it is never an identity probability. Use it to look a name up in the list database; for the Profiles a Case was screened against use listCaseCandidates. Next: getProfile.",
+        "operationId": "searchProfiles",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "top",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RetrievedCandidate"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/profiles/merges": {
+      "get": {
+        "tags": [
+          "read"
+        ],
+        "summary": "Profiles that describe the same person: shared document key or recorded source link, never name similarity",
+        "description": "Groups list each accepted merge as an edge with its basis; merges refused for a DOB or gender conflict are listed under rejected. Next: getProfile for a Profile of a group.",
+        "operationId": "listProfileMerges",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/profiles/{profileId}": {
+      "get": {
+        "tags": [
+          "read"
+        ],
+        "summary": "One Profile as captured (DIRECT_REFERENCE): the latest version, or ?version=; the ID may carry the DJ: prefix",
+        "description": "Returns the Profile as read, with its version, latest version and content hash. Next: listProfileVersions.",
+        "operationId": "getProfile",
+        "parameters": [
+          {
+            "name": "profileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileView"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    },
+    "/api/profiles/{profileId}/versions": {
+      "get": {
+        "tags": [
+          "read"
+        ],
+        "summary": "Every captured version of one Profile, with its content hash",
+        "description": "Use it to see when a Profile changed. Next: getProfile with ?version=.",
+        "operationId": "listProfileVersions",
+        "parameters": [
+          {
+            "name": "profileId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProfileVersionResponse"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AmlRelevance": {
+        "enum": [
+          "UNCERTAIN",
+          "RELATED",
+          "UNRELATED",
+          null
+        ]
+      },
+      "AnalysisLineage": {
+        "required": [
+          "inputFiles",
+          "profiles",
+          "sourcePolicyVersion",
+          "modelVersion",
+          "codeCatalogVersion",
+          "schemaVersion",
+          "appVersion"
+        ],
+        "type": "object",
+        "properties": {
+          "inputFiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InputFile"
+            },
+            "description": "輸入檔與其雜湊"
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProfileUse"
+            },
+            "description": "分析用到的每一筆名單與其來源版本"
+          },
+          "sourcePolicyVersion": {
+            "type": "string",
+            "description": "名單條件規則版本"
+          },
+          "modelVersion": {
+            "type": "string",
+            "description": "Fellegi-Sunter 影子模型版本"
+          },
+          "codeCatalogVersion": {
+            "type": "string",
+            "description": "代碼字典版本"
+          },
+          "schemaVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "儲存格式（JSON Schema）版本",
+            "format": "int32"
+          },
+          "appVersion": {
+            "type": "string",
+            "description": "應用程式版本（組件 informational version）"
+          }
+        }
+      },
+      "AnalysisQuality": {
+        "required": [
+          "hits",
+          "comparisonCells",
+          "missingCells",
+          "uncertainCells",
+          "conflictCells",
+          "missingRate",
+          "uncertainRate",
+          "conflictRate",
+          "notEvaluatedProfiles",
+          "findingCounts"
+        ],
+        "type": "object",
+        "properties": {
+          "hits": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "hit 數",
+            "format": "int32"
+          },
+          "comparisonCells": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "比對格數（每個 hit 9 格）",
+            "format": "int32"
+          },
+          "missingCells": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "一方缺值的格數",
+            "format": "int32"
+          },
+          "uncertainCells": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "UNCERTAIN 的格數",
+            "format": "int32"
+          },
+          "conflictCells": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "CONFLICT 的格數",
+            "format": "int32"
+          },
+          "missingRate": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "description": "缺值率；沒有比對格時為 null",
+            "format": "double"
+          },
+          "uncertainRate": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "description": "不確定率；沒有比對格時為 null",
+            "format": "double"
+          },
+          "conflictRate": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "description": "衝突率；沒有比對格時為 null",
+            "format": "double"
+          },
+          "notEvaluatedProfiles": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "無法評估的名單數",
+            "format": "int32"
+          },
+          "findingCounts": {
+            "type": "object",
+            "additionalProperties": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            },
+            "description": "資料品質 finding 依代碼計數（每個 hit 計一次）"
+          }
+        }
+      },
+      "AnalysisRecord": {
+        "required": [
+          "caseId",
+          "revision",
+          "executionStatus",
+          "caseResult",
+          "result",
+          "explanation",
+          "lineage",
+          "quality",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "description": "案件編號"
+          },
+          "revision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "revision 編號",
+            "format": "int32"
+          },
+          "executionStatus": {
+            "description": "執行狀態；PARTIAL 不會成為生效 revision",
+            "$ref": "#/components/schemas/ExecutionStatus"
+          },
+          "caseResult": {
+            "description": "案件層級結果",
+            "$ref": "#/components/schemas/ScreeningAssessment"
+          },
+          "result": {
+            "description": "分析結果",
+            "$ref": "#/components/schemas/CaseAnalysis"
+          },
+          "explanation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "解釋",
+                "$ref": "#/components/schemas/CaseExplanation"
+              }
+            ]
+          },
+          "lineage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "沿革：輸入檔、名單版本與規則版本",
+                "$ref": "#/components/schemas/AnalysisLineage"
+              }
+            ]
+          },
+          "quality": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "資料品質指標",
+                "$ref": "#/components/schemas/AnalysisQuality"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "分析時間",
+            "format": "date-time"
+          }
+        }
+      },
+      "Assumption": {
+        "enum": [
+          "AGREE",
+          "CONFLICT"
+        ]
+      },
+      "BatchItemRequest": {
+        "required": [
+          "subjectRef",
+          "triggerEventId",
+          "files"
+        ],
+        "type": "object",
+        "properties": {
+          "subjectRef": {
+            "type": "string"
+          },
+          "triggerEventId": {
+            "type": "string"
+          },
+          "files": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "BatchStatus": {
+        "required": [
+          "batchId",
+          "pending",
+          "running",
+          "succeeded",
+          "deadLetter",
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "batchId": {
+            "type": "string"
+          },
+          "pending": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "running": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "succeeded": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "deadLetter": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JobItem"
+            }
+          },
+          "nextPageToken": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "BatchSubmitted": {
+        "required": [
+          "batchId",
+          "queued",
+          "duplicates"
+        ],
+        "type": "object",
+        "properties": {
+          "batchId": {
+            "type": "string"
+          },
+          "queued": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "duplicates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CaseAnalysis": {
+        "required": [
+          "hits",
+          "notEvaluatedProfiles",
+          "importedDecisions"
+        ],
+        "type": "object",
+        "properties": {
+          "hits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HitResult"
+            },
+            "description": "每筆名單一個 hit"
+          },
+          "notEvaluatedProfiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "缺名單資料而無法評估的名單鍵；有任何一筆時 revision 不完整"
+          },
+          "importedDecisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportedDecision"
+            },
+            "description": "自輸入檔讀入的舊決定"
+          },
+          "schemaVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "儲存格式版本",
+            "format": "int32"
+          }
+        }
+      },
+      "CaseExplanation": {
+        "required": [
+          "caseResult",
+          "hits",
+          "notEvaluatedProfiles",
+          "importedDecisions",
+          "changesFromPreviousRevision"
+        ],
+        "type": "object",
+        "properties": {
+          "caseResult": {
+            "description": "案件層級結果",
+            "$ref": "#/components/schemas/ScreeningAssessment"
+          },
+          "hits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HitExplanation"
+            },
+            "description": "每組受檢對象與名單的解釋"
+          },
+          "notEvaluatedProfiles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "缺名單資料而無法評估的名單鍵"
+          },
+          "importedDecisions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportedDecision"
+            },
+            "description": "自輸入檔讀入的舊決定，從不成為系統判斷"
+          },
+          "changesFromPreviousRevision": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PairChange"
+            },
+            "description": "與前一個生效 revision 的差異；第一次分析為 null"
+          },
+          "schemaVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "儲存格式版本",
+            "format": "int32"
+          }
+        }
+      },
+      "CasePage": {
+        "required": [
+          "items",
+          "nextPageToken"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CaseRecord"
+            },
+            "description": "Case，依建立時間再依案件編號"
+          },
+          "nextPageToken": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "下一頁的 pageToken；最後一頁為 null"
+          }
+        }
+      },
+      "CaseRecord": {
+        "required": [
+          "caseId",
+          "subjectRef",
+          "triggerEventId",
+          "status",
+          "currentRevision",
+          "effectiveRevision",
+          "createdAt",
+          "updatedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "description": "案件編號"
+          },
+          "subjectRef": {
+            "type": "string",
+            "description": "受檢對象參考碼：呼叫端的不透明參考，不得為客戶編號或證件號碼"
+          },
+          "triggerEventId": {
+            "type": "string",
+            "description": "觸發事件編號"
+          },
+          "status": {
+            "description": "案件狀態",
+            "$ref": "#/components/schemas/CaseStatus"
+          },
+          "currentRevision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "最新 revision",
+            "format": "int32"
+          },
+          "effectiveRevision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "description": "生效 revision；尚無完整分析時為 null",
+            "format": "int32"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "建立時間",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "更新時間",
+            "format": "date-time"
+          }
+        }
+      },
+      "CaseStatus": {
+        "enum": [
+          "OPEN",
+          "IN_REVIEW",
+          "CLOSED"
+        ]
+      },
+      "CaseSummary": {
+        "required": [
+          "caseId",
+          "subjectRef",
+          "triggerEventId",
+          "status",
+          "currentRevision",
+          "effectiveRevision",
+          "effectiveAt",
+          "newerRevisionIncomplete",
+          "result",
+          "conclusion",
+          "hits",
+          "omitted",
+          "notEvaluatedProfiles",
+          "revision",
+          "revisions"
+        ],
+        "type": "object",
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "description": "案件編號"
+          },
+          "subjectRef": {
+            "type": "string",
+            "description": "受檢對象參考碼：呼叫端的不透明參考，不得為客戶編號或證件號碼"
+          },
+          "triggerEventId": {
+            "type": "string",
+            "description": "觸發事件編號"
+          },
+          "status": {
+            "description": "案件狀態",
+            "$ref": "#/components/schemas/CaseStatus"
+          },
+          "currentRevision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "最新 revision",
+            "format": "int32"
+          },
+          "effectiveRevision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "description": "生效 revision；尚無完整分析時為 null",
+            "format": "int32"
+          },
+          "effectiveAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "生效 revision 的分析時間",
+            "format": "date-time"
+          },
+          "newerRevisionIncomplete": {
+            "type": "boolean",
+            "description": "有比生效 revision 更新但未完成的 revision"
+          },
+          "result": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "案件層級結果；尚無生效 revision 時為 null",
+                "$ref": "#/components/schemas/ScreeningAssessment"
+              }
+            ]
+          },
+          "conclusion": {
+            "type": "string",
+            "description": "結論句"
+          },
+          "hits": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/HitLine"
+            },
+            "description": "各 hit 一行，依優先序再依編號，最多 10 筆"
+          },
+          "omitted": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "description": "未列出的 hit 數",
+            "format": "int32"
+          },
+          "notEvaluatedProfiles": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "缺名單資料而無法評估的名單鍵"
+          },
+          "revision": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "完整紀錄：生效 revision，沒有時為最新 revision"
+          },
+          "revisions": {
+            "type": "string",
+            "description": "revision 清單的連結"
+          }
+        }
+      },
+      "CodeEntry": {
+        "required": [
+          "code",
+          "kind",
+          "name",
+          "description",
+          "rule",
+          "doc"
+        ],
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "doc": {
+            "type": "string"
+          }
+        }
+      },
+      "CodeList": {
+        "required": [
+          "version",
+          "codes"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string"
+          },
+          "codes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CodeEntry"
+            }
+          }
+        }
+      },
+      "ComparisonRow": {
+        "required": [
+          "field",
+          "subjectValue",
+          "profileValue",
+          "status",
+          "difference"
+        ],
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "比對項目（固定順序：中文姓名、英文姓名／拼音、國籍、出生日期、性別、證件、地址、職業／雇主、其他識別碼）"
+          },
+          "subjectValue": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "受檢對象的值；證件與參考號碼已遮罩"
+          },
+          "profileValue": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "名單的值；證件已遮罩"
+          },
+          "status": {
+            "description": "比對狀態，見 /api/codes",
+            "$ref": "#/components/schemas/ComparisonStatus"
+          },
+          "difference": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "差異代碼，多個以「；」連接，見 /api/codes"
+          },
+          "note": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "給複核人員的說明文字，例如報導年齡的推算"
+          }
+        }
+      },
+      "ComparisonStatus": {
+        "enum": [
+          "EXACT",
+          "PARTIAL",
+          "CONFLICT",
+          "UNCERTAIN",
+          "SUBJECT_MISSING",
+          "PROFILE_MISSING"
+        ]
+      },
+      "ConditionBasis": {
+        "enum": [
+          "FLAG",
+          "CATEGORY_MAPPING",
+          "UNMAPPED"
+        ]
+      },
+      "ConditionStatus": {
+        "enum": [
+          "HIT",
+          "NOT_HIT",
+          "UNKNOWN"
+        ]
+      },
+      "DatePrecision": {
+        "enum": [
+          "YEAR",
+          "MONTH",
+          "DAY"
+        ]
+      },
+      "Direction": {
+        "enum": [
+          "PREREQUISITE",
+          "SUPPORT",
+          "CONFLICT",
+          "NEUTRAL"
+        ]
+      },
+      "DispositionRecommendation": {
+        "required": [
+          "recommendation",
+          "reasonCodes",
+          "pendingChecks"
+        ],
+        "type": "object",
+        "properties": {
+          "recommendation": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "建議：ON_LIST 或 NOT_ON_LIST；無法判定時為 null",
+                "$ref": "#/components/schemas/Recommendation"
+              }
+            ]
+          },
+          "reasonCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "第 22 條理由碼"
+          },
+          "pendingChecks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "尚未執行的查核事項"
+          },
+          "advisory": {
+            "type": "boolean",
+            "description": "永遠為 true：建議僅供參考"
+          }
+        }
+      },
+      "Document": {
+        "required": [
+          "type",
+          "number"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "證件類型，例如 TW_NATIONAL_ID、PASSPORT"
+          },
+          "number": {
+            "type": "string",
+            "description": "證件號碼"
+          },
+          "issuingCountry": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "發證國（ISO 3166-1 alpha-2）"
+          },
+          "country": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "發證國；台灣證件類型隱含 TW"
+          }
+        }
+      },
+      "Evidence": {
+        "required": [
+          "group",
+          "direction",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "group": {
+            "description": "證據群組",
+            "$ref": "#/components/schemas/EvidenceGroup"
+          },
+          "direction": {
+            "description": "方向：前提、支持、衝突或中性",
+            "$ref": "#/components/schemas/Direction"
+          },
+          "status": {
+            "description": "比對狀態",
+            "$ref": "#/components/schemas/ComparisonStatus"
+          },
+          "strength": {
+            "description": "支持強度（UNIQUE > HIGH > MEDIUM > LOW > NONE）",
+            "$ref": "#/components/schemas/Strength"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "細節代碼，見 /api/codes"
+          },
+          "note": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "給複核人員的說明文字"
+          },
+          "isSupport": {
+            "type": "boolean",
+            "description": "是否為支持同一人的證據"
+          }
+        }
+      },
+      "EvidenceGroup": {
+        "enum": [
+          "NAME",
+          "GENDER",
+          "NATIONALITY",
+          "DATE_OF_BIRTH",
+          "DOCUMENT",
+          "OTHER_IDENTIFIER",
+          "EMPLOYMENT",
+          "RELATIONSHIP",
+          "COMPANY_ASSOCIATION",
+          "ADDRESS",
+          "STATED_AGE",
+          "TEMPORAL_ROLE",
+          "ENTITY_IDENTIFIER"
+        ]
+      },
+      "EvidenceLine": {
+        "required": [
+          "group",
+          "status",
+          "strength",
+          "detail"
+        ],
+        "type": "object",
+        "properties": {
+          "group": {
+            "description": "證據群組",
+            "$ref": "#/components/schemas/EvidenceGroup"
+          },
+          "status": {
+            "description": "比對狀態",
+            "$ref": "#/components/schemas/ComparisonStatus"
+          },
+          "strength": {
+            "description": "強度",
+            "$ref": "#/components/schemas/Strength"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "細節代碼，見 /api/codes"
+          }
+        }
+      },
+      "ExecutionStatus": {
+        "enum": [
+          "PENDING",
+          "RUNNING",
+          "COMPLETED",
+          "PARTIAL",
+          "FAILED"
+        ]
+      },
+      "ExplanationSource": {
+        "required": [
+          "ref",
+          "id",
+          "name",
+          "url",
+          "publishedOn",
+          "retrievedOn",
+          "usedFor",
+          "attachedToProfile"
+        ],
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "description": "摘要中的引用編號（S1、S2…）"
+          },
+          "id": {
+            "type": "string",
+            "description": "來源編號"
+          },
+          "name": {
+            "type": "string",
+            "description": "來源名稱或新聞出處與標題"
+          },
+          "url": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "來源網址"
+          },
+          "publishedOn": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "發布日期"
+          },
+          "retrievedOn": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "取得日期"
+          },
+          "usedFor": {
+            "type": "string",
+            "description": "用途：PROFILE_RECORD、LEGAL_STAGE、CONTEXT"
+          },
+          "attachedToProfile": {
+            "type": "boolean",
+            "description": "是否附於名單"
+          }
+        }
+      },
+      "ExplanationSummary": {
+        "required": [
+          "internalData",
+          "externalData",
+          "agreementsAndDifferences",
+          "keyEvidenceOrGaps",
+          "conclusion"
+        ],
+        "type": "object",
+        "properties": {
+          "internalData": {
+            "type": "string",
+            "description": "內部資料：受檢對象的姓名、出生日期、國籍、性別與證件是否提供"
+          },
+          "externalData": {
+            "type": "string",
+            "description": "外部資料：名單類別、條件、出生日期、國籍、性別與新聞，[S#] 引用來源"
+          },
+          "agreementsAndDifferences": {
+            "type": "string",
+            "description": "相符、衝突與無法比對的項目"
+          },
+          "keyEvidenceOrGaps": {
+            "type": "string",
+            "description": "關鍵佐證或缺口"
+          },
+          "conclusion": {
+            "type": "string",
+            "description": "結論：身分判斷、對外結果、理由碼與第 22 條建議"
+          }
+        }
+      },
+      "Gender": {
+        "enum": [
+          "MALE",
+          "FEMALE",
+          null
+        ]
+      },
+      "HitExplanation": {
+        "required": [
+          "hitNumber",
+          "screenedSubject",
+          "profileKey",
+          "profileName",
+          "matchedNames",
+          "isRca",
+          "sourceCategories",
+          "sourceConditions",
+          "attachedNews",
+          "comparison",
+          "relatedParties",
+          "support",
+          "conflicts",
+          "unknownFields",
+          "hardConflict",
+          "stage3Row",
+          "wouldChangeIf",
+          "identityDecision",
+          "pairResult",
+          "reviewPriority",
+          "pairReasonCodes",
+          "disposition",
+          "reasonCodes",
+          "dataQualityFindings",
+          "sources",
+          "summary"
+        ],
+        "type": "object",
+        "properties": {
+          "hitNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "hit 編號，從 1 開始",
+            "format": "int32"
+          },
+          "screenedSubject": {
+            "type": "string",
+            "description": "受檢對象：客戶或關聯人（關係）與姓名"
+          },
+          "profileKey": {
+            "type": "string",
+            "description": "名單鍵（DJ:<名單編號>）"
+          },
+          "profileName": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "名單主要姓名"
+          },
+          "matchedNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "疑似名單表中命中的姓名"
+          },
+          "isRca": {
+            "type": "boolean",
+            "description": "疑似名單表標示 Is RCA? = YES"
+          },
+          "sourceCategories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "名單類別／子類別"
+          },
+          "sourceConditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceCondition"
+            },
+            "description": "名單條件（與身分判斷各自獨立）"
+          },
+          "attachedNews": {
+            "type": "boolean",
+            "description": "是否附有新聞"
+          },
+          "comparison": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ComparisonRow"
+            },
+            "description": "固定順序的比對表"
+          },
+          "relatedParties": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RelatedParty"
+            },
+            "description": "雙方記載的關係人"
+          },
+          "support": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "description": "支持同一人的證據"
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "description": "衝突的證據"
+          },
+          "unknownFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "缺值或不確定的比對項目"
+          },
+          "hardConflict": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "第一階段硬衝突代碼"
+          },
+          "stage3Row": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "description": "第三階段決策表列號（1～6）",
+            "format": "int32"
+          },
+          "wouldChangeIf": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WouldChangeIf"
+            },
+            "description": "對比式解釋：若證件或完整出生日期可比對，身分判斷會移到哪一列；不代表對外結果"
+          },
+          "identityDecision": {
+            "description": "系統身分判斷",
+            "$ref": "#/components/schemas/IdentityDecision"
+          },
+          "pairResult": {
+            "description": "此組合的對外結果",
+            "$ref": "#/components/schemas/ScreeningAssessment"
+          },
+          "reviewPriority": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "複核優先序",
+                "$ref": "#/components/schemas/ReviewPriority"
+              }
+            ]
+          },
+          "pairReasonCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "對外結果的理由碼"
+          },
+          "disposition": {
+            "description": "第 22 條建議，僅供參考",
+            "$ref": "#/components/schemas/DispositionRecommendation"
+          },
+          "reasonCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "身分判斷的理由碼"
+          },
+          "dataQualityFindings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "資料品質 finding，見 /api/codes"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExplanationSource"
+            },
+            "description": "來源；Ref 在摘要中以 [S#] 引用"
+          },
+          "summary": {
+            "description": "五段式摘要",
+            "$ref": "#/components/schemas/ExplanationSummary"
+          }
+        }
+      },
+      "HitLine": {
+        "required": [
+          "hitNumber",
+          "profileKey",
+          "profileName",
+          "pairResult",
+          "reviewPriority",
+          "identityDecision",
+          "link"
+        ],
+        "type": "object",
+        "properties": {
+          "hitNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "hit 編號",
+            "format": "int32"
+          },
+          "profileKey": {
+            "type": "string",
+            "description": "名單鍵（DJ:<名單編號>）"
+          },
+          "profileName": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "名單主要姓名"
+          },
+          "pairResult": {
+            "description": "此組合的對外結果",
+            "$ref": "#/components/schemas/ScreeningAssessment"
+          },
+          "reviewPriority": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "複核優先序",
+                "$ref": "#/components/schemas/ReviewPriority"
+              }
+            ]
+          },
+          "identityDecision": {
+            "description": "系統身分判斷",
+            "$ref": "#/components/schemas/IdentityDecision"
+          },
+          "link": {
+            "type": "string",
+            "description": "此 revision 的 hit 摘要連結"
+          }
+        }
+      },
+      "HitResult": {
+        "required": [
+          "profile",
+          "candidateRows",
+          "conditions",
+          "identity",
+          "pairResult",
+          "reviewPriority",
+          "pairReasonCodes",
+          "disposition"
+        ],
+        "type": "object",
+        "properties": {
+          "profile": {
+            "description": "名單（讀入時的結構化內容）",
+            "$ref": "#/components/schemas/SourceProfile"
+          },
+          "candidateRows": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "疑似名單表中合併為此 hit 的列數",
+            "format": "int32"
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceCondition"
+            },
+            "description": "名單條件"
+          },
+          "identity": {
+            "description": "身分判斷與證據",
+            "$ref": "#/components/schemas/IdentityResult"
+          },
+          "pairResult": {
+            "description": "此組合的對外結果",
+            "$ref": "#/components/schemas/ScreeningAssessment"
+          },
+          "reviewPriority": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "複核優先序",
+                "$ref": "#/components/schemas/ReviewPriority"
+              }
+            ]
+          },
+          "pairReasonCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "對外結果的理由碼"
+          },
+          "disposition": {
+            "description": "第 22 條建議，僅供參考",
+            "$ref": "#/components/schemas/DispositionRecommendation"
+          },
+          "risk": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "AML 風險評分；沒有核准的政策時為 null",
+                "$ref": "#/components/schemas/RiskAssessment"
+              }
+            ]
+          }
+        }
+      },
+      "HitSummary": {
+        "required": [
+          "hitNumber",
+          "revision",
+          "profileKey",
+          "profileName",
+          "sourceConditions",
+          "identityDecision",
+          "hardConflict",
+          "stage3Row",
+          "pairResult",
+          "reviewPriority",
+          "reasonCodes",
+          "decisiveEvidence",
+          "evidenceNote",
+          "wouldChangeIf",
+          "detail"
+        ],
+        "type": "object",
+        "properties": {
+          "hitNumber": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "hit 編號",
+            "format": "int32"
+          },
+          "revision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "所屬 revision",
+            "format": "int32"
+          },
+          "profileKey": {
+            "type": "string",
+            "description": "名單鍵（DJ:<名單編號>）"
+          },
+          "profileName": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "名單主要姓名"
+          },
+          "sourceConditions": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/ListType"
+            },
+            "description": "成立（HIT）的名單條件類型"
+          },
+          "identityDecision": {
+            "description": "系統身分判斷",
+            "$ref": "#/components/schemas/IdentityDecision"
+          },
+          "hardConflict": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "第一階段硬衝突代碼；是否因來源品質降級見理由碼"
+          },
+          "stage3Row": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "description": "第三階段決策表列號",
+            "format": "int32"
+          },
+          "pairResult": {
+            "description": "此組合的對外結果",
+            "$ref": "#/components/schemas/ScreeningAssessment"
+          },
+          "reviewPriority": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "複核優先序",
+                "$ref": "#/components/schemas/ReviewPriority"
+              }
+            ]
+          },
+          "reasonCodes": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "身分判斷的理由碼，見 /api/codes"
+          },
+          "decisiveEvidence": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/EvidenceLine"
+            },
+            "description": "決定性證據，最多 3 筆：第三階段第 2～5 列為依強度排序的支持，其他情況為細節代碼列在理由碼中的衝突，依理由碼順序"
+          },
+          "evidenceNote": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "第三階段第 6 列且沒有衝突時的說明"
+          },
+          "wouldChangeIf": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/WouldChangeIf"
+            },
+            "description": "對比式解釋，見 hit 明細"
+          },
+          "detail": {
+            "type": "string",
+            "description": "hit 明細的連結"
+          }
+        }
+      },
+      "IdentityDecision": {
+        "enum": [
+          "NO_MATCH",
+          "REVIEW",
+          "PROBABLE_MATCH"
+        ]
+      },
+      "IdentityResult": {
+        "required": [
+          "evidence",
+          "hardConflict",
+          "stage3Row",
+          "decision",
+          "reasonCodes"
+        ],
+        "type": "object",
+        "properties": {
+          "evidence": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "description": "各證據群組的比對結果"
+          },
+          "hardConflict": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "第一階段硬衝突代碼"
+          },
+          "stage3Row": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "description": "第三階段決策表列號（1～6）；硬衝突或非自然人規則時可能為 null",
+            "format": "int32"
+          },
+          "decision": {
+            "description": "身分判斷",
+            "$ref": "#/components/schemas/IdentityDecision"
+          },
+          "reasonCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "身分判斷的理由碼，第一個是決定的理由"
+          }
+        }
+      },
+      "IFormFile": {
+        "type": "string",
+        "format": "binary"
+      },
+      "IFormFileCollection": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/IFormFile"
+        }
+      },
+      "ImportedDecision": {
+        "required": [
+          "field",
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "description": "來源欄位"
+          },
+          "value": {
+            "type": "string",
+            "description": "原文內容"
+          },
+          "independentlyVerified": {
+            "type": "boolean",
+            "description": "是否經獨立驗證；舊決定永遠不是系統判斷",
+            "default": false
+          }
+        }
+      },
+      "ImportReport": {
+        "required": [
+          "profiles",
+          "batchId",
+          "queuedReanalyses",
+          "rejected"
+        ],
+        "type": "object",
+        "properties": {
+          "profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProfileImport"
+            }
+          },
+          "batchId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "queuedReanalyses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReanalysisJob"
+            }
+          },
+          "rejected": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "InputFile": {
+        "required": [
+          "name",
+          "sha256"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "輸入檔名"
+          },
+          "sha256": {
+            "type": "string",
+            "description": "檔案內容的 SHA-256（multipart 為上傳位元組；JSON 輸入與重新分析為文字的 UTF-8）"
+          }
+        }
+      },
+      "JobItem": {
+        "required": [
+          "jobId",
+          "idempotencyKey",
+          "status",
+          "attemptCount",
+          "caseId",
+          "analysisRevision",
+          "errorCode",
+          "completedAt",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "attemptCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "caseId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "analysisRevision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "errorCode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "completedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "JobStatus": {
+        "enum": [
+          "PENDING",
+          "RUNNING",
+          "SUCCEEDED",
+          "DEAD_LETTER"
+        ]
+      },
+      "LegalStage": {
+        "enum": [
+          "UNKNOWN",
+          "ALLEGED",
+          "INDICTED",
+          "WANTED",
+          "CONVICTED",
+          "ACQUITTED",
+          "DISMISSED"
+        ]
+      },
+      "ListType": {
+        "enum": [
+          "SANCTION",
+          "PEP",
+          "RCA",
+          "SIE",
+          "OFFICIAL_WANTED_LIST",
+          "OTHER_OFFICIAL_LIST",
+          "ADVERSE_MEDIA",
+          "BANK_INTERNAL_LIST",
+          "UNKNOWN"
+        ]
+      },
+      "MergedProfile": {
+        "required": [
+          "profileKeys",
+          "edges",
+          "findings"
+        ],
+        "type": "object",
+        "properties": {
+          "profileKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MergeEdge"
+            }
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "basis": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "MergeEdge": {
+        "required": [
+          "a",
+          "b",
+          "basis"
+        ],
+        "type": "object",
+        "properties": {
+          "a": {
+            "type": "string"
+          },
+          "b": {
+            "type": "string"
+          },
+          "basis": {
+            "type": "string"
+          },
+          "documentKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "conflict": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "MergeResult": {
+        "required": [
+          "groups",
+          "rejected"
+        ],
+        "type": "object",
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MergedProfile"
+            }
+          },
+          "rejected": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MergeEdge"
+            }
+          }
+        }
+      },
+      "OfficialListEntry": {
+        "required": [
+          "authority",
+          "list",
+          "status",
+          "offence"
+        ],
+        "type": "object",
+        "properties": {
+          "authority": {
+            "type": "string",
+            "description": "發布機關"
+          },
+          "list": {
+            "type": "string",
+            "description": "名單名稱"
+          },
+          "status": {
+            "type": "string",
+            "description": "狀態"
+          },
+          "offence": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "罪名"
+          }
+        }
+      },
+      "OtherIdentifier": {
+        "required": [
+          "label",
+          "number"
+        ],
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "識別碼名稱"
+          },
+          "number": {
+            "type": "string",
+            "description": "號碼"
+          }
+        }
+      },
+      "PairChange": {
+        "required": [
+          "profileKey",
+          "kind",
+          "from",
+          "to"
+        ],
+        "type": "object",
+        "properties": {
+          "profileKey": {
+            "type": "string",
+            "description": "名單鍵"
+          },
+          "kind": {
+            "description": "變更種類",
+            "$ref": "#/components/schemas/PairChangeKind"
+          },
+          "from": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "變更前"
+          },
+          "to": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "變更後"
+          }
+        }
+      },
+      "PairChangeKind": {
+        "enum": [
+          "ADDED",
+          "REMOVED",
+          "RESULT_CHANGED",
+          "IDENTITY_CHANGED",
+          "REASONS_CHANGED"
+        ]
+      },
+      "PartialDate": {
+        "type": "object",
+        "properties": {
+          "year": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "年",
+            "format": "int32"
+          },
+          "month": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "description": "月；只知道年時為 null",
+            "format": "int32"
+          },
+          "day": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "description": "日；只知道年或年月時為 null",
+            "format": "int32"
+          },
+          "precision": {
+            "description": "精度：YEAR、MONTH 或 DAY",
+            "$ref": "#/components/schemas/DatePrecision"
+          },
+          "latestDay": {
+            "type": "string",
+            "description": "此日期可能代表的最晚一天",
+            "format": "date"
+          }
+        }
+      },
+      "ProfileImport": {
+        "required": [
+          "profileId",
+          "version",
+          "changed"
+        ],
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "changed": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ProfileRelationship": {
+        "required": [
+          "profileId",
+          "name",
+          "relation"
+        ],
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "description": "關係人的名單編號"
+          },
+          "name": {
+            "type": "string",
+            "description": "關係人姓名或名稱"
+          },
+          "relation": {
+            "type": "string",
+            "description": "關係，依來源原文"
+          },
+          "isEntity": {
+            "type": "boolean",
+            "description": "是否為公司或組織",
+            "default": false
+          }
+        }
+      },
+      "ProfileRole": {
+        "required": [
+          "title",
+          "organization",
+          "from"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "職稱"
+          },
+          "organization": {
+            "type": "string",
+            "description": "機構"
+          },
+          "from": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "起始日期",
+                "$ref": "#/components/schemas/PartialDate"
+              }
+            ]
+          },
+          "to": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "結束日期",
+                "$ref": "#/components/schemas/PartialDate"
+              }
+            ]
+          }
+        }
+      },
+      "ProfileUse": {
+        "required": [
+          "profileId",
+          "origin",
+          "listVersion",
+          "contentHash"
+        ],
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "description": "名單編號（不含 DJ: 前綴）"
+          },
+          "origin": {
+            "type": "string",
+            "description": "LIST_DATABASE：內容與名單庫某一版相同；CASE_FILES：只來自案件檔"
+          },
+          "listVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "description": "相同內容的名單庫版本；只來自案件檔時為 null",
+            "format": "int32"
+          },
+          "contentHash": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "正規化匯出文字的 SHA-256，與名單庫的內容雜湊同一算法"
+          }
+        }
+      },
+      "ProfileVersionResponse": {
+        "required": [
+          "profileId",
+          "profileKey",
+          "version",
+          "contentHash",
+          "capturedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string"
+          },
+          "profileKey": {
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "contentHash": {
+            "type": "string"
+          },
+          "capturedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ProfileView": {
+        "required": [
+          "profileId",
+          "profileKey",
+          "version",
+          "latestVersion",
+          "contentHash",
+          "capturedAt",
+          "profile"
+        ],
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string"
+          },
+          "profileKey": {
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "latestVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "contentHash": {
+            "type": "string"
+          },
+          "capturedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "profile": {
+            "$ref": "#/components/schemas/SourceProfile"
+          }
+        }
+      },
+      "ReanalysisJob": {
+        "required": [
+          "jobId",
+          "caseId",
+          "profileId",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "jobId": {
+            "type": "string"
+          },
+          "caseId": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "Recommendation": {
+        "enum": [
+          "ON_LIST",
+          "NOT_ON_LIST",
+          null
+        ]
+      },
+      "RelatedParty": {
+        "required": [
+          "side",
+          "name",
+          "relation",
+          "isEntity"
+        ],
+        "type": "object",
+        "properties": {
+          "side": {
+            "type": "string",
+            "description": "SUBJECT：銀行資料記載；PROFILE：名單記載"
+          },
+          "name": {
+            "type": "string",
+            "description": "關係人姓名或公司名稱"
+          },
+          "relation": {
+            "type": "string",
+            "description": "關係，依來源原文"
+          },
+          "isEntity": {
+            "type": "boolean",
+            "description": "是否為公司或組織"
+          },
+          "profileId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "名單記載的關係人名單編號"
+          }
+        }
+      },
+      "RerunResponse": {
+        "required": [
+          "requeued"
+        ],
+        "type": "object",
+        "properties": {
+          "requeued": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "RetrievalMode": {
+        "enum": [
+          "DIRECT_REFERENCE",
+          "CONTROLLED_SET",
+          "INDEX_SEARCH",
+          "PREVIOUS_LINK"
+        ]
+      },
+      "RetrievedCandidate": {
+        "required": [
+          "profileKey",
+          "matchedName",
+          "route",
+          "score",
+          "mode"
+        ],
+        "type": "object",
+        "properties": {
+          "profileKey": {
+            "type": "string"
+          },
+          "matchedName": {
+            "type": "string"
+          },
+          "route": {
+            "type": "string"
+          },
+          "score": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/RetrievalMode"
+          },
+          "truncated": {
+            "type": "boolean",
+            "default": false
+          },
+          "profileId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ReviewPriority": {
+        "enum": [
+          "HIGH",
+          "NORMAL",
+          "LOW",
+          null
+        ]
+      },
+      "RevisionLine": {
+        "required": [
+          "revision",
+          "createdAt",
+          "executionStatus",
+          "caseResult",
+          "effective",
+          "changes"
+        ],
+        "type": "object",
+        "properties": {
+          "revision": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "revision 編號",
+            "format": "int32"
+          },
+          "createdAt": {
+            "type": "string",
+            "description": "分析時間",
+            "format": "date-time"
+          },
+          "executionStatus": {
+            "description": "執行狀態",
+            "$ref": "#/components/schemas/ExecutionStatus"
+          },
+          "caseResult": {
+            "description": "案件層級結果",
+            "$ref": "#/components/schemas/ScreeningAssessment"
+          },
+          "effective": {
+            "type": "boolean",
+            "description": "是否為生效 revision"
+          },
+          "changes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "description": "與前一個生效 revision 的變更數；第一次分析或沒有解釋的 revision 為 null",
+            "format": "int32"
+          }
+        }
+      },
+      "RiskAssessment": {
+        "required": [
+          "policyVersion",
+          "score",
+          "level",
+          "contributions"
+        ],
+        "type": "object",
+        "properties": {
+          "policyVersion": {
+            "type": "string",
+            "description": "風險政策版本"
+          },
+          "score": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "分數",
+            "format": "int32"
+          },
+          "level": {
+            "description": "風險等級",
+            "$ref": "#/components/schemas/RiskLevel"
+          },
+          "contributions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "分數組成"
+          }
+        }
+      },
+      "RiskLevel": {
+        "enum": [
+          "LOW",
+          "MEDIUM",
+          "HIGH"
+        ]
+      },
+      "SchemaList": {
+        "required": [
+          "schemaVersion",
+          "names"
+        ],
+        "type": "object",
+        "properties": {
+          "schemaVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ScreeningAssessment": {
+        "enum": [
+          "NOT_APPLICABLE",
+          "NO_HIT",
+          "REVIEW",
+          "HIT",
+          "NOT_EVALUATED",
+          null
+        ]
+      },
+      "SourceCategory": {
+        "required": [
+          "category",
+          "subcategory"
+        ],
+        "type": "object",
+        "properties": {
+          "category": {
+            "type": "string",
+            "description": "名單類別"
+          },
+          "subcategory": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "名單子類別"
+          }
+        }
+      },
+      "SourceCondition": {
+        "required": [
+          "type",
+          "status",
+          "basis",
+          "riskCategories",
+          "legalStage",
+          "amlRelevance",
+          "policyVersion",
+          "reasonCodes"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "名單類型",
+            "$ref": "#/components/schemas/ListType"
+          },
+          "status": {
+            "description": "條件狀態：HIT、NOT_HIT 或 UNKNOWN",
+            "$ref": "#/components/schemas/ConditionStatus"
+          },
+          "basis": {
+            "description": "依據：旗標、類別對應或未對應",
+            "$ref": "#/components/schemas/ConditionBasis"
+          },
+          "riskCategories": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "風險類別，見 /api/codes"
+          },
+          "legalStage": {
+            "description": "法律階段",
+            "$ref": "#/components/schemas/LegalStage"
+          },
+          "amlRelevance": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "與洗錢資恐的關聯",
+                "$ref": "#/components/schemas/AmlRelevance"
+              }
+            ]
+          },
+          "policyVersion": {
+            "type": "string",
+            "description": "名單條件規則版本"
+          },
+          "reasonCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "條件的理由碼"
+          },
+          "pepType": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "PEP 子類型，見 /api/codes"
+          },
+          "program": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "制裁計畫"
+          },
+          "jurisdiction": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "管轄地"
+          }
+        }
+      },
+      "SourceProfile": {
+        "required": [
+          "profileKey",
+          "gender",
+          "names",
+          "datesOfBirth",
+          "citizenship",
+          "addressCountries",
+          "categories",
+          "keywords",
+          "roles",
+          "relationships",
+          "officialList",
+          "findings",
+          "sources"
+        ],
+        "type": "object",
+        "properties": {
+          "profileKey": {
+            "type": "string",
+            "description": "名單鍵（DJ:<名單編號>）"
+          },
+          "gender": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "性別",
+                "$ref": "#/components/schemas/Gender"
+              }
+            ]
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "姓名與別名"
+          },
+          "datesOfBirth": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PartialDate"
+            },
+            "description": "出生日期（可能只有年或年月）"
+          },
+          "citizenship": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "國籍（ISO 3166-1 alpha-2）"
+          },
+          "addressCountries": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "地址國家"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceCategory"
+            },
+            "description": "名單類別"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "關鍵字"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProfileRole"
+            },
+            "description": "職務"
+          },
+          "relationships": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProfileRelationship"
+            },
+            "description": "關係人"
+          },
+          "officialList": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "官方名單記錄",
+                "$ref": "#/components/schemas/OfficialListEntry"
+              }
+            ]
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "資料品質 finding"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceReference"
+            },
+            "description": "名單引用的來源"
+          },
+          "documents": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/Document"
+            },
+            "description": "身分證件"
+          },
+          "addressLines": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "地址"
+          },
+          "dateOfDeath": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "死亡日期",
+                "$ref": "#/components/schemas/PartialDate"
+              }
+            ]
+          },
+          "recordType": {
+            "type": "string",
+            "description": "記錄類型：Person 或組織、船舶等",
+            "default": "Person"
+          },
+          "otherIdentifiers": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/OtherIdentifier"
+            },
+            "description": "非證件的識別碼"
+          },
+          "allegationCountries": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "指控相關國家"
+          }
+        }
+      },
+      "SourceReference": {
+        "required": [
+          "id",
+          "name",
+          "url",
+          "publishedOn",
+          "retrievedOn"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "來源編號"
+          },
+          "name": {
+            "type": "string",
+            "description": "來源名稱"
+          },
+          "url": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "網址"
+          },
+          "publishedOn": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "發布日期（ISO，依來源精度）"
+          },
+          "retrievedOn": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "取得日期（ISO）"
+          }
+        }
+      },
+      "Strength": {
+        "enum": [
+          "NONE",
+          "LOW",
+          "MEDIUM",
+          "HIGH",
+          "UNIQUE"
+        ]
+      },
+      "WouldChangeIf": {
+        "required": [
+          "field",
+          "assumption",
+          "stage3Row",
+          "decision",
+          "reasonCode",
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "field": {
+            "description": "假設的項目：DOCUMENT 或 DATE_OF_BIRTH",
+            "$ref": "#/components/schemas/EvidenceGroup"
+          },
+          "assumption": {
+            "description": "假設相符（AGREE）或衝突（CONFLICT）",
+            "$ref": "#/components/schemas/Assumption"
+          },
+          "stage3Row": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "假設成立時的第三階段列號",
+            "format": "int32"
+          },
+          "decision": {
+            "description": "假設成立時的身分判斷（不是對外結果）",
+            "$ref": "#/components/schemas/IdentityDecision"
+          },
+          "reasonCode": {
+            "type": "string",
+            "description": "假設成立時的理由碼"
+          },
+          "text": {
+            "type": "string",
+            "description": "中文說明"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "read"
+    },
+    {
+      "name": "write"
+    },
+    {
+      "name": "operations"
+    }
+  ]
+}

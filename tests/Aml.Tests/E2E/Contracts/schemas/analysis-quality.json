@@ -1,0 +1,104 @@
+{
+  "$id": "aml:AnalysisQuality:v1",
+  "type": [
+    "object",
+    "null"
+  ],
+  "properties": {
+    "hits": {
+      "description": "hit 數",
+      "type": [
+        "string",
+        "integer"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    },
+    "comparisonCells": {
+      "description": "比對格數（每個 hit 9 格）",
+      "type": [
+        "string",
+        "integer"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    },
+    "missingCells": {
+      "description": "一方缺值的格數",
+      "type": [
+        "string",
+        "integer"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    },
+    "uncertainCells": {
+      "description": "UNCERTAIN 的格數",
+      "type": [
+        "string",
+        "integer"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    },
+    "conflictCells": {
+      "description": "CONFLICT 的格數",
+      "type": [
+        "string",
+        "integer"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    },
+    "missingRate": {
+      "description": "缺值率；沒有比對格時為 null",
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$"
+    },
+    "uncertainRate": {
+      "description": "不確定率；沒有比對格時為 null",
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$"
+    },
+    "conflictRate": {
+      "description": "衝突率；沒有比對格時為 null",
+      "type": [
+        "string",
+        "number",
+        "null"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$"
+    },
+    "notEvaluatedProfiles": {
+      "description": "無法評估的名單數",
+      "type": [
+        "string",
+        "integer"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    },
+    "findingCounts": {
+      "description": "資料品質 finding 依代碼計數（每個 hit 計一次）",
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "integer"
+        ],
+        "pattern": "^-?(?:0|[1-9]\\d*)$"
+      }
+    }
+  },
+  "required": [
+    "hits",
+    "comparisonCells",
+    "missingCells",
+    "uncertainCells",
+    "conflictCells",
+    "notEvaluatedProfiles",
+    "findingCounts"
+  ]
+}

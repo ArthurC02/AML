@@ -1,0 +1,87 @@
+{
+  "$id": "aml:CasePage:v1",
+  "type": [
+    "object",
+    "null"
+  ],
+  "properties": {
+    "items": {
+      "description": "Case，依建立時間再依案件編號",
+      "type": "array",
+      "items": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "caseId": {
+            "description": "案件編號",
+            "type": "string"
+          },
+          "subjectRef": {
+            "description": "受檢對象參考碼：呼叫端的不透明參考，不得為客戶編號或證件號碼",
+            "type": "string"
+          },
+          "triggerEventId": {
+            "description": "觸發事件編號",
+            "type": "string"
+          },
+          "status": {
+            "description": "案件狀態",
+            "enum": [
+              "OPEN",
+              "IN_REVIEW",
+              "CLOSED"
+            ]
+          },
+          "currentRevision": {
+            "description": "最新 revision",
+            "type": [
+              "string",
+              "integer"
+            ],
+            "pattern": "^-?(?:0|[1-9]\\d*)$"
+          },
+          "effectiveRevision": {
+            "description": "生效 revision；尚無完整分析時為 null",
+            "type": [
+              "string",
+              "integer",
+              "null"
+            ],
+            "pattern": "^-?(?:0|[1-9]\\d*)$"
+          },
+          "createdAt": {
+            "description": "建立時間",
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "description": "更新時間",
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "caseId",
+          "subjectRef",
+          "triggerEventId",
+          "status",
+          "currentRevision",
+          "createdAt",
+          "updatedAt"
+        ]
+      }
+    },
+    "nextPageToken": {
+      "description": "下一頁的 pageToken；最後一頁為 null",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "items"
+  ]
+}

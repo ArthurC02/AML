@@ -25,6 +25,7 @@ Each record states context, decision and consequences. Records are never edited 
 | [0019](0019-strength-decision-table-before-fellegi-sunter.md) | Evidence-strength decision table before Fellegi-Sunter | Accepted |
 | [0020](0020-identification-only.md) | The system does identification only | Accepted |
 | [0021](0021-deferred-capabilities-built-behind-controls.md) | Deferred capabilities built behind the Phase 1 controls | Accepted |
+| [0022](0022-layered-api-views.md) | Layered API views for people and agents | Accepted |
 | [0023](0023-ai-ready-data.md) | AI-ready data | Accepted |
 
 Template:

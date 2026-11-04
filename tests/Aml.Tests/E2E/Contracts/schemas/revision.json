@@ -1,0 +1,1862 @@
+{
+  "$id": "aml:AnalysisRecord:v1",
+  "type": [
+    "object",
+    "null"
+  ],
+  "properties": {
+    "caseId": {
+      "description": "案件編號",
+      "type": "string"
+    },
+    "revision": {
+      "description": "revision 編號",
+      "type": [
+        "string",
+        "integer"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    },
+    "executionStatus": {
+      "description": "執行狀態；PARTIAL 不會成為生效 revision",
+      "enum": [
+        "PENDING",
+        "RUNNING",
+        "COMPLETED",
+        "PARTIAL",
+        "FAILED"
+      ]
+    },
+    "caseResult": {
+      "description": "案件層級結果",
+      "enum": [
+        "NOT_APPLICABLE",
+        "NO_HIT",
+        "REVIEW",
+        "HIT",
+        "NOT_EVALUATED"
+      ]
+    },
+    "result": {
+      "description": "分析結果",
+      "type": "object",
+      "properties": {
+        "hits": {
+          "description": "每筆名單一個 hit",
+          "type": "array",
+          "items": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "profile": {
+                "description": "名單（讀入時的結構化內容）",
+                "type": "object",
+                "properties": {
+                  "profileKey": {
+                    "description": "名單鍵（DJ:<名單編號>）",
+                    "type": "string"
+                  },
+                  "gender": {
+                    "description": "性別",
+                    "enum": [
+                      "MALE",
+                      "FEMALE",
+                      null
+                    ]
+                  },
+                  "names": {
+                    "description": "姓名與別名",
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "x-sensitivity": "PERSONAL"
+                  },
+                  "datesOfBirth": {
+                    "description": "出生日期（可能只有年或年月）",
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "year": {
+                          "description": "年",
+                          "type": [
+                            "string",
+                            "integer"
+                          ],
+                          "pattern": "^-?(?:0|[1-9]\\d*)$"
+                        },
+                        "month": {
+                          "description": "月；只知道年時為 null",
+                          "type": [
+                            "string",
+                            "integer",
+                            "null"
+                          ],
+                          "pattern": "^-?(?:0|[1-9]\\d*)$"
+                        },
+                        "day": {
+                          "description": "日；只知道年或年月時為 null",
+                          "type": [
+                            "string",
+                            "integer",
+                            "null"
+                          ],
+                          "pattern": "^-?(?:0|[1-9]\\d*)$"
+                        },
+                        "precision": {
+                          "description": "精度：YEAR、MONTH 或 DAY",
+                          "enum": [
+                            "YEAR",
+                            "MONTH",
+                            "DAY"
+                          ]
+                        },
+                        "latestDay": {
+                          "description": "此日期可能代表的最晚一天",
+                          "type": "string",
+                          "format": "date"
+                        }
+                      }
+                    },
+                    "x-sensitivity": "PERSONAL"
+                  },
+                  "citizenship": {
+                    "description": "國籍（ISO 3166-1 alpha-2）",
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "addressCountries": {
+                    "description": "地址國家",
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "categories": {
+                    "description": "名單類別",
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "category": {
+                          "description": "名單類別",
+                          "type": "string"
+                        },
+                        "subcategory": {
+                          "description": "名單子類別",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "category"
+                      ]
+                    }
+                  },
+                  "keywords": {
+                    "description": "關鍵字",
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "roles": {
+                    "description": "職務",
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "title": {
+                          "description": "職稱",
+                          "type": "string"
+                        },
+                        "organization": {
+                          "description": "機構",
+                          "type": "string"
+                        },
+                        "from": {
+                          "description": "起始日期",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "year": {
+                              "description": "年",
+                              "type": [
+                                "string",
+                                "integer"
+                              ],
+                              "pattern": "^-?(?:0|[1-9]\\d*)$"
+                            },
+                            "month": {
+                              "description": "月；只知道年時為 null",
+                              "type": [
+                                "string",
+                                "integer",
+                                "null"
+                              ],
+                              "pattern": "^-?(?:0|[1-9]\\d*)$"
+                            },
+                            "day": {
+                              "description": "日；只知道年或年月時為 null",
+                              "type": [
+                                "string",
+                                "integer",
+                                "null"
+                              ],
+                              "pattern": "^-?(?:0|[1-9]\\d*)$"
+                            },
+                            "precision": {
+                              "description": "精度：YEAR、MONTH 或 DAY",
+                              "enum": [
+                                "YEAR",
+                                "MONTH",
+                                "DAY"
+                              ]
+                            },
+                            "latestDay": {
+                              "description": "此日期可能代表的最晚一天",
+                              "type": "string",
+                              "format": "date"
+                            }
+                          }
+                        },
+                        "to": {
+                          "description": "結束日期",
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "year": {
+                              "description": "年",
+                              "type": [
+                                "string",
+                                "integer"
+                              ],
+                              "pattern": "^-?(?:0|[1-9]\\d*)$"
+                            },
+                            "month": {
+                              "description": "月；只知道年時為 null",
+                              "type": [
+                                "string",
+                                "integer",
+                                "null"
+                              ],
+                              "pattern": "^-?(?:0|[1-9]\\d*)$"
+                            },
+                            "day": {
+                              "description": "日；只知道年或年月時為 null",
+                              "type": [
+                                "string",
+                                "integer",
+                                "null"
+                              ],
+                              "pattern": "^-?(?:0|[1-9]\\d*)$"
+                            },
+                            "precision": {
+                              "description": "精度：YEAR、MONTH 或 DAY",
+                              "enum": [
+                                "YEAR",
+                                "MONTH",
+                                "DAY"
+                              ]
+                            },
+                            "latestDay": {
+                              "description": "此日期可能代表的最晚一天",
+                              "type": "string",
+                              "format": "date"
+                            }
+                          },
+                          "default": null
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "organization"
+                      ]
+                    }
+                  },
+                  "relationships": {
+                    "description": "關係人",
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "profileId": {
+                          "description": "關係人的名單編號",
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "關係人姓名或名稱",
+                          "type": "string",
+                          "x-sensitivity": "PERSONAL"
+                        },
+                        "relation": {
+                          "description": "關係，依來源原文",
+                          "type": "string"
+                        },
+                        "isEntity": {
+                          "description": "是否為公司或組織",
+                          "type": "boolean",
+                          "default": false
+                        }
+                      },
+                      "required": [
+                        "profileId",
+                        "name",
+                        "relation"
+                      ]
+                    }
+                  },
+                  "officialList": {
+                    "description": "官方名單記錄",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "authority": {
+                        "description": "發布機關",
+                        "type": "string"
+                      },
+                      "list": {
+                        "description": "名單名稱",
+                        "type": "string"
+                      },
+                      "status": {
+                        "description": "狀態",
+                        "type": "string"
+                      },
+                      "offence": {
+                        "description": "罪名",
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "authority",
+                      "list",
+                      "status"
+                    ]
+                  },
+                  "findings": {
+                    "description": "資料品質 finding",
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "sources": {
+                    "description": "名單引用的來源",
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "id": {
+                          "description": "來源編號",
+                          "type": "string"
+                        },
+                        "name": {
+                          "description": "來源名稱",
+                          "type": "string"
+                        },
+                        "url": {
+                          "description": "網址",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "publishedOn": {
+                          "description": "發布日期（ISO，依來源精度）",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "retrievedOn": {
+                          "description": "取得日期（ISO）",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ]
+                    }
+                  },
+                  "documents": {
+                    "description": "身分證件",
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "type": {
+                          "description": "證件類型，例如 TW_NATIONAL_ID、PASSPORT",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "number": {
+                          "description": "證件號碼",
+                          "type": "string",
+                          "x-sensitivity": "IDENTIFIER"
+                        },
+                        "issuingCountry": {
+                          "description": "發證國（ISO 3166-1 alpha-2）",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "default": null
+                        },
+                        "country": {
+                          "description": "發證國；台灣證件類型隱含 TW",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "number"
+                      ]
+                    },
+                    "default": null
+                  },
+                  "addressLines": {
+                    "description": "地址",
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "default": null,
+                    "x-sensitivity": "PERSONAL"
+                  },
+                  "dateOfDeath": {
+                    "description": "死亡日期",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "year": {
+                        "description": "年",
+                        "type": [
+                          "string",
+                          "integer"
+                        ],
+                        "pattern": "^-?(?:0|[1-9]\\d*)$"
+                      },
+                      "month": {
+                        "description": "月；只知道年時為 null",
+                        "type": [
+                          "string",
+                          "integer",
+                          "null"
+                        ],
+                        "pattern": "^-?(?:0|[1-9]\\d*)$"
+                      },
+                      "day": {
+                        "description": "日；只知道年或年月時為 null",
+                        "type": [
+                          "string",
+                          "integer",
+                          "null"
+                        ],
+                        "pattern": "^-?(?:0|[1-9]\\d*)$"
+                      },
+                      "precision": {
+                        "description": "精度：YEAR、MONTH 或 DAY",
+                        "enum": [
+                          "YEAR",
+                          "MONTH",
+                          "DAY"
+                        ]
+                      },
+                      "latestDay": {
+                        "description": "此日期可能代表的最晚一天",
+                        "type": "string",
+                        "format": "date"
+                      }
+                    },
+                    "default": null,
+                    "x-sensitivity": "PERSONAL"
+                  },
+                  "recordType": {
+                    "description": "記錄類型：Person 或組織、船舶等",
+                    "type": "string",
+                    "default": "Person"
+                  },
+                  "otherIdentifiers": {
+                    "description": "非證件的識別碼",
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "label": {
+                          "description": "識別碼名稱",
+                          "type": "string"
+                        },
+                        "number": {
+                          "description": "號碼",
+                          "type": "string",
+                          "x-sensitivity": "IDENTIFIER"
+                        }
+                      },
+                      "required": [
+                        "label",
+                        "number"
+                      ]
+                    },
+                    "default": null
+                  },
+                  "allegationCountries": {
+                    "description": "指控相關國家",
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "default": null
+                  }
+                },
+                "required": [
+                  "profileKey",
+                  "names",
+                  "datesOfBirth",
+                  "citizenship",
+                  "addressCountries",
+                  "categories",
+                  "keywords",
+                  "roles",
+                  "relationships",
+                  "findings",
+                  "sources"
+                ]
+              },
+              "candidateRows": {
+                "description": "疑似名單表中合併為此 hit 的列數",
+                "type": [
+                  "string",
+                  "integer"
+                ],
+                "pattern": "^-?(?:0|[1-9]\\d*)$"
+              },
+              "conditions": {
+                "description": "名單條件",
+                "type": "array",
+                "items": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "type": {
+                      "description": "名單類型",
+                      "enum": [
+                        "SANCTION",
+                        "PEP",
+                        "RCA",
+                        "SIE",
+                        "OFFICIAL_WANTED_LIST",
+                        "OTHER_OFFICIAL_LIST",
+                        "ADVERSE_MEDIA",
+                        "BANK_INTERNAL_LIST",
+                        "UNKNOWN"
+                      ]
+                    },
+                    "status": {
+                      "description": "條件狀態：HIT、NOT_HIT 或 UNKNOWN",
+                      "enum": [
+                        "HIT",
+                        "NOT_HIT",
+                        "UNKNOWN"
+                      ]
+                    },
+                    "basis": {
+                      "description": "依據：旗標、類別對應或未對應",
+                      "enum": [
+                        "FLAG",
+                        "CATEGORY_MAPPING",
+                        "UNMAPPED"
+                      ]
+                    },
+                    "riskCategories": {
+                      "description": "風險類別，見 /api/codes",
+                      "type": "array",
+                      "items": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "legalStage": {
+                      "description": "法律階段",
+                      "enum": [
+                        "UNKNOWN",
+                        "ALLEGED",
+                        "INDICTED",
+                        "WANTED",
+                        "CONVICTED",
+                        "ACQUITTED",
+                        "DISMISSED"
+                      ]
+                    },
+                    "amlRelevance": {
+                      "description": "與洗錢資恐的關聯",
+                      "enum": [
+                        "UNCERTAIN",
+                        "RELATED",
+                        "UNRELATED",
+                        null
+                      ]
+                    },
+                    "policyVersion": {
+                      "description": "名單條件規則版本",
+                      "type": "string"
+                    },
+                    "reasonCodes": {
+                      "description": "條件的理由碼",
+                      "type": "array",
+                      "items": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "pepType": {
+                      "description": "PEP 子類型，見 /api/codes",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "default": null
+                    },
+                    "program": {
+                      "description": "制裁計畫",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "default": null
+                    },
+                    "jurisdiction": {
+                      "description": "管轄地",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "default": null
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "status",
+                    "basis",
+                    "riskCategories",
+                    "legalStage",
+                    "policyVersion",
+                    "reasonCodes"
+                  ]
+                }
+              },
+              "identity": {
+                "description": "身分判斷與證據",
+                "type": "object",
+                "properties": {
+                  "evidence": {
+                    "description": "各證據群組的比對結果",
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "group": {
+                          "description": "證據群組",
+                          "enum": [
+                            "NAME",
+                            "GENDER",
+                            "NATIONALITY",
+                            "DATE_OF_BIRTH",
+                            "DOCUMENT",
+                            "OTHER_IDENTIFIER",
+                            "EMPLOYMENT",
+                            "RELATIONSHIP",
+                            "COMPANY_ASSOCIATION",
+                            "ADDRESS",
+                            "STATED_AGE",
+                            "TEMPORAL_ROLE",
+                            "ENTITY_IDENTIFIER"
+                          ]
+                        },
+                        "direction": {
+                          "description": "方向：前提、支持、衝突或中性",
+                          "enum": [
+                            "PREREQUISITE",
+                            "SUPPORT",
+                            "CONFLICT",
+                            "NEUTRAL"
+                          ]
+                        },
+                        "status": {
+                          "description": "比對狀態",
+                          "enum": [
+                            "EXACT",
+                            "PARTIAL",
+                            "CONFLICT",
+                            "UNCERTAIN",
+                            "SUBJECT_MISSING",
+                            "PROFILE_MISSING"
+                          ]
+                        },
+                        "strength": {
+                          "description": "支持強度（UNIQUE > HIGH > MEDIUM > LOW > NONE）",
+                          "enum": [
+                            "NONE",
+                            "LOW",
+                            "MEDIUM",
+                            "HIGH",
+                            "UNIQUE"
+                          ],
+                          "default": "NONE"
+                        },
+                        "detail": {
+                          "description": "細節代碼，見 /api/codes",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "default": null
+                        },
+                        "note": {
+                          "description": "給複核人員的說明文字",
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "default": null,
+                          "x-sensitivity": "PERSONAL"
+                        },
+                        "isSupport": {
+                          "description": "是否為支持同一人的證據",
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "group",
+                        "direction",
+                        "status"
+                      ]
+                    }
+                  },
+                  "hardConflict": {
+                    "description": "第一階段硬衝突代碼",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "stage3Row": {
+                    "description": "第三階段決策表列號（1～6）；硬衝突或非自然人規則時可能為 null",
+                    "type": [
+                      "string",
+                      "integer",
+                      "null"
+                    ],
+                    "pattern": "^-?(?:0|[1-9]\\d*)$"
+                  },
+                  "decision": {
+                    "description": "身分判斷",
+                    "enum": [
+                      "NO_MATCH",
+                      "REVIEW",
+                      "PROBABLE_MATCH"
+                    ]
+                  },
+                  "reasonCodes": {
+                    "description": "身分判斷的理由碼，第一個是決定的理由",
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "evidence",
+                  "decision",
+                  "reasonCodes"
+                ]
+              },
+              "pairResult": {
+                "description": "此組合的對外結果",
+                "enum": [
+                  "NOT_APPLICABLE",
+                  "NO_HIT",
+                  "REVIEW",
+                  "HIT",
+                  "NOT_EVALUATED"
+                ]
+              },
+              "reviewPriority": {
+                "description": "複核優先序",
+                "enum": [
+                  "HIGH",
+                  "NORMAL",
+                  "LOW",
+                  null
+                ]
+              },
+              "pairReasonCodes": {
+                "description": "對外結果的理由碼",
+                "type": "array",
+                "items": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "disposition": {
+                "description": "第 22 條建議，僅供參考",
+                "type": "object",
+                "properties": {
+                  "recommendation": {
+                    "description": "建議：ON_LIST 或 NOT_ON_LIST；無法判定時為 null",
+                    "enum": [
+                      "ON_LIST",
+                      "NOT_ON_LIST",
+                      null
+                    ]
+                  },
+                  "reasonCodes": {
+                    "description": "第 22 條理由碼",
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "pendingChecks": {
+                    "description": "尚未執行的查核事項",
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "advisory": {
+                    "description": "永遠為 true：建議僅供參考",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "reasonCodes",
+                  "pendingChecks"
+                ]
+              },
+              "risk": {
+                "description": "AML 風險評分；沒有核准的政策時為 null",
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "policyVersion": {
+                    "description": "風險政策版本",
+                    "type": "string"
+                  },
+                  "score": {
+                    "description": "分數",
+                    "type": [
+                      "string",
+                      "integer"
+                    ],
+                    "pattern": "^-?(?:0|[1-9]\\d*)$"
+                  },
+                  "level": {
+                    "description": "風險等級",
+                    "enum": [
+                      "LOW",
+                      "MEDIUM",
+                      "HIGH"
+                    ]
+                  },
+                  "contributions": {
+                    "description": "分數組成",
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "policyVersion",
+                  "score",
+                  "level",
+                  "contributions"
+                ],
+                "default": null
+              }
+            },
+            "required": [
+              "profile",
+              "candidateRows",
+              "conditions",
+              "identity",
+              "pairResult",
+              "pairReasonCodes",
+              "disposition"
+            ]
+          }
+        },
+        "notEvaluatedProfiles": {
+          "description": "缺名單資料而無法評估的名單鍵；有任何一筆時 revision 不完整",
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "importedDecisions": {
+          "description": "自輸入檔讀入的舊決定",
+          "type": "array",
+          "items": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "field": {
+                "description": "來源欄位",
+                "type": "string"
+              },
+              "value": {
+                "description": "原文內容",
+                "type": "string",
+                "x-sensitivity": "PERSONAL"
+              },
+              "independentlyVerified": {
+                "description": "是否經獨立驗證；舊決定永遠不是系統判斷",
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "required": [
+              "field",
+              "value"
+            ]
+          }
+        },
+        "schemaVersion": {
+          "description": "儲存格式版本",
+          "type": [
+            "string",
+            "integer"
+          ],
+          "pattern": "^-?(?:0|[1-9]\\d*)$"
+        }
+      },
+      "required": [
+        "hits",
+        "notEvaluatedProfiles",
+        "importedDecisions"
+      ]
+    },
+    "explanation": {
+      "description": "解釋",
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "caseResult": {
+          "description": "案件層級結果",
+          "enum": [
+            "NOT_APPLICABLE",
+            "NO_HIT",
+            "REVIEW",
+            "HIT",
+            "NOT_EVALUATED"
+          ]
+        },
+        "hits": {
+          "description": "每組受檢對象與名單的解釋",
+          "type": "array",
+          "items": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "hitNumber": {
+                "description": "hit 編號，從 1 開始",
+                "type": [
+                  "string",
+                  "integer"
+                ],
+                "pattern": "^-?(?:0|[1-9]\\d*)$"
+              },
+              "screenedSubject": {
+                "description": "受檢對象：客戶或關聯人（關係）與姓名",
+                "type": "string",
+                "x-sensitivity": "PERSONAL"
+              },
+              "profileKey": {
+                "description": "名單鍵（DJ:<名單編號>）",
+                "type": "string"
+              },
+              "profileName": {
+                "description": "名單主要姓名",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "x-sensitivity": "PERSONAL"
+              },
+              "matchedNames": {
+                "description": "疑似名單表中命中的姓名",
+                "type": "array",
+                "items": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "x-sensitivity": "PERSONAL"
+              },
+              "isRca": {
+                "description": "疑似名單表標示 Is RCA? = YES",
+                "type": "boolean"
+              },
+              "sourceCategories": {
+                "description": "名單類別／子類別",
+                "type": "array",
+                "items": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "sourceConditions": {
+                "description": "名單條件（與身分判斷各自獨立）",
+                "type": "array",
+                "items": {
+                  "$ref": "#/properties/result/properties/hits/items/properties/conditions/items"
+                }
+              },
+              "attachedNews": {
+                "description": "是否附有新聞",
+                "type": "boolean"
+              },
+              "comparison": {
+                "description": "固定順序的比對表",
+                "type": "array",
+                "items": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "field": {
+                      "description": "比對項目（固定順序：中文姓名、英文姓名／拼音、國籍、出生日期、性別、證件、地址、職業／雇主、其他識別碼）",
+                      "type": "string"
+                    },
+                    "subjectValue": {
+                      "description": "受檢對象的值；證件與參考號碼已遮罩",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "x-sensitivity": "IDENTIFIER"
+                    },
+                    "profileValue": {
+                      "description": "名單的值；證件已遮罩",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "x-sensitivity": "IDENTIFIER"
+                    },
+                    "status": {
+                      "description": "比對狀態，見 /api/codes",
+                      "enum": [
+                        "EXACT",
+                        "PARTIAL",
+                        "CONFLICT",
+                        "UNCERTAIN",
+                        "SUBJECT_MISSING",
+                        "PROFILE_MISSING"
+                      ]
+                    },
+                    "difference": {
+                      "description": "差異代碼，多個以「；」連接，見 /api/codes",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "note": {
+                      "description": "給複核人員的說明文字，例如報導年齡的推算",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "default": null,
+                      "x-sensitivity": "PERSONAL"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "status"
+                  ]
+                }
+              },
+              "relatedParties": {
+                "description": "雙方記載的關係人",
+                "type": "array",
+                "items": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "side": {
+                      "description": "SUBJECT：銀行資料記載；PROFILE：名單記載",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "關係人姓名或公司名稱",
+                      "type": "string",
+                      "x-sensitivity": "PERSONAL"
+                    },
+                    "relation": {
+                      "description": "關係，依來源原文",
+                      "type": "string"
+                    },
+                    "isEntity": {
+                      "description": "是否為公司或組織",
+                      "type": "boolean"
+                    },
+                    "profileId": {
+                      "description": "名單記載的關係人名單編號",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "default": null
+                    }
+                  },
+                  "required": [
+                    "side",
+                    "name",
+                    "relation",
+                    "isEntity"
+                  ]
+                }
+              },
+              "support": {
+                "description": "支持同一人的證據",
+                "type": "array",
+                "items": {
+                  "$ref": "#/properties/result/properties/hits/items/properties/identity/properties/evidence/additionalProperties"
+                }
+              },
+              "conflicts": {
+                "description": "衝突的證據",
+                "type": "array",
+                "items": {
+                  "$ref": "#/properties/result/properties/hits/items/properties/identity/properties/evidence/additionalProperties"
+                }
+              },
+              "unknownFields": {
+                "description": "缺值或不確定的比對項目",
+                "type": "array",
+                "items": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "hardConflict": {
+                "description": "第一階段硬衝突代碼",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "stage3Row": {
+                "description": "第三階段決策表列號（1～6）",
+                "type": [
+                  "string",
+                  "integer",
+                  "null"
+                ],
+                "pattern": "^-?(?:0|[1-9]\\d*)$"
+              },
+              "wouldChangeIf": {
+                "description": "對比式解釋：若證件或完整出生日期可比對，身分判斷會移到哪一列；不代表對外結果",
+                "type": "array",
+                "items": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "field": {
+                      "description": "假設的項目：DOCUMENT 或 DATE_OF_BIRTH",
+                      "enum": [
+                        "NAME",
+                        "GENDER",
+                        "NATIONALITY",
+                        "DATE_OF_BIRTH",
+                        "DOCUMENT",
+                        "OTHER_IDENTIFIER",
+                        "EMPLOYMENT",
+                        "RELATIONSHIP",
+                        "COMPANY_ASSOCIATION",
+                        "ADDRESS",
+                        "STATED_AGE",
+                        "TEMPORAL_ROLE",
+                        "ENTITY_IDENTIFIER"
+                      ]
+                    },
+                    "assumption": {
+                      "description": "假設相符（AGREE）或衝突（CONFLICT）",
+                      "enum": [
+                        "AGREE",
+                        "CONFLICT"
+                      ]
+                    },
+                    "stage3Row": {
+                      "description": "假設成立時的第三階段列號",
+                      "type": [
+                        "string",
+                        "integer"
+                      ],
+                      "pattern": "^-?(?:0|[1-9]\\d*)$"
+                    },
+                    "decision": {
+                      "description": "假設成立時的身分判斷（不是對外結果）",
+                      "enum": [
+                        "NO_MATCH",
+                        "REVIEW",
+                        "PROBABLE_MATCH"
+                      ]
+                    },
+                    "reasonCode": {
+                      "description": "假設成立時的理由碼",
+                      "type": "string"
+                    },
+                    "text": {
+                      "description": "中文說明",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "assumption",
+                    "stage3Row",
+                    "decision",
+                    "reasonCode",
+                    "text"
+                  ]
+                }
+              },
+              "identityDecision": {
+                "description": "系統身分判斷",
+                "enum": [
+                  "NO_MATCH",
+                  "REVIEW",
+                  "PROBABLE_MATCH"
+                ]
+              },
+              "pairResult": {
+                "description": "此組合的對外結果",
+                "enum": [
+                  "NOT_APPLICABLE",
+                  "NO_HIT",
+                  "REVIEW",
+                  "HIT",
+                  "NOT_EVALUATED"
+                ]
+              },
+              "reviewPriority": {
+                "description": "複核優先序",
+                "enum": [
+                  "HIGH",
+                  "NORMAL",
+                  "LOW",
+                  null
+                ]
+              },
+              "pairReasonCodes": {
+                "description": "對外結果的理由碼",
+                "type": "array",
+                "items": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "disposition": {
+                "description": "第 22 條建議，僅供參考",
+                "type": "object",
+                "properties": {
+                  "recommendation": {
+                    "description": "建議：ON_LIST 或 NOT_ON_LIST；無法判定時為 null",
+                    "enum": [
+                      "ON_LIST",
+                      "NOT_ON_LIST",
+                      null
+                    ]
+                  },
+                  "reasonCodes": {
+                    "description": "第 22 條理由碼",
+                    "$ref": "#/properties/result/properties/hits/items/properties/disposition/properties/reasonCodes"
+                  },
+                  "pendingChecks": {
+                    "description": "尚未執行的查核事項",
+                    "$ref": "#/properties/result/properties/hits/items/properties/disposition/properties/pendingChecks"
+                  },
+                  "advisory": {
+                    "description": "永遠為 true：建議僅供參考",
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "reasonCodes",
+                  "pendingChecks"
+                ]
+              },
+              "reasonCodes": {
+                "description": "身分判斷的理由碼",
+                "type": "array",
+                "items": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "dataQualityFindings": {
+                "description": "資料品質 finding，見 /api/codes",
+                "type": "array",
+                "items": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "sources": {
+                "description": "來源；Ref 在摘要中以 [S#] 引用",
+                "type": "array",
+                "items": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "ref": {
+                      "description": "摘要中的引用編號（S1、S2…）",
+                      "type": "string"
+                    },
+                    "id": {
+                      "description": "來源編號",
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "來源名稱或新聞出處與標題",
+                      "type": "string"
+                    },
+                    "url": {
+                      "description": "來源網址",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "publishedOn": {
+                      "description": "發布日期",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "retrievedOn": {
+                      "description": "取得日期",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "usedFor": {
+                      "description": "用途：PROFILE_RECORD、LEGAL_STAGE、CONTEXT",
+                      "type": "string"
+                    },
+                    "attachedToProfile": {
+                      "description": "是否附於名單",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "ref",
+                    "id",
+                    "name",
+                    "usedFor",
+                    "attachedToProfile"
+                  ]
+                }
+              },
+              "summary": {
+                "description": "五段式摘要",
+                "type": "object",
+                "properties": {
+                  "internalData": {
+                    "description": "內部資料：受檢對象的姓名、出生日期、國籍、性別與證件是否提供",
+                    "type": "string",
+                    "x-sensitivity": "PERSONAL"
+                  },
+                  "externalData": {
+                    "description": "外部資料：名單類別、條件、出生日期、國籍、性別與新聞，[S#] 引用來源",
+                    "type": "string",
+                    "x-sensitivity": "PERSONAL"
+                  },
+                  "agreementsAndDifferences": {
+                    "description": "相符、衝突與無法比對的項目",
+                    "type": "string"
+                  },
+                  "keyEvidenceOrGaps": {
+                    "description": "關鍵佐證或缺口",
+                    "type": "string"
+                  },
+                  "conclusion": {
+                    "description": "結論：身分判斷、對外結果、理由碼與第 22 條建議",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "internalData",
+                  "externalData",
+                  "agreementsAndDifferences",
+                  "keyEvidenceOrGaps",
+                  "conclusion"
+                ]
+              }
+            },
+            "required": [
+              "hitNumber",
+              "screenedSubject",
+              "profileKey",
+              "matchedNames",
+              "isRca",
+              "sourceCategories",
+              "sourceConditions",
+              "attachedNews",
+              "comparison",
+              "relatedParties",
+              "support",
+              "conflicts",
+              "unknownFields",
+              "wouldChangeIf",
+              "identityDecision",
+              "pairResult",
+              "pairReasonCodes",
+              "disposition",
+              "reasonCodes",
+              "dataQualityFindings",
+              "sources",
+              "summary"
+            ]
+          }
+        },
+        "notEvaluatedProfiles": {
+          "description": "缺名單資料而無法評估的名單鍵",
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "importedDecisions": {
+          "description": "自輸入檔讀入的舊決定，從不成為系統判斷",
+          "type": "array",
+          "items": {
+            "$ref": "#/properties/result/properties/importedDecisions/items"
+          }
+        },
+        "changesFromPreviousRevision": {
+          "description": "與前一個生效 revision 的差異；第一次分析為 null",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "profileKey": {
+                "description": "名單鍵",
+                "type": "string"
+              },
+              "kind": {
+                "description": "變更種類",
+                "enum": [
+                  "ADDED",
+                  "REMOVED",
+                  "RESULT_CHANGED",
+                  "IDENTITY_CHANGED",
+                  "REASONS_CHANGED"
+                ]
+              },
+              "from": {
+                "description": "變更前",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "to": {
+                "description": "變更後",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "profileKey",
+              "kind"
+            ]
+          }
+        },
+        "schemaVersion": {
+          "description": "儲存格式版本",
+          "type": [
+            "string",
+            "integer"
+          ],
+          "pattern": "^-?(?:0|[1-9]\\d*)$"
+        }
+      },
+      "required": [
+        "caseResult",
+        "hits",
+        "notEvaluatedProfiles",
+        "importedDecisions"
+      ]
+    },
+    "lineage": {
+      "description": "沿革：輸入檔、名單版本與規則版本",
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "inputFiles": {
+          "description": "輸入檔與其雜湊",
+          "type": "array",
+          "items": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "name": {
+                "description": "輸入檔名",
+                "type": "string"
+              },
+              "sha256": {
+                "description": "檔案內容的 SHA-256（multipart 為上傳位元組；JSON 輸入與重新分析為文字的 UTF-8）",
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "sha256"
+            ]
+          }
+        },
+        "profiles": {
+          "description": "分析用到的每一筆名單與其來源版本",
+          "type": "array",
+          "items": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "profileId": {
+                "description": "名單編號（不含 DJ: 前綴）",
+                "type": "string"
+              },
+              "origin": {
+                "description": "LIST_DATABASE：內容與名單庫某一版相同；CASE_FILES：只來自案件檔",
+                "type": "string"
+              },
+              "listVersion": {
+                "description": "相同內容的名單庫版本；只來自案件檔時為 null",
+                "type": [
+                  "string",
+                  "integer",
+                  "null"
+                ],
+                "pattern": "^-?(?:0|[1-9]\\d*)$"
+              },
+              "contentHash": {
+                "description": "正規化匯出文字的 SHA-256，與名單庫的內容雜湊同一算法",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "profileId",
+              "origin"
+            ]
+          }
+        },
+        "sourcePolicyVersion": {
+          "description": "名單條件規則版本",
+          "type": "string"
+        },
+        "modelVersion": {
+          "description": "Fellegi-Sunter 影子模型版本",
+          "type": "string"
+        },
+        "codeCatalogVersion": {
+          "description": "代碼字典版本",
+          "type": "string"
+        },
+        "schemaVersion": {
+          "description": "儲存格式（JSON Schema）版本",
+          "type": [
+            "string",
+            "integer"
+          ],
+          "pattern": "^-?(?:0|[1-9]\\d*)$"
+        },
+        "appVersion": {
+          "description": "應用程式版本（組件 informational version）",
+          "type": "string"
+        }
+      },
+      "required": [
+        "inputFiles",
+        "profiles",
+        "sourcePolicyVersion",
+        "modelVersion",
+        "codeCatalogVersion",
+        "schemaVersion",
+        "appVersion"
+      ]
+    },
+    "quality": {
+      "description": "資料品質指標",
+      "type": [
+        "object",
+        "null"
+      ],
+      "properties": {
+        "hits": {
+          "description": "hit 數",
+          "type": [
+            "string",
+            "integer"
+          ],
+          "pattern": "^-?(?:0|[1-9]\\d*)$"
+        },
+        "comparisonCells": {
+          "description": "比對格數（每個 hit 9 格）",
+          "type": [
+            "string",
+            "integer"
+          ],
+          "pattern": "^-?(?:0|[1-9]\\d*)$"
+        },
+        "missingCells": {
+          "description": "一方缺值的格數",
+          "type": [
+            "string",
+            "integer"
+          ],
+          "pattern": "^-?(?:0|[1-9]\\d*)$"
+        },
+        "uncertainCells": {
+          "description": "UNCERTAIN 的格數",
+          "type": [
+            "string",
+            "integer"
+          ],
+          "pattern": "^-?(?:0|[1-9]\\d*)$"
+        },
+        "conflictCells": {
+          "description": "CONFLICT 的格數",
+          "type": [
+            "string",
+            "integer"
+          ],
+          "pattern": "^-?(?:0|[1-9]\\d*)$"
+        },
+        "missingRate": {
+          "description": "缺值率；沒有比對格時為 null",
+          "type": [
+            "string",
+            "number",
+            "null"
+          ],
+          "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$"
+        },
+        "uncertainRate": {
+          "description": "不確定率；沒有比對格時為 null",
+          "type": [
+            "string",
+            "number",
+            "null"
+          ],
+          "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$"
+        },
+        "conflictRate": {
+          "description": "衝突率；沒有比對格時為 null",
+          "type": [
+            "string",
+            "number",
+            "null"
+          ],
+          "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$"
+        },
+        "notEvaluatedProfiles": {
+          "description": "無法評估的名單數",
+          "type": [
+            "string",
+            "integer"
+          ],
+          "pattern": "^-?(?:0|[1-9]\\d*)$"
+        },
+        "findingCounts": {
+          "description": "資料品質 finding 依代碼計數（每個 hit 計一次）",
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "integer"
+            ],
+            "pattern": "^-?(?:0|[1-9]\\d*)$"
+          }
+        }
+      },
+      "required": [
+        "hits",
+        "comparisonCells",
+        "missingCells",
+        "uncertainCells",
+        "conflictCells",
+        "notEvaluatedProfiles",
+        "findingCounts"
+      ]
+    },
+    "createdAt": {
+      "description": "分析時間",
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "caseId",
+    "revision",
+    "executionStatus",
+    "caseResult",
+    "result",
+    "createdAt"
+  ]
+}

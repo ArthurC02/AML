@@ -21,7 +21,9 @@ internal static class ProfilesEndpoints
             return contents is null ? error! : TypedResults.Ok(await service.ImportAsync(contents, ct));
         })
         .WithSummary("Capture Profiles into the list database; a changed Profile queues re-analysis of the Cases that used it")
-        .WithDescription("Upload 名單資料_<id>.txt (or .html). An unchanged file keeps its version; a changed one becomes a new version, the old one is kept, and every Case whose latest input used it gets a queued re-analysis job (track it with GET /api/batches/{batchId}). A file whose name and Profile_ID differ, or one Profile in two formats, is rejected.");
+        .WithDescription("Upload 名單資料_<id>.txt (or .html). An unchanged file keeps its version; a changed one becomes a new version, the old one is kept, and every Case whose latest input used it gets a queued re-analysis job (track it with GET /api/batches/{batchId}). A file whose name and Profile_ID differ, or one Profile in two formats, is rejected. Next: getBatchStatus with the returned batchId, when it is not null.")
+        .WithName("importProfiles")
+        .WithTags("write");
 
         profiles.MapGet("/search", async Task<Results<Ok<IReadOnlyList<RetrievedCandidate>>, ProblemHttpResult>> (string? name, int? top, ListService service, CancellationToken ct) =>
         {
@@ -32,21 +34,31 @@ internal static class ProfilesEndpoints
             return TypedResults.Ok(await service.SearchAsync(name, top ?? DefaultTop, ct));
         })
         .WithSummary("Search the list database by name (INDEX_SEARCH)")
-        .WithDescription("Counted by Profile, not alias row; exact alias matches come first and are never cut. The score ranks candidates only; it is never an identity probability.");
+        .WithDescription("Counted by Profile, not alias row; exact alias matches come first and are never cut. The score ranks candidates only; it is never an identity probability. Use it to look a name up in the list database; for the Profiles a Case was screened against use listCaseCandidates. Next: getProfile.")
+        .WithName("searchProfiles")
+        .WithTags("read");
 
         profiles.MapGet("/merges", async (ListService service, CancellationToken ct) => TypedResults.Ok(await service.MergesAsync(ct)))
         .WithSummary("Profiles that describe the same person: shared document key or recorded source link, never name similarity")
-        .WithDescription("Groups list each accepted merge as an edge with its basis; merges refused for a DOB or gender conflict are listed under rejected.");
+        .WithDescription("Groups list each accepted merge as an edge with its basis; merges refused for a DOB or gender conflict are listed under rejected. Next: getProfile for a Profile of a group.")
+        .WithName("listProfileMerges")
+        .WithTags("read");
 
         profiles.MapGet("/{profileId}", async Task<Results<Ok<ProfileView>, NotFound>> (string profileId, int? version, ListService service, CancellationToken ct) =>
             await service.GetProfileAsync(profileId, version, ct) is { } p ? TypedResults.Ok(p) : TypedResults.NotFound())
-        .WithSummary("One Profile as captured (DIRECT_REFERENCE): the latest version, or ?version=; the ID may carry the DJ: prefix");
+        .WithSummary("One Profile as captured (DIRECT_REFERENCE): the latest version, or ?version=; the ID may carry the DJ: prefix")
+        .WithDescription("Returns the Profile as read, with its version, latest version and content hash. Next: listProfileVersions.")
+        .WithName("getProfile")
+        .WithTags("read");
 
         profiles.MapGet("/{profileId}/versions", async Task<Results<Ok<IReadOnlyList<ProfileVersionResponse>>, NotFound>> (string profileId, ListService service, CancellationToken ct) =>
             await service.HistoryAsync(profileId, ct) is { Count: > 0 } history
                 ? TypedResults.Ok<IReadOnlyList<ProfileVersionResponse>>(history.Select(v => new ProfileVersionResponse(v.ProfileId, "DJ:" + v.ProfileId, v.Version, v.ContentHash, v.CapturedAt)).ToList())
                 : TypedResults.NotFound())
-        .WithSummary("Every captured version of one Profile, with its content hash");
+        .WithSummary("Every captured version of one Profile, with its content hash")
+        .WithDescription("Use it to see when a Profile changed. Next: getProfile with ?version=.")
+        .WithName("listProfileVersions")
+        .WithTags("read");
     }
 }
 

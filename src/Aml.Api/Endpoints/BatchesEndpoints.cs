@@ -23,7 +23,9 @@ internal static class BatchesEndpoints
             return TypedResults.Accepted($"/api/batches/{b.BatchId}", b);
         })
         .WithSummary("Queue many Cases for analysis")
-        .WithDescription("Each item has subjectRef, triggerEventId and files (file name → text content), the same inputs as POST /api/cases. Items already queued under the same triggerEventId and subjectRef are listed as duplicates and not queued again.");
+        .WithDescription("Each item has subjectRef, triggerEventId and files (file name → text content), the same inputs as POST /api/cases. Items already queued under the same triggerEventId and subjectRef are listed as duplicates and not queued again. Use it for many Cases at once; for one Case use createCase. Returns 202 with batchId. Next: getBatchStatus.")
+        .WithName("submitBatch")
+        .WithTags("write");
 
         batches.MapGet("/{batchId}", async Task<Results<Ok<BatchStatus>, NotFound, ProblemHttpResult>> (
             string batchId, string? view, string? status, int? pageSize, string? pageToken, BatchService service, CancellationToken ct) =>
@@ -53,11 +55,16 @@ internal static class BatchesEndpoints
             return b is null ? TypedResults.NotFound() : TypedResults.Ok(b);
         })
         .WithSummary("Batch progress: counts per status and one page of items with their Case, revision, attempts and error code")
-        .WithDescription("view=summary (default) lists the items not yet succeeded; view=full lists every item; status= lists one status. Items come oldest first, pageSize (default 20, at most 100) at a time, with nextPageToken when more follow.");
+        .WithDescription("view=summary (default) lists the items not yet succeeded; view=full lists every item; status= lists one status. Items come oldest first, pageSize (default 20, at most 100) at a time, with nextPageToken when more follow. Next: getCaseSummary for a succeeded item, rerunBatch for dead-lettered items once the cause is fixed.")
+        .WithName("getBatchStatus")
+        .WithTags("operations");
 
         batches.MapPost("/{batchId}/rerun", async Task<Results<Ok<RerunResponse>, NotFound>> (string batchId, BatchService service, CancellationToken ct) =>
             await service.GetAsync(batchId, ct, pageSize: 1) is null ? TypedResults.NotFound() : TypedResults.Ok(new RerunResponse(await service.RerunAsync(batchId, ct))))
-        .WithSummary("Operator re-run: dead-lettered items of the batch go back to the queue with a fresh retry budget");
+        .WithSummary("Operator re-run: dead-lettered items of the batch go back to the queue with a fresh retry budget")
+        .WithDescription("Use it only after fixing the cause of a transient failure (TIMEOUT, LEASE_EXPIRED, or an exception type name such as SqliteException); every dead-lettered item is requeued, and INVALID_INPUT and INVALID_PAYLOAD fail the same way again. Returns how many items were requeued. Next: getBatchStatus.")
+        .WithName("rerunBatch")
+        .WithTags("operations");
     }
 }
 

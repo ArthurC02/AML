@@ -1,0 +1,189 @@
+{
+  "$id": "aml:CaseSummary:v1",
+  "type": [
+    "object",
+    "null"
+  ],
+  "properties": {
+    "caseId": {
+      "description": "案件編號",
+      "type": "string"
+    },
+    "subjectRef": {
+      "description": "受檢對象參考碼：呼叫端的不透明參考，不得為客戶編號或證件號碼",
+      "type": "string"
+    },
+    "triggerEventId": {
+      "description": "觸發事件編號",
+      "type": "string"
+    },
+    "status": {
+      "description": "案件狀態",
+      "enum": [
+        "OPEN",
+        "IN_REVIEW",
+        "CLOSED"
+      ]
+    },
+    "currentRevision": {
+      "description": "最新 revision",
+      "type": [
+        "string",
+        "integer"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    },
+    "effectiveRevision": {
+      "description": "生效 revision；尚無完整分析時為 null",
+      "type": [
+        "string",
+        "integer",
+        "null"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    },
+    "effectiveAt": {
+      "description": "生效 revision 的分析時間",
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "newerRevisionIncomplete": {
+      "description": "有比生效 revision 更新但未完成的 revision",
+      "type": "boolean"
+    },
+    "result": {
+      "description": "案件層級結果；尚無生效 revision 時為 null",
+      "enum": [
+        "NOT_APPLICABLE",
+        "NO_HIT",
+        "REVIEW",
+        "HIT",
+        "NOT_EVALUATED",
+        null
+      ]
+    },
+    "conclusion": {
+      "description": "結論句",
+      "type": "string"
+    },
+    "hits": {
+      "description": "各 hit 一行，依優先序再依編號，最多 10 筆",
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "hitNumber": {
+            "description": "hit 編號",
+            "type": [
+              "string",
+              "integer"
+            ],
+            "pattern": "^-?(?:0|[1-9]\\d*)$"
+          },
+          "profileKey": {
+            "description": "名單鍵（DJ:<名單編號>）",
+            "type": "string"
+          },
+          "profileName": {
+            "description": "名單主要姓名",
+            "type": [
+              "string",
+              "null"
+            ],
+            "x-sensitivity": "PERSONAL"
+          },
+          "pairResult": {
+            "description": "此組合的對外結果",
+            "enum": [
+              "NOT_APPLICABLE",
+              "NO_HIT",
+              "REVIEW",
+              "HIT",
+              "NOT_EVALUATED"
+            ]
+          },
+          "reviewPriority": {
+            "description": "複核優先序",
+            "enum": [
+              "HIGH",
+              "NORMAL",
+              "LOW",
+              null
+            ]
+          },
+          "identityDecision": {
+            "description": "系統身分判斷",
+            "enum": [
+              "NO_MATCH",
+              "REVIEW",
+              "PROBABLE_MATCH"
+            ]
+          },
+          "link": {
+            "description": "此 revision 的 hit 摘要連結",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hitNumber",
+          "profileKey",
+          "pairResult",
+          "identityDecision",
+          "link"
+        ]
+      }
+    },
+    "omitted": {
+      "description": "未列出的 hit 數",
+      "type": [
+        "string",
+        "integer",
+        "null"
+      ],
+      "pattern": "^-?(?:0|[1-9]\\d*)$"
+    },
+    "notEvaluatedProfiles": {
+      "description": "缺名單資料而無法評估的名單鍵",
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "revision": {
+      "description": "完整紀錄：生效 revision，沒有時為最新 revision",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "revisions": {
+      "description": "revision 清單的連結",
+      "type": "string"
+    }
+  },
+  "required": [
+    "caseId",
+    "subjectRef",
+    "triggerEventId",
+    "status",
+    "currentRevision",
+    "newerRevisionIncomplete",
+    "conclusion",
+    "revisions"
+  ]
+}

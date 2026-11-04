@@ -42,7 +42,7 @@ No target percentage or latency is committed before representative data and bank
 | Probable-Match Yield | 100% (2/2) | GC-03, GC-11 |
 | Evidence Completeness | 100% | 9 comparison rows per pair |
 | Decision Traceability | 100% | reason codes and a conclusion on every pair |
-| Missing / ambiguous / conflict rate | 52% / 6% / 0% | comparison cells; missing is mostly Profile DOB, document and address |
+| Missing / ambiguous / conflict rate | 56% / 2% / 0% | comparison cells; missing is mostly Profile DOB, document and address, and the customer's employer (an occupation alone is not comparable with Profile roles, so GC-01's employment cell is missing, not ambiguous) |
 | Re-adjudication Stability | 100% | an unchanged re-run lists no changes |
 
 Not measured: field extraction correctness and Recall@K (need HTML samples and labeled extraction), Human Override Rate (no human workflow in the PoC), batch completion, retry recovery and latency (need representative volume; the `aml.*` metrics collect them).

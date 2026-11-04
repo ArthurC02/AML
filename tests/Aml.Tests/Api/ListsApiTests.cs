@@ -57,17 +57,24 @@ public sealed class ListsApiTests : IDisposable
         var original = caseFiles.Single(f => f.Item1 == ProfileName).Item2;
         var first = await Json(await http.PostAsync("/api/lists/profiles", Files((ProfileName, original)), ct), ct);
         Assert.Equal(1, first.GetProperty("profiles")[0].GetProperty("version").GetInt32());
-        Assert.Equal(0, first.GetProperty("reanalyzedCases").GetArrayLength());
+        Assert.Equal(0, first.GetProperty("queuedReanalyses").GetArrayLength());
 
         // Same content again: unchanged.
         var again = await Json(await http.PostAsync("/api/lists/profiles", Files((ProfileName, original)), ct), ct);
         Assert.False(again.GetProperty("profiles")[0].GetProperty("changed").GetBoolean());
 
-        // A source update: full DOB. New version, the old one kept, and the Case gets revision 2.
+        // A source update: full DOB. New version, the old one kept, and the queued job gives the Case revision 2.
         var updated = original.Replace("Date of Birth\t1973", "Date of Birth\t1973/6/12", StringComparison.Ordinal);
         var refresh = await Json(await http.PostAsync("/api/lists/profiles", Files((ProfileName, updated)), ct), ct);
         Assert.Equal(2, refresh.GetProperty("profiles")[0].GetProperty("version").GetInt32());
-        Assert.Equal(caseId, refresh.GetProperty("reanalyzedCases")[0].GetString());
+        Assert.Equal(caseId, refresh.GetProperty("queuedReanalyses")[0].GetProperty("caseId").GetString());
+        var batchId = refresh.GetProperty("batchId").GetString();
+        for (var i = 0; i < 100; i++)
+        {
+            var batch = await Json(await http.GetAsync($"/api/batches/{batchId}", ct), ct);
+            if (batch.GetProperty("succeeded").GetInt32() == 1) break;
+            await Task.Delay(100, ct);
+        }
         var c = await Json(await http.GetAsync($"/api/cases/{caseId}", ct), ct);
         Assert.Equal(2, c.GetProperty("currentRevision").GetInt32());
         var versions = await Json(await http.GetAsync("/api/lists/profiles/90000011/versions", ct), ct);

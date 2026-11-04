@@ -31,7 +31,7 @@ Article 22 covers message scanning (AML SWIFT/RTGS) and name screening of indivi
 
 ## DispositionPolicy
 
-`Screening/DispositionPolicy` is evaluated per pair after the source-condition policies. Its inputs are the IdentityComparison and the SourceConditionResults of one pair; its result (`recommendation`, reason codes, pending checks) is on every hit and in the explanation's conclusion, marked advisory.
+`Screening/DispositionPolicy` is evaluated per pair after the source-condition policies. Its inputs are the IdentityComparison and the SourceConditionResults of one pair; its result (`recommendation`, reason codes, pending checks) is on every hit and in the explanation's conclusion. Every recommendation carries `advisory: true`, so machine-readable output states that it is for reference only.
 
 ### Default
 
@@ -47,7 +47,7 @@ Automatic MATCH is disabled in Phase 1, so the two MATCH rows never apply in Pha
 Preconditions, all required:
 
 - both the screened subject and the Profile are confirmed non-Taiwanese, using nationality-labelled fields only (nationality, citizenship); residence and allegation countries do not count;
-- the Profile has a PEP condition with status HIT, or the list type is still UNKNOWN because its category could not be mapped;
+- the Profile has a PEP condition that is HIT or UNKNOWN, or an UNKNOWN condition whose category could not be mapped (`UNMAPPED_CATEGORY`) and might be PEP; an unmapped category does not count when the PEP flag is NO, and an undecided 黑名單 type (`BLACKLIST_TYPE_UNDECIDED`) never counts;
 - identity is REVIEW or PROBABLE_MATCH.
 
 | Subject \ Profile nationality | Taiwan | Non-Taiwan | Missing or ambiguous |
@@ -60,7 +60,7 @@ Effect: ON_LIST, reason code `ART22_FOREIGN_PEP_PRESUMPTION`. The identity decis
 
 Exception: same name but a clearly different background (e.g. a known migrant worker) returns to normal review. The system cannot detect this from source data; it is out of scope.
 
-A side is non-Taiwanese only when every nationality-labelled value maps to a country code other than TW; an unmapped value counts as ambiguous. Another party's nationality is never applied to the subject. When manual confirmation is required, `CONFIRM_NATIONALITY` is added to the pending checks.
+A side is non-Taiwanese only when every nationality-labelled value maps to a country code other than TW. A value that did not map to a country (recorded as `AMBIGUOUS:<field>`) makes that side ambiguous, even next to a mapped value. Another party's nationality is never applied to the subject. When manual confirmation is required, `CONFIRM_NATIONALITY` is added to the pending checks.
 
 ① is exercised by [AUG-03-01 and AUG-03-02](../plan/golden-cases.md#augmented-cases); GC-09 is in the validation backlog.
 
@@ -68,8 +68,8 @@ A side is non-Taiwanese only when every nationality-labelled value maps to a cou
 
 - `amlRelevance` on an `ADVERSE_MEDIA` condition is `RELATED | UNRELATED | UNCERTAIN`, judged from the concrete conduct and jurisdiction, never from offence keywords alone.
 - A predicate offence counts as RELATED even if the source does not mention money laundering.
-- `amlRelevance` defaults to UNCERTAIN. The system extracts UNRELATED only when the attached news states a jurisdiction (dateline or `Country of Reported Allegation`) and a conduct from a controlled non-predicate list (酒駕, 公共危險, 妨害名譽 …), with no predicate conduct and no SIP crime category or risk keyword. RELATED is never extracted; it is the reviewer's judgement (GC-02 and GC-11 stay UNCERTAIN).
-- UNRELATED sets aside that `ADVERSE_MEDIA` condition only, reason code `ART22_ADVERSE_UNRELATED`. If no other HIT condition remains, the recommendation is NOT_ON_LIST; PEP, Sanction or other conditions on the same Profile still apply.
+- `amlRelevance` defaults to UNCERTAIN. The system extracts UNRELATED only when the attached news states a jurisdiction (dateline or `Country of Reported Allegation`) and a sentence naming the Profile person states a conduct from a controlled non-predicate list (酒駕, 過失傷害, 妨害名譽 …), with no predicate conduct (洗錢防制法 Article 3), no serious-consequence marker (致死, 致重傷, 逃逸 …) anywhere in the news, and no SIP crime category or risk keyword. This is a keyword heuristic pending an approved extraction ([AdverseInformationPolicy](watchlist-and-adverse-information.md#adverseinformationpolicy)). RELATED is never extracted; it is the reviewer's judgement (GC-02 and GC-11 stay UNCERTAIN).
+- UNRELATED sets aside that `ADVERSE_MEDIA` condition only, reason code `ART22_ADVERSE_UNRELATED`. If every other condition is NOT_HIT, the recommendation is NOT_ON_LIST; PEP, Sanction or other conditions on the same Profile still apply.
 - The relevance judgement says nothing about identity.
 - ② is exercised by [AUG-02-13](../plan/golden-cases.md#augmented-cases); GC-10 is in the validation backlog.
 
@@ -86,13 +86,14 @@ The bank ruled on 2026-10-14 that, outside Article 22 ①, a hit lacking a bilat
 
 ## Verification records
 
-Verification records describe checks that confirm or weaken identity. The checks are performed outside the system; the explanation lists the triggered ones as pending and never invents a result.
+Verification records describe checks that confirm or weaken identity, plus the former-PEP influence assessment. The checks are performed outside the system; the explanation lists the triggered ones as pending and never invents a result.
 
 | Type | Triggered when | Results |
 |---|---|---|
-| `EMPLOYMENT_RELEVANCE` | PEP condition HIT | RELEVANT / NOT_RELEVANT / UNDETERMINED / NOT_APPLICABLE |
-| `REGION_RELEVANCE` | ADVERSE_MEDIA condition HIT | same |
-| `IDENTITY_CHECK` | PEP flag explicitly Yes, `Is RCA?` not Yes, Profile has no DOB or age | CONSISTENT / INCONSISTENT / UNCONFIRMED / NOT_APPLICABLE |
+| `EMPLOYMENT_RELEVANCE` | PEP condition HIT or UNKNOWN | RELEVANT / NOT_RELEVANT / UNDETERMINED / NOT_APPLICABLE |
+| `FORMER_PEP_INFLUENCE` | PEP condition HIT or UNKNOWN on a former PEP, or RCA condition HIT or UNKNOWN whose subcategory marks the PEP as former ([former PEP](pep-rca-screening.md#former-pep)) | risk-based assessment of remaining influence (認定標準 Articles 5 and 8); no fixed period |
+| `REGION_RELEVANCE` | ADVERSE_MEDIA condition HIT or UNKNOWN | RELEVANT / NOT_RELEVANT / UNDETERMINED / NOT_APPLICABLE |
+| `IDENTITY_CHECK` | PEP condition HIT, no RCA condition, Profile has no date of birth | CONSISTENT / INCONSISTENT / UNCONFIRMED / NOT_APPLICABLE |
 | `JUDGMENT_PARTY_IDENTITY` | natural-person Profile with attached news or an ADVERSE_MEDIA condition | ESTABLISHED / NOT_ESTABLISHED / UNCONFIRMED / NOT_MENTIONED / NOT_APPLICABLE |
 | `OTHER` | any other check actually performed | VERIFIED / UNCONFIRMED / NOT_APPLICABLE |
 

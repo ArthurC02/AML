@@ -88,6 +88,16 @@
         WHERE i.revision = (SELECT MAX(x.revision) FROM case_input x WHERE x.case_id = i.case_id)
       ]]></sql>
     </statement>
+
+    <statement id="Case.LatestInput" kind="Select">
+      <description>One Case's latest stored input, for a queued re-analysis.</description>
+      <sql><![CDATA[
+        SELECT i.files_json
+        FROM case_input i
+        WHERE i.case_id = @caseId
+          AND i.revision = (SELECT MAX(x.revision) FROM case_input x WHERE x.case_id = @caseId)
+      ]]></sql>
+    </statement>
   </module>
 
   <module name="Batch">
@@ -123,7 +133,16 @@
     <statement id="Batch.GetClaimed" kind="Select">
       <description>A job this worker just claimed: retry count and durable input.</description>
       <sql><![CDATA[
-        SELECT job_id, attempt_count, payload FROM job WHERE job_id = @jobId
+        SELECT job_id, job_type, attempt_count, payload FROM job WHERE job_id = @jobId
+      ]]></sql>
+    </statement>
+
+    <statement id="Batch.RenewLease" kind="Update">
+      <description>Extend a running job's lease before it writes. Only the lease owner may extend it.</description>
+      <sql><![CDATA[
+        UPDATE job
+        SET lease_expiry = @leaseExpiry
+        WHERE job_id = @jobId AND lease_owner = @leaseOwner AND status = 'RUNNING'
       ]]></sql>
     </statement>
 
@@ -213,6 +232,13 @@
         FROM list_profile p
         WHERE p.profile_id = @profileId
         ORDER BY p.version
+      ]]></sql>
+    </statement>
+
+    <statement id="Extraction.ListVersion" kind="Select">
+      <description>Version of the whole list database: rows are never updated or deleted, so the count grows with every capture.</description>
+      <sql><![CDATA[
+        SELECT COUNT(*) FROM list_profile
       ]]></sql>
     </statement>
   </module>

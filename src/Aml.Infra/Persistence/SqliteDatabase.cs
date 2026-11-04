@@ -36,5 +36,10 @@ public sealed class SqliteDatabase
             .Build()
             .PerformUpgrade();
         if (!result.Successful) throw new InvalidOperationException("Database upgrade failed", result.Error);
+
+        // Write-ahead log: readers no longer wait for the writer. The mode is stored in the file, so setting it once is enough.
+        using var c = new SqliteConnection(_connectionString);
+        c.Open();
+        c.Execute("PRAGMA journal_mode = WAL;");
     }
 }

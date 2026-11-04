@@ -1,3 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Zero dependencies: all decision logic is pure code. -->
+  <ItemGroup>
+    <!-- Public reference tables (source and license on each file's first line). -->
+    <EmbeddedResource Include="Normalization\Data\*.txt" LogicalName="%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

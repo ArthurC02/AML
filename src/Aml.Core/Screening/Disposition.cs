@@ -9,8 +9,12 @@ public enum Recommendation { OnList, NotOnList }
 /// <summary>
 /// Advisory Article 22 recommendation (review-and-disposition.md, ADR-0017, ADR-0020). Null when no rule resolves the
 /// pair (③); the pending checks are listed instead. It never changes the identity decision or the source conditions.
+/// Advisory is always true, so machine-readable output says the recommendation is for reference only.
 /// </summary>
-public sealed record DispositionRecommendation(Recommendation? Recommendation, IReadOnlyList<string> ReasonCodes, IReadOnlyList<string> PendingChecks);
+public sealed record DispositionRecommendation(Recommendation? Recommendation, IReadOnlyList<string> ReasonCodes, IReadOnlyList<string> PendingChecks)
+{
+    public bool Advisory { get; init; } = true;
+}
 
 public static class DispositionPolicy
 {
@@ -25,6 +29,7 @@ public static class DispositionPolicy
     public const string RegionRelevance = "REGION_RELEVANCE";
     public const string IdentityCheck = "IDENTITY_CHECK";
     public const string JudgmentPartyIdentity = "JUDGMENT_PARTY_IDENTITY";
+    public const string FormerPepInfluence = "FORMER_PEP_INFLUENCE";
 
     private enum Nationality { Taiwan, Foreign, Unknown }
 
@@ -41,10 +46,13 @@ public static class DispositionPolicy
         if (identity.Decision == IdentityDecision.NoMatch)
             return new(Recommendation.NotOnList, [.. reasons, IdentityNoMatch], pending);
 
-        // ①: foreign PEP presumption, on nationality-labelled fields only.
-        if (remaining.Any(c => c.Status != ConditionStatus.NotHit && c.Type is ListType.Pep or ListType.Unknown))
+        // ①: foreign PEP presumption, on nationality-labelled fields only. An UNKNOWN condition counts only when it is an
+        // unmapped category that might be PEP: not an undecided 黑名單 type, and not when the PEP flag says NO.
+        var pepFlagNo = conditions.Any(c => c.Type == ListType.Pep && c.Status == ConditionStatus.NotHit && c.Basis == ConditionBasis.Flag);
+        if (remaining.Any(c => c.Status != ConditionStatus.NotHit
+            && (c.Type == ListType.Pep || (c.Type == ListType.Unknown && c.ReasonCodes.Contains(SourceConditions.UnmappedCategory) && !pepFlagNo))))
         {
-            var (subject, profile) = (Classify(s.Nationalities), Classify(p.Citizenship));
+            var (subject, profile) = (Classify(s.Nationalities, s.Findings, "國籍"), Classify(p.Citizenship, p.Findings, "Citizenship"));
             if (subject == Nationality.Foreign && profile == Nationality.Foreign)
                 return new(Recommendation.OnList, [.. reasons, ForeignPepPresumption], pending);
             if (subject != Nationality.Taiwan && profile != Nationality.Taiwan)
@@ -63,8 +71,10 @@ public static class DispositionPolicy
     }
 
     // A value that is not a two-letter code did not map unambiguously to a country (Normalize.Country).
-    private static Nationality Classify(IReadOnlyList<string> codes) =>
-        codes.Count == 0 || codes.Any(c => c.Length != 2) ? Nationality.Unknown
+    // A nationality value that did not map to a country (AMBIGUOUS:<field>) leaves the classification Unknown.
+    private static Nationality Classify(IReadOnlyList<string> codes, IReadOnlyList<string> findings, string field) =>
+        codes.Count == 0 || codes.Any(c => c.Length != 2) || findings.Any(f => f.StartsWith($"AMBIGUOUS:{field}", StringComparison.Ordinal))
+            ? Nationality.Unknown
         : codes.Contains("TW") ? Nationality.Taiwan
         : Nationality.Foreign;
 
@@ -74,6 +84,11 @@ public static class DispositionPolicy
         bool Open(ListType t) => conditions.Any(c => c.Status != ConditionStatus.NotHit && (c.Type == t || c.Type == ListType.Unknown));
         var checks = new List<string>();
         if (Open(ListType.Pep)) checks.Add(EmploymentRelevance);
+        // 認定標準第 5、8 條: a former PEP's remaining influence, extended to their family and close associates, is assessed
+        // on risk with no fixed period.
+        bool Raised(ListType t) => conditions.Any(c => c.Type == t && c.Status != ConditionStatus.NotHit);
+        if ((Raised(ListType.Pep) && SourceConditions.IsFormerPep(p, ownRoles: true)) || (Raised(ListType.Rca) && SourceConditions.IsFormerPep(p, ownRoles: false)))
+            checks.Add(FormerPepInfluence);
         if (Open(ListType.AdverseMedia)) checks.Add(RegionRelevance);
         if (conditions.Any(c => c.Type == ListType.Pep && c.Status == ConditionStatus.Hit)
             && conditions.All(c => c.Type != ListType.Rca) && p.DatesOfBirth.Count == 0)

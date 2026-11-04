@@ -20,6 +20,11 @@ The [operating architecture](system-overview.md#operating-architecture) separate
 - Runtime Query receives customer and related-party data and keeps it inside the bank: no external calls carry it, and results stay in the Case store.
 - No LLM or external AI service is used in either half.
 
+## Stored inputs
+
+- The input files of every revision (`case_input`) and the `ANALYZE_CASE` job payloads are stored unmasked, so a later re-analysis can run on them; database access is restricted accordingly.
+- The list database (`list_profile`) holds list data only: Profile versions with their SHA-256. A Profile import compares that hash with the Profile files in the Cases' stored inputs and queues `REANALYZE_CASE` jobs whose payload carries IDs and a version number, no customer data.
+
 ## External lookups
 
 The system performs no web search or external lookup in Phase 1. Lookups made outside the system for [verification records](review-and-disposition.md#verification-records) follow these rules:

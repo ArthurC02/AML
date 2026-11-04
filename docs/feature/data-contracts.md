@@ -22,18 +22,23 @@ Contains identity, customer context, source version, extraction version and evid
 
 Contains names, dates with precision, countries with roles, documents, addresses, relationships, classifications, keywords, notes, legal-status facts and source references.
 
-It also carries the source flags exactly as read, per candidate row:
+## CandidateRow
+
+One row of the candidate table in 案件資訊, read by header label ([candidate table](extraction-and-normalization.md#candidate-table)):
 
 ```yaml
-listFlags:
-  pep: YES | NO | MISSING | UNPARSEABLE
-  blacklist: YES | NO | MISSING | UNPARSEABLE
-  adverseNews: YES | NO | MISSING | UNPARSEABLE
-  isRca: YES | NO | MISSING | UNPARSEABLE
-nameProperty: null        # raw Name Property value
+matchedName: 陳志明       # 姓名/名稱
+profileId: "14001741"     # 名單資料編號
+legacyReason: null        # 理由; ImportedDecision only, never evidence
+isRca: false              # true when Is RCA? reads YES
+listFlags:                # source flags exactly as read
+  pep: YES | NO | MISSING | UNPARSEABLE           # Name Property → PEP
+  blacklist: YES | NO | MISSING | UNPARSEABLE     # Name Property → 黑名單
+  adverseNews: YES | NO | MISSING | UNPARSEABLE   # Name Property → 負面新聞
+  rca: YES | NO | MISSING | UNPARSEABLE           # Is RCA? as read
 ```
 
-`NO` is a value, not unknown ([flag reading](extraction-and-normalization.md#source-flags)).
+`NO` is a value, not unknown ([flag reading](extraction-and-normalization.md#source-flags)). `rca` is kept so a NO can be told apart from a blank; it is not one of the three list flags. How the flags, `isRca` and the categories decide the list types is in [list-type determination](watchlist-and-adverse-information.md#list-type-determination). Several rows of one Profile are merged flag by flag: YES wins, then UNPARSEABLE, then NO, else MISSING.
 
 ## CandidateHit
 
@@ -132,6 +137,7 @@ PROBABLE_MATCH is never exposed; it surfaces as REVIEW with high priority. Case-
 subjectRef: customer-001
 profileKey: DJ:14001741
 recommendation: ON_LIST | NOT_ON_LIST | NONE
+advisory: true            # always: the final selection happens outside the system
 basis: IDENTITY | ART22_FOREIGN_PEP_PRESUMPTION | ART22_ADVERSE_UNRELATED
 setAsideConditions: []    # conditions excluded by Article 22 ②
 policyVersion: disposition-policy-0.1
@@ -145,7 +151,7 @@ Never changes the IdentityComparison or SourceConditionResults ([ADR-0017](../ad
 ```yaml
 verificationId: vr-001
 type: EMPLOYMENT_RELEVANCE | REGION_RELEVANCE | IDENTITY_CHECK
-    | JUDGMENT_PARTY_IDENTITY | OTHER
+    | FORMER_PEP_INFLUENCE | JUDGMENT_PARTY_IDENTITY | OTHER
 triggered: true
 searchOutcome: RETRIEVED | NOT_FOUND | UNAVAILABLE | PARSE_FAILED | null
 conclusion: null          # allowed values per type, see disposition recommendation

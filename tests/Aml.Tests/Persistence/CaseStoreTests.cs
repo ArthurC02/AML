@@ -50,8 +50,8 @@ public sealed class CaseStoreTests : IDisposable
         var ct = TestContext.Current.CancellationToken;
         var c = await _store.CreateAsync(NewCase(), ct);
 
-        Assert.True(await _store.AcceptAnalysisAsync(Analysis(c.CaseId, 2), CaseStatus.InReview, ct));
-        Assert.False(await _store.AcceptAnalysisAsync(Analysis(c.CaseId, 1), CaseStatus.Closed, ct));
+        Assert.True(await _store.AcceptAnalysisAsync(Analysis(c.CaseId, 2), CaseStatus.InReview, null, ct));
+        Assert.False(await _store.AcceptAnalysisAsync(Analysis(c.CaseId, 1), CaseStatus.Closed, null, ct));
 
         var loaded = (await _store.GetAsync(c.CaseId, ct))!;
         Assert.Equal(2, loaded.CurrentRevision);

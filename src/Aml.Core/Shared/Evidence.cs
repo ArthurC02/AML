@@ -20,7 +20,6 @@ public static class ReasonCodes
     public const string FullDobConflict = "FULL_DOB_CONFLICT";
     public const string DobConflict = "DOB_CONFLICT";
     public const string DocumentIdentityConflict = "DOCUMENT_IDENTITY_CONFLICT";
-    public const string EmploymentConflict = "EMPLOYMENT_CONFLICT";
     public const string UniqueIdentifierAgreement = "UNIQUE_IDENTIFIER_AGREEMENT";
     public const string StrongSupportCombination = "STRONG_SUPPORT_COMBINATION";
     public const string ConsistentAtAvailablePrecision = "CONSISTENT_AT_AVAILABLE_PRECISION";
@@ -34,6 +33,7 @@ public static class ReasonCodes
     public const string ImpossibleRoleAtReportedEvent = "IMPOSSIBLE_ROLE_AT_REPORTED_EVENT";
     public const string DeathBeforeCustomerBirth = "DEATH_BEFORE_CUSTOMER_BIRTH";
     public const string NonPersonSubjectReview = "NON_PERSON_SUBJECT_REVIEW";
+    public const string GenderConflict = "GENDER_CONFLICT";
     public const string SourceQualityDowngrade = "SOURCE_QUALITY_DOWNGRADE";
     public const string EntityIdentifierAgreement = "ENTITY_IDENTIFIER_AGREEMENT";
     public const string EntityIdentifierConflict = "ENTITY_IDENTIFIER_CONFLICT";

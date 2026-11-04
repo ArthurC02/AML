@@ -43,9 +43,10 @@ public static class AssessmentPolicy
         return new PairAssessment(result, result == ScreeningAssessment.Review ? Priority(identity, conditions) : null, reasons);
     }
 
-    // Stage 3 rows 2–4 (PROBABLE_MATCH) and Sanction first, row 5 next, rows 1 and 6 and everything else last.
+    // Stage 3 rows 2–4 (PROBABLE_MATCH) and a raised (HIT or UNKNOWN) Sanction first, row 5 next, rows 1 and 6 and everything else last.
     private static ReviewPriority Priority(IdentityResult identity, IReadOnlyList<SourceCondition> conditions) =>
-        identity.Decision == IdentityDecision.ProbableMatch || conditions.Any(c => c.Type == ListType.Sanction) ? ReviewPriority.High
+        identity.Decision == IdentityDecision.ProbableMatch
+            || conditions.Any(c => c.Type == ListType.Sanction && c.Status != ConditionStatus.NotHit) ? ReviewPriority.High
         : identity.Stage3Row == 5 ? ReviewPriority.Normal
         : ReviewPriority.Low;
 }

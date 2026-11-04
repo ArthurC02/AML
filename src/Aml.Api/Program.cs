@@ -3,6 +3,7 @@ using Aml.Core.Cases;
 using Aml.Core.Ports;
 using Aml.Core.Retrieval;
 using Aml.Core.Subjects;
+using Aml.Infra.Html;
 using Aml.Infra.Jobs;
 using Aml.Infra.Persistence;
 using Aml.Infra.Persistence.Repositories;
@@ -30,6 +31,9 @@ builder.Services.AddSingleton<Func<IReadOnlyDictionary<string, string>, CaseInpu
 builder.Services.AddSingleton<BatchService>();
 builder.Services.AddSingleton<IListStore, ListStore>();
 builder.Services.AddSingleton<Func<string, SourceProfile>>(TxtCaseReader.ParseProfile);
+// The Profile content hash is taken on the export text, so an HTML page and its .txt export are one version.
+builder.Services.AddSingleton<Func<string, string>>(c =>
+    c.TrimStart().TrimStart('﻿').StartsWith('<') ? HtmlExport.ToExportText(c, HtmlExport.Kind.Profile) : c);
 builder.Services.AddSingleton<ListService>();
 builder.Services.AddHostedService<JobWorker>();
 builder.Services.AddOpenApi();
@@ -128,8 +132,8 @@ lists.MapPost("/profiles", async Task<Results<Ok<ImportReport>, BadRequest<strin
     var (contents, error) = await ReadFilesAsync(files, ct);
     return contents is null ? TypedResults.BadRequest(error) : TypedResults.Ok(await service.ImportAsync(contents, ct));
 })
-.WithSummary("Capture Profiles into the list database; a changed Profile re-analyzes the Cases that used it")
-.WithDescription("Upload 名單資料_<id>.txt (or .html). An unchanged file keeps its version; a changed one becomes a new version, the old one is kept, and every Case whose latest input used it gets a new analysis revision.");
+.WithSummary("Capture Profiles into the list database; a changed Profile queues re-analysis of the Cases that used it")
+.WithDescription("Upload 名單資料_<id>.txt (or .html). An unchanged file keeps its version; a changed one becomes a new version, the old one is kept, and every Case whose latest input used it gets a queued re-analysis job (track it with GET /api/batches/{batchId}). A file whose name and Profile_ID differ, or one Profile in two formats, is rejected.");
 
 lists.MapGet("/profiles/{profileId}/versions", async (string profileId, ListService service, CancellationToken ct) =>
     TypedResults.Ok((await service.HistoryAsync(profileId, ct)).Select(v => new { v.ProfileId, v.Version, v.ContentHash, v.CapturedAt })))
@@ -151,36 +155,45 @@ lists.MapGet("/candidates", async Task<Results<Ok<IReadOnlyList<RetrievedCandida
 .WithDescription("Counted by Profile, not alias row. The score ranks candidates only; it is never an identity probability.");
 
 lists.MapGet("/merges", async (ListService service, CancellationToken ct) => TypedResults.Ok(await service.MergesAsync(ct)))
-.WithSummary("Profiles that describe the same person: shared document key or recorded source link, never name similarity");
+.WithSummary("Profiles that describe the same person: shared document key or recorded source link, never name similarity")
+.WithDescription("Groups list each accepted merge as an edge with its basis; merges refused for a DOB or gender conflict are listed under rejected.");
 
 app.Run();
 
 static bool Accepted(string name) => Path.GetExtension(name).ToLowerInvariant() is ".txt" or ".html" or ".htm";
 
-// Reads uploaded files in memory (file names reduced to their last segment).
-static async Task<(Dictionary<string, string>? Contents, string? Error)> ReadFilesAsync(IFormFileCollection files, CancellationToken ct)
+// Reads uploaded files in memory as raw bytes (file names reduced to their last segment).
+static async Task<(Dictionary<string, byte[]>? Bytes, string? Error)> ReadBytesAsync(IFormFileCollection files, CancellationToken ct)
 {
     const long maxBytes = 5 * 1024 * 1024;
     if (files.Count == 0) return (null, "No files uploaded");
     if (files.Any(f => !Accepted(f.FileName) || f.Length > maxBytes))
         return (null, "Only .txt or .html files up to 5 MB are accepted");
-    var contents = new Dictionary<string, string>();
+    var bytes = new Dictionary<string, byte[]>();
     foreach (var f in files)
     {
-        using var reader = new StreamReader(f.OpenReadStream());
-        contents[Path.GetFileName(f.FileName)] = await reader.ReadToEndAsync(ct);
+        using var buffer = new MemoryStream();
+        await f.CopyToAsync(buffer, ct);
+        bytes[Path.GetFileName(f.FileName)] = buffer.ToArray();
     }
-    return (contents, null);
+    return (bytes, null);
 }
 
-// Reads the upload and parses it through TxtCaseReader.ReadFiles; the contents are kept with the revision.
+// Uploaded files as text: strict UTF-8, else CP950 (Big5), the same decoding the case reader applies.
+static async Task<(Dictionary<string, string>? Contents, string? Error)> ReadFilesAsync(IFormFileCollection files, CancellationToken ct)
+{
+    var (bytes, error) = await ReadBytesAsync(files, ct);
+    return (bytes?.ToDictionary(b => b.Key, b => TxtCaseReader.Decode(b.Value, out _)), error);
+}
+
+// Reads the upload and parses its raw bytes through TxtCaseReader.ReadFiles; the decoded contents are kept with the revision.
 static async Task<(CaseInput? Input, Dictionary<string, string>? Contents, string? Error)> ReadUploadAsync(IFormFileCollection files, CancellationToken ct)
 {
-    var (contents, error) = await ReadFilesAsync(files, ct);
-    if (contents is null) return (null, null, error);
+    var (bytes, error) = await ReadBytesAsync(files, ct);
+    if (bytes is null) return (null, null, error);
     try
     {
-        return (TxtCaseReader.ReadFiles(contents), contents, null);
+        return (TxtCaseReader.ReadFiles(bytes), bytes.ToDictionary(b => b.Key, b => TxtCaseReader.Decode(b.Value, out _)), null);
     }
     catch (Exception e) when (TxtCaseReader.IsInputError(e))
     {

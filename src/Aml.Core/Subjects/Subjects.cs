@@ -85,7 +85,8 @@ public sealed record NewsItem(string ProfileId, string? DocumentId, string Title
 /// <summary>A source flag exactly as read (extraction-and-normalization.md#source-flags). NO is a value, not unknown.</summary>
 public enum FlagValue { Missing, Yes, No, Unparseable }
 
-public sealed record ListFlags(FlagValue Pep, FlagValue Blacklist, FlagValue AdverseNews)
+/// <summary>The three list flags, plus Is RCA? kept as read so a NO can be told from a blank; Is RCA? is not one of the three.</summary>
+public sealed record ListFlags(FlagValue Pep, FlagValue Blacklist, FlagValue AdverseNews, FlagValue Rca = FlagValue.Missing)
 {
     public static readonly ListFlags None = new(FlagValue.Missing, FlagValue.Missing, FlagValue.Missing);
 
@@ -98,7 +99,7 @@ public sealed record ListFlags(FlagValue Pep, FlagValue Blacklist, FlagValue Adv
         static FlagValue One(IEnumerable<FlagValue> v) =>
             v.Contains(FlagValue.Yes) ? FlagValue.Yes : v.Contains(FlagValue.Unparseable) ? FlagValue.Unparseable
             : v.Contains(FlagValue.No) ? FlagValue.No : FlagValue.Missing;
-        return new(One(list.Select(f => f.Pep)), One(list.Select(f => f.Blacklist)), One(list.Select(f => f.AdverseNews)));
+        return new(One(list.Select(f => f.Pep)), One(list.Select(f => f.Blacklist)), One(list.Select(f => f.AdverseNews)), One(list.Select(f => f.Rca)));
     }
 }
 

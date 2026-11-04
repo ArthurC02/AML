@@ -11,6 +11,7 @@ namespace Aml.Infra.Persistence.Repositories;
 public sealed class CaseStore(SqliteDatabase db) : ICaseStore
 {
     private const int SqliteConstraintUnique = 2067;
+    private const int SqliteConstraintPrimaryKey = 1555;
 
     private sealed record CaseRow(string CaseId, string SubjectRef, string TriggerEventId, string CaseStatus,
         long CurrentRevision, long? EffectiveRevision, string CreatedAt, string UpdatedAt);
@@ -43,16 +44,28 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
         return row is null ? null : Map(row);
     }
 
-    public async Task<bool> AcceptAnalysisAsync(AnalysisRecord analysis, CaseStatus status, CancellationToken ct)
+    public async Task<bool> AcceptAnalysisAsync(AnalysisRecord analysis, CaseStatus status, IReadOnlyDictionary<string, string>? files, CancellationToken ct)
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
         await using var tx = await c.BeginTransactionAsync(ct).ConfigureAwait(false);
         var now = Time(analysis.CreatedAt);
-        await c.ExecuteAsync(new CommandDefinition(db.Sql["Case.InsertAnalysis"], new
+        try
         {
-            caseId = analysis.CaseId, revision = analysis.Revision, executionStatus = Enum(analysis.ExecutionStatus),
-            caseResult = Enum(analysis.CaseResult), resultJson = analysis.ResultJson, explanationJson = analysis.ExplanationJson, now,
-        }, tx, cancellationToken: ct)).ConfigureAwait(false);
+            await c.ExecuteAsync(new CommandDefinition(db.Sql["Case.InsertAnalysis"], new
+            {
+                caseId = analysis.CaseId, revision = analysis.Revision, executionStatus = Enum(analysis.ExecutionStatus),
+                caseResult = Enum(analysis.CaseResult), resultJson = analysis.ResultJson, explanationJson = analysis.ExplanationJson, now,
+            }, tx, cancellationToken: ct)).ConfigureAwait(false);
+        }
+        catch (SqliteException e) when (e.SqliteExtendedErrorCode is SqliteConstraintPrimaryKey or SqliteConstraintUnique)
+        {
+            return false; // another analysis took this revision number; the caller re-reads and retries
+        }
+
+        // Same transaction: a revision is never stored without the input it was run on.
+        if (files is not null)
+            await c.ExecuteAsync(new CommandDefinition(db.Sql["Case.InsertInput"],
+                new { caseId = analysis.CaseId, revision = analysis.Revision, filesJson = JsonSerializer.Serialize(files), now }, tx, cancellationToken: ct)).ConfigureAwait(false);
 
         // Only a COMPLETED revision becomes the effective (published) result; otherwise the previous one stays.
         var effective = analysis.ExecutionStatus == ExecutionStatus.Completed ? analysis.Revision : (int?)null;
@@ -73,11 +86,11 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
             Parse<ExecutionStatus>(row.ExecutionStatus), Parse<ScreeningAssessment>(row.CaseResult), row.ResultJson, row.ExplanationJson, ParseTime(row.CreatedAt));
     }
 
-    public async Task SaveInputAsync(string caseId, int revision, IReadOnlyDictionary<string, string> files, DateTimeOffset now, CancellationToken ct)
+    public async Task<IReadOnlyDictionary<string, string>?> LatestInputAsync(string caseId, CancellationToken ct)
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
-        await c.ExecuteAsync(new CommandDefinition(db.Sql["Case.InsertInput"],
-            new { caseId, revision, filesJson = JsonSerializer.Serialize(files), now = Time(now) }, cancellationToken: ct)).ConfigureAwait(false);
+        var json = await c.QuerySingleOrDefaultAsync<string>(new CommandDefinition(db.Sql["Case.LatestInput"], new { caseId }, cancellationToken: ct)).ConfigureAwait(false);
+        return json is null ? null : JsonSerializer.Deserialize<Dictionary<string, string>>(json);
     }
 
     private sealed record InputRow(string CaseId, long Revision, string FilesJson);

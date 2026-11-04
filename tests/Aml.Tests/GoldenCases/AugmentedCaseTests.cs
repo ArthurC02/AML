@@ -74,13 +74,13 @@ public class AugmentedCaseTests
     }
 
     [Fact]
-    public void AUG_11_03_passport_is_not_comparable_and_blocks_row_4()
+    public void AUG_11_03_passport_is_not_comparable_and_does_not_block_row_4()
     {
         var (_, a) = Augment("GC-11", [Before(Profile11, "狀態:\tActive", "身分證明:\n編號\t類型\t號碼\t國家\n1\tPassport\t312345678\tTaiwan")]);
         var id = Identity(a);
         Assert.Equal((Uncertain, "NOT_COMPARABLE"), (id.Evidence[EvidenceGroup.Document].Status, id.Evidence[EvidenceGroup.Document].Detail));
-        // Row 4 needs nothing uncertain in DOCUMENT, so the GC-11 PROBABLE_MATCH drops to row 5 REVIEW.
-        Assert.Equal((5, IdentityDecision.Review), (id.Stage3Row, id.Decision));
+        // A document of another type is not comparable, which is not unsettled: GC-11 stays at row 4.
+        Assert.Equal((4, IdentityDecision.ProbableMatch), (id.Stage3Row, id.Decision));
     }
 
     [Fact]
@@ -494,7 +494,7 @@ public class AugmentedCaseTests
     [Fact]
     public void AUG_03_11_pep_flag_wins_over_the_category_and_records_the_conflict()
     {
-        var (_, a) = Augment("GC-03", [("案件資訊.txt", Case03Row1, Case03Row1 + "\t\t是\t否\t否")]);
+        var (_, a) = Augment("GC-03", [("案件資訊.txt", Case03Row1, Case03Row1 + "\t是\t否\t否")]);
         var hit = Assert.Single(a.Hits);
         var pep = hit.Conditions.Single(c => c.Type == ListType.Pep);
         Assert.Equal((ConditionStatus.Hit, ConditionBasis.Flag), (pep.Status, pep.Basis));
@@ -507,7 +507,7 @@ public class AugmentedCaseTests
     public void AUG_03_12_all_flags_no_is_not_applicable()
     {
         var (_, a) = Augment("GC-03",
-            [("案件資訊.txt", Case03Row1, Case03Row1 + "\t\t否\t否\t否"), ("案件資訊.txt", Case03Row2, Case03Row2 + "\t\t否\t否\t否")]);
+            [("案件資訊.txt", Case03Row1, Case03Row1 + "\t否\t否\t否"), ("案件資訊.txt", Case03Row2, Case03Row2 + "\t否\t否\t否")]);
         var hit = Assert.Single(a.Hits);
         Assert.All(hit.Conditions, c => Assert.Equal(ConditionStatus.NotHit, c.Status));
         Assert.Equal(ScreeningAssessment.NotApplicable, hit.PairResult);
@@ -516,7 +516,7 @@ public class AugmentedCaseTests
     [Fact]
     public void AUG_03_13_unparseable_flag_is_unknown()
     {
-        var (_, a) = Augment("GC-03", [("案件資訊.txt", Case03Row1, Case03Row1 + "\t\t待確認\t否\t否")]);
+        var (_, a) = Augment("GC-03", [("案件資訊.txt", Case03Row1, Case03Row1 + "\t待確認\t否\t否")]);
         var pep = Assert.Single(a.Hits).Conditions.Single(c => c.Type == ListType.Pep);
         Assert.Equal((ConditionStatus.Unknown, true), (pep.Status, pep.ReasonCodes.Contains(SourceConditions.FlagUnparseable)));
     }
@@ -524,7 +524,7 @@ public class AugmentedCaseTests
     [Fact]
     public void AUG_03_14_blacklist_flag_takes_its_type_from_the_official_list_entry()
     {
-        var (_, a) = Augment("GC-03", [("案件資訊.txt", Case03Row1, Case03Row1 + "\t\t否\t是\t否")]);
+        var (_, a) = Augment("GC-03", [("案件資訊.txt", Case03Row1, Case03Row1 + "\t否\t是\t否")]);
         var listed = Assert.Single(a.Hits).Conditions.Single(c => c.Status == ConditionStatus.Hit);
         Assert.Equal((ListType.OfficialWantedList, LegalStage.Wanted, ConditionBasis.Flag), (listed.Type, listed.LegalStage, listed.Basis));
     }
@@ -634,8 +634,10 @@ public class AugmentedCaseTests
             <tr><th>編號</th><th>被偵測到的名字</th><th>資料類別</th><th>關聯方參考號碼</th><th>資料來源</th><th>是否符合名單？</th></tr>
             <tr><td>1</td><td>NGUYEN THI HONG NHUNG</td><td>客戶</td><td></td><td>客戶名稱</td><td>符合</td></tr>
             </table><h3>疑似符合的名單資料</h3><table>
-            <tr><th>編號</th><th>姓名/名稱</th><th>相似度分數</th><th>SDN禁制類別</th><th>名單資料編號</th><th>是否符合名單？</th><th>理由</th><th>Is RCA?</th><th>Name Property</th><th>PEP</th><th>黑名單</th><th>負面新聞</th></tr>
-            <tr><td>1</td><td>Nguyen Thi Hong Nhung</td><td>100</td><td>DJ ALT</td><td>90000031</td><td>未符合</td><td>符合</td><td>確認後符合</td><td><input type="checkbox"></td><td></td>
+            <tr><th rowspan="2">編號</th><th rowspan="2">姓名/名稱</th><th rowspan="2">相似度分數</th><th rowspan="2">SDN禁制類別</th><th rowspan="2">名單資料編號</th>
+              <th colspan="2">是否符合名單？</th><th rowspan="2">理由</th><th rowspan="2">Is RCA?</th><th colspan="3">Name Property</th></tr>
+            <tr><th>全不符合</th><th>全符合</th><th>PEP</th><th>黑名單</th><th>負面新聞</th></tr>
+            <tr><td>1</td><td>Nguyen Thi Hong Nhung</td><td>100</td><td>DJ ALT</td><td>90000031</td><td>未符合</td><td>符合</td><td>確認後符合</td><td><input type="checkbox"></td>
               <td><input type="checkbox" checked></td><td><input type="checkbox"></td><td><input type="checkbox"></td></tr>
             </table></body></html>
             """;

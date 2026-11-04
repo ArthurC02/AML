@@ -124,7 +124,7 @@ public static class ExplanationBuilder
             new("性別", Gender(s.Gender), Gender(p.Gender), St(EvidenceGroup.Gender), null),
             new("證件", s.Document is { } d ? $"{d.Type} {Mask(d.Number)}" : null,
                 Opt(Join((p.Documents ?? []).Select(x => $"{x.Type} {Mask(x.Number)}"))), St(EvidenceGroup.Document), Detail(EvidenceGroup.Document)),
-            new("地址", Opt(Join(addresses)), Opt(Join(p.AddressLines is { Count: > 0 } lines ? lines.Zip(p.AddressCountries, (l, c) => $"{l}（{c}）") : p.AddressCountries)),
+            new("地址", Opt(Join(addresses)), Opt(Join(p.AddressLines is { Count: > 0 } lines ? lines.Count == p.AddressCountries.Count ? lines.Zip(p.AddressCountries, (l, c) => $"{l}（{c}）") : lines : p.AddressCountries)),
                 St(EvidenceGroup.Address), Detail(EvidenceGroup.Address)),
             new("職業／雇主", Opt(Join(new[] { s.Occupation }.OfType<string>()
                     .Concat((s.Employments ?? []).Select(x => $"{x.Title}，{x.Organization}" + (x.From is { } f ? $"（{f} 起）" : ""))))),

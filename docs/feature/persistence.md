@@ -10,7 +10,7 @@ SQLite for the PoC, replaced later by Microsoft SQL Server or Oracle; Dapper + D
 Aml.Infra/Persistence/
 ├── SqliteDatabase.cs         # connections, DbUp upgrade, the only place aware of the provider
 ├── SqlCatalog.cs             # loads Sql.<provider>.xml
-├── Repositories/             # CaseStore, ListStore
+├── Repositories/             # CaseStore, ListStore (JobStore lives in Aml.Infra/Jobs)
 ├── Sql/                      # Sql.xsd, Sql.sqlite.xml
 └── Scripts/Sqlite/           # DbUp DDL: 0001_init.sql, ...
 ```
@@ -21,11 +21,11 @@ When a second provider is chosen, the provider-specific parts of `SqliteDatabase
 |---|---|
 | `aml_case` | one row per Case |
 | `case_analysis` | every analysis revision with its result and explanation |
-| `job` | batch jobs and their payloads |
-| `list_profile` | every captured Profile version with its SHA-256 ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)) |
-| `case_input` | the input files of each revision, for re-analysis after a source update |
+| `job` | batch jobs (`ANALYZE_CASE`, `REANALYZE_CASE`) and their payloads |
+| `list_profile` | every captured Profile version with the SHA-256 of its normalized export text ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)); rows are never updated or deleted |
+| `case_input` | the input files (decoded text) of each revision, for re-analysis after a source update |
 
-Configuration: `"Database": { "Provider": "Sqlite", "ConnectionString": "..." }`. SQLite-specific connection settings (foreign keys, busy timeout) stay in `SqliteDatabase`.
+Configuration: `"Database": { "Provider": "Sqlite", "ConnectionString": "..." }`. SQLite-specific settings stay in `SqliteDatabase`: foreign keys and busy timeout (5 s) on every connection, and write-ahead logging (`journal_mode = WAL`), set once after the upgrade and kept in the database file, so readers do not wait for the writer.
 
 ## Writing rules
 
@@ -41,7 +41,7 @@ Configuration: `"Database": { "Provider": "Sqlite", "ConnectionString": "..." }`
 | avoid reserved words (`CASE`, `GROUP`, `LEVEL`, `SIZE`, `USER`, `COMMENT`, `DATE`, `NUMBER`) | e.g. table `aml_case`, column `evidence_group` |
 | never use `''` to mean missing | Oracle stores `''` as NULL; use `valueState` |
 | idempotent writes: plain `INSERT`, treat unique violation as "already exists" | avoids `MERGE` / `ON CONFLICT` differences |
-| transactions owned by Services; repositories take connection and transaction | same scope on every provider |
+| one repository call is one transaction; repositories open and commit it | the units below commit whole or not at all on every provider |
 
 ## Type mapping
 
@@ -56,6 +56,19 @@ Configuration: `"Database": { "Provider": "Sqlite", "ConnectionString": "..." }`
 
 Multilingual names on SQL Server require `nvarchar`; `varchar` without a UTF-8 collation corrupts Chinese and Vietnamese text. Guids are stored as text because `uniqueidentifier` sorts unusually and `RAW(16)` has byte-order issues; v7 text sorts by time.
 
+## Atomic writes
+
+| Repository call | One transaction | Statements |
+|---|---|---|
+| `CaseStore.AcceptAnalysisAsync` | the analysis revision, its input files and the move of the Case to it; a revision is never stored without the input it was run on | `Case.InsertAnalysis`, `Case.InsertInput`, `Case.AcceptAnalysis` |
+| `ListStore.CaptureAsync` | a new Profile version and the `REANALYZE_CASE` jobs it causes (transactional outbox) | `Extraction.GetLatestProfile`, `Extraction.InsertProfile`, `Batch.Enqueue` |
+
+Revision numbers are allocated optimistically: `CaseService` takes the Case's current revision + 1, and the primary key of `case_analysis` rejects a number another analysis already took. The repository then stores nothing and returns false; `CaseService` re-reads the Case, recomputes the number, status and changes, and tries again, at most `CaseService.MaxRevisionAttempts` (3) times before failing. `Case.AcceptAnalysis` moves the Case only while `current_revision < @revision`, so a late revision is kept as history and never overwrites a newer one.
+
+In the outbox, a job whose idempotency key is already in the job table is skipped (unique violation on that statement only); the version and the other jobs still commit.
+
+Other statements used by these flows: `Case.LatestInput` and `Case.LatestInputs` read the latest stored input of one Case or of every Case; `Extraction.ListVersion` counts `list_profile` rows, which, because the table is append-only, changes with every capture and keys the cached retrieval index.
+
 ## Job claim
 
 Jobs are claimed optimistically with SQL identical on all providers:
@@ -65,7 +78,12 @@ UPDATE job SET status = 'RUNNING', lease_owner = @leaseOwner, lease_expiry = @le
 WHERE job_id = @jobId AND status = 'PENDING'
 ```
 
-One affected row means the worker owns the job. Ceiling: many concurrent workers cause wasted attempts; upgrade to `UPDLOCK, READPAST` (SQL Server) or `FOR UPDATE SKIP LOCKED` (Oracle) when measured.
+One affected row means the worker owns the job. The lease owner is checked on every later write:
+
+- `Batch.RenewLease` extends `lease_expiry` just before the job writes its analysis revision; zero rows (the lease expired and was reclaimed) stops the job before it writes;
+- `Batch.Complete` and `Batch.Fail` update only the row whose `lease_owner` matches; zero rows means the lease was reclaimed, and the worker logs a warning and leaves the job's state alone.
+
+Ceiling: many concurrent workers cause wasted attempts; upgrade to `UPDLOCK, READPAST` (SQL Server) or `FOR UPDATE SKIP LOCKED` (Oracle) when measured.
 
 ## SQL catalog
 

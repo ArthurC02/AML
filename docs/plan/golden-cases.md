@@ -240,7 +240,7 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-03-16 | GC-03 | case table as HTML with flag checkboxes | checkbox flags | PEP HIT by FLAG; unchecked Is RCA? is NO |
 | AUG-11-01 | GC-11 | Profile ID table with the customer's national ID | document agreement | UNIQUE support, row 2 PROBABLE_MATCH |
 | AUG-11-02 | GC-11 | Profile national ID with another number | `DOCUMENT_IDENTITY_CONFLICT` | row 1 REVIEW |
-| AUG-11-03 | GC-11 | Profile passport only | document not comparable | UNCERTAIN, row 4 blocked, row 5 REVIEW |
+| AUG-11-03 | GC-11 | Profile passport only | document not comparable | UNCERTAIN `NOT_COMPARABLE`; row 4 PROBABLE_MATCH unchanged (a document of another type or country does not block row 4) |
 | AUG-11-04 | GC-11 | Profile DOB 1973 → 1973/6/12 | full DOB agreement | HIGH support, row 4, direct identifier present |
 | AUG-11-05 | GC-11 | Profile DOB 1973 → 1973/8/1 | `FULL_DOB_CONFLICT` (GC-06 stand-in) | row 1 REVIEW |
 | AUG-11-06 | GC-11 | Profile deceased, died 1970 | `DEATH_BEFORE_CUSTOMER_BIRTH` | fires, REVIEW, Case IN_REVIEW |

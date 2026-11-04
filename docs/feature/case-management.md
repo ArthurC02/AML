@@ -30,7 +30,14 @@ A COMPLETED analysis can still produce REVIEW.
 - `effectiveResultRevision`: latest published result; a revision is published automatically when it is complete ([case-level result](#case-level-result)).
 - Technical retry with identical inputs and policies reuses the revision.
 - Changed customer data, source Profile, scope or policy creates a new revision.
+- A revision is the Case's current revision + 1. When a concurrent analysis took that number, the Case is re-read and the number, status and changes are recomputed, up to three attempts.
+- Each revision is stored together with the input files it was run on, in one transaction ([atomic writes](persistence.md#atomic-writes)).
+- The changes listed in a revision are compared against the last effective revision, never a PARTIAL or FAILED one.
 - Late results are retained in their original revision and cannot overwrite newer effective results.
+
+## Re-analysis after a Profile change
+
+When a Profile import captures a new version, every Case whose latest stored input holds that Profile with different content gets a `REANALYZE_CASE` job, written in the same transaction as the version ([durable batch execution](pipeline-api-and-batch.md#durable-batch-execution)). The job re-analyzes the Case's latest stored input with each Profile file replaced, matched by Profile ID, by the current list version, whatever name or format the Case used for it. When the input already matches the list database, the Case is left unchanged and no revision is created.
 
 ## Case-level result
 

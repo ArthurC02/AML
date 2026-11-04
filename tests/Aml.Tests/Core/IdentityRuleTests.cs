@@ -81,7 +81,7 @@ public class IdentityRuleTests
     public void One_agreeing_dob_among_several_is_support_not_conflict()
     {
         var r = IdentityDecisionPolicy.Decide(Subject("陳志明"),
-            Profile("陳志明") with { DatesOfBirth = [new PartialDate(1975, 1, 1), new PartialDate(1980, 5, 20)] });
+            Profile("陳志明") with { DatesOfBirth = [new PartialDate(1979, 1, 1), new PartialDate(1980, 5, 20)] }); // within 2 years
         Assert.Equal(Exact, r.Evidence[EvidenceGroup.DateOfBirth].Status);
         Assert.Equal(4, r.Stage3Row);
     }

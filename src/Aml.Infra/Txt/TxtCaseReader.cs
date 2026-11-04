@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using Aml.Core.Normalization;
 using Aml.Core.Shared;
@@ -14,13 +15,19 @@ namespace Aml.Infra.Txt;
 /// </summary>
 public static partial class TxtCaseReader
 {
+    static TxtCaseReader() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
     /// <summary>Reads uploaded or queued files (name → content) through a private temp folder; names are reduced to their last segment.</summary>
-    public static CaseInput ReadFiles(IReadOnlyDictionary<string, string> files)
+    public static CaseInput ReadFiles(IReadOnlyDictionary<string, string> files) =>
+        ReadFiles(files.ToDictionary(f => f.Key, f => Encoding.UTF8.GetBytes(f.Value)));
+
+    /// <summary>Reads uploaded files as their raw bytes, so the encoding is decided here (<see cref="Decode"/>).</summary>
+    public static CaseInput ReadFiles(IReadOnlyDictionary<string, byte[]> files)
     {
         var folder = Directory.CreateTempSubdirectory("aml-input-");
         try
         {
-            foreach (var (name, content) in files) File.WriteAllText(Path.Combine(folder.FullName, Path.GetFileName(name)), content);
+            foreach (var (name, content) in files) File.WriteAllBytes(Path.Combine(folder.FullName, Path.GetFileName(name)), content);
             return Read(folder.FullName);
         }
         finally
@@ -34,25 +41,34 @@ public static partial class TxtCaseReader
         e is InvalidOperationException or FileNotFoundException or IndexOutOfRangeException or KeyNotFoundException;
 
     /// <summary>
-    /// Reads a case folder. HTML pages (by extension, or a .txt holding page source) are converted to the export layout in
-    /// a private copy first; the source folder is never written. Every file's SHA-256 is kept with the input.
+    /// Reads a case folder through a private copy; the source folder is never written. Export files are decoded as strict
+    /// UTF-8, else CP950 (Big5) with an <c>ENCODING_FALLBACK:&lt;file&gt;</c> finding. HTML pages (by extension in any case,
+    /// or a .txt holding page source) are converted to the export layout, AngleSharp deciding their encoding. Every file's
+    /// SHA-256 is kept with the input.
     /// </summary>
     public static CaseInput Read(string folder)
     {
-        var hashes = Directory.GetFiles(folder).ToDictionary(f => Path.GetFileName(f), f => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(f))));
-        var markup = Directory.GetFiles(folder).Where(f => KnownFile().IsMatch(ExportName(f)) && (IsHtmlName(f) || LooksLikeMarkup(f))).ToList();
-        if (markup.Count == 0) return ReadExport(folder) with { SourceHashes = hashes };
-
-        var copy = Directory.CreateTempSubdirectory("aml-html-");
+        var files = Directory.GetFiles(folder);
+        var hashes = files.ToDictionary(f => Path.GetFileName(f), f => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(f))));
+        var copy = Directory.CreateTempSubdirectory("aml-input-");
         try
         {
-            foreach (var f in Directory.GetFiles(folder).Except(markup)) File.Copy(f, Path.Combine(copy.FullName, Path.GetFileName(f)));
-            foreach (var f in markup)
+            var findings = new List<string>();
+            foreach (var f in files)
             {
-                var name = ExportName(f);
-                File.WriteAllText(Path.Combine(copy.FullName, name), HtmlExport.ToExportText(File.ReadAllText(f), HtmlExport.KindOf(Path.GetFileNameWithoutExtension(name))));
+                var known = KnownFile().IsMatch(ExportName(f));
+                var target = Path.Combine(copy.FullName, known ? ExportName(f) : Path.GetFileName(f));
+                if (File.Exists(target)) throw new InvalidOperationException($"Two input files read as {Path.GetFileName(target)}");
+                if (!known) File.Copy(f, target);
+                else if (IsHtmlName(f) || LooksLikeMarkup(f))
+                    File.WriteAllText(target, HtmlExport.ToExportText(File.ReadAllBytes(f), HtmlExport.KindOf(Path.GetFileNameWithoutExtension(target))));
+                else
+                {
+                    File.WriteAllText(target, Decode(File.ReadAllBytes(f), out var fallback));
+                    if (fallback) findings.Add($"{EncodingFallback}:{Path.GetFileName(f)}");
+                }
             }
-            return ReadExport(copy.FullName) with { SourceHashes = hashes };
+            return ReadExport(copy.FullName, findings) with { SourceHashes = hashes };
         }
         finally
         {
@@ -60,12 +76,32 @@ public static partial class TxtCaseReader
         }
     }
 
-    private static bool IsHtmlName(string path) => Path.GetExtension(path) is ".html" or ".htm";
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
-    // 名單資料_1.html → 名單資料_1.txt; a .txt keeps its name.
-    private static string ExportName(string path) => IsHtmlName(path) ? Path.GetFileNameWithoutExtension(path) + ".txt" : Path.GetFileName(path);
+    /// <summary>Strict UTF-8 (BOM dropped); bytes that are not UTF-8 are decoded as CP950 (Big5) and <paramref name="fallback"/> is set.</summary>
+    public static string Decode(byte[] bytes, out bool fallback)
+    {
+        fallback = false;
+        try
+        {
+            return StrictUtf8.GetString(bytes).TrimStart('﻿');
+        }
+        catch (DecoderFallbackException)
+        {
+            fallback = true;
+            return Encoding.GetEncoding(950).GetString(bytes);
+        }
+    }
 
-    private static CaseInput ReadExport(string folder)
+    private static bool IsHtmlName(string path) => Path.GetExtension(path).ToLowerInvariant() is ".html" or ".htm";
+
+    // 名單資料_1.html → 名單資料_1.txt, 案件資訊.TXT → 案件資訊.txt; any other extension keeps the name.
+    private static string ExportName(string path) =>
+        IsHtmlName(path) || Path.GetExtension(path).Equals(".txt", StringComparison.OrdinalIgnoreCase)
+            ? Path.GetFileNameWithoutExtension(path) + ".txt"
+            : Path.GetFileName(path);
+
+    private static CaseInput ReadExport(string folder, IEnumerable<string> fileFindings)
     {
         var caseFile = Directory.GetFiles(folder, "案件資訊*.txt").Single();
         var (subjectRow, rows, records, caseFindings) = ReadCaseTable(File.ReadAllLines(caseFile));
@@ -74,7 +110,7 @@ public static partial class TxtCaseReader
             ? ReadCustomer(folder)
             : ReadRelatedParty(Path.Combine(folder, "客戶-關聯人背景資料.txt"), subjectRow.Category, subjectRow.ReferenceNumber);
         // Case-level findings travel with the subject, so the explanation shows them on every hit.
-        subject = subject with { Findings = [.. subject.Findings, .. caseFindings, .. Inventory(folder)] };
+        subject = subject with { Findings = [.. subject.Findings, .. caseFindings, .. fileFindings, .. Inventory(folder)] };
 
         // A candidate whose Profile file is missing is left out here and reported as NOT_EVALUATED by the analyzer.
         var profiles = rows.Select(r => r.ProfileId).Distinct()
@@ -99,6 +135,10 @@ public static partial class TxtCaseReader
     public const string LegacyRecordBoundaryUnclear = "LEGACY_RECORD_BOUNDARY_UNCLEAR";
     public const string Unparseable = "UNPARSEABLE";
     public const string FieldConflict = "FIELD_CONFLICT";
+    /// <summary><c>AMBIGUOUS:&lt;field&gt;</c>: a country value that maps to no country unambiguously; it is left out of comparison.</summary>
+    public const string Ambiguous = "AMBIGUOUS";
+    /// <summary><c>ENCODING_FALLBACK:&lt;file&gt;</c>: the file is not UTF-8 and was read as CP950 (Big5).</summary>
+    public const string EncodingFallback = "ENCODING_FALLBACK";
     private const string ProcessingRecord = "客戶檢核處理紀錄";
 
     [GeneratedRegex("^(案件資訊.*|名單資料_\\d+|新聞資訊_\\d+|客戶-背景資料|客戶-聯絡資料|客戶-關聯人背景資料)\\.txt$")]
@@ -146,26 +186,68 @@ public static partial class TxtCaseReader
 
     private sealed record SubjectRow(string Category, string? ReferenceNumber, string? ListMatch);
 
-    // ponytail: candidate column order and the PEP/黑名單/負面新聞 flags are pending confirmation.
+    // ponytail: the two-row header expansion is an unconfirmed assumption (open question): a parent label with sub-labels
+    // spans them in order, 是否符合名單？ → 全不符合, 全符合 and Name Property → PEP, 黑名單, 負面新聞. GC-11 and GC-12 show this
+    // header but no flag values; confirm with an export that has flags set.
+    private static readonly Dictionary<string, string[]> SubHeaders = new()
+    {
+        ["是否符合名單？"] = ["全不符合", "全符合"],
+        ["Name Property"] = ["PEP", "黑名單", "負面新聞"],
+    };
+
+    private static readonly string[] RequiredCandidateColumns = ["編號", "姓名/名稱", "名單資料編號", "理由", "Is RCA?"];
+
+    /// <summary>
+    /// The case row and the 疑似符合的名單資料 section, whose columns are found by header label. A missing section or
+    /// required column is an input error. A non-blank row that cannot be read is <c>UNPARSEABLE:candidate_row:&lt;line&gt;</c>
+    /// (1-based line of 案件資訊): too few cells or a 編號 that is not a number (full-width digits are read) leaves it out;
+    /// more cells than the header keeps it with its flags UNPARSEABLE, since they cannot be placed.
+    /// </summary>
     private static (SubjectRow, List<CandidateRow>, List<string> Records, List<string> Findings) ReadCaseTable(string[] lines)
     {
         var s = lines[1].Split('\t');
         var subject = new SubjectRow(s[2].Trim(), Normalize.NullIfPlaceholder(s.ElementAtOrDefault(3)), Normalize.NullIfPlaceholder(s.ElementAtOrDefault(5)));
 
         var start = Array.FindIndex(lines, l => l.StartsWith("疑似符合的名單資料", StringComparison.Ordinal));
+        if (start < 0 || start + 1 >= lines.Length) throw new InvalidOperationException("案件資訊 has no 疑似符合的名單資料 section");
         var recordStart = Array.FindIndex(lines, l => l.Trim().StartsWith(ProcessingRecord, StringComparison.Ordinal));
+        var end = recordStart < 0 ? lines.Length : recordStart;
+        static string[] Cells(string line) => line.Split('\t').Select(c => c.Trim()).ToArray();
+        static bool Numbered(string[] c) => int.TryParse(Normalize.HalfWidth(c[0]), out _);
+
+        var findings = new List<string>();
+        var header = Cells(lines[start + 1]);
+        // A second header row: sub-labels only (the .txt export), or the whole row with parent labels carried down (HTML rowspan).
+        var sub = start + 2 < end && lines[start + 2].Trim().Length > 0 && !Numbered(Cells(lines[start + 2])) ? Cells(lines[start + 2]) : null;
+        var columns = sub is null ? header
+            : sub.Length == header.Length ? sub
+            : header.SelectMany(h => SubHeaders.TryGetValue(h, out var kids) ? kids : [h]).ToArray();
+        var flagsReadable = sub is null || sub.Where(c => !header.Contains(c)).SequenceEqual(header.Distinct().Where(SubHeaders.ContainsKey).SelectMany(h => SubHeaders[h]));
+        if (!flagsReadable) findings.Add($"{Unparseable}:candidate_header");
+        if (RequiredCandidateColumns.FirstOrDefault(r => !columns.Contains(r)) is { } absent)
+            throw new InvalidOperationException($"疑似符合的名單資料 has no {absent} column");
+        var minCells = RequiredCandidateColumns.Max(r => Array.IndexOf(columns, r)) + 1;
+
         var rows = new List<CandidateRow>();
-        foreach (var line in lines.Skip(start + 1).Take((recordStart < 0 ? lines.Length : recordStart) - start - 1))
+        for (var i = start + (sub is null ? 2 : 3); i < end; i++)
         {
-            var c = line.Split('\t');
-            if (c.Length < 9 || !int.TryParse(c[0], out _)) continue;
-            // ponytail: column order assumed until the bank confirms it: … 理由, Is RCA?, Name Property, PEP, 黑名單, 負面新聞.
-            // The samples stop at Is RCA?, so their flags read MISSING and the category mapping decides.
-            var flags = new ListFlags(Normalize.Flag(c.ElementAtOrDefault(10)), Normalize.Flag(c.ElementAtOrDefault(11)), Normalize.Flag(c.ElementAtOrDefault(12)));
-            rows.Add(new CandidateRow(c[1].Trim(), c[4].Trim(), Normalize.NullIfPlaceholder(c[7]), Normalize.Flag(c[8]) == FlagValue.Yes, flags));
+            if (string.IsNullOrWhiteSpace(lines[i])) continue;
+            var c = Cells(lines[i]);
+            if (c.Length < minCells || !Numbered(c))
+            {
+                findings.Add($"{Unparseable}:candidate_row:{i + 1}");
+                continue;
+            }
+            string? Col(string name) => Array.IndexOf(columns, name) is var k and >= 0 ? c.ElementAtOrDefault(k) : null;
+            var wide = c.Length > columns.Length;
+            if (wide) findings.Add($"{Unparseable}:candidate_row:{i + 1}");
+            var rca = wide ? FlagValue.Unparseable : Normalize.Flag(Col("Is RCA?"));
+            var flags = wide || !flagsReadable ? new ListFlags(FlagValue.Unparseable, FlagValue.Unparseable, FlagValue.Unparseable, rca)
+                : new ListFlags(Normalize.Flag(Col("PEP")), Normalize.Flag(Col("黑名單")), Normalize.Flag(Col("負面新聞")), rca);
+            rows.Add(new CandidateRow(Col("姓名/名稱")!, Col("名單資料編號")!, Normalize.NullIfPlaceholder(Col("理由")), rca == FlagValue.Yes, flags));
         }
-        var (records, findings) = recordStart < 0 ? (new List<string>(), new List<string>()) : ReadProcessingRecord(lines[(recordStart + 1)..]);
-        return (subject, rows, records, findings);
+        var (records, recordFindings) = recordStart < 0 ? (new List<string>(), new List<string>()) : ReadProcessingRecord(lines[(recordStart + 1)..]);
+        return (subject, rows, records, [.. findings, .. recordFindings]);
     }
 
     /// <summary>
@@ -181,18 +263,24 @@ public static partial class TxtCaseReader
         return (records, table.Count < 2 || rest.Count > 0 ? [LegacyRecordBoundaryUnclear] : []);
     }
 
+    // The customer background labels the reader knows; a value line that is one of them means the value was blank.
+    private static readonly HashSet<string> CustomerLabels =
+    [
+        "基本資料", "詳細資料", "客戶號碼", "客戶別名", "性別", "年收入", "稅號/統一編號", "客戶名稱", "出生日期", "證件種類", "國籍 1",
+        "發照地", "本地名稱", "出生地點", "證件號碼", "國籍 2", "客戶類型", "職業",
+    ];
+
     // Customer files: label line followed by value line.
     private static ScreenedSubject ReadCustomer(string folder)
     {
         var bg = File.ReadAllLines(Path.Combine(folder, "客戶-背景資料.txt")).Select(l => l.Trim()).ToArray();
-        string? V(string key)
-        {
-            var i = Array.IndexOf(bg, key);
-            return i >= 0 && i + 1 < bg.Length ? Normalize.NullIfPlaceholder(bg[i + 1]) : null;
-        }
+        // The raw value line, "" when the next line is another label (FIELD_BLANK); null when the label is absent.
+        string? Raw(string key) => Array.IndexOf(bg, key) is var i and >= 0 && i + 1 < bg.Length ? (CustomerLabels.Contains(bg[i + 1]) ? "" : bg[i + 1]) : null;
+        string? V(string key) => Normalize.NullIfPlaceholder(Raw(key));
 
+        var findings = MissingFields(CustomerFields.Select(f => (f, Array.IndexOf(bg, f) >= 0, Raw(f)))).ToList();
         var names = new[] { V("本地名稱"), V("客戶名稱") }.OfType<string>().ToList();
-        var nationalities = new[] { V("國籍 1"), V("國籍 2") }.OfType<string>().Select(Normalize.Country).ToList();
+        var nationalities = new[] { Country("國籍 1", V("國籍 1"), findings), Country("國籍 2", V("國籍 2"), findings) }.OfType<string>().ToList();
         var docNumber = V("證件號碼");
         var taxId = V("稅號/統一編號") switch
         {
@@ -212,17 +300,15 @@ public static partial class TxtCaseReader
                     // The block's own 國家 line, before the next "(國家)" heading.
                     var end = Array.FindIndex(ct, i + 1, l => l.EndsWith("(國家)", StringComparison.Ordinal));
                     var k = Array.FindIndex(ct, i + 3, (end < 0 ? ct.Length : end) - i - 3, l => l == "國家");
-                    addresses.Add(MakeAddress(ct[i][..^4], raw, k >= 0 && k + 1 < ct.Length ? Normalize.NullIfPlaceholder(ct[k + 1]) : null));
+                    addresses.Add(MakeAddress(ct[i][..^4], raw, k >= 0 && k + 1 < ct.Length ? Normalize.NullIfPlaceholder(ct[k + 1]) : null, findings));
                 }
         }
 
-        var findings = MissingFields(CustomerFields
-            .Select(f => (f, Array.IndexOf(bg, f) >= 0, Array.IndexOf(bg, f) is var i and >= 0 && i + 1 < bg.Length ? bg[i + 1] : null))).ToList();
         var dob = Date("出生日期", V("出生日期"), findings);
 
         return new ScreenedSubject(
             SubjectRole.Customer, null, names, Normalize.Gender(V("性別")), dob,
-            nationalities, docNumber is null ? null : new Document(DocumentType(V("證件種類")), docNumber, IssuingCountry(V("發照地"))),
+            nationalities, docNumber is null ? null : new Document(DocumentType(V("證件種類")), docNumber, IssuingCountry(V("發照地"), findings)),
             null, taxId, Occupation(V("職業")), Dedupe(addresses, out var dup), AddressFindings(addresses, dup, findings), PartyType: V("客戶類型"));
     }
 
@@ -233,36 +319,37 @@ public static partial class TxtCaseReader
         return findings;
     }
 
-    // Related-party file: "key ：" lines, value on the following line(s); an empty value is followed directly by the next key.
+    // Related-party file: "key ：" (or "key :") lines, value on the following line(s), joined with a space when it spans
+    // several; an empty value is followed directly by the next key.
     private static ScreenedSubject ReadRelatedParty(string path, string relationship, string? referenceNumber)
     {
         var fields = new List<(string Key, string? Value)>();
         foreach (var line in File.ReadAllLines(path))
         {
             var t = line.Trim();
-            if (t.EndsWith('：')) fields.Add((t[..^1].Trim(), null));
-            else if (fields.Count > 0 && t.Length > 0 && fields[^1].Value is null) fields[^1] = (fields[^1].Key, t);
+            if (t.EndsWith('：') || t.EndsWith(':')) fields.Add((t[..^1].Trim(), null));
+            else if (fields.Count > 0 && t.Length > 0) fields[^1] = (fields[^1].Key, fields[^1].Value is { } v ? $"{v} {t}" : t);
         }
         string? V(string key) => Normalize.NullIfPlaceholder(fields.FirstOrDefault(f => f.Key == key).Value);
 
+        var findings = MissingFields(RelatedPartyFields
+            .Select(k => (k, fields.Any(f => f.Key == k), fields.FirstOrDefault(f => f.Key == k).Value))).ToList();
         var addresses = fields
             .Where(f => f.Value is not null && AddressKey().IsMatch(f.Key))
             .Select(f =>
             {
                 var role = AddressKey().Match(f.Key).Groups[1].Value;
-                return MakeAddress(role, f.Value!, V(role + "(國家)"));
+                return MakeAddress(role, f.Value!, V(role + "(國家)"), findings);
             })
             .ToList();
         var docNumber = V("證件號碼");
-        var findings = MissingFields(RelatedPartyFields
-            .Select(k => (k, fields.Any(f => f.Key == k), fields.FirstOrDefault(f => f.Key == k).Value))).ToList();
         var dob = Date("出生日期", V("出生日期"), findings);
 
         return new ScreenedSubject(
             SubjectRole.RelatedParty, relationship, new[] { V("姓名/名稱") }.OfType<string>().ToList(),
             Normalize.Gender(V("性別")), dob,
-            new[] { V("國籍") }.OfType<string>().Select(Normalize.Country).ToList(),
-            docNumber is null ? null : new Document(DocumentType(V("證件種類")), docNumber, IssuingCountry(V("發照地"))),
+            new[] { Country("國籍", V("國籍"), findings) }.OfType<string>().ToList(),
+            docNumber is null ? null : new Document(DocumentType(V("證件種類")), docNumber, IssuingCountry(V("發照地"), findings)),
             referenceNumber ?? V("參考號碼"), null, null, Dedupe(addresses, out var dup), AddressFindings(addresses, dup, findings), PartyType: V("類型"));
     }
 
@@ -271,16 +358,26 @@ public static partial class TxtCaseReader
 
     /// <summary>
     /// The country comes from the address block's own country field; without one, only a Taiwan city or county in the
-    /// text makes it TW. A country field that contradicts the text is FIELD_CONFLICT; both facts are kept.
+    /// text makes it TW. A country field that contradicts the text is FIELD_CONFLICT; both facts are kept. A country field
+    /// that maps to no country is AMBIGUOUS:&lt;role&gt;(國家) and leaves the country unknown.
     /// </summary>
-    private static Address MakeAddress(string role, string raw, string? countryField)
+    private static Address MakeAddress(string role, string raw, string? countryField, List<string> findings)
     {
         if (Normalize.IsPostalCodeOnly(raw)) return new Address(role, raw, null, null, ValueState.Ambiguous, Findings.PostalCodeOnly);
         var (normalized, finding) = Normalize.TaiwanAddress(raw);
         var taiwan = TaiwanCity().IsMatch(normalized);
-        var country = countryField is null ? (taiwan ? "TW" : null) : Normalize.Country(countryField);
-        var conflict = countryField is not null && (country == "TW" ? !raw.Any(c => c is >= '㐀' and <= '鿿') : taiwan);
+        var country = countryField is null ? (taiwan ? "TW" : null) : Country($"{role}(國家)", countryField, findings);
+        var conflict = country is not null && countryField is not null && (country == "TW" ? !raw.Any(c => c is >= '㐀' and <= '鿿') : taiwan);
         return new Address(role, raw, normalized, country, ValueState.Present, finding) { Conflict = conflict };
+    }
+
+    // A country code, or null: placeholders are missing; a value that maps to no country adds AMBIGUOUS:<field>.
+    private static string? Country(string field, string? raw, List<string> findings)
+    {
+        if (Normalize.NullIfPlaceholder(raw) is not { } value) return null;
+        var code = Normalize.Country(value);
+        if (code is null) findings.Add($"{Ambiguous}:{field}");
+        return code;
     }
 
     [GeneratedRegex("^\\d{0,6}\\s?(?:[台臺]北|新北|桃園|[台臺]中|[台臺]南|高雄|基隆|新竹|嘉義)市|^\\d{0,6}\\s?(?:新竹|苗栗|彰化|南投|雲林|嘉義|屏東|宜蘭|花蓮|[台臺]東|澎湖|金門|連江)縣")]
@@ -302,14 +399,14 @@ public static partial class TxtCaseReader
     };
 
     // "國家: [TW] Taiwan" → TW
-    private static string? IssuingCountry(string? raw) =>
-        raw is null ? null : CountryCode().Match(raw) is { Success: true } m ? m.Groups[1].Value : Normalize.Country(raw);
+    private static string? IssuingCountry(string? raw, List<string> findings) =>
+        raw is not null && CountryCode().Match(raw) is { Success: true } m ? m.Groups[1].Value : Country("發照地", raw, findings);
 
     [GeneratedRegex(@"\[([A-Z]{2})\]")]
     private static partial Regex CountryCode();
 
     // Profile ID type + country → the bank's document type, so both sides share one key.
-    private static string ProfileDocumentType(string type, string country) => (type.Trim().ToUpperInvariant(), country) switch
+    private static string ProfileDocumentType(string type, string? country) => (type.Trim().ToUpperInvariant(), country) switch
     {
         ("NATIONAL ID" or "NATIONAL IDENTIFICATION NUMBER", "TW") => "TW_NATIONAL_ID",
         ("RESIDENT CERTIFICATE", "TW") => "TW_RESIDENT_CERTIFICATE",
@@ -352,54 +449,85 @@ public static partial class TxtCaseReader
         }
 
         List<string[]> T(string key) => tables.TryGetValue(key, out var t) ? t : [];
-        static bool Numbered(string[] r) => int.TryParse(r[0], out _);
-
-        var names = new List<string>();
-        foreach (var r in T("主要名稱").Concat(T("拼寫變化")))
+        static bool Numbered(string[] r) => int.TryParse(Normalize.HalfWidth(r[0]), out _);
+        var findings = new List<string>();
+        // Numbered rows of a table; a row with fewer than width cells is UNPARSEABLE:<table> and left out, the Profile is still read.
+        List<string[]> Rows(string key, int width, IEnumerable<string[]>? source = null)
         {
-            if (Numbered(r) && r.Length >= 3) names.Add($"{r[2]} {r[1]}"); // surname first, as the source lists it
-            else if (r[0] == "OSN") names.Add(r[1]);
+            var rows = (source ?? T(key)).Where(Numbered).ToList();
+            if (rows.Any(r => r.Length < width)) findings.Add($"{Unparseable}:{key}");
+            return rows.Where(r => r.Length >= width).ToList();
         }
 
-        var countries = T("國家資料").Where(Numbered).ToList();
-        var dobRows = T("日期").Where(r => Numbered(r) && r[1] == "Date of Birth").Select(r => r.ElementAtOrDefault(2)).ToList();
+        var names = new List<string>();
+        foreach (var key in new[] { "主要名稱", "拼寫變化" })
+            foreach (var r in T(key).Where(r => Numbered(r) || r[0] == "OSN"))
+            {
+                if (r.Length < (Numbered(r) ? 3 : 2)) findings.Add($"{Unparseable}:{key}");
+                else names.Add(Numbered(r) ? $"{r[2]} {r[1]}" : r[1]); // surname first, as the source lists it
+            }
+
+        var countries = Rows("國家資料", 3);
+        var dates = Rows("日期", 2);
+        var dobRows = dates.Where(r => r[1] == "Date of Birth").Select(r => r.ElementAtOrDefault(2)).ToList();
         var dobs = dobRows.Select(PartialDate.Parse).OfType<PartialDate>().ToList();
-        var findings = new List<string>();
         if (dobs.Count > 1) findings.Add(Findings.ProfileMultipleDob);
         if (dobs.Count < dobRows.Count) findings.Add($"{Unparseable}:Date of Birth");
-        var roles = T("職位").Where(Numbered)
-            .Select(r => new ProfileRole(r[1], r[2], PartialDate.Parse(r.ElementAtOrDefault(3)), PartialDate.Parse(r.ElementAtOrDefault(4)))).ToList();
+        // A role date that cannot be read is UNPARSEABLE:職位; an end date in a future year is an open term, not an error.
+        PartialDate? RoleDate(string? raw)
+        {
+            var d = PartialDate.Parse(raw);
+            if (d is null && Normalize.NullIfPlaceholder(raw) is { } v
+                && !(v.Length >= 4 && int.TryParse(v[..4], out var y) && y > DateTime.UtcNow.Year)) findings.Add($"{Unparseable}:職位");
+            return d;
+        }
+        var roles = Rows("職位", 3)
+            .Select(r => new ProfileRole(r[1], r[2], RoleDate(r.ElementAtOrDefault(3)), RoleDate(r.ElementAtOrDefault(4)))).ToList();
         var relationships = tables.Where(t => t.Value.FirstOrDefault()?.Contains("Profile_ID") == true)
-            .SelectMany(t => t.Value.Where(Numbered))
+            .SelectMany(t => Rows(t.Key, 5, t.Value))
             .Select(r => new ProfileRelationship(r[1], r[2], r[4], r[3] == "Entity")).ToList();
-        var death = T("日期").Where(r => Numbered(r) && r[1] == "Date of Death").Select(r => PartialDate.Parse(r[2])).OfType<PartialDate>().FirstOrDefault();
+        var deathRows = dates.Where(r => r[1] == "Date of Death").ToList();
+        var death = deathRows.Select(r => PartialDate.Parse(r.ElementAtOrDefault(2))).FirstOrDefault(d => d is not null);
+        if (deathRows.Count > 0 && death is null) findings.Add($"{Unparseable}:Date of Death");
         // ponytail: the ID table layout (編號 類型 號碼 國家) is assumed until an export shows one; no sample has it yet.
-        var documents = T("身分證明").Where(r => Numbered(r) && r.Length >= 4)
-            .Select(r => { var c = Normalize.Country(r[3]); return new Document(ProfileDocumentType(r[1], c), r[2], c); }).ToList();
-        var official = T("名單資訊").Where(r => r[0] != "機關" && r.Length >= 5)
+        var documents = Rows("身分證明", 4)
+            .Select(r => { var c = Country("身分證明", r[3], findings); return new Document(ProfileDocumentType(r[1], c), r[2], c); }).ToList();
+        var listRows = T("名單資訊").Where(r => r[0] != "機關").ToList();
+        if (listRows.Any(r => r.Length < 5)) findings.Add($"{Unparseable}:名單資訊");
+        var official = listRows.Where(r => r.Length >= 5)
             .Select(r => new OfficialListEntry(r[0], r[1], r[2], Normalize.NullIfPlaceholder(r[4]))).FirstOrDefault();
+        var addressRows = Rows("地址", 3);
+        var citizenship = countries.Where(r => r[1] == "Citizenship").Select(r => Country("Citizenship", r[2], findings)).OfType<string>().ToList();
+        // An unmapped address country is left out, so AddressCountries can be shorter than AddressLines; the explanation
+        // then shows the lines without countries.
+        var addressCountries = addressRows.Select(r => Country("地址", r[^1], findings)).OfType<string>().ToList();
+        var allegation = countries.Where(r => r[1] == "Country of Reported Allegation")
+            .Select(r => Country("Country of Reported Allegation", r[2], findings)).OfType<string>().ToList();
+        var categories = Rows("類別", 2).Select(r => new SourceCategory(r[1], Normalize.NullIfPlaceholder(r.ElementAtOrDefault(2)))).ToList();
+        var sources = Rows("來源", 2).Select(r => Source($"DJ:{scalars["Profile_ID"]}#source-{r[0]}", r[1], r.ElementAtOrDefault(2))).ToList();
+        // ponytail: the 其他識別碼 table layout (編號 類型 號碼) is assumed; no sample has one yet.
+        var otherIds = Rows("其他識別碼", 3).Select(r => new OtherIdentifier(r[1], r[2])).ToList();
 
         return new SourceProfile(
             ProfileKey: "DJ:" + scalars["Profile_ID"],
             Gender: Normalize.Gender(scalars.GetValueOrDefault("性別")),
             Names: names.Distinct().ToList(),
             DatesOfBirth: dobs,
-            Citizenship: countries.Where(r => r[1] == "Citizenship").Select(r => Normalize.Country(r[2])).ToList(),
-            AddressCountries: T("地址").Where(Numbered).Select(r => Normalize.Country(r[^1])).ToList(),
-            Categories: T("類別").Where(Numbered).Select(r => new SourceCategory(r[1], Normalize.NullIfPlaceholder(r.ElementAtOrDefault(2)))).ToList(),
+            Citizenship: citizenship,
+            AddressCountries: addressCountries,
+            Categories: categories,
             Keywords: scalars.TryGetValue("關鍵字", out var kw) ? kw.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries) : [],
             Roles: roles,
             Relationships: relationships,
             OfficialList: official,
-            Findings: findings,
-            Sources: T("來源").Where(Numbered).Select(r => Source($"DJ:{scalars["Profile_ID"]}#source-{r[0]}", r[1], r.ElementAtOrDefault(2))).ToList(),
+            Findings: findings.Distinct().ToList(),
+            Sources: sources,
             Documents: documents,
-            AddressLines: T("地址").Where(Numbered).Select(r => string.Join(", ", r[1..^1].Where(x => Normalize.NullIfPlaceholder(x) is not null))).ToList(),
+            AddressLines: addressRows.Select(r => string.Join(", ", r[1..^1].Where(x => Normalize.NullIfPlaceholder(x) is not null))).ToList(),
             DateOfDeath: death is { Year: > 0 } ? death : null,
             RecordType: scalars.GetValueOrDefault("記錄類型", "Person"),
-            // ponytail: the 其他識別碼 table layout (編號 類型 號碼) is assumed; no sample has one yet.
-            AllegationCountries: countries.Where(r => r[1] == "Country of Reported Allegation").Select(r => Normalize.Country(r[2])).ToList(),
-            OtherIdentifiers: T("其他識別碼").Where(r => Numbered(r) && r.Length >= 3).Select(r => new OtherIdentifier(r[1], r[2])).ToList());
+            AllegationCountries: allegation,
+            OtherIdentifiers: otherIds);
     }
 
     // "Liberty Times (Chinese - Traditional), 06-Sep-2026, on Factiva.com (https://…)" + "2026/9/10 下午 01:00:15"
@@ -418,7 +546,7 @@ public static partial class TxtCaseReader
     [GeneratedRegex("\\((https?://[^)\\s]+)\\)")]
     private static partial Regex SourceUrl();
 
-    // News export: id line, section, title, reporter, length, "2026 年 9 月 6 日", publisher, …, "文件 <id>".
+    // News export: id line, section, title, reporter, length, "2026 年 9 月 6 日" (or "2026年9月6日"), publisher, …, "文件 <id>".
     private static NewsItem ReadNews(string profileId, string path)
     {
         var lines = File.ReadAllLines(path).Select(l => l.Trim()).ToArray();
@@ -436,7 +564,7 @@ public static partial class TxtCaseReader
 
     private static int Int(string s) => int.Parse(s, CultureInfo.InvariantCulture);
 
-    [GeneratedRegex("^(\\d{4}) 年 (\\d{1,2}) 月 (\\d{1,2}) 日$")]
+    [GeneratedRegex("^(\\d{4})\\s*年\\s*(\\d{1,2})\\s*月\\s*(\\d{1,2})\\s*日$")]
     private static partial Regex NewsDate();
 
     [GeneratedRegex("^文件 (\\S+)$")]

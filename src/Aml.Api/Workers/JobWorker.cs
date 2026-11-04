@@ -2,17 +2,18 @@ using Aml.Services;
 
 namespace Aml.Api.Workers;
 
-/// <summary>Polls the job table; each round runs at most MaxWorkers jobs (bounded concurrency).</summary>
+/// <summary>Keeps up to MaxWorkers jobs running: a finished job's slot is refilled at once; an empty queue is polled.</summary>
 internal sealed partial class JobWorker(BatchService batches, ILogger<JobWorker> log) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        batches.Warn = message => JobWarning(log, message);
         while (!stoppingToken.IsCancellationRequested)
         {
-            var ran = 0;
+            var started = 0;
             try
             {
-                ran = await batches.RunOnceAsync(stoppingToken).ConfigureAwait(false);
+                started = await batches.FillAsync(stoppingToken).ConfigureAwait(false);
             }
 #pragma warning disable CA1031 // a database hiccup must not stop the worker; the next round retries
             catch (Exception e) when (!stoppingToken.IsCancellationRequested)
@@ -20,10 +21,13 @@ internal sealed partial class JobWorker(BatchService batches, ILogger<JobWorker>
             {
                 RoundFailed(log, e);
             }
-            if (ran == 0) await Task.Delay(batches.Options.PollInterval, stoppingToken).ConfigureAwait(false);
+            if (started == 0) await Task.Delay(batches.Options.PollInterval, stoppingToken).ConfigureAwait(false);
         }
     }
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Job worker round failed")]
     private static partial void RoundFailed(ILogger logger, Exception e);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "{Message}")]
+    private static partial void JobWarning(ILogger logger, string message);
 }

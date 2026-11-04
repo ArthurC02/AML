@@ -27,8 +27,8 @@ public static class EvidenceBuilder
         // Hit prerequisites: recorded, never support.
         var (nameStatus, nameDetail) = Normalize.CompareNames(s.Names, p.Names);
         Add(EvidenceGroup.Name, Direction.Prerequisite, nameStatus, detail: nameDetail);
-        Add(EvidenceGroup.Gender, Direction.Prerequisite,
-            Compare(s.Gender is null, p.Gender is null, () => s.Gender == p.Gender));
+        var gender = Compare(s.Gender is null, p.Gender is null, () => s.Gender == p.Gender);
+        Add(EvidenceGroup.Gender, Direction.Prerequisite, gender, detail: gender == ComparisonStatus.Conflict ? ReasonCodes.GenderConflict : null);
         Add(EvidenceGroup.Nationality, Direction.Prerequisite,
             Compare(s.Nationalities.Count == 0, p.Citizenship.Count == 0, () => s.Nationalities.Intersect(p.Citizenship).Any()));
 
@@ -52,13 +52,16 @@ public static class EvidenceBuilder
     }
 
     /// <summary>Comparable only for the same type and issuing country; equal numbers are unique support, different ones a conflict.</summary>
+    /// <summary>Detail of a value present on both sides that cannot be compared (other document type or country, occupation category only).</summary>
+    public const string NotComparable = "NOT_COMPARABLE";
+
     public static Evidence DocumentEvidence(Document? subject, IReadOnlyList<Document> profile)
     {
         const EvidenceGroup g = EvidenceGroup.Document;
         if (subject is null) return new(g, Direction.Neutral, ComparisonStatus.SubjectMissing);
         if (profile.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.ProfileMissing);
         var comparable = profile.Where(d => d.Type == subject.Type && d.Country is not null && d.Country == subject.Country).ToList();
-        if (comparable.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, "NOT_COMPARABLE");
+        if (comparable.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, NotComparable);
         return comparable.Any(d => DocumentNumber(d.Number) == DocumentNumber(subject.Number))
             ? new(g, Direction.Support, ComparisonStatus.Exact, Strength.Unique)
             : new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.DocumentIdentityConflict);
@@ -113,9 +116,10 @@ public static class EvidenceBuilder
             .ToList();
         var subject = s.Employments ?? [];
         if (subject.Count == 0)
-            // An occupation category alone is not structured evidence.
-            return new(g, Direction.Neutral, s.Occupation is null ? ComparisonStatus.SubjectMissing
-                : profile.Count > 0 ? ComparisonStatus.Uncertain : ComparisonStatus.ProfileMissing);
+            // An occupation category alone is not structured evidence: the employer is missing, so nothing is comparable.
+            return s.Occupation is not null && profile.Count > 0
+                ? new(g, Direction.Neutral, ComparisonStatus.SubjectMissing, Strength.None, NotComparable)
+                : new(g, Direction.Neutral, s.Occupation is null ? ComparisonStatus.SubjectMissing : ComparisonStatus.ProfileMissing);
         if (profile.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.ProfileMissing);
 
         var same = subject.SelectMany(a => profile, (a, b) => (a, b))
@@ -184,23 +188,35 @@ public static class EvidenceBuilder
     private static void AddDateOfBirth(ScreenedSubject s, SourceProfile p, Action<EvidenceGroup, Direction, ComparisonStatus, Strength, string?> add)
     {
         if (s.DateOfBirth is not { } dob) { add(EvidenceGroup.DateOfBirth, Direction.Neutral, ComparisonStatus.SubjectMissing, Strength.None, null); return; }
-        if (p.DatesOfBirth.Count == 0) { add(EvidenceGroup.DateOfBirth, Direction.Neutral, ComparisonStatus.ProfileMissing, Strength.None, null); return; }
+        var dobs = ProfileDatesOfBirth(p);
+        if (dobs.Count == 0) { add(EvidenceGroup.DateOfBirth, Direction.Neutral, ComparisonStatus.ProfileMissing, Strength.None, null); return; }
 
         // A Profile with several DOBs is source ambiguity: one agreeing value is support, the others are not conflicts.
-        var agreeing = p.DatesOfBirth.Where(dob.AgreesWith).OrderByDescending(d => d.Precision).ToList();
+        var agreeing = dobs.Where(dob.AgreesWith).OrderByDescending(d => d.Precision).ToList();
         if (agreeing.Count == 0)
         {
-            var full = dob.Precision == DatePrecision.Day && p.DatesOfBirth.Any(d => d.Precision == DatePrecision.Day);
+            var full = dob.Precision == DatePrecision.Day && dobs.Any(d => d.Precision == DatePrecision.Day);
             add(EvidenceGroup.DateOfBirth, Direction.Conflict, ComparisonStatus.Conflict, Strength.None,
                 full ? ReasonCodes.FullDobConflict : ReasonCodes.DobConflict);
             return;
         }
         var precision = (DatePrecision)Math.Min((int)dob.Precision, (int)agreeing[0].Precision);
-        add(EvidenceGroup.DateOfBirth, Direction.Support,
-            precision == DatePrecision.Day ? ComparisonStatus.Exact : ComparisonStatus.Partial,
+        var status = precision == DatePrecision.Day ? ComparisonStatus.Exact : ComparisonStatus.Partial;
+        // Agreeing with one of many scattered values is no rare coincidence: recorded, never support, never row 4.
+        // ponytail: 3 values or a span over 2 years is a placeholder cut-off pending calibration.
+        if (dobs.Count >= 3 || dobs.Max(d => d.Year) - dobs.Min(d => d.Year) > 2)
+        {
+            add(EvidenceGroup.DateOfBirth, Direction.Neutral, status, Strength.None, Findings.ProfileMultipleDob);
+            return;
+        }
+        add(EvidenceGroup.DateOfBirth, Direction.Support, status,
             precision switch { DatePrecision.Day => Strength.High, DatePrecision.Month => Strength.Medium, _ => Strength.Low },
             precision == DatePrecision.Year ? ReasonCodes.BirthYearMatchFullDateNotComparable : null);
     }
+
+    /// <summary>The Profile's distinct DOBs without a coarser value a more precise one already covers (1970 next to 1970-05-01).</summary>
+    public static IReadOnlyList<PartialDate> ProfileDatesOfBirth(SourceProfile p) =>
+        p.DatesOfBirth.Distinct().Where(d => !p.DatesOfBirth.Any(x => x.Precision > d.Precision && d.AgreesWith(x))).ToList();
 
     private static ComparisonStatus Compare(bool subjectMissing, bool profileMissing, Func<bool> agrees) =>
         subjectMissing ? ComparisonStatus.SubjectMissing
@@ -218,8 +234,12 @@ public static class StatedAgeCheck
 
     public static Evidence? Check(ScreenedSubject s, SourceProfile p, NewsItem? news)
     {
-        if (news is null || FindStatedAge(news.Text, p.Names) is not { } stated)
+        if (news is null || Find(news.Text, p.Names) is not var (stated, atEvent))
             return null;
+        // 時年 is the age when the reported event happened, whose date the text does not give; the report date is not it.
+        if (atEvent)
+            return new Evidence(EvidenceGroup.StatedAge, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, ReasonCodes.AgeNotComparable,
+                $"報導年齡 {stated} 歲（時年，事件當時）；事件日期未知，不與報導日期比較");
         if (s.DateOfBirth is not { Precision: DatePrecision.Day } dob || news.PublishedOn is not { Precision: DatePrecision.Day } at)
             return new Evidence(EvidenceGroup.StatedAge, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, ReasonCodes.AgeNotComparable,
                 $"報導年齡 {stated} 歲；缺少完整出生日期或報導日期，無法換算");
@@ -241,20 +261,23 @@ public static class StatedAgeCheck
     /// "陳志明（45歲）", "陳志明今年四十五歲", "45歲的陳志明", "Chen Chih-Ming, aged 45", "45-year-old Chen Chih-Ming",
     /// "甲、乙分別為 44 歲、45 歲" (one age per person, in order); within one sentence and adjacent to the name.
     /// </summary>
-    public static int? FindStatedAge(string text, IEnumerable<string> names)
+    public static int? FindStatedAge(string text, IEnumerable<string> names) => Find(text, names)?.Age;
+
+    // AtEvent: the age was stated with 時年 (at the time of the event), not as of the report.
+    private static (int Age, bool AtEvent)? Find(string text, IEnumerable<string> names)
     {
         var list = names.Where(n => n.Length > 0).ToList();
         foreach (var sentence in text.Split('。', '！', '？', '\n', '；'))
         {
-            if (Respectively(sentence, list) is { } each) return each;
+            if (Respectively(sentence, list) is { } each) return (each, false);
             foreach (var name in list)
             {
                 var n = Regex.Escape(name);
                 var m = Regex.Match(sentence,
-                    $@"{n}\s?[（(，,]?\s?(?:今年|現年|時年)?\s?{Num}{Years}|{NotThreshold}{Num}{Years}的?{n}"
+                    $@"{n}\s?[（(，,]?\s?(?:今年|現年|(?<event>時年))?\s?{Num}{Years}|{NotThreshold}{Num}{Years}的?{n}"
                     + $@"|{n},?\s+aged\s+(?<n>\d{{1,3}})\b|\b(?<n>\d{{1,3}})-year-old\s+{n}|{n}\s?\((?<n>\d{{1,3}})\)",
                     RegexOptions.IgnoreCase);
-                if (m.Success && Normalize.ChineseNumber(m.Groups["n"].Value) is { } age) return age;
+                if (m.Success && Normalize.ChineseNumber(m.Groups["n"].Value) is { } age) return (age, m.Groups["event"].Success);
             }
         }
         return null;
@@ -287,17 +310,22 @@ public static class HardConflictGate
     public const int MinimumRoleAge = 14;
 
     // ponytail: role constraints pending business approval. Directors and supervisors need full legal capacity
-    // (Company Act art. 192, 216): adulthood was 20 before 2023-01-01 and 18 since.
-    private static readonly string[] AdultOnlyTitles = ["董事", "監察人", "Director", "Supervisor"];
+    // (Company Act art. 192, 216): adulthood was 20 before 2023-01-01 and 18 since. The whole title must be listed
+    // ("Director of Marketing" is not a board director); add titles as exports show them.
+    private static readonly HashSet<string> AdultOnlyTitles = new(StringComparer.OrdinalIgnoreCase)
+        { "董事", "董事長", "副董事長", "常務董事", "獨立董事", "監察人", "Director", "Supervisor" };
 
     /// <summary>
     /// Source-quality concerns that downgrade a validated hard conflict to REVIEW: a dated role without its organization,
-    /// a role dated to the year only, or Profile values the reader could not parse.
+    /// a role dated to the year only, a role the Profile's own DOB makes just as impossible (the role date is suspect),
+    /// Profile values the reader could not parse, or HIGH or UNIQUE support for the same pair.
     /// ponytail: criteria pending business approval; they only ever make the result more cautious.
     /// </summary>
-    public static bool SourceQualityConcern(SourceProfile p) =>
-        p.Roles.Any(r => r.From is not null && (string.IsNullOrWhiteSpace(r.Organization) || r.From.Value.Precision == DatePrecision.Year))
-        || p.Findings.Any(f => f.StartsWith("UNPARSEABLE", StringComparison.Ordinal));
+    public static bool SourceQualityConcern(SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence>? evidence = null) =>
+        p.Roles.Any(r => r.From is { } from && (string.IsNullOrWhiteSpace(r.Organization) || from.Precision == DatePrecision.Year
+            || p.DatesOfBirth.Any(d => MaxAgeAt(d, from) < MinimumRoleAge)))
+        || p.Findings.Any(f => f.StartsWith("UNPARSEABLE", StringComparison.Ordinal))
+        || (evidence?.Values.Any(e => e.IsSupport && e.Strength >= Strength.High) ?? false);
 
     public static string? Check(ScreenedSubject s, SourceProfile p)
     {
@@ -306,7 +334,7 @@ public static class HardConflictGate
         if (dob.Precision != DatePrecision.Day) return null;
         var dated = p.Roles.Where(r => r.From is not null).ToList();
         if (dated.Any(r => MaxAgeAt(dob, r.From!.Value) < MinimumRoleAge)) return ReasonCodes.ImpossibleAgeAtReportedEvent;
-        if (dated.Any(r => AdultOnlyTitles.Any(t => r.Title.Contains(t, StringComparison.OrdinalIgnoreCase))
+        if (dated.Any(r => AdultOnlyTitles.Contains(r.Title.Trim())
                 && MaxAgeAt(dob, r.From!.Value) < (r.From!.Value.Year < 2023 ? 20 : 18)))
             return ReasonCodes.ImpossibleRoleAtReportedEvent;
         return null;
@@ -342,13 +370,14 @@ public static class IdentityDecisionPolicy
         if (HardConflictGate.Check(s, p) is { } hard)
         {
             if (!HardConflictGate.Validated.Contains(hard)) return new IdentityResult(e, hard, null, IdentityDecision.Review, [hard]);
-            return HardConflictGate.SourceQualityConcern(p)
+            return HardConflictGate.SourceQualityConcern(p, e)
                 ? new IdentityResult(e, hard, null, IdentityDecision.Review, [hard, ReasonCodes.SourceQualityDowngrade])
                 : new IdentityResult(e, hard, null, IdentityDecision.NoMatch, [hard]);
         }
 
         var (row, decision, code) = Stage3(e);
         var reasons = new List<string> { code };
+        if (e[EvidenceGroup.Gender].Status == ComparisonStatus.Conflict) reasons.Add(ReasonCodes.GenderConflict);
         if (NoBilateralDirectIdentifier(s, p)) reasons.Add(ReasonCodes.NoBilateralDirectIdentifier);
         return new IdentityResult(e, null, row, decision, reasons);
     }
@@ -388,28 +417,29 @@ public static class IdentityDecisionPolicy
         ComparisonStatus St(EvidenceGroup g) => e.TryGetValue(g, out var v) ? v.Status : ComparisonStatus.ProfileMissing;
         var supports = e.Values.Where(v => v.IsSupport).ToList();
 
-        var conflict = new[] { EvidenceGroup.DateOfBirth, EvidenceGroup.Document, EvidenceGroup.Employment, EvidenceGroup.StatedAge }
+        // Employment is never a conflict (a different employer is not evidence against identity), so it has no row 1 code.
+        var conflict = new[] { EvidenceGroup.DateOfBirth, EvidenceGroup.Document, EvidenceGroup.StatedAge }
             .Select(g => e.GetValueOrDefault(g)).FirstOrDefault(v => v?.Status == ComparisonStatus.Conflict);
         if (conflict is not null)
-            return (1, IdentityDecision.Review, conflict.Detail ?? conflict.Group switch
-            {
-                EvidenceGroup.Document => ReasonCodes.DocumentIdentityConflict,
-                EvidenceGroup.Employment => ReasonCodes.EmploymentConflict,
-                _ => ReasonCodes.DobConflict,
-            });
+            return (1, IdentityDecision.Review, conflict.Detail ?? (conflict.Group == EvidenceGroup.Document
+                ? ReasonCodes.DocumentIdentityConflict : ReasonCodes.DobConflict));
 
         if (supports.Any(v => v.Strength == Strength.Unique))
             return (2, IdentityDecision.ProbableMatch, ReasonCodes.UniqueIdentifierAgreement);
 
-        if (supports.Any(v => v.Strength == Strength.High) && supports.Count >= 2)
+        // Opposite genders rule out rows 3 and 4; the pair falls to row 5 or 6 with GENDER_CONFLICT.
+        var genderConflict = St(EvidenceGroup.Gender) == ComparisonStatus.Conflict;
+        if (!genderConflict && supports.Any(v => v.Strength == Strength.High) && supports.Count >= 2)
             return (3, IdentityDecision.ProbableMatch, ReasonCodes.StrongSupportCombination);
 
         var prerequisitesAgree = St(EvidenceGroup.Name) == ComparisonStatus.Exact
             && St(EvidenceGroup.Gender) == ComparisonStatus.Exact
             && St(EvidenceGroup.Nationality) == ComparisonStatus.Exact;
-        var dobAgrees = St(EvidenceGroup.DateOfBirth) is ComparisonStatus.Exact or ComparisonStatus.Partial;
+        var dobAgrees = e.TryGetValue(EvidenceGroup.DateOfBirth, out var dob) && dob.IsSupport;
+        // A document of another type or country is not comparable, which is not unsettled.
         var docOrEmploymentUnsettled = new[] { EvidenceGroup.Document, EvidenceGroup.Employment }
-            .Any(g => St(g) is ComparisonStatus.Conflict or ComparisonStatus.Uncertain);
+            .Select(g => e.GetValueOrDefault(g))
+            .Any(v => v?.Status is ComparisonStatus.Conflict or ComparisonStatus.Uncertain && v.Detail != EvidenceBuilder.NotComparable);
         if (prerequisitesAgree && dobAgrees && !docOrEmploymentUnsettled)
             return (4, IdentityDecision.ProbableMatch, ReasonCodes.ConsistentAtAvailablePrecision);
 

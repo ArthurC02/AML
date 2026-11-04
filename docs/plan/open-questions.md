@@ -6,17 +6,18 @@ Questions that need a bank decision. When one is answered, record the answer her
 
 - What are the stable HTML/source schemas and source versions? The HTML conversion assumes the pages use the `.txt` export's labels.
 - Are the `.txt` exports (as in GC-11) the production input, or derived from HTML? Both are read today.
-- What is the column order of the candidate table in 案件資訊 (two header lines: decision columns and PEP/blacklist/adverse-news flags)? GC-11 and GC-12 assume the flags are empty.
+- What is the column layout of the candidate table in 案件資訊? Its header has two rows; the reader finds columns by label and expands each parent label over its sub-labels in order (是否符合名單？ → 全不符合, 全符合; Name Property → PEP, 黑名單, 負面新聞), which puts the three flags in the last three columns after Is RCA? (zero-based indexes 9–11). GC-11 and GC-12 show this header with every flag empty; an export with flags set is needed to confirm the expansion.
+- Do bank exports write ROC (民國) dates in any form other than an explicit 民國 prefix? Only 民國 dates are converted; a bare two- or three-digit year (62/6/12) is UNPARSEABLE.
 - Does the Profile export carry dated roles (`職位`), keywords (`關鍵字`) and official-list details (`名單資訊`) as structured fields? The synthetic GC-01 to GC-03 samples assume so.
 - Which source fields are authoritative for classifications and status?
 - How are Profile removal, correction and historical states represented?
 
 ## Identity policy
 
-- Approve the controlled variant-character list used for name comparison (`Normalize.CjkVariants`: 鍾/鐘/钟 and common simplified forms; distinct surnames such as 涂/塗 are never folded). A name matched only after folding is EXACT with `VARIANT_CHARACTERS` disclosed.
-- Approve the controlled romanization table (`Romanization`: Wade-Giles, Tongyong and passport spellings to Pinyin readings) and decide whether Jaro-Winkler / Levenshtein need a threshold, set from labelled cases.
+- Approve the controlled variant-character list used for name comparison (`Normalize.CjkVariants`: OpenCC one-to-one simplified forms plus a controlled list of same-reading variants such as 鍾/鐘/钟; distinct surnames such as 涂/塗 are never folded). A name matched only after folding is EXACT with `VARIANT_CHARACTERS` disclosed.
+- Approve the controlled romanization table (`Romanization`: the MOFA table of Hanyu Pinyin, Wade-Giles and Tongyong spellings plus a controlled list of common passport spellings) and the Chinese-character readings it maps through (Unihan).
 - Minimum plausible age for an attributed adult role (hard conflict `IMPOSSIBLE_AGE_AT_REPORTED_EVENT`): the code uses 14 (`HardConflictGate.MinimumRoleAge`); GC-01 needs anything above 6.
-- Approve the role constraints for `IMPOSSIBLE_ROLE_AT_REPORTED_EVENT` (`HardConflictGate.AdultOnlyTitles`: 董事, 監察人) and supply a Golden Case for it, for `DOCUMENT_IDENTITY_CONFLICT` and for `DEATH_BEFORE_CUSTOMER_BIRTH`.
+- Approve the role constraints for `IMPOSSIBLE_ROLE_AT_REPORTED_EVENT` (`HardConflictGate.AdultOnlyTitles`: 董事, 董事長, 副董事長, 常務董事, 獨立董事, 監察人, Director, Supervisor; the whole title must match) and supply a Golden Case for it, for `DOCUMENT_IDENTITY_CONFLICT` and for `DEATH_BEFORE_CUSTOMER_BIRTH`.
 - Does the Profile export carry identity documents? The reader assumes a `身分證明` table (編號, 類型, 號碼, 國家); no sample has one.
 - Can the bank supply the subject's employer with periods and named relatives (spouse, parents, related companies)? EMPLOYMENT and RELATIONSHIP comparisons are built but have no subject-side data.
 - Which complete DOB conflicts qualify as hard conflicts?
@@ -29,6 +30,7 @@ Questions that need a bank decision. When one is answered, record the answer her
 ## PEP and Sanction
 
 - What PEP/RCA categories and post-office periods apply?
+- Approve the keywords read from the PEP / RCA subcategory text: Former and Inactive mark a former PEP (`FORMER_PEP`), and the relation words outside the statutory family scope (cousin, uncle, aunt, nephew, niece, grand-, 堂/表 relatives, 叔, 伯, 姑, 舅, 姨, 姪, 甥, 祖父母, 孫) keep a relative from `PEP_FAMILY`.
 - Which sanctions programs and jurisdictions are in scope?
 - How are active, removed and historical entries treated?
 
@@ -39,6 +41,7 @@ Questions that need a bank decision. When one is answered, record the answer her
 - For a hit with Sanction or PEP plus unrelated adverse news, does ② set aside only the adverse-news condition?
 - Which channels must be used before "exhausted" (③) may be claimed?
 - Final domain allowlist for lookups and the attached-URL exemption wording.
+- Approve the controlled keyword lists read from attached news: the legal-stage keywords (indictment, dismissal, conviction and acquittal wording, the modal markers such as 最重 and 求刑, and the other-party markers such as 同案), the ② predicate-offence list (洗錢防制法第 3 條), the non-predicate conduct list and the serious-consequence markers (致死, 致重傷, 逃逸) that keep drunk driving or an accident a predicate offence.
 
 ## Case and execution
 
@@ -55,8 +58,13 @@ Questions that need a bank decision. When one is answered, record the answer her
 - Should index search over the list database ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)) feed Cases automatically, and with which Top N?
 - Calibrate the Fellegi-Sunter shadow (m and u per group) and approve, or not, an AML risk policy; neither affects decisions today.
 - Approve the entity evidence groups (registration number, IMO) with an entity Golden Case.
-- Which name and address similarity thresholds (Jaro-Winkler, Levenshtein, Jaccard) does the bank accept, and from which labelled cases are they set?
+- Calibrate the placeholder thresholds from labelled cases. None of them makes evidence support, a conflict or a hit; they grade details, rank candidates or cap groups:
+  - name similarity per script (`Normalize.NameSimilarityThresholdCjk` and `…Latin`, 0.90) and address Jaccard (`AddressCompare.JaccardThreshold`, 0.5), which label a PARTIAL detail;
+  - n-gram Dice floors per query script (`ProfileIndex.NGramFloorCjk` 0.3, `NGramFloorLatin` about 0.46), BM25 constants (k1 1.2, b 0.3) and the reciprocal-rank-fusion k (60), from Recall@K;
+  - the scattered-DOB cut-off (three or more Profile DOBs, or a span over two years, makes an agreeing DOB `PROFILE_MULTIPLE_DOB` without support);
+  - the merge group size limit (10 Profiles) and the minimum comparable document length (4 characters).
 - What are required SAST, SCA, SBOM and patch SLAs?
+- Confirm the license of the MOFA Bureau of Consular Affairs 中文譯音對照表 embedded as `Normalization/Data/romanization.txt` ([third-party data](implementation-baseline.md#third-party-data)). It is used on the assumption that the Open Government Data License v1.0 applies; the license is not confirmed.
 
 ## Answered
 

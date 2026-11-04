@@ -10,7 +10,7 @@ public enum ConditionStatus { Hit, NotHit, Unknown }
 
 public enum ConditionBasis { Flag, CategoryMapping, Unmapped }
 
-public enum LegalStage { Unknown, Alleged, Indicted, Wanted, Convicted, Acquitted }
+public enum LegalStage { Unknown, Alleged, Indicted, Wanted, Convicted, Acquitted, Dismissed }
 
 public enum AmlRelevance { Uncertain, Related, Unrelated }
 
@@ -28,7 +28,7 @@ public sealed record SourceCondition(
     string? Program = null,
     string? Jurisdiction = null);
 
-/// <summary>List-type determination (ADR-0016): flags first; category mapping only when all flags are MISSING.</summary>
+/// <summary>List-type determination (ADR-0016): a flag with a value decides its types; a mapped category whose flag is MISSING keeps its category condition.</summary>
 public static partial class SourceConditions
 {
     public const string PolicyVersion = "source-policy-0.2";
@@ -55,34 +55,41 @@ public static partial class SourceConditions
     public const string FlagCategoryConflict = "FLAG_CATEGORY_CONFLICT";
     public const string BlacklistTypeUndecided = "BLACKLIST_TYPE_UNDECIDED";
     public const string FlagIsRca = "IS_RCA_FLAG";
+    public const string RcaOutsideStatutoryScope = "RCA_OUTSIDE_STATUTORY_SCOPE";
 
     /// <summary>
-    /// Flags decide when any of PEP, 黑名單 and 負面新聞 has a value (NO counts); the category mapping runs only when all
-    /// three are MISSING. A flag that contradicts the category wins and the conflict is recorded. Is RCA? = YES always adds RCA.
+    /// A flag with a value (NO counts) decides its own list types; a mapped category whose flag is MISSING keeps its category
+    /// condition. A flag that contradicts the category wins and the conflict is recorded, except that 黑名單 = NO never clears
+    /// a Sanction category: that condition is UNKNOWN for review, and Is RCA? = NO never clears an RCA category the same way.
+    /// Is RCA? = YES always adds RCA.
     /// </summary>
     public static IReadOnlyList<SourceCondition> Determine(SourceProfile profile, bool isRca, string? news, ListFlags? flags = null)
     {
         flags ??= ListFlags.None;
         var mapped = profile.Categories.Select(MapCategory).Distinct().ToList();
         var decided = new List<(ListType Type, ConditionStatus Status, ConditionBasis Basis, string? Code)>();
-        if (flags.AllMissing)
-        {
-            foreach (var t in mapped)
-                decided.Add(t == ListType.Unknown
-                    ? (t, ConditionStatus.Unknown, ConditionBasis.Unmapped, UnmappedCategory)
-                    : (t, ConditionStatus.Hit, ConditionBasis.CategoryMapping, null));
-        }
-        else
+        if (!flags.AllMissing)
         {
             var blacklist = BlacklistType(profile, mapped);
             FromFlag(decided, ListType.Pep, flags.Pep, null);
-            FromFlag(decided, blacklist, flags.Blacklist, blacklist == ListType.Unknown ? BlacklistTypeUndecided : null);
+            if (mapped.Contains(ListType.Sanction) && flags.Blacklist == FlagValue.No)
+                decided.Add((ListType.Sanction, ConditionStatus.Unknown, ConditionBasis.Flag, FlagCategoryConflict));
+            else
+                FromFlag(decided, blacklist, flags.Blacklist, blacklist == ListType.Unknown ? BlacklistTypeUndecided : null);
             FromFlag(decided, ListType.AdverseMedia, flags.AdverseNews, null);
         }
+        // A mapped category whose flag is MISSING (every one when all flags are MISSING) keeps its category condition.
+        foreach (var t in mapped.Where(t => FlagOf(t, flags) == FlagValue.Missing && !decided.Any(d => Same(d.Type, t))
+                     && !(t == ListType.Rca && flags.Rca == FlagValue.No)))
+            decided.Add(t == ListType.Unknown
+                ? (t, ConditionStatus.Unknown, ConditionBasis.Unmapped, UnmappedCategory)
+                : (t, ConditionStatus.Hit, ConditionBasis.CategoryMapping, null));
+        if (mapped.Contains(ListType.Rca) && flags.Rca == FlagValue.No)
+            decided.Add((ListType.Rca, ConditionStatus.Unknown, ConditionBasis.Flag, FlagCategoryConflict));
         if (isRca && !decided.Any(d => d.Type == ListType.Rca)) decided.Add((ListType.Rca, ConditionStatus.Hit, ConditionBasis.Flag, FlagIsRca));
 
         // The category disagrees with the flags: a mapped type the flags did not raise as HIT.
-        var conflict = !flags.AllMissing && mapped.Any(t => t is not ListType.Unknown and not ListType.Rca
+        var conflict = !flags.AllMissing && mapped.Any(t => t is not ListType.Unknown
             && !decided.Any(d => d.Status == ConditionStatus.Hit && Same(d.Type, t)));
 
         var risks = RiskCategories(profile);
@@ -107,6 +114,15 @@ public static partial class SourceConditions
         decided.Add((t, status, ConditionBasis.Flag, v == FlagValue.Unparseable ? FlagUnparseable : v == FlagValue.Yes ? code : null));
     }
 
+    // The flag that speaks for a mapped type. RCA, SIE and unmapped types have none of the three (Is RCA? = NO is handled apart).
+    private static FlagValue FlagOf(ListType t, ListFlags f) => t switch
+    {
+        ListType.Pep => f.Pep,
+        ListType.AdverseMedia => f.AdverseNews,
+        ListType.Sanction or ListType.OfficialWantedList or ListType.OtherOfficialList => f.Blacklist,
+        _ => FlagValue.Missing,
+    };
+
     private static bool Same(ListType a, ListType b) =>
         a == b || (a, b) is (ListType.OfficialWantedList, ListType.OtherOfficialList) or (ListType.OtherOfficialList, ListType.OfficialWantedList);
 
@@ -121,8 +137,10 @@ public static partial class SourceConditions
             Hit(ListType.OfficialWantedList) with { LegalStage = LegalStage.Wanted },
         ListType.OfficialWantedList => Hit(ListType.OtherOfficialList),
         ListType.Sanction => Sanction(profile),
-        ListType.Pep => Hit(t) with { PepType = PepType(profile, ListType.Pep) },
-        ListType.Rca => Hit(t) with { PepType = PepType(profile, ListType.Rca) },
+        ListType.Pep or ListType.Rca => Hit(t) with
+        {
+            PepType = PepType(profile, t), ReasonCodes = OutsideStatutoryScope(profile) ? [RcaOutsideStatutoryScope] : [],
+        },
         ListType.Unknown => new SourceCondition(t, ConditionStatus.Unknown, ConditionBasis.Unmapped, [], LegalStage.Unknown, null, PolicyVersion, []),
         _ => Hit(t),
     };
@@ -150,50 +168,92 @@ public static partial class SourceConditions
         new(t, ConditionStatus.Hit, ConditionBasis.CategoryMapping, [], LegalStage.Unknown, null, PolicyVersion, []);
 
     /// <summary>A generic Active Profile is not an active sanction measure: HIT needs an active, named measure.</summary>
+    // An active official-list entry confirms the measure only when it is not a wanted list (that is OFFICIAL_WANTED_LIST).
     private static SourceCondition Sanction(SourceProfile p) =>
-        p.OfficialList is { } e && e.Status.Equals("Active", StringComparison.OrdinalIgnoreCase)
+        p.OfficialList is { } e && e.Status.Equals("Active", StringComparison.OrdinalIgnoreCase) && !IsActive(e, "Wanted", "通緝")
             ? Hit(ListType.Sanction) with { Program = e.List, Jurisdiction = e.Authority }
             : Hit(ListType.Sanction) with { Status = ConditionStatus.Unknown, ReasonCodes = [SanctionMeasureNotConfirmed] };
 
     // ponytail: PEP subtypes read from the category's subcategory text; the approved source fields arrive with GC-04.
     private static string? PepType(SourceProfile p, ListType type)
     {
-        var prefix = type == ListType.Pep ? "Politically Exposed" : "Relative or Close Associate";
-        var subs = p.Categories.Where(c => c.Category.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).Select(c => c.Subcategory ?? "").ToList();
-        bool Says(params string[] words) => subs.Any(s => words.Any(w => s.Contains(w, StringComparison.OrdinalIgnoreCase)));
-        if (Says("Family", "Relative", "Spouse", "Child", "Parent", "Sibling")) return "PEP_FAMILY";
+        bool Says(params string[] words) => Subcategories(p, type).Any(s => words.Any(w => s.Contains(w, StringComparison.OrdinalIgnoreCase)));
+        if (!OutsideStatutoryScope(p) && Says("Family", "Relative", "Spouse", "Child", "Parent", "Sibling")) return "PEP_FAMILY";
         if (Says("Associate")) return "PEP_CLOSE_ASSOCIATE";
         if (type == ListType.Rca) return "RCA_UNCONFIRMED";
-        return Says("Former") ? "FORMER_PEP" : null;
+        return IsFormerPep(p, ownRoles: true) ? "FORMER_PEP" : null;
     }
+
+    private static IEnumerable<string> Subcategories(SourceProfile p, ListType type)
+    {
+        var prefix = type == ListType.Pep ? "Politically Exposed" : "Relative or Close Associate";
+        return p.Categories.Where(c => c.Category.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).Select(c => c.Subcategory ?? "");
+    }
+
+    /// <summary>
+    /// A PEP who has left office (認定標準第 5 條): a Former or Inactive PEP / RCA subcategory or, for the PEP's own Profile
+    /// (<paramref name="ownRoles"/>), every recorded role ended; an RCA's own roles say nothing about the PEP's office.
+    /// Still a HIT; lasting influence is a pending check (FORMER_PEP_INFLUENCE) with no fixed cooling-off period.
+    /// </summary>
+    // ponytail: "every role ended" reads all roles, not only public functions; approved PEP role fields arrive with GC-04.
+    public static bool IsFormerPep(SourceProfile p, bool ownRoles) =>
+        Subcategories(p, ListType.Pep).Concat(Subcategories(p, ListType.Rca))
+            .Any(s => s.Contains("Former", StringComparison.OrdinalIgnoreCase) || s.Contains("Inactive", StringComparison.OrdinalIgnoreCase))
+        || (ownRoles && p.Roles.Count > 0 && p.Roles.All(r => r.To is not null));
+
+    // ponytail: relation words in the subcategory text. 認定標準第 6 條 family: first-degree relatives by blood or marriage,
+    // siblings, spouse or cohabiting partner, and the spouse's siblings. A named relation beyond that (cousin, uncle,
+    // grandchild …) is outside the statutory scope; an unnamed "Family Member" / "Relative" is not judged here.
+    private static readonly string[] OutsideScopeRelations =
+        ["Cousin", "Uncle", "Aunt", "Nephew", "Niece", "Grand", "堂兄", "堂弟", "堂姊", "堂姐", "堂妹", "表兄", "表弟", "表姊", "表姐", "表妹", "表親",
+        "叔", "伯父", "伯母", "姑", "舅", "姨", "姪", "甥", "祖父", "祖母", "孫"];
+
+    private static bool OutsideStatutoryScope(SourceProfile p) =>
+        Subcategories(p, ListType.Pep).Concat(Subcategories(p, ListType.Rca))
+            .Any(s => OutsideScopeRelations.Any(w => s.Contains(w, StringComparison.OrdinalIgnoreCase)));
 
     // ponytail: controlled conduct lists. Only UNRELATED is extracted, and only when the source states both a conduct that
     // is no predicate offence and a jurisdiction; RELATED is left to the reviewer, as GC-02 and GC-11 keep UNCERTAIN.
+    // Predicate offences follow 洗錢防制法第 3 條 (minimum sentence of six months or more, plus the listed statutes).
     private static readonly string[] PredicateConduct =
     [
         "詐欺", "詐騙", "詐貸", "詐取", "洗錢", "逃漏稅", "逃稅", "貪污", "賄賂", "收賄", "行賄", "背信", "侵占", "毒品", "販毒", "走私",
         "人口販運", "組織犯罪", "恐怖", "內線交易", "操縱股價", "地下匯兌", "吸金", "銀行法", "不實發票", "假發票", "偽造",
-        "fraud", "laundering", "bribery", "corruption", "trafficking", "tax evasion",
+        "殺人", "強盜", "搶奪", "擄人勒贖", "恐嚇取財", "竊盜", "槍砲", "妨害性自主", "強制性交", "證券交易法", "證交法", "智慧財產",
+        "著作權", "商標",
+        "fraud", "laundering", "bribery", "corruption", "trafficking", "tax evasion", "murder", "robbery", "kidnap", "extortion",
+        "theft", "firearm", "sexual assault", "securities",
     ];
+
+    // Drunk driving or an accident that kills, gravely injures or is followed by flight (刑法 185-3 II, 185-4) carries a
+    // minimum sentence of six months or more: a predicate offence whatever the conduct word.
+    private static readonly string[] SeriousConsequence = ["致死", "致人於死", "致重傷", "逃逸", "hit-and-run", "death"];
 
     private static readonly string[] NonPredicateConduct =
     [
-        "酒駕", "酒後駕車", "公共危險", "肇事", "交通事故", "過失致死", "過失傷害", "傷害罪", "妨害名譽", "誹謗", "公然侮辱", "性騷擾",
-        "家暴", "drunk driving", "defamation", "traffic accident",
+        "酒駕", "酒後駕車", "交通事故", "過失傷害", "傷害罪", "妨害名譽", "誹謗", "公然侮辱", "性騷擾", "家暴",
+        "drunk driving", "defamation", "traffic accident",
     ];
 
     /// <summary>
     /// ② input. Any SIP crime category or risk keyword is a predicate offence, so it never becomes UNRELATED; without news
-    /// there is no stated conduct.
+    /// there is no stated conduct. The non-predicate conduct must be in a sentence naming the Profile person; a predicate
+    /// offence or a serious consequence anywhere in the news blocks UNRELATED.
     /// </summary>
     private static AmlRelevance Relevance(IReadOnlyList<string> risks, string? news, SourceProfile p)
     {
         if (news is null || risks.Count > 0) return AmlRelevance.Uncertain;
         var jurisdiction = (p.AllegationCountries ?? []).Count > 0 || Dateline().IsMatch(news);
-        var predicate = PredicateConduct.Any(w => news.Contains(w, StringComparison.OrdinalIgnoreCase));
-        var other = NonPredicateConduct.Any(w => news.Contains(w, StringComparison.OrdinalIgnoreCase));
+        var predicate = PredicateConduct.Concat(SeriousConsequence).Any(w => news.Contains(w, StringComparison.OrdinalIgnoreCase));
+        var other = Sentences(news).Where(s => Names(s, p.Names))
+            .Any(s => NonPredicateConduct.Any(w => s.Contains(w, StringComparison.OrdinalIgnoreCase)));
         return jurisdiction && other && !predicate ? AmlRelevance.Unrelated : AmlRelevance.Uncertain;
     }
+
+    private static string[] Sentences(string news) => news.Split('。', '！', '？', '\n', '；');
+
+    private static bool Names(string sentence, IReadOnlyList<string> names) =>
+        names.Any(n => n.Length > 1 && sentence.Contains(n, StringComparison.OrdinalIgnoreCase));
 
     // "〔記者丙／台北報導〕", "（中央社台北6日電）": the report states where it happened.
     [GeneratedRegex("／\\p{IsCJKUnifiedIdeographs}{2,4}報導|中央社\\p{IsCJKUnifiedIdeographs}{2,4}\\d{1,2}日電")]
@@ -224,20 +284,64 @@ public static partial class SourceConditions
         && e.Status.Equals("Active", StringComparison.OrdinalIgnoreCase)
         && (e.List.Contains(english, StringComparison.OrdinalIgnoreCase) || e.List.Contains(chinese, StringComparison.Ordinal));
 
-    // ponytail: keyword heuristic on attached news; 求刑 is a sentencing request and never a judgment.
-    // Replace with approved legal-stage extraction when judgment wording appears in a Golden Case.
-    // A judgment counts only in a sentence that names the Profile person: co-defendants' sentences are not theirs (GC-12).
+    // ponytail: keyword heuristic on attached news. Replace with approved legal-stage extraction when judgment wording
+    // appears in a Golden Case.
+    // - A judgment (conviction, acquittal) counts only in a sentence naming the Profile person: co-defendants' sentences
+    //   are not theirs (GC-12).
+    // - A dismissal or indictment counts in such a sentence, or in one that points at nobody else: a subjectless 檢方已起訴
+    //   or a collective 起訴七人 (GC-12) is the person's; 同案, 另一, 其他 … mark someone else. Negation goes first:
+    //   不起訴, 緩起訴 and 撤回起訴 are DISMISSED, never INDICTED.
+    // - A modal, request or presumption before the keyword in its clause (可, 恐, 求, 最重, 推定) is no stage: 最重可判處,
+    //   請求從重判處, 求刑. 無罪 is an acquittal only after 判決, 改判 or 宣判 in its clause (堅稱無罪 is a claim).
+    // - The last stage in the text wins; 偵辦 or 調查 give ALLEGED only when there is no judicial stage.
     private static LegalStage LegalStageFromNews(string? news, IReadOnlyList<string> names)
     {
         if (news is null) return LegalStage.Unknown;
-        var own = news.Split('。', '！', '？', '\n', '；')
-            .Where(s => names.Any(n => n.Length > 1 && s.Contains(n, StringComparison.OrdinalIgnoreCase))).ToList();
-        if (own.Any(s => Conviction.Any(w => s.Contains(w, StringComparison.Ordinal)))) return LegalStage.Convicted;
-        if (own.Any(s => s.Contains("無罪", StringComparison.Ordinal))) return LegalStage.Acquitted;
-        if (news.Contains("起訴", StringComparison.Ordinal)) return LegalStage.Indicted;
-        if (news.Contains("偵辦", StringComparison.Ordinal) || news.Contains("調查", StringComparison.Ordinal)) return LegalStage.Alleged;
-        return LegalStage.Unknown;
+        var stage = LegalStage.Unknown;
+        foreach (var sentence in Sentences(news))
+        {
+            var own = Names(sentence, names);
+            var attributable = own || !OtherParty.Any(m => sentence.Contains(m, StringComparison.Ordinal));
+            foreach (var clause in sentence.Split('，', ','))
+            {
+                var found = new List<(int End, LegalStage Stage)>();
+                if (attributable)
+                {
+                    Find(found, clause, Dismissal(), LegalStage.Dismissed);
+                    Find(found, clause, Indictment(), LegalStage.Indicted);
+                }
+                if (own)
+                {
+                    Find(found, clause, Conviction(), LegalStage.Convicted);
+                    Find(found, clause, Acquittal(), LegalStage.Acquitted);
+                }
+                if (found.Count > 0) stage = found.MaxBy(f => f.End).Stage;
+            }
+        }
+        if (stage == LegalStage.Unknown && (news.Contains("偵辦", StringComparison.Ordinal) || news.Contains("調查", StringComparison.Ordinal)))
+            return LegalStage.Alleged;
+        return stage;
     }
 
-    private static readonly string[] Conviction = ["判處", "判刑", "判決有罪", "有罪確定", "定讞"];
+    private static void Find(List<(int, LegalStage)> found, string clause, Regex pattern, LegalStage stage)
+    {
+        foreach (Match m in pattern.Matches(clause))
+            if (!Modals.Any(w => clause.AsSpan(0, m.Index).Contains(w, StringComparison.Ordinal))) found.Add((m.Index + m.Length, stage));
+    }
+
+    private static readonly string[] Modals = ["可", "恐", "求", "最重", "推定"];
+
+    private static readonly string[] OtherParty = ["同案", "另一", "另名", "其他", "其餘", "共犯", "共同被告"];
+
+    [GeneratedRegex("不起訴|緩起訴|撤回起訴")]
+    private static partial Regex Dismissal();
+
+    [GeneratedRegex("(?<!不|緩|撤回)起訴")]
+    private static partial Regex Indictment();
+
+    [GeneratedRegex("判處|判刑|判決有罪|有罪確定|(?<!無罪)定讞")]
+    private static partial Regex Conviction();
+
+    [GeneratedRegex("(判決|改判|宣判)[^，,]{0,10}?無罪(?!推定)")]
+    private static partial Regex Acquittal();
 }

@@ -23,22 +23,33 @@ A Profile can carry several.
 
 ## List-type determination
 
-### Flags first
+### Flags and category
 
-When any of the PEP, blacklist or adverse-news flags has a value (`NO` counts as a value), the flags decide:
+Each candidate row carries four source flags: PEP, 黑名單 (blacklist), 負面新聞 (adverse news) and `Is RCA?`. A flag with a value (`NO` counts as a value) decides the list types it speaks for; a mapped category whose flag is `MISSING` keeps its [category](#category-mapping) condition.
 
-- PEP flag `YES` → PEP;
-- adverse-news flag `YES` → ADVERSE_MEDIA;
-- blacklist flag `YES` → SANCTION, OFFICIAL_WANTED_LIST or OTHER_OFFICIAL_LIST, decided from approved source fields; if they do not decide it, the type is UNKNOWN and goes to review;
-- a flag that contradicts the category wins; the conflict is recorded in the explanation, and the flag is never overwritten.
+| List type | Flag that speaks for it |
+|---|---|
+| PEP | PEP |
+| SANCTION, OFFICIAL_WANTED_LIST, OTHER_OFFICIAL_LIST | 黑名單 |
+| ADVERSE_MEDIA | 負面新聞 |
+| RCA | `Is RCA?` |
+| SIE, unmapped category | none; the category decides |
 
-The flags are read per candidate row (`Normalize.Flag`, [source flags](extraction-and-normalization.md#source-flags)) and merged per Profile: YES wins over UNPARSEABLE, which wins over NO. NO gives a NOT_HIT condition; UNPARSEABLE gives an UNKNOWN one with `FLAG_UNPARSEABLE`; a 黑名單 type the source fields cannot decide gives `BLACKLIST_TYPE_UNDECIDED`; a category the flags do not raise gives `FLAG_CATEGORY_CONFLICT`.
+- PEP `YES` → PEP HIT; `NO` → PEP NOT_HIT.
+- 負面新聞 `YES` → ADVERSE_MEDIA HIT; `NO` → ADVERSE_MEDIA NOT_HIT.
+- 黑名單 `YES` → SANCTION, OFFICIAL_WANTED_LIST or OTHER_OFFICIAL_LIST, decided from approved source fields: an official-list entry naming a sanction or a Sanction category gives SANCTION, an active wanted list gives OFFICIAL_WANTED_LIST, any other official-list entry or category gives OTHER_OFFICIAL_LIST. If they do not decide it, the type is UNKNOWN with `BLACKLIST_TYPE_UNDECIDED` and goes to review.
+- 黑名單 `NO` → NOT_HIT, except that it never clears a Sanction category: that SANCTION condition is UNKNOWN with `FLAG_CATEGORY_CONFLICT`.
+- `Is RCA? = YES` → RCA HIT with `IS_RCA_FLAG`, whatever the other flags or the category say.
+- `Is RCA? = NO` never clears an RCA category: that RCA condition is UNKNOWN with `FLAG_CATEGORY_CONFLICT`. Without an RCA category it adds nothing.
+- Otherwise a flag that contradicts the category wins. The flag is never overwritten, and the conflict is recorded: when any of the PEP, 黑名單 or 負面新聞 flags has a value and a mapped category is left without a HIT condition, every condition of the Profile carries `FLAG_CATEGORY_CONFLICT`.
 
-The column order is assumed until the bank confirms it ([open questions](../plan/open-questions.md#data-and-source)): … 理由, Is RCA?, Name Property, PEP, 黑名單, 負面新聞. The samples stop at Is RCA?, so their flags are MISSING and the category mapping below applies.
+The flags are read per candidate row (`Normalize.Flag`, [source flags](extraction-and-normalization.md#source-flags)) and merged per Profile: YES wins over UNPARSEABLE, which wins over NO. UNPARSEABLE gives an UNKNOWN condition with `FLAG_UNPARSEABLE`. `Is RCA?` is not one of the three list flags (PEP, 黑名單, 負面新聞).
+
+The column order is assumed until the bank confirms it ([open questions](../plan/open-questions.md#data-and-source)): … 理由, Is RCA?, Name Property, PEP, 黑名單, 負面新聞. The samples stop at Is RCA?, so their PEP, 黑名單 and 負面新聞 flags are MISSING and the category mapping below applies.
 
 ### Category mapping
 
-Only when all three flags are `MISSING`:
+Applies to every mapped category whose flag is `MISSING`, and so to all of them when the PEP, 黑名單 and 負面新聞 flags are all `MISSING`:
 
 | Source category | List type |
 |---|---|
@@ -53,14 +64,26 @@ Only when all three flags are `MISSING`:
 | bank-internal list | BANK_INTERNAL_LIST; plus PEP for the internal PEP list and ADVERSE_MEDIA for the internal adverse-news list |
 
 - Subcategories do not change non-SIP types.
-- An SIP subcategory not in the table, or no subcategory (e.g. Regulatory Enforcement List), is unmapped: `UNKNOWN`, never assumed to be adverse media.
+- An SIP subcategory not in the table, or no subcategory (e.g. Regulatory Enforcement List), is unmapped: `UNKNOWN` with `UNMAPPED_CATEGORY`, never assumed to be adverse media.
 - Other bank-internal list names keep BANK_INTERNAL_LIST only.
 - SIP (Special Interest Person) is not SIE; Dow Jones Special Interest Entity is not SIE either.
 - Unmapped categories are copied verbatim into the explanation and left as UNKNOWN for review.
 
 ### RCA
 
-`Is RCA? = YES` adds RCA whatever the flags or category say. The list type RCA (a PEP's relative or close associate) is not the Case's related party.
+The list type RCA (a PEP's relative or close associate) is not the Case's related party. Its relationship scope is described in [PEP and RCA screening](pep-rca-screening.md#rca-relationship-scope).
+
+### Reason codes
+
+| Code | Meaning |
+|---|---|
+| `FLAG_UNPARSEABLE` | a flag value could not be read; the condition is UNKNOWN |
+| `FLAG_CATEGORY_CONFLICT` | a flag contradicts the category |
+| `BLACKLIST_TYPE_UNDECIDED` | 黑名單 = YES, but the source fields do not decide the list type |
+| `IS_RCA_FLAG` | the RCA condition comes from `Is RCA? = YES` |
+| `UNMAPPED_CATEGORY` | the category has no list type; UNKNOWN for review |
+| `SANCTION_MEASURE_NOT_CONFIRMED` | see [sanctions screening](sanctions-screening.md#sanction-condition) |
+| `RCA_OUTSIDE_STATUTORY_SCOPE` | see [PEP and RCA screening](pep-rca-screening.md#rca-relationship-scope) |
 
 ## Risk categories
 
@@ -92,7 +115,6 @@ A source Profile can carry multiple categories.
 
 ```text
 ALLEGED
-INVESTIGATED
 WANTED
 INDICTED
 CONVICTED
@@ -108,6 +130,19 @@ The system preserves the source wording. `INDICTED` is not rewritten as convicte
 - A stage describes the source as of its date. "No later indictment or judgment recorded" is never rewritten as "not indicted"; an old or undated item does not describe the status on the review date.
 - Explicit source denials are kept with quotation, time point, person and scope.
 
+### Stage from attached news
+
+The ADVERSE_MEDIA stage is read from the attached news by a keyword heuristic, to be replaced by an approved legal-stage extraction once judgment wording is covered by a Golden Case:
+
+- The news is split into sentences (。！？； or a line break) and clauses (，). A sentence names the Profile person when it contains one of the Profile's names of two or more characters.
+- A judgment (判處, 判刑, 判決有罪, 有罪確定, 定讞 → CONVICTED; acquittal → ACQUITTED) counts only in a sentence naming the Profile person: a co-defendant's sentence is not the subject's (GC-12).
+- A dismissal or indictment counts in a sentence naming the Profile person, or in one that points at nobody else: a subjectless 檢方已起訴 or a collective 起訴七人 (GC-12) is the person's, while 同案, 另一, 另名, 其他, 其餘, 共犯 or 共同被告 mark someone else.
+- 不起訴, 緩起訴 and 撤回起訴 are DISMISSED, never INDICTED.
+- A modal, request or presumption before the keyword in its clause (可, 恐, 求, 最重, 推定) is no stage: 最重可判處, 請求從重判處 and 求刑 state no sentence.
+- 無罪 is an acquittal only after 判決, 改判 or 宣判 in its clause; 堅稱無罪 is a claim and 無罪推定 a presumption.
+- The last stage in the text wins.
+- With no judicial stage, 偵辦 or 調查 give ALLEGED; otherwise the stage is UNKNOWN.
+
 ## Policy responsibilities
 
 ### OfficialListPolicy
@@ -118,7 +153,14 @@ Reads authority, list type, list status, decision number/date and alleged offenc
 
 Reads approved source classifications and keywords. `Financial Crime` does not automatically mean `Fraud`.
 
-Sets `amlRelevance` to `UNCERTAIN`, or to `UNRELATED` when the attached news states a jurisdiction and a non-predicate conduct; UNRELATED drives Article 22 ② ([disposition recommendation](review-and-disposition.md#article-22-2-adverse-news-unrelated-to-mltfpf)). RELATED is left to the reviewer.
+Sets `amlRelevance` to `UNCERTAIN`, or to `UNRELATED`, which drives Article 22 ② ([disposition recommendation](review-and-disposition.md#article-22-2-adverse-news-unrelated-to-mltfpf)). RELATED is left to the reviewer. UNRELATED is a heuristic on controlled conduct lists, pending an approved extraction validated by a Golden Case; it requires all of:
+
+- attached news that states a jurisdiction: a dateline (〔記者…／台北報導〕, 中央社台北6日電) or `Country of Reported Allegation`;
+- a sentence naming the Profile person that states a non-predicate conduct (酒駕, 酒後駕車, 交通事故, 過失傷害, 傷害罪, 妨害名譽, 誹謗, 公然侮辱, 性騷擾, 家暴, drunk driving, defamation, traffic accident); another party's conduct does not count;
+- no predicate conduct and no serious-consequence marker anywhere in the news;
+- no SIP crime category or risk keyword on the Profile, since each of them is a predicate offence.
+
+Predicate conduct follows 洗錢防制法 (Money Laundering Control Act) Article 3: offences with a minimum sentence of six months or more, plus the listed statutes. The controlled list covers fraud, money laundering, tax evasion, corruption and bribery, breach of trust, embezzlement, drugs, smuggling, human trafficking, organised crime, terrorism, insider trading and market manipulation, underground remittance, illegal deposit-taking and the Banking Act, false invoices, forgery, homicide, robbery, snatching, kidnapping for ransom, extortion, theft, firearms, sexual offences, the Securities and Exchange Act and intellectual-property offences (copyright, trademark). The serious-consequence markers (致死, 致人於死, 致重傷, 逃逸, hit-and-run, death) cover drunk driving or an accident that kills, gravely injures or is followed by flight (刑法 185-3 II, 185-4): those carry a minimum sentence of six months or more and so are predicate offences whatever the conduct word.
 
 ## Subject attribution
 
@@ -131,6 +173,15 @@ A news item attached to a Profile counts as attached news; the Profile's own des
 - Profile category HIT remains a source fact, recorded as `riskCategories` on the [SourceConditionResult](data-contracts.md#sourceconditionresult).
 - Pair results follow the canonical [combination matrix](data-contracts.md#combination-matrix), including UNKNOWN and NOT_EVALUATED.
 - Only identity MATCH plus source HIT produces pair-level HIT.
+
+## Risk scoring
+
+`RiskScoring` runs downstream of identity and never feeds back into it ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)). It needs a bank-approved `RiskPolicy`; none ships, so by default no pair is scored. A pair whose identity is NO_MATCH is not scored. Otherwise:
+
+- HIT conditions are scored; an UNKNOWN Sanction or PEP condition scores as a HIT, other UNKNOWN conditions score nothing;
+- an ADVERSE_MEDIA condition set aside by Article 22 ② (`amlRelevance: UNRELATED`) scores nothing;
+- each scored condition adds its list weight (`list:<type>`) and the weight of each of its risk categories; the legal-stage weight (`stage:<stage>`) applies to ADVERSE_MEDIA conditions only;
+- any scored Sanction condition makes the level High whatever the weights; otherwise the policy thresholds decide High, Medium or Low.
 
 ## Phase 1 constraint
 

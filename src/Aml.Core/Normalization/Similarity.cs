@@ -1,10 +1,11 @@
 namespace Aml.Core.Normalization;
 
-/// <summary>String similarity on comparison keys; a PARTIAL feature inside the NAME group only.</summary>
+/// <summary>String similarity on comparison keys, per code point; a PARTIAL feature inside the NAME group only.</summary>
 public static class Similarity
 {
-    public static int Levenshtein(string a, string b)
+    public static int Levenshtein(string x, string y)
     {
+        var (a, b) = (CodePoints(x), CodePoints(y));
         var prev = Enumerable.Range(0, b.Length + 1).ToArray();
         for (var i = 1; i <= a.Length; i++)
         {
@@ -17,9 +18,11 @@ public static class Similarity
         return prev[b.Length];
     }
 
-    public static double JaroWinkler(string a, string b)
+    /// <summary>Jaro-Winkler: the common-prefix bonus (up to 4, scale 0.1) applies only when Jaro exceeds <see cref="BoostThreshold"/>.</summary>
+    public static double JaroWinkler(string x, string y)
     {
-        if (a == b) return 1;
+        if (x == y) return 1;
+        var (a, b) = (CodePoints(x), CodePoints(y));
         if (a.Length == 0 || b.Length == 0) return 0;
         var window = Math.Max(0, Math.Max(a.Length, b.Length) / 2 - 1);
         var ma = new bool[a.Length];
@@ -39,8 +42,14 @@ public static class Similarity
         }
         double m = matches;
         var jaro = (m / a.Length + m / b.Length + (m - transpositions / 2.0) / m) / 3;
+        if (jaro <= BoostThreshold) return jaro;
         var prefix = 0;
         while (prefix < Math.Min(4, Math.Min(a.Length, b.Length)) && a[prefix] == b[prefix]) prefix++;
         return jaro + prefix * 0.1 * (1 - jaro);
     }
+
+    /// <summary>Winkler's boost threshold.</summary>
+    public const double BoostThreshold = 0.7;
+
+    private static int[] CodePoints(string s) => s.EnumerateRunes().Select(r => r.Value).ToArray();
 }

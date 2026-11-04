@@ -1,4 +1,5 @@
 using Aml.Core.Shared;
+using Aml.Core.Subjects;
 
 namespace Aml.Core.Identity;
 
@@ -10,7 +11,8 @@ public sealed record ShadowScore(string ModelVersion, double TotalWeight, IReadO
 /// <summary>
 /// Fellegi-Sunter match weight, computed in shadow for Gate D calibration (ADR-0019). It never changes a decision, is not
 /// part of the identity result or the explanation, and is never shown as a probability (ADR-0018).
-/// u follows the support-strength table; m is one placeholder agreement rate for every group.
+/// u follows the support-strength table; m is one placeholder agreement rate for every group. Agreeing with any one of
+/// k Profile DOBs is k times as likely by chance, so the DOB u is multiplied by k.
 /// ponytail: m and u are uncalibrated; estimate them (e.g. EM over a representative labelled set) before any use at Gate D.
 /// </summary>
 public static class FellegiSunter
@@ -35,14 +37,15 @@ public static class FellegiSunter
         [EvidenceGroup.Document] = 1e-7,
     };
 
-    public static ShadowScore Score(IReadOnlyDictionary<EvidenceGroup, Evidence> evidence)
+    public static ShadowScore Score(IReadOnlyDictionary<EvidenceGroup, Evidence> evidence, SourceProfile? profile = null)
     {
+        var dobOptions = profile is null ? 1 : Math.Max(1, EvidenceBuilder.ProfileDatesOfBirth(profile).Count);
         var groups = new List<GroupWeight>();
         foreach (var e in evidence.Values)
         {
             if (e.Direction == Direction.Support)
             {
-                var u = U(e.Strength);
+                var u = U(e.Strength) * (e.Group == EvidenceGroup.DateOfBirth ? dobOptions : 1);
                 groups.Add(new(e.Group, M, u, Math.Log2(M / u)));
             }
             else if (e.Direction == Direction.Conflict && ConflictU.TryGetValue(e.Group, out var cu))

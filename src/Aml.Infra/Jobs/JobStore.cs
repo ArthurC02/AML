@@ -10,7 +10,7 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
 {
     private const int SqliteConstraintUnique = 2067;
 
-    private sealed record ClaimedRow(string JobId, long AttemptCount, string Payload);
+    private sealed record ClaimedRow(string JobId, string JobType, long AttemptCount, string Payload);
 
     private sealed record ItemRow(string JobId, string IdempotencyKey, string Status, long AttemptCount,
         string? CaseId, long? AnalysisRevision, string? ErrorCode, string? CompletedAt);
@@ -42,28 +42,35 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
                 new { jobId, leaseOwner, leaseExpiry = Time(leaseExpiry) }, cancellationToken: ct)).ConfigureAwait(false);
             if (won != 1) continue;
             var row = await c.QuerySingleAsync<ClaimedRow>(new CommandDefinition(db.Sql["Batch.GetClaimed"], new { jobId }, cancellationToken: ct)).ConfigureAwait(false);
-            claimed.Add(new ClaimedJob(row.JobId, (int)row.AttemptCount, row.Payload));
+            claimed.Add(new ClaimedJob(row.JobId, row.JobType, (int)row.AttemptCount, row.Payload));
         }
         return claimed;
     }
 
-    public async Task CompleteAsync(string jobId, string leaseOwner, string caseId, int revision, DateTimeOffset now, CancellationToken ct)
+    public async Task<bool> RenewLeaseAsync(string jobId, string leaseOwner, DateTimeOffset leaseExpiry, CancellationToken ct)
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
-        await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.Complete"],
-            new { jobId, leaseOwner, caseId, revision, now = Time(now) }, cancellationToken: ct)).ConfigureAwait(false);
+        return await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.RenewLease"],
+            new { jobId, leaseOwner, leaseExpiry = Time(leaseExpiry) }, cancellationToken: ct)).ConfigureAwait(false) == 1;
     }
 
-    public async Task FailAsync(string jobId, string leaseOwner, bool deadLetter, string errorCode, DateTimeOffset nextAttemptAt, DateTimeOffset now, CancellationToken ct)
+    public async Task<bool> CompleteAsync(string jobId, string leaseOwner, string caseId, int revision, DateTimeOffset now, CancellationToken ct)
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
-        await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.Fail"], new
+        return await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.Complete"],
+            new { jobId, leaseOwner, caseId, revision, now = Time(now) }, cancellationToken: ct)).ConfigureAwait(false) == 1;
+    }
+
+    public async Task<bool> FailAsync(string jobId, string leaseOwner, bool deadLetter, string errorCode, DateTimeOffset nextAttemptAt, DateTimeOffset now, CancellationToken ct)
+    {
+        await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
+        return await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.Fail"], new
         {
             jobId, leaseOwner, errorCode,
             status = Enum(deadLetter ? JobStatus.DeadLetter : JobStatus.Pending),
             nextAttemptAt = Time(nextAttemptAt),
             completedAt = deadLetter ? Time(now) : null,
-        }, cancellationToken: ct)).ConfigureAwait(false);
+        }, cancellationToken: ct)).ConfigureAwait(false) == 1;
     }
 
     public async Task<int> ReclaimExpiredAsync(int maxAttempts, DateTimeOffset now, CancellationToken ct)

@@ -9,13 +9,17 @@ public interface ICaseStore
 
     Task<CaseRecord?> GetAsync(string caseId, CancellationToken ct);
 
-    /// <summary>Stores the revision and moves the Case to it atomically. False when a newer revision is already current.</summary>
-    Task<bool> AcceptAnalysisAsync(AnalysisRecord analysis, CaseStatus status, CancellationToken ct);
+    /// <summary>
+    /// Stores the revision with the input files (name → content) it was run on and moves the Case to it, all in one transaction.
+    /// False when the revision number is already taken (nothing is stored) or a newer revision is already current (this one stays
+    /// stored as history). Revisions are numbered current + 1, so the second case needs a gap and does not occur in practice.
+    /// </summary>
+    Task<bool> AcceptAnalysisAsync(AnalysisRecord analysis, CaseStatus status, IReadOnlyDictionary<string, string>? files, CancellationToken ct);
 
     Task<AnalysisRecord?> GetAnalysisAsync(string caseId, int revision, CancellationToken ct);
 
-    /// <summary>The input files (name → content) an analysis revision was run on.</summary>
-    Task SaveInputAsync(string caseId, int revision, IReadOnlyDictionary<string, string> files, DateTimeOffset now, CancellationToken ct);
+    /// <summary>The latest stored input of one Case, or null when it has none.</summary>
+    Task<IReadOnlyDictionary<string, string>?> LatestInputAsync(string caseId, CancellationToken ct);
 
     /// <summary>Each Case's latest stored input.</summary>
     Task<IReadOnlyList<(string CaseId, int Revision, IReadOnlyDictionary<string, string> Files)>> LatestInputsAsync(CancellationToken ct);

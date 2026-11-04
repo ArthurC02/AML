@@ -18,21 +18,30 @@ public readonly record struct PartialDate(int Year, int? Month = null, int? Day 
 {
     public DatePrecision Precision => Day is not null ? DatePrecision.Day : Month is not null ? DatePrecision.Month : DatePrecision.Year;
 
-    /// <summary>Parses 1973, 1972/4, 1990-07, 1992/4/10.</summary>
+    /// <summary>
+    /// Parses 1973, 1972/4, 1990-07, 1992/4/10 and 民國62年6月12日; a trailing time is dropped. A 00 month or day lowers the
+    /// precision. The year must lie between 1800 and the current year and the day within its month; anything else is null,
+    /// so the caller records it as UNPARSEABLE. A two-digit year is never read as a ROC year unless 民國 says so.
+    /// </summary>
     public static PartialDate? Parse(string? s)
     {
         if (string.IsNullOrWhiteSpace(s)) return null;
-        var parts = s.Trim().Split('/', '-');
+        var t = s.Trim().Split([' ', '	', 'T'], 2)[0];
+        var roc = t.StartsWith("民國", StringComparison.Ordinal);
+        var parts = roc ? t[2..].TrimEnd('日').Split(['年', '月'], StringSplitOptions.RemoveEmptyEntries) : t.Split('/', '-');
+        if (parts.Length is 0 or > 3) return null;
         var n = new int[parts.Length];
         for (var i = 0; i < parts.Length; i++)
             if (!int.TryParse(parts[i], NumberStyles.None, CultureInfo.InvariantCulture, out n[i])) return null;
-        return n.Length switch
-        {
-            1 when n[0] > 1800 => new PartialDate(n[0]),
-            2 => new PartialDate(n[0], n[1]),
-            3 => new PartialDate(n[0], n[1], n[2]),
-            _ => null,
-        };
+
+        var year = roc ? n[0] + 1911 : n[0];
+        if (year < 1800 || year > DateTime.UtcNow.Year) return null;
+        int? month = n.Length > 1 ? n[1] : null;
+        int? day = n.Length > 2 ? n[2] : null;
+        if (month == 0) return day is null or 0 ? new PartialDate(year) : null;
+        if (month > 12) return null;
+        if (day is null or 0) return new PartialDate(year, month);
+        return day <= DateTime.DaysInMonth(year, month!.Value) ? new PartialDate(year, month, day) : null;
     }
 
     /// <summary>True when both dates agree at the coarser of the two precisions.</summary>

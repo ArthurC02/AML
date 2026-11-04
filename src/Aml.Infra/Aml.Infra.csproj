@@ -6,6 +6,7 @@
     <PackageReference Include="Dapper" />
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="dbup-sqlite" />
+    <PackageReference Include="AngleSharp" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Persistence\Sql\*" LogicalName="Sql.%(Filename)%(Extension)" />

@@ -32,6 +32,8 @@ When any of the PEP, blacklist or adverse-news flags has a value (`NO` counts as
 - blacklist flag `YES` → SANCTION, OFFICIAL_WANTED_LIST or OTHER_OFFICIAL_LIST, decided from approved source fields; if they do not decide it, the type is UNKNOWN and goes to review;
 - a flag that contradicts the category wins; the conflict is recorded in the explanation, and the flag is never overwritten.
 
+Built (2026-11-04): the flags are read per candidate row (`Normalize.Flag`) and merged per Profile (YES, then UNPARSEABLE, then NO). Column order is assumed until the bank confirms it: … 理由, Is RCA?, Name Property, PEP, 黑名單, 負面新聞; the samples stop at Is RCA?, so their flags are MISSING. NO gives a NOT_HIT condition, UNPARSEABLE an UNKNOWN one with `FLAG_UNPARSEABLE`, a 黑名單 type the source fields cannot decide `BLACKLIST_TYPE_UNDECIDED`, and a category the flags do not raise `FLAG_CATEGORY_CONFLICT`.
+
 ### Category mapping
 
 Only when all three flags are `MISSING`:

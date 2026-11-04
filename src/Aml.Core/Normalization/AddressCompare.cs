@@ -18,6 +18,9 @@ public static partial class AddressCompare
 
     private static readonly string[] KeyParts = ["city", "district", "road", "section", "lane", "alley", "number", "floor"];
 
+    // ponytail: placeholder threshold pending calibration (open question); it labels the detail only, never support.
+    public const double JaccardThreshold = 0.5;
+
     /// <summary>Jaccard over tokens: Latin words, and character bigrams for CJK text.</summary>
     public static double Jaccard(string a, string b)
     {

@@ -29,7 +29,7 @@ public static class CaseAnalyzer
             {
                 var profile = input.Profiles[g.Key];
                 var news = input.NewsByProfileId.GetValueOrDefault(g.Key);
-                var conditions = SourceConditions.Determine(profile, g.Any(r => r.IsRca), news?.Text);
+                var conditions = SourceConditions.Determine(profile, g.Any(r => r.IsRca), news?.Text, ListFlags.Merge(g.Select(r => r.Flags ?? ListFlags.None)));
                 // One identity comparison per pair, reused by every condition (PEP, Sanction, adverse media).
                 var identity = IdentityDecisionPolicy.Decide(input.Subject, profile, news);
                 var pair = AssessmentPolicy.Assess(conditions, identity);

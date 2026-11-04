@@ -68,7 +68,8 @@ public sealed record SourceProfile(
     IReadOnlyList<string>? AddressLines = null,
     PartialDate? DateOfDeath = null,
     string RecordType = "Person",
-    IReadOnlyList<OtherIdentifier>? OtherIdentifiers = null);
+    IReadOnlyList<OtherIdentifier>? OtherIdentifiers = null,
+    IReadOnlyList<string>? AllegationCountries = null);
 
 /// <summary>A source the Profile cites. Dates are ISO strings as far as the source states them.</summary>
 public sealed record SourceReference(string Id, string Name, string? Url, string? PublishedOn, string? RetrievedOn);
@@ -76,8 +77,28 @@ public sealed record SourceReference(string Id, string Name, string? Url, string
 /// <summary>A news item attached to a Profile in the input.</summary>
 public sealed record NewsItem(string ProfileId, string? DocumentId, string Title, string? Publisher, PartialDate? PublishedOn, string Text);
 
+/// <summary>A source flag exactly as read (extraction-and-normalization.md#source-flags). NO is a value, not unknown.</summary>
+public enum FlagValue { Missing, Yes, No, Unparseable }
+
+public sealed record ListFlags(FlagValue Pep, FlagValue Blacklist, FlagValue AdverseNews)
+{
+    public static readonly ListFlags None = new(FlagValue.Missing, FlagValue.Missing, FlagValue.Missing);
+
+    public bool AllMissing => Pep == FlagValue.Missing && Blacklist == FlagValue.Missing && AdverseNews == FlagValue.Missing;
+
+    /// <summary>Several rows of one Profile: YES wins, then UNPARSEABLE, then NO.</summary>
+    public static ListFlags Merge(IEnumerable<ListFlags> rows)
+    {
+        var list = rows.ToList();
+        static FlagValue One(IEnumerable<FlagValue> v) =>
+            v.Contains(FlagValue.Yes) ? FlagValue.Yes : v.Contains(FlagValue.Unparseable) ? FlagValue.Unparseable
+            : v.Contains(FlagValue.No) ? FlagValue.No : FlagValue.Missing;
+        return new(One(list.Select(f => f.Pep)), One(list.Select(f => f.Blacklist)), One(list.Select(f => f.AdverseNews)));
+    }
+}
+
 /// <summary>One row of the candidate table. Legacy columns are ImportedDecision only, never evidence.</summary>
-public sealed record CandidateRow(string MatchedName, string ProfileId, string? LegacyReason, bool IsRca);
+public sealed record CandidateRow(string MatchedName, string ProfileId, string? LegacyReason, bool IsRca, ListFlags? Flags = null);
 
 public sealed record ImportedDecision(string Field, string Value, bool IndependentlyVerified = false);
 
@@ -86,4 +107,5 @@ public sealed record CaseInput(
     IReadOnlyList<CandidateRow> Rows,
     IReadOnlyDictionary<string, SourceProfile> Profiles,
     IReadOnlyDictionary<string, NewsItem> NewsByProfileId,
-    IReadOnlyList<ImportedDecision> LegacyDecisions);
+    IReadOnlyList<ImportedDecision> LegacyDecisions,
+    IReadOnlyDictionary<string, string>? SourceHashes = null);

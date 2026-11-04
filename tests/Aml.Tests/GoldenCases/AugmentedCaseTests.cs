@@ -20,13 +20,14 @@ public class AugmentedCaseTests
 
     /// <summary>Copies the base case, applies each edit (the text must occur exactly once) and analyzes the result.</summary>
     private static (CaseInput Input, CaseAnalysis Analysis) Augment(string gc, (string File, string Find, string Replace)[] edits,
-        Func<ScreenedSubject, ScreenedSubject>? subject = null, IReadOnlyDictionary<string, string>? addFiles = null)
+        Func<ScreenedSubject, ScreenedSubject>? subject = null, IReadOnlyDictionary<string, string>? addFiles = null, string[]? removeFiles = null)
     {
         var dir = Directory.CreateTempSubdirectory("aml-aug-");
         try
         {
             foreach (var f in Directory.GetFiles(GoldenCaseTests.Folder(gc)))
                 File.Copy(f, Path.Combine(dir.FullName, Path.GetFileName(f)));
+            foreach (var name in removeFiles ?? []) File.Delete(Path.Combine(dir.FullName, name));
             foreach (var (name, content) in addFiles ?? new Dictionary<string, string>())
                 File.WriteAllText(Path.Combine(dir.FullName, name), content);
             foreach (var (file, find, replace) in edits)
@@ -145,10 +146,10 @@ public class AugmentedCaseTests
         var (input, _) = Augment("GC-11", [], addFiles: new Dictionary<string, string>
         {
             ["截圖.png"] = "not really an image",
-            ["名單資料_90000099.txt"] = "<html><body>page source</body></html>",
+            ["附件.txt"] = "<html><body>page source</body></html>",
         });
         Assert.Contains("UNSUPPORTED_ATTACHMENT:截圖.png", input.Subject.Findings);
-        Assert.Contains("UNSUPPORTED_ATTACHMENT:名單資料_90000099.txt", input.Subject.Findings); // decided by content, not name
+        Assert.Contains("UNSUPPORTED_ATTACHMENT:附件.txt", input.Subject.Findings);
     }
 
     private const string Case11LastRow = "2\t钟仁声\t100\tDJ ALT\t90000011\t未符合\t符合\t確認後符合\t不是";
@@ -483,5 +484,163 @@ public class AugmentedCaseTests
         var (input, _) = Augment("GC-03", [("客戶-聯絡資料.txt", "國家\nTaiwan", "國家\nViet Nam")]);
         Assert.Contains("FIELD_CONFLICT:永久地址", input.Subject.Findings);
         Assert.Equal("VN", Assert.Single(input.Subject.Addresses).Country); // both facts kept: the field says VN, the text stays Taiwanese
+    }
+
+    // Source flags. Column order assumed (… Is RCA?, Name Property, PEP, 黑名單, 負面新聞); the samples stop at Is RCA?.
+
+    private const string Case03Row1 = "1\tNguyễn Thị Hồng Nhung\t100\tDJ PRIMARY\t90000031\t未符合\t符合\t確認後符合\t不是";
+    private const string Case03Row2 = "2\tNguyen Thi Hong Nhung\t100\tDJ ALT\t90000031\t未符合\t符合\t確認後符合\t不是";
+
+    [Fact]
+    public void AUG_03_11_pep_flag_wins_over_the_category_and_records_the_conflict()
+    {
+        var (_, a) = Augment("GC-03", [("案件資訊.txt", Case03Row1, Case03Row1 + "\t\t是\t否\t否")]);
+        var hit = Assert.Single(a.Hits);
+        var pep = hit.Conditions.Single(c => c.Type == ListType.Pep);
+        Assert.Equal((ConditionStatus.Hit, ConditionBasis.Flag), (pep.Status, pep.Basis));
+        Assert.Contains(SourceConditions.FlagCategoryConflict, pep.ReasonCodes); // the category said Other Official List
+        Assert.Contains(hit.Conditions, c => c.Status == ConditionStatus.NotHit); // NO is a value: 黑名單 and 負面新聞 NOT_HIT
+        Assert.Equal(Recommendation.OnList, hit.Disposition.Recommendation); // ① on the flag
+    }
+
+    [Fact]
+    public void AUG_03_12_all_flags_no_is_not_applicable()
+    {
+        var (_, a) = Augment("GC-03",
+            [("案件資訊.txt", Case03Row1, Case03Row1 + "\t\t否\t否\t否"), ("案件資訊.txt", Case03Row2, Case03Row2 + "\t\t否\t否\t否")]);
+        var hit = Assert.Single(a.Hits);
+        Assert.All(hit.Conditions, c => Assert.Equal(ConditionStatus.NotHit, c.Status));
+        Assert.Equal(ScreeningAssessment.NotApplicable, hit.PairResult);
+    }
+
+    [Fact]
+    public void AUG_03_13_unparseable_flag_is_unknown()
+    {
+        var (_, a) = Augment("GC-03", [("案件資訊.txt", Case03Row1, Case03Row1 + "\t\t待確認\t否\t否")]);
+        var pep = Assert.Single(a.Hits).Conditions.Single(c => c.Type == ListType.Pep);
+        Assert.Equal((ConditionStatus.Unknown, true), (pep.Status, pep.ReasonCodes.Contains(SourceConditions.FlagUnparseable)));
+    }
+
+    [Fact]
+    public void AUG_03_14_blacklist_flag_takes_its_type_from_the_official_list_entry()
+    {
+        var (_, a) = Augment("GC-03", [("案件資訊.txt", Case03Row1, Case03Row1 + "\t\t否\t是\t否")]);
+        var listed = Assert.Single(a.Hits).Conditions.Single(c => c.Status == ConditionStatus.Hit);
+        Assert.Equal((ListType.OfficialWantedList, LegalStage.Wanted, ConditionBasis.Flag), (listed.Type, listed.LegalStage, listed.Basis));
+    }
+
+    [Fact]
+    public void AUG_02_13_adverse_news_on_non_predicate_conduct_is_unrelated_and_set_aside()
+    {
+        var (_, a) = Augment("GC-02",
+        [
+            (Profile21, "1\tSpecial Interest Person (SIP)\tFraud", "1\tAdverse Media\t"),
+            (Profile21, "關鍵字:\tFraud; Tax Evasion\n", ""),
+            (News21, "貿易商虛開發票逃漏稅", "貿易商負責人酒駕"),
+            (News21, "負責人涉詐欺", "移送法辦"),
+            (News21, "一家貿易公司負責人林美玲涉嫌以虛設交易詐取貨款，並開立不實發票逃漏稅捐，檢方已分案偵辦", "林美玲酒後駕車肇事，警方依公共危險罪移送"),
+        ]);
+        var hit = Hit21(a);
+        var condition = Assert.Single(hit.Conditions);
+        Assert.Equal((ListType.AdverseMedia, AmlRelevance.Unrelated), (condition.Type, condition.AmlRelevance));
+        Assert.Equal((Recommendation.NotOnList, DispositionPolicy.AdverseUnrelated), (hit.Disposition.Recommendation, hit.Disposition.ReasonCodes[0]));
+        Assert.Equal(IdentityDecision.Review, hit.Identity.Decision); // ② says nothing about identity
+    }
+
+    [Fact]
+    public void AUG_02_14_fraud_is_never_unrelated()
+    {
+        var (_, a) = Augment("GC-02", [(News21, "檢方已分案偵辦", "林美玲另涉酒駕")]);
+        Assert.Equal(AmlRelevance.Uncertain, Assert.Single(Hit21(a).Conditions).AmlRelevance); // FRAUD category stays a predicate
+    }
+
+    [Fact]
+    public void AUG_01_04_year_only_role_date_downgrades_the_validated_conflict_to_review()
+    {
+        var (_, a) = Augment("GC-01", [("名單資料_90000001.txt", "1\t董事長\t宏遠投資股份有限公司\t1990/7\t1995/12", "1\t董事長\t宏遠投資股份有限公司\t1990\t1995/12")]);
+        var chairman = Identity(a, "DJ:90000001");
+        Assert.Equal((ReasonCodes.ImpossibleAgeAtReportedEvent, IdentityDecision.Review), (chairman.HardConflict, chairman.Decision));
+        Assert.Equal([ReasonCodes.ImpossibleAgeAtReportedEvent, ReasonCodes.SourceQualityDowngrade], chairman.ReasonCodes);
+        Assert.Equal(IdentityDecision.NoMatch, Identity(a, "DJ:90000002").Decision); // the other Profile is unaffected
+    }
+
+    [Fact]
+    public void AUG_12_05_the_2026_10_14_ruling_is_flagged_without_a_recommendation()
+    {
+        var (_, a) = Augment("GC-12", []);
+        var d = Assert.Single(a.Hits).Disposition;
+        Assert.Null(d.Recommendation); // GC-12 expected: recommendation NONE
+        Assert.Contains(DispositionPolicy.Ruling20261014MayApply, d.ReasonCodes);
+    }
+
+    // HTML input: the same GC-03 facts as HTML pages give the same result as the .txt export.
+
+    private const string Customer03Html = """
+        <html><body><h2>基本資料</h2><table>
+        <tr><th>客戶號碼</th><td>AC12345678</td></tr>
+        <tr><th>性別</th><td><select><option>男</option><option selected>女</option></select></td></tr>
+        <tr><th>客戶名稱</th><td><input type="text" value="NGUYEN THI HONG NHUNG"></td></tr>
+        <tr><th>出生日期</th><td>1992/4/10</td></tr>
+        <tr><th>證件種類</th><td>居留證</td></tr>
+        <tr><th>國籍 1</th><td>Viet Nam</td></tr>
+        <tr><th>本地名稱</th><td>-</td></tr>
+        <tr><th>證件號碼</th><td>AC12345678</td></tr>
+        <tr><th>國籍 2</th><td>-</td></tr>
+        </table><h2>詳細資料</h2><table>
+        <tr><th>客戶類型</th><td>個人</td></tr>
+        <tr><th>職業</th><td>製造業(3)</td></tr>
+        </table></body></html>
+        """;
+
+    private const string Profile03Html = """
+        <html><body><table>
+        <tr><th>Profile_ID</th><td>90000031</td></tr>
+        <tr><th>記錄類型</th><td>Person</td></tr>
+        <tr><th>性別</th><td>Female</td></tr>
+        <tr><th>已故?</th><td>False</td></tr>
+        <tr><th>狀態</th><td>Active</td></tr>
+        </table>
+        <h3>主要名稱</h3><table><tr><th>編號</th><th>名字</th><th>姓</th></tr><tr><td>1</td><td>Thị Hồng Nhung</td><td>Nguyễn</td></tr></table>
+        <h3>拼寫變化</h3><table><tr><th>編號</th><th>名字</th><th>姓</th></tr><tr><td>1</td><td>Thi Hong Nhung</td><td>Nguyen</td></tr></table>
+        <h3>國家資料</h3><table><tr><th>編號</th><th>類型</th><th>國家</th></tr>
+          <tr><td>1</td><td>Citizenship</td><td>Viet Nam</td></tr><tr><td>2</td><td>Resident of</td><td>Viet Nam</td></tr></table>
+        <h3>地址</h3><table><tr><th>編號</th><th>地址</th><th>城市</th><th>國家</th></tr>
+          <tr><td>1</td><td>Thôn Example, Xã An Hòa</td><td>Tỉnh Example</td><td>Viet Nam</td></tr></table>
+        <h3>日期</h3><table><tr><th>編號</th><th>類型</th><th>日期</th></tr><tr><td>1</td><td>Date of Birth</td><td>1992</td></tr></table>
+        <h3>類別</h3><table><tr><th>編號</th><th>描述1</th><th>描述2</th></tr><tr><td>1</td><td>Other Official List</td><td></td></tr></table>
+        <h3>名單資訊</h3><table><tr><th>機關</th><th>名單</th><th>狀態</th><th>決定日期</th><th>罪名</th></tr>
+          <tr><td>Example Provincial Police</td><td>Wanted Persons List</td><td>Active</td><td>2024/6/30</td><td>Fraud</td></tr></table>
+        </body></html>
+        """;
+
+    [Fact]
+    public void AUG_03_15_html_pages_give_the_same_result_as_the_export()
+    {
+        var (input, a) = Augment("GC-03", [], removeFiles: ["客戶-背景資料.txt", "名單資料_90000031.txt"],
+            addFiles: new Dictionary<string, string> { ["客戶-背景資料.html"] = Customer03Html, ["名單資料_90000031.html"] = Profile03Html });
+        Assert.Equal(Gender.Female, input.Subject.Gender); // the selected option, not the first
+        var hit = Assert.Single(a.Hits);
+        Assert.Equal((ListType.OfficialWantedList, LegalStage.Wanted), (Assert.Single(hit.Conditions).Type, hit.Conditions[0].LegalStage));
+        Assert.Equal((4, IdentityDecision.ProbableMatch), (hit.Identity.Stage3Row, hit.Identity.Decision));
+        Assert.Contains("名單資料_90000031.html", input.SourceHashes!.Keys); // the raw page is hashed
+        Assert.DoesNotContain(input.Subject.Findings, f => f.StartsWith("UNSUPPORTED_ATTACHMENT", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AUG_03_16_html_case_table_reads_flag_checkboxes()
+    {
+        const string html = """
+            <html><body><table>
+            <tr><th>編號</th><th>被偵測到的名字</th><th>資料類別</th><th>關聯方參考號碼</th><th>資料來源</th><th>是否符合名單？</th></tr>
+            <tr><td>1</td><td>NGUYEN THI HONG NHUNG</td><td>客戶</td><td></td><td>客戶名稱</td><td>符合</td></tr>
+            </table><h3>疑似符合的名單資料</h3><table>
+            <tr><th>編號</th><th>姓名/名稱</th><th>相似度分數</th><th>SDN禁制類別</th><th>名單資料編號</th><th>是否符合名單？</th><th>理由</th><th>Is RCA?</th><th>Name Property</th><th>PEP</th><th>黑名單</th><th>負面新聞</th></tr>
+            <tr><td>1</td><td>Nguyen Thi Hong Nhung</td><td>100</td><td>DJ ALT</td><td>90000031</td><td>未符合</td><td>符合</td><td>確認後符合</td><td><input type="checkbox"></td><td></td>
+              <td><input type="checkbox" checked></td><td><input type="checkbox"></td><td><input type="checkbox"></td></tr>
+            </table></body></html>
+            """;
+        var (input, a) = Augment("GC-03", [], removeFiles: ["案件資訊.txt"], addFiles: new Dictionary<string, string> { ["案件資訊.html"] = html });
+        Assert.False(Assert.Single(input.Rows).IsRca); // unchecked Is RCA? reads 否
+        Assert.Contains(Assert.Single(a.Hits).Conditions, c => c.Type == ListType.Pep && c.Status == ConditionStatus.Hit && c.Basis == ConditionBasis.Flag);
     }
 }

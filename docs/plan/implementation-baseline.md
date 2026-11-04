@@ -105,7 +105,7 @@ Versions as of 2026-11-02.
 | Infra | Dapper | 2.1.89 | data access |
 | Infra | Microsoft.Data.Sqlite | 10.0.14 | SQLite driver |
 | Infra | dbup-sqlite | 6.0.4 | schema scripts |
-| Infra | AngleSharp | 1.9.0 | HTML parsing |
+| Infra | AngleSharp | 1.9.0 | HTML parsing (`Infra/Html/HtmlExport`) |
 | Api | Microsoft.AspNetCore.OpenApi | 10.0.14 | OpenAPI document |
 | Api | Swashbuckle.AspNetCore.SwaggerUI | 10.3.1 | Swagger UI only |
 | Api | OpenTelemetry.Extensions.Hosting | 1.20.1 | telemetry host |

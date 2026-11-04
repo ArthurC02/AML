@@ -1,4 +1,5 @@
 using Aml.Core.Identity;
+using Aml.Core.Shared;
 using Aml.Core.Subjects;
 
 namespace Aml.Core.Screening;
@@ -17,6 +18,7 @@ public static class DispositionPolicy
     public const string AdverseUnrelated = "ART22_ADVERSE_UNRELATED";
     public const string IdentityNoMatch = "ART22_IDENTITY_NO_MATCH";
     public const string NotDetermined = "ART22_NOT_DETERMINED";
+    public const string Ruling20261014MayApply = "ART22_RULING_20261014_MAY_APPLY";
 
     public const string ConfirmNationality = "CONFIRM_NATIONALITY";
     public const string EmploymentRelevance = "EMPLOYMENT_RELEVANCE";
@@ -51,6 +53,10 @@ public static class DispositionPolicy
 
         if (reasons.Count > 0 && remaining.All(c => c.Status == ConditionStatus.NotHit))
             return new(Recommendation.NotOnList, reasons, pending);
+
+        // The 2026-10-14 ruling (no bilateral direct identifier and likelihood below 65% → not on list) is flagged, not
+        // applied: there is no likelihood, and GC-12 (row 6, no direct identifier) keeps no recommendation (open question).
+        if (identity.Stage3Row == 6 && identity.ReasonCodes.Contains(ReasonCodes.NoBilateralDirectIdentifier)) reasons.Add(Ruling20261014MayApply);
 
         // ③: nothing resolves the pair.
         return new(null, [.. reasons, NotDetermined], pending);

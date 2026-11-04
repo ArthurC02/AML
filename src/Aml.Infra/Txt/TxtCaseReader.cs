@@ -1,8 +1,10 @@
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Aml.Core.Normalization;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
+using Aml.Infra.Html;
 
 namespace Aml.Infra.Txt;
 
@@ -31,7 +33,39 @@ public static partial class TxtCaseReader
     public static bool IsInputError(Exception e) =>
         e is InvalidOperationException or FileNotFoundException or IndexOutOfRangeException or KeyNotFoundException;
 
+    /// <summary>
+    /// Reads a case folder. HTML pages (by extension, or a .txt holding page source) are converted to the export layout in
+    /// a private copy first; the source folder is never written. Every file's SHA-256 is kept with the input.
+    /// </summary>
     public static CaseInput Read(string folder)
+    {
+        var hashes = Directory.GetFiles(folder).ToDictionary(f => Path.GetFileName(f), f => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(f))));
+        var markup = Directory.GetFiles(folder).Where(f => KnownFile().IsMatch(ExportName(f)) && (IsHtmlName(f) || LooksLikeMarkup(f))).ToList();
+        if (markup.Count == 0) return ReadExport(folder) with { SourceHashes = hashes };
+
+        var copy = Directory.CreateTempSubdirectory("aml-html-");
+        try
+        {
+            foreach (var f in Directory.GetFiles(folder).Except(markup)) File.Copy(f, Path.Combine(copy.FullName, Path.GetFileName(f)));
+            foreach (var f in markup)
+            {
+                var name = ExportName(f);
+                File.WriteAllText(Path.Combine(copy.FullName, name), HtmlExport.ToExportText(File.ReadAllText(f), HtmlExport.KindOf(Path.GetFileNameWithoutExtension(name))));
+            }
+            return ReadExport(copy.FullName) with { SourceHashes = hashes };
+        }
+        finally
+        {
+            copy.Delete(recursive: true);
+        }
+    }
+
+    private static bool IsHtmlName(string path) => Path.GetExtension(path) is ".html" or ".htm";
+
+    // 名單資料_1.html → 名單資料_1.txt; a .txt keeps its name.
+    private static string ExportName(string path) => IsHtmlName(path) ? Path.GetFileNameWithoutExtension(path) + ".txt" : Path.GetFileName(path);
+
+    private static CaseInput ReadExport(string folder)
     {
         var caseFile = Directory.GetFiles(folder, "案件資訊*.txt").Single();
         var (subjectRow, rows, records, caseFindings) = ReadCaseTable(File.ReadAllLines(caseFile));
@@ -125,7 +159,10 @@ public static partial class TxtCaseReader
         {
             var c = line.Split('\t');
             if (c.Length < 9 || !int.TryParse(c[0], out _)) continue;
-            rows.Add(new CandidateRow(c[1].Trim(), c[4].Trim(), Normalize.NullIfPlaceholder(c[7]), c[8].Trim() == "是"));
+            // ponytail: column order assumed until the bank confirms it: … 理由, Is RCA?, Name Property, PEP, 黑名單, 負面新聞.
+            // The samples stop at Is RCA?, so their flags read MISSING and the category mapping decides.
+            var flags = new ListFlags(Normalize.Flag(c.ElementAtOrDefault(10)), Normalize.Flag(c.ElementAtOrDefault(11)), Normalize.Flag(c.ElementAtOrDefault(12)));
+            rows.Add(new CandidateRow(c[1].Trim(), c[4].Trim(), Normalize.NullIfPlaceholder(c[7]), Normalize.Flag(c[8]) == FlagValue.Yes, flags));
         }
         var (records, findings) = recordStart < 0 ? (new List<string>(), new List<string>()) : ReadProcessingRecord(lines[(recordStart + 1)..]);
         return (subject, rows, records, findings);
@@ -355,6 +392,7 @@ public static partial class TxtCaseReader
             DateOfDeath: death is { Year: > 0 } ? death : null,
             RecordType: scalars.GetValueOrDefault("記錄類型", "Person"),
             // ponytail: the 其他識別碼 table layout (編號 類型 號碼) is assumed; no sample has one yet.
+            AllegationCountries: countries.Where(r => r[1] == "Country of Reported Allegation").Select(r => Normalize.Country(r[2])).ToList(),
             OtherIdentifiers: T("其他識別碼").Where(r => Numbered(r) && r.Length >= 3).Select(r => new OtherIdentifier(r[1], r[2])).ToList());
     }
 

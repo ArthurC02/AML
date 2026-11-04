@@ -560,6 +560,7 @@
         "type": "Project",
         "dependencies": {
           "Aml.Core": "[1.0.0, )",
+          "AngleSharp": "[1.9.0, )",
           "Dapper": "[2.1.89, )",
           "Microsoft.Data.Sqlite": "[10.0.14, )",
           "dbup-sqlite": "[6.0.4, )"
@@ -570,6 +571,12 @@
         "dependencies": {
           "Aml.Core": "[1.0.0, )"
         }
+      },
+      "AngleSharp": {
+        "type": "CentralTransitive",
+        "requested": "[1.9.0, )",
+        "resolved": "1.9.0",
+        "contentHash": "NOKbXBsj4gaudXjAmdfSPxgUmKNbxP0k87ZRN56N0FW3u2z8AT7sRnTEOWjKoNrPI1vq4slV7Ld2nBCOvu/v8w=="
       },
       "Dapper": {
         "type": "CentralTransitive",

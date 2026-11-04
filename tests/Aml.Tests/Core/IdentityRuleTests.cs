@@ -59,7 +59,7 @@ public class IdentityRuleTests
     {
         var (status, detail) = Normalize.CompareNames(["陳志明"], ["陳志銘"]);
         Assert.Equal(Partial, status);
-        Assert.Equal("NOT_IDENTICAL_AFTER_NORMALIZATION（Jaro-Winkler 0.82，Levenshtein 1）", detail);
+        Assert.Equal("NOT_IDENTICAL_AFTER_NORMALIZATION（Jaro-Winkler 0.82，Levenshtein 1，DISSIMILAR）", detail);
         Assert.Equal(3, Similarity.Levenshtein("KITTEN", "SITTING"));
         Assert.Equal(0.961, Similarity.JaroWinkler("MARTHA", "MARHTA"), 3);
     }

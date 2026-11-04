@@ -74,7 +74,8 @@ Only nationality values that map unambiguously to a country are used; another pa
 
 - Identity MATCH does not occur in Phase 1, so a PROBABLE_MATCH pair without ① or ② gets no recommendation.
 - Nationality is foreign only when every nationality-labelled value maps to a country code other than TW; an unmapped value counts as ambiguous.
-- `amlRelevance` stays UNCERTAIN in the pipeline until the conduct and jurisdiction are extracted from the source (GC-10), so ② is exercised only by unit tests for now.
+- `amlRelevance` (2026-11-04): UNRELATED is extracted only when the attached news states a jurisdiction (dateline or `Country of Reported Allegation`) and a conduct from a controlled non-predicate list (酒駕, 公共危險, 妨害名譽 …) with no predicate conduct and no SIP crime category or risk keyword. RELATED is left to the reviewer, since GC-02 and GC-11 keep UNCERTAIN. ② is exercised by AUG-02-13 until GC-10 arrives.
+- The 2026-10-14 ruling is flagged, not applied: a row 6 pair with `NO_BILATERAL_DIRECT_IDENTIFIER` and no other recommendation records `ART22_RULING_20261014_MAY_APPLY` (GC-12 keeps recommendation NONE).
 - Pending checks follow the verification-record triggers below, plus `CONFIRM_NATIONALITY` when ① needs nationality confirmed.
 - ① is exercised by [AUG-03-01 and AUG-03-02](../plan/golden-cases.md#augmented-cases) until GC-09 arrives.
 

@@ -198,7 +198,8 @@ Quality findings must remain visible to adjudication and explanations.
 - address country comes from the block's own country field, else from a Taiwan city or county in the text; a contradiction is `FIELD_CONFLICT:<address role>`;
 - attachment inventory: any file the reader does not read, or a `.txt` holding markup, is `UNSUPPORTED_ATTACHMENT:<file>`;
 - 客戶檢核處理紀錄 rows are ImportedDecision; a heading without a table, or text after it, is `LEGACY_RECORD_BOUNDARY_UNCLEAR`;
-- Profile `其他識別碼` table (layout assumed: 編號 類型 號碼) feeds OTHER_IDENTIFIER.
+- Profile `其他識別碼` table (layout assumed: 編號 類型 號碼) feeds OTHER_IDENTIFIER;
+- HTML pages (`.html`/`.htm`, or a `.txt` holding page source, under the export file names) are converted by `Infra/Html/HtmlExport` (AngleSharp) into the export layout in a private copy: checkboxes read 是/否, selects their selected option, inputs their value, colspan/rowspan repeat; the pages are assumed to use the export's labels until samples arrive. Every input file's SHA-256 is kept as `CaseInput.SourceHashes`.
 
 ## Source text preservation
 

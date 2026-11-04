@@ -178,7 +178,7 @@ public static class EvidenceBuilder
             return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, "SAME_ADDRESS_NO_PERIOD");
         var jaccard = subjectText.SelectMany(a => profileText, AddressCompare.Jaccard).Max();
         return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None,
-            string.Create(CultureInfo.InvariantCulture, $"SOFT_DIFFERENCE（Jaccard {jaccard:0.00}）"));
+            string.Create(CultureInfo.InvariantCulture, $"SOFT_DIFFERENCE（Jaccard {jaccard:0.00}，{(jaccard >= AddressCompare.JaccardThreshold ? "SIMILAR" : "DISSIMILAR")}）"));
     }
 
     private static void AddDateOfBirth(ScreenedSubject s, SourceProfile p, Action<EvidenceGroup, Direction, ComparisonStatus, Strength, string?> add)
@@ -290,6 +290,15 @@ public static class HardConflictGate
     // (Company Act art. 192, 216): adulthood was 20 before 2023-01-01 and 18 since.
     private static readonly string[] AdultOnlyTitles = ["董事", "監察人", "Director", "Supervisor"];
 
+    /// <summary>
+    /// Source-quality concerns that downgrade a validated hard conflict to REVIEW: a dated role without its organization,
+    /// a role dated to the year only, or Profile values the reader could not parse.
+    /// ponytail: criteria pending business approval; they only ever make the result more cautious.
+    /// </summary>
+    public static bool SourceQualityConcern(SourceProfile p) =>
+        p.Roles.Any(r => r.From is not null && (string.IsNullOrWhiteSpace(r.Organization) || r.From.Value.Precision == DatePrecision.Year))
+        || p.Findings.Any(f => f.StartsWith("UNPARSEABLE", StringComparison.Ordinal));
+
     public static string? Check(ScreenedSubject s, SourceProfile p)
     {
         if (s.DateOfBirth is not { } dob) return null;
@@ -331,8 +340,12 @@ public static class IdentityDecisionPolicy
         if (!p.RecordType.Equals("Person", StringComparison.OrdinalIgnoreCase))
             return new IdentityResult(e, null, null, IdentityDecision.Review, [ReasonCodes.NonPersonSubjectReview]);
         if (HardConflictGate.Check(s, p) is { } hard)
-            return new IdentityResult(e, hard, null,
-                HardConflictGate.Validated.Contains(hard) ? IdentityDecision.NoMatch : IdentityDecision.Review, [hard]);
+        {
+            if (!HardConflictGate.Validated.Contains(hard)) return new IdentityResult(e, hard, null, IdentityDecision.Review, [hard]);
+            return HardConflictGate.SourceQualityConcern(p)
+                ? new IdentityResult(e, hard, null, IdentityDecision.Review, [hard, ReasonCodes.SourceQualityDowngrade])
+                : new IdentityResult(e, hard, null, IdentityDecision.NoMatch, [hard]);
+        }
 
         var (row, decision, code) = Stage3(e);
         var reasons = new List<string> { code };

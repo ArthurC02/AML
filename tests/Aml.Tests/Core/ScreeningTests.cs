@@ -56,6 +56,16 @@ public class ScreeningTests
         Assert.Contains(AssessmentPolicy.SourceConditionUnknown, hit.PairReasonCodes);
     }
 
+    [Theory]
+    [InlineData("Politically Exposed Person", "Family Member", "PEP_FAMILY")]
+    [InlineData("Politically Exposed Person", "Close Associate", "PEP_CLOSE_ASSOCIATE")]
+    [InlineData("Politically Exposed Person", "Former PEP", "FORMER_PEP")]
+    [InlineData("Politically Exposed Person", null, null)]
+    [InlineData("Relative or Close Associate (RCA)", "Spouse", "PEP_FAMILY")]
+    [InlineData("Relative or Close Associate (RCA)", null, "RCA_UNCONFIRMED")]
+    public void Pep_subtype_comes_from_the_subcategory(string category, string? sub, string? expected) =>
+        Assert.Equal(expected, Assert.Single(SourceConditions.Determine(Profile(category, sub), false, null)).PepType);
+
     [Fact]
     public void Pep_and_rca_candidates_stay_in_review_even_after_a_hard_conflict()
     {

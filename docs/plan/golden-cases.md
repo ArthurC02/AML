@@ -212,7 +212,7 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-11-06 | GC-11 | Profile deceased, died 1970 | `DEATH_BEFORE_CUSTOMER_BIRTH` | fires, REVIEW, Case IN_REVIEW |
 | AUG-11-07 | GC-11 | Profile address = customer address in current form | structured address | `SAME_ADDRESS_NO_PERIOD`, never support, row 4 unchanged |
 | AUG-11-08 | GC-11 | full DOB plus the same company with overlapping periods | employment support | row 3 PROBABLE_MATCH |
-| AUG-11-09 | GC-11 | an image file and a `.txt` holding page source added | attachment inventory | `UNSUPPORTED_ATTACHMENT` for both; type decided by content |
+| AUG-11-09 | GC-11 | an image file and an unrecognised `.txt` holding page source | attachment inventory | `UNSUPPORTED_ATTACHMENT` for both |
 | AUG-11-10 | GC-11 | 客戶檢核處理紀錄 table appended to 案件資訊 | legacy processing record | ImportedDecision only; no extra candidate row |
 | AUG-11-11 | GC-11 | as AUG-11-10, free text after the table | record boundary | `LEGACY_RECORD_BOUNDARY_UNCLEAR` |
 | AUG-12-01 | GC-12 | subject's spouse named as on the Profile | relationship support | MEDIUM support, row 5 REVIEW |
@@ -244,3 +244,13 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-02-10 | GC-02 | news: indicted, a co-defendant sentenced | judgment attribution | INDICTED; the co-defendant's sentence is not the subject's |
 | AUG-02-11 | GC-02 | news states 林美玲（四十九歲） | Chinese-numeral stated age | `AGE_COMPATIBLE_AT_REPORT` |
 | AUG-02-12 | GC-02 | customer DOB written 1975年9月2日 | unparseable value | `UNPARSEABLE:出生日期`, DOB SUBJECT_MISSING |
+| AUG-03-11 | GC-03 | candidate row PEP flag 是, 黑名單 and 負面新聞 否 | flags first | PEP HIT by FLAG with `FLAG_CATEGORY_CONFLICT`; NO gives NOT_HIT; ① ON_LIST |
+| AUG-03-12 | GC-03 | every flag 否 | explicit NO | all NOT_HIT, NOT_APPLICABLE |
+| AUG-03-13 | GC-03 | PEP flag 待確認 | `FLAG_UNPARSEABLE` | UNKNOWN |
+| AUG-03-14 | GC-03 | 黑名單 flag 是 | blacklist type from source fields | OFFICIAL_WANTED_LIST, WANTED |
+| AUG-03-15 | GC-03 | customer and Profile supplied as HTML pages | HTML reader | same result as the export; raw pages hashed |
+| AUG-03-16 | GC-03 | case table as HTML with flag checkboxes | checkbox flags | PEP HIT by FLAG; unchecked Is RCA? is NO |
+| AUG-02-13 | GC-02 | category Adverse Media, no keywords, news on drunk driving | Article 22 ② | UNRELATED, set aside, NOT_ON_LIST; identity unchanged |
+| AUG-02-14 | GC-02 | news adds 酒駕 to the fraud report | predicate offence | stays UNCERTAIN |
+| AUG-01-04 | GC-01 | chairman from 1990 (year only) | `SOURCE_QUALITY_DOWNGRADE` | REVIEW; the other Profile stays NO_MATCH |
+| AUG-12-05 | GC-12 | none | 2026-10-14 ruling | `ART22_RULING_20261014_MAY_APPLY`, recommendation NONE |

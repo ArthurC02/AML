@@ -34,6 +34,7 @@ public static class ReasonCodes
     public const string ImpossibleRoleAtReportedEvent = "IMPOSSIBLE_ROLE_AT_REPORTED_EVENT";
     public const string DeathBeforeCustomerBirth = "DEATH_BEFORE_CUSTOMER_BIRTH";
     public const string NonPersonSubjectReview = "NON_PERSON_SUBJECT_REVIEW";
+    public const string SourceQualityDowngrade = "SOURCE_QUALITY_DOWNGRADE";
 }
 
 public static class Findings

@@ -89,7 +89,7 @@ Per evidence group (step 6 of the [operating architecture](system-overview.md#op
 | TEMPORAL_ROLE | age at every dated role start and the report date | yes: `TEMPORALLY_PLAUSIBLE` (neutral, never support) when every age reaches `MinimumRoleAge`; the hard-conflict code when the gate fires |
 | RELATIONSHIP / COMPANY_ASSOCIATION | spouse, parents, related companies named on both sides | yes: same relation and an EXACT name is support (`MEDIUM` for relatives, `LOW` for companies); the employer goes to EMPLOYMENT. Subject-side relatives are not in the bank export yet |
 
-Similarity values only grade `PARTIAL` within a group; they are never summed across groups or turned into a likelihood ([ADR-0001](../adr/0001-evidence-driven-adjudication.md)). Thresholds are set from labelled cases, not by default.
+Similarity values only grade `PARTIAL` within a group (placeholder thresholds, pending calibration: Jaro-Winkler 0.90 for names and Jaccard 0.5 for addresses label the detail SIMILAR or DISSIMILAR); they are never summed across groups or turned into a likelihood ([ADR-0001](../adr/0001-evidence-driven-adjudication.md)). Thresholds are set from labelled cases, not by default.
 
 ## Attribution
 
@@ -131,7 +131,7 @@ Stage 1 of the three-stage policy ([ADR-0002](../adr/0002-three-stage-identity-p
 
 A pending rule still fires and records its reason code; it only cannot close the pair automatically. Impossible role and death before birth are checked in the gate (`HardConflictGate`); a full DOB or document conflict reaches REVIEW through stage 3 row 1. Impossible role uses a controlled title list pending approval: directors and supervisors (董事, 監察人) need full legal capacity, adulthood being 20 before 2023-01-01 and 18 since. Death before birth needs every date the death value can stand for to precede every date the DOB can stand for. A rule moves to automatic NO_MATCH when its Golden Case is validated and the policy version is released.
 
-Each rule must name its evidence and policy version. Source-quality concerns can downgrade a potential hard conflict to REVIEW.
+Each rule must name its evidence and policy version. Source-quality concerns can downgrade a potential hard conflict to REVIEW: a dated role without its organization, a role dated to the year only, or unparseable Profile values (`HardConflictGate.SourceQualityConcern`, pending approval) turn a validated rule into REVIEW with `SOURCE_QUALITY_DOWNGRADE`.
 
 ## Decision policy
 
@@ -212,6 +212,7 @@ Only registered codes may appear in decisions. New codes are added here with the
 | `DOCUMENT_IDENTITY_CONFLICT` | IdentityDecisionPolicy | hard conflict; pending validation |
 | `DEATH_BEFORE_CUSTOMER_BIRTH` | IdentityDecisionPolicy | hard conflict; pending validation |
 | `BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE` | IdentityDecisionPolicy | years agree, but at least one side has YEAR precision only |
+| `SOURCE_QUALITY_DOWNGRADE` | IdentityDecisionPolicy | a validated hard conflict kept in REVIEW because of a source-quality concern |
 | `NON_PERSON_SUBJECT_REVIEW` | IdentityDecisionPolicy | organization, vessel or other Profile; Phase 1 forces REVIEW |
 | `NO_BILATERAL_DIRECT_IDENTIFIER` | IdentityDecisionPolicy | neither full DOB nor document key is present on both sides |
 | `UNIQUE_IDENTIFIER_AGREEMENT` | IdentityDecisionPolicy | comparable document key agrees |

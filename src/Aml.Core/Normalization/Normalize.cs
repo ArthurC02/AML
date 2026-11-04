@@ -51,8 +51,12 @@ public static partial class Normalize
         var jw = pairs.Max(x => Similarity.JaroWinkler(x.a, x.b));
         var lev = pairs.Min(x => Similarity.Levenshtein(x.a, x.b));
         return (ComparisonStatus.Partial, string.Create(CultureInfo.InvariantCulture,
-            $"NOT_IDENTICAL_AFTER_NORMALIZATION（Jaro-Winkler {jw:0.00}，Levenshtein {lev}）"));
+            $"NOT_IDENTICAL_AFTER_NORMALIZATION（Jaro-Winkler {jw:0.00}，Levenshtein {lev}，{(jw >= NameSimilarityThreshold ? "SIMILAR" : "DISSIMILAR")}）"));
     }
+
+    // ponytail: placeholder threshold pending calibration from labelled cases (open question); it only labels the PARTIAL
+    // detail and never makes the name support, a conflict or a hit.
+    public const double NameSimilarityThreshold = 0.90;
 
     // ponytail: controlled list of same-reading variants and simplified forms seen in name data; it needs business
     // approval and grows from reviewed cases. Characters that are distinct surnames (涂/塗, 云/雲, 余/餘) are never folded.
@@ -151,6 +155,20 @@ public static partial class Normalize
 
     [GeneratedRegex("^\\d{3,6}$")]
     private static partial Regex PostalCode();
+
+    /// <summary>A PEP / 黑名單 / 負面新聞 / Is RCA? cell (extraction-and-normalization.md#source-flags).</summary>
+    public static Subjects.FlagValue Flag(string? raw) => raw?.Trim() switch
+    {
+        null or "" or "-" or "–" or "—" => Subjects.FlagValue.Missing,
+        var v when FlagMissing.Contains(v) => Subjects.FlagValue.Missing,
+        var v when FlagYes.Contains(v) => Subjects.FlagValue.Yes,
+        var v when FlagNo.Contains(v) => Subjects.FlagValue.No,
+        _ => Subjects.FlagValue.Unparseable,
+    };
+
+    private static readonly HashSet<string> FlagYes = new(StringComparer.OrdinalIgnoreCase) { "是", "✓", "✔", "☑", "V", "Y", "Yes", "TRUE", "1", "checked", "on" };
+    private static readonly HashSet<string> FlagNo = new(StringComparer.OrdinalIgnoreCase) { "否", "不是", "X", "✗", "×", "N", "No", "FALSE", "0", "unchecked", "off", "☐" };
+    private static readonly HashSet<string> FlagMissing = new(StringComparer.OrdinalIgnoreCase) { "N/A", "NA" };
 
     public static string? NullIfPlaceholder(string? s) =>
         string.IsNullOrWhiteSpace(s) || IsPlaceholder(s) ? null : s.Trim();

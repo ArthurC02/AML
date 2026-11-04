@@ -18,6 +18,8 @@ Aml.Infra/Persistence/
 └── Scripts/Sqlite/           # DbUp DDL: 0001_init.sql, ...
 ```
 
+Tables: `aml_case`, `case_analysis`, `job` (0001 to 0003); `list_profile` (every captured Profile version with its SHA-256) and `case_input` (the files of each revision, for re-analysis after a source update) from 0004 ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)).
+
 Configuration: `"Database": { "Provider": "Sqlite", "ConnectionString": "..." }`. SQLite-specific connection settings (WAL, busy timeout) stay in the connection factory.
 
 ## Writing rules

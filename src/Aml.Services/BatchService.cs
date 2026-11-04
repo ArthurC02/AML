@@ -88,7 +88,7 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         try
         {
             // Checkpoint: Case creation is idempotent on (trigger, subject), so a retry after a crash reuses the stored revision.
-            var c = await cases.CreateAsync(item.SubjectRef, item.TriggerEventId, input, timeout.Token).ConfigureAwait(false);
+            var c = await cases.CreateAsync(item.SubjectRef, item.TriggerEventId, input, timeout.Token, item.Files).ConfigureAwait(false);
             await queue.CompleteAsync(job.JobId, _owner, c.CaseId, c.CurrentRevision, clock.GetUtcNow(), ct).ConfigureAwait(false);
             AmlTelemetry.JobAttempts.Add(1, new KeyValuePair<string, object?>("outcome", "SUCCEEDED"));
         }

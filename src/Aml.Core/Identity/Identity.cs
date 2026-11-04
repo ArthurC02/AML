@@ -336,9 +336,9 @@ public static class IdentityDecisionPolicy
     public static IdentityResult Decide(ScreenedSubject s, SourceProfile p, NewsItem? news = null)
     {
         var e = EvidenceBuilder.Build(s, p, news);
-        // Phase 1: the person rules do not apply to organizations, vessels and other records.
+        // The person rules do not apply to organizations, vessels and other records; entity identifiers decide instead.
         if (!p.RecordType.Equals("Person", StringComparison.OrdinalIgnoreCase))
-            return new IdentityResult(e, null, null, IdentityDecision.Review, [ReasonCodes.NonPersonSubjectReview]);
+            return EntityDecision(s, p, new Dictionary<EvidenceGroup, Evidence>(e));
         if (HardConflictGate.Check(s, p) is { } hard)
         {
             if (!HardConflictGate.Validated.Contains(hard)) return new IdentityResult(e, hard, null, IdentityDecision.Review, [hard]);
@@ -351,6 +351,36 @@ public static class IdentityDecisionPolicy
         var reasons = new List<string> { code };
         if (NoBilateralDirectIdentifier(s, p)) reasons.Add(ReasonCodes.NoBilateralDirectIdentifier);
         return new IdentityResult(e, null, row, decision, reasons);
+    }
+
+    /// <summary>
+    /// Entity evidence groups: a registration number with its jurisdiction, or an IMO number for a vessel. The same key on
+    /// both sides is UNIQUE support (PROBABLE_MATCH, externally REVIEW); a different number under the same key is a conflict.
+    /// A natural-person subject is never compared with an entity record. Nothing here is automatic MATCH or NO_MATCH.
+    /// ponytail: entity groups pending validation with an entity Golden Case (system-overview.md, excluded for Phase 1).
+    /// </summary>
+    private static IdentityResult EntityDecision(ScreenedSubject s, SourceProfile p, Dictionary<EvidenceGroup, Evidence> e)
+    {
+        const EvidenceGroup g = EvidenceGroup.EntityIdentifier;
+        if (!s.IsEntity) return new IdentityResult(e, null, null, IdentityDecision.Review, [ReasonCodes.NonPersonSubjectReview]);
+        var subject = new[] { s.Document, s.TaxId is { State: ValueState.Present, Value: { } tax } ? new Document("REGISTRATION_NUMBER", tax, "TW") : null }
+            .OfType<Document>().Where(d => d.Type is "REGISTRATION_NUMBER" or "IMO_NUMBER").ToList();
+        var profile = (p.Documents ?? []).Where(d => d.Type is "REGISTRATION_NUMBER" or "IMO_NUMBER").ToList();
+        static string Key(Document d) => d.Type == "IMO_NUMBER" ? "IMO" : $"{d.Type}|{d.Country}";
+        static string Number(Document d) => Normalize.NameKey(Normalize.HalfWidth(d.Number));
+        var comparable = subject.SelectMany(a => profile.Where(b => Key(a) == Key(b)), (a, b) => (a, b)).ToList();
+        if (comparable.Count == 0)
+        {
+            e[g] = new(g, Direction.Neutral, subject.Count == 0 ? ComparisonStatus.SubjectMissing : profile.Count == 0 ? ComparisonStatus.ProfileMissing : ComparisonStatus.Uncertain);
+            return new IdentityResult(e, null, null, IdentityDecision.Review, [ReasonCodes.NonPersonSubjectReview]);
+        }
+        if (comparable.Any(x => Number(x.a) == Number(x.b)))
+        {
+            e[g] = new(g, Direction.Support, ComparisonStatus.Exact, Strength.Unique);
+            return new IdentityResult(e, null, 2, IdentityDecision.ProbableMatch, [ReasonCodes.EntityIdentifierAgreement]);
+        }
+        e[g] = new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.EntityIdentifierConflict);
+        return new IdentityResult(e, null, 1, IdentityDecision.Review, [ReasonCodes.EntityIdentifierConflict]);
     }
 
     private static (int, IdentityDecision, string) Stage3(IReadOnlyDictionary<EvidenceGroup, Evidence> e)

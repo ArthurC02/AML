@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using Aml.Core.Cases;
 using Aml.Core.Ports;
 using Aml.Core.Screening;
@@ -70,6 +71,24 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
         var row = await c.QuerySingleOrDefaultAsync<AnalysisRow>(new CommandDefinition(db.Sql["Case.GetAnalysis"], new { caseId, revision }, cancellationToken: ct)).ConfigureAwait(false);
         return row is null ? null : new AnalysisRecord(row.CaseId, (int)row.Revision,
             Parse<ExecutionStatus>(row.ExecutionStatus), Parse<ScreeningAssessment>(row.CaseResult), row.ResultJson, row.ExplanationJson, ParseTime(row.CreatedAt));
+    }
+
+    public async Task SaveInputAsync(string caseId, int revision, IReadOnlyDictionary<string, string> files, DateTimeOffset now, CancellationToken ct)
+    {
+        await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
+        await c.ExecuteAsync(new CommandDefinition(db.Sql["Case.InsertInput"],
+            new { caseId, revision, filesJson = JsonSerializer.Serialize(files), now = Time(now) }, cancellationToken: ct)).ConfigureAwait(false);
+    }
+
+    private sealed record InputRow(string CaseId, long Revision, string FilesJson);
+
+    // ponytail: reads every Case's latest input; add a case_input_profile index table when Case volume makes this slow.
+    public async Task<IReadOnlyList<(string CaseId, int Revision, IReadOnlyDictionary<string, string> Files)>> LatestInputsAsync(CancellationToken ct)
+    {
+        await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
+        var rows = await c.QueryAsync<InputRow>(new CommandDefinition(db.Sql["Case.LatestInputs"], cancellationToken: ct)).ConfigureAwait(false);
+        return rows.Select(r => (r.CaseId, (int)r.Revision,
+            (IReadOnlyDictionary<string, string>)JsonSerializer.Deserialize<Dictionary<string, string>>(r.FilesJson)!)).ToList();
     }
 
     private static CaseRecord Map(CaseRow r) => new(r.CaseId, r.SubjectRef, r.TriggerEventId, Parse<CaseStatus>(r.CaseStatus),

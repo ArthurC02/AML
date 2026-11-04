@@ -21,20 +21,23 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock)
     };
 
     /// <summary>Creates the Case and its first analysis. Repeating the same trigger and subject returns the existing Case unchanged.</summary>
-    public async Task<CaseRecord> CreateAsync(string subjectRef, string triggerEventId, CaseInput input, CancellationToken ct)
+    /// <param name="files">The input files, stored with the revision so a later source update can re-analyze them.</param>
+    public async Task<CaseRecord> CreateAsync(string subjectRef, string triggerEventId, CaseInput input, CancellationToken ct,
+        IReadOnlyDictionary<string, string>? files = null)
     {
         var now = clock.GetUtcNow();
         var created = await store.CreateAsync(
             new CaseRecord(Guid.CreateVersion7().ToString(), subjectRef, triggerEventId, CaseStatus.Open, 0, null, now, now), ct).ConfigureAwait(false);
         if (created.CurrentRevision > 0) return created;
-        return await AnalyzeAsync(created, input, ct).ConfigureAwait(false);
+        return await AnalyzeAsync(created, input, files, ct).ConfigureAwait(false);
     }
 
     /// <summary>New analysis revision for an existing Case (changed inputs or manual re-analysis).</summary>
-    public async Task<CaseRecord?> ReanalyzeAsync(string caseId, CaseInput input, CancellationToken ct)
+    public async Task<CaseRecord?> ReanalyzeAsync(string caseId, CaseInput input, CancellationToken ct,
+        IReadOnlyDictionary<string, string>? files = null)
     {
         var existing = await store.GetAsync(caseId, ct).ConfigureAwait(false);
-        return existing is null ? null : await AnalyzeAsync(existing, input, ct).ConfigureAwait(false);
+        return existing is null ? null : await AnalyzeAsync(existing, input, files, ct).ConfigureAwait(false);
     }
 
     public Task<CaseRecord?> GetAsync(string caseId, CancellationToken ct) => store.GetAsync(caseId, ct);
@@ -66,7 +69,7 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock)
     private static T ParseEnum<T>(string snake) where T : struct, Enum =>
         Enum.Parse<T>(snake.Replace("_", "", StringComparison.Ordinal), ignoreCase: true);
 
-    private async Task<CaseRecord> AnalyzeAsync(CaseRecord c, CaseInput input, CancellationToken ct)
+    private async Task<CaseRecord> AnalyzeAsync(CaseRecord c, CaseInput input, IReadOnlyDictionary<string, string>? files, CancellationToken ct)
     {
         using var activity = AmlTelemetry.Source.StartActivity("AnalyzeCase");
         activity?.SetTag("aml.case_id", c.CaseId);
@@ -82,6 +85,7 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock)
 
         if (!await store.AcceptAnalysisAsync(record, status, ct).ConfigureAwait(false))
             throw new InvalidOperationException($"Case {c.CaseId} already has a revision newer than {revision}");
+        if (files is not null) await store.SaveInputAsync(c.CaseId, revision, files, record.CreatedAt, ct).ConfigureAwait(false);
         AmlTelemetry.AnalysisDuration.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         AmlTelemetry.Analyses.Add(1, new("case_result", record.CaseResult.ToString()), new("execution_status", execution.ToString()));
         activity?.SetTag("aml.revision", revision);

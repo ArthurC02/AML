@@ -1,6 +1,6 @@
 namespace Aml.Core.Shared;
 
-public enum EvidenceGroup { Name, Gender, Nationality, DateOfBirth, Document, OtherIdentifier, Employment, Relationship, CompanyAssociation, Address, StatedAge, TemporalRole }
+public enum EvidenceGroup { Name, Gender, Nationality, DateOfBirth, Document, OtherIdentifier, Employment, Relationship, CompanyAssociation, Address, StatedAge, TemporalRole, EntityIdentifier }
 
 public enum Direction { Prerequisite, Support, Conflict, Neutral }
 
@@ -35,6 +35,8 @@ public static class ReasonCodes
     public const string DeathBeforeCustomerBirth = "DEATH_BEFORE_CUSTOMER_BIRTH";
     public const string NonPersonSubjectReview = "NON_PERSON_SUBJECT_REVIEW";
     public const string SourceQualityDowngrade = "SOURCE_QUALITY_DOWNGRADE";
+    public const string EntityIdentifierAgreement = "ENTITY_IDENTIFIER_AGREEMENT";
+    public const string EntityIdentifierConflict = "ENTITY_IDENTIFIER_CONFLICT";
 }
 
 public static class Findings

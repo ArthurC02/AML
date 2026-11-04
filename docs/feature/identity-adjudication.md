@@ -20,13 +20,13 @@ BM25 and displayed similarity values are not identity probabilities ([ADR-0001](
 
 Possible routes include exact alias, word BM25, character n-gram and prior Case/Profile links.
 
-INDEX_SEARCH (steps 3 and 5 of the [operating architecture](system-overview.md#operating-architecture)) needs a list database of structured Profiles and a search index over names and aliases (BM25 words, character n-grams, alias table). A name query returns the Top N Profiles, counted after deduplication; candidate data is then fetched for the named or retrieved Profiles. The PoC uses CONTROLLED_SET: the bank's case table supplies the candidates.
+INDEX_SEARCH (steps 3 and 5 of the [operating architecture](system-overview.md#operating-architecture)) needs a list database of structured Profiles and a search index over names and aliases (BM25 words, character n-grams, alias table). A name query returns the Top N Profiles, counted after deduplication; candidate data is then fetched for the named or retrieved Profiles. The PoC uses CONTROLLED_SET: the bank's case table supplies the candidates. Built (2026-11-04, [ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)): `Core/Retrieval/ProfileIndex` (exact alias after variant folding, word BM25 with k1 1.2 / b 0.75, character bigram or trigram Jaccard from 0.3) over the list database, and `GET /api/lists/candidates?mode=` for INDEX_SEARCH, DIRECT_REFERENCE, CONTROLLED_SET and PREVIOUS_LINK.
 
 ## Profile-level deduplication
 
 All hits with the same `sourceNamespace + profileId` become one CandidateProfile. Top K is counted by Profile, not alias rows.
 
-Merging different Profiles that describe the same person (across Profile IDs or sources) happens when the list database is built, not per Case. A merge needs a shared direct identifier or a recorded source link; name similarity alone never merges. Merged Profiles keep their own IDs and sources so every value stays traceable.
+Merging different Profiles that describe the same person (across Profile IDs or sources) happens when the list database is built, not per Case. A merge needs a shared direct identifier or a recorded source link; name similarity alone never merges. Merged Profiles keep their own IDs and sources so every value stays traceable. Built as `ProfileMerge` (`SHARED_DOCUMENT_KEY`, `RECORDED_SOURCE_LINK`), served by `GET /api/lists/merges`.
 
 The hit count of a Case is the number of distinct Profiles, including hits on related parties; it is never the number of candidate rows or news articles. A Profile listed in the source but missing from the candidate table still counts.
 
@@ -56,7 +56,7 @@ Jaro-Winkler, Levenshtein and exact comparison of the same name are correlated f
 
 Photos are not evidence: appearance is never used to support or oppose identity or to estimate age, nationality, gender or name. This is the bank's current specification, not an industry rule; adding photo comparison needs a business-rule change, source and quality conditions and human review ([ADR-0018](../adr/0018-legacy-ai-report-rules-not-adopted.md)).
 
-These groups describe natural persons. Organization, vessel and other Profiles receive `NON_PERSON_SUBJECT_REVIEW` and stay REVIEW in Phase 1.
+These groups describe natural persons. Organization, vessel and other Profiles use `ENTITY_IDENTIFIER` instead (registration number with jurisdiction, IMO number for vessels): agreement is `ENTITY_IDENTIFIER_AGREEMENT` (PROBABLE_MATCH, external REVIEW), a different number under the same key is `ENTITY_IDENTIFIER_CONFLICT` (REVIEW); otherwise, and always for a natural-person subject, `NON_PERSON_SUBJECT_REVIEW`. Entity rules are pending an entity Golden Case.
 
 ## Hit prerequisites and direct identifiers
 
@@ -149,7 +149,7 @@ Insufficient or conflicting evidence
     → REVIEW
 ```
 
-Phase 1 does not broadly enable automatic MATCH. PROBABLE_MATCH is internal ([ADR-0003](../adr/0003-internal-probable-match.md)). There is no numeric score ([ADR-0019](../adr/0019-strength-decision-table-before-fellegi-sunter.md)).
+Phase 1 does not broadly enable automatic MATCH. PROBABLE_MATCH is internal ([ADR-0003](../adr/0003-internal-probable-match.md)). There is no numeric score ([ADR-0019](../adr/0019-strength-decision-table-before-fellegi-sunter.md)); `FellegiSunter.Score` computes a shadow weight for Gate D calibration only, outside the result and the explanation.
 
 ### Support strength
 
@@ -222,6 +222,9 @@ Only registered codes may appear in decisions. New codes are added here with the
 | `NO_NON_PREREQUISITE_SUPPORT` | IdentityDecisionPolicy | only hit prerequisites agree |
 | `AGE_COMPATIBLE_AT_REPORT` | IdentityDecisionPolicy | stated age within ±2 years at the same time point; not support |
 | `AGE_DIFFERENCE_AT_REPORT` | IdentityDecisionPolicy | stated age differs by more than 2 years; soft conflict |
+| `ENTITY_IDENTIFIER_AGREEMENT` | IdentityDecisionPolicy | entity record: the same registration or IMO number on both sides |
+| `ENTITY_IDENTIFIER_CONFLICT` | IdentityDecisionPolicy | entity record: a different number under the same key |
+| `ART22_RULING_20261014_MAY_APPLY` | DispositionPolicy | the 2026-10-14 ruling may apply; flagged, not applied |
 | `ART22_FOREIGN_PEP_PRESUMPTION` | DispositionPolicy | Article 22 ① presumption; identity unchanged |
 | `ART22_ADVERSE_UNRELATED` | DispositionPolicy | Article 22 ②; an ADVERSE_MEDIA condition set aside |
 | `ART22_IDENTITY_NO_MATCH` | DispositionPolicy | default; identity NO_MATCH, NOT_ON_LIST |

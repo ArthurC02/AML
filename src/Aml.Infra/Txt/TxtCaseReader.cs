@@ -223,7 +223,7 @@ public static partial class TxtCaseReader
         return new ScreenedSubject(
             SubjectRole.Customer, null, names, Normalize.Gender(V("性別")), dob,
             nationalities, docNumber is null ? null : new Document(DocumentType(V("證件種類")), docNumber, IssuingCountry(V("發照地"))),
-            null, taxId, Occupation(V("職業")), Dedupe(addresses, out var dup), AddressFindings(addresses, dup, findings));
+            null, taxId, Occupation(V("職業")), Dedupe(addresses, out var dup), AddressFindings(addresses, dup, findings), PartyType: V("客戶類型"));
     }
 
     private static List<string> AddressFindings(List<Address> addresses, bool duplicated, List<string> findings)
@@ -263,7 +263,7 @@ public static partial class TxtCaseReader
             Normalize.Gender(V("性別")), dob,
             new[] { V("國籍") }.OfType<string>().Select(Normalize.Country).ToList(),
             docNumber is null ? null : new Document(DocumentType(V("證件種類")), docNumber, IssuingCountry(V("發照地"))),
-            referenceNumber ?? V("參考號碼"), null, null, Dedupe(addresses, out var dup), AddressFindings(addresses, dup, findings));
+            referenceNumber ?? V("參考號碼"), null, null, Dedupe(addresses, out var dup), AddressFindings(addresses, dup, findings), PartyType: V("類型"));
     }
 
     [GeneratedRegex("^(永久地址|通訊位址) \\d$")]
@@ -314,6 +314,8 @@ public static partial class TxtCaseReader
         ("NATIONAL ID" or "NATIONAL IDENTIFICATION NUMBER", "TW") => "TW_NATIONAL_ID",
         ("RESIDENT CERTIFICATE", "TW") => "TW_RESIDENT_CERTIFICATE",
         ("PASSPORT" or "PASSPORT NO.", _) => "PASSPORT",
+        ("REGISTRATION NUMBER" or "COMPANY REGISTRATION" or "COMPANY IDENTIFICATION NUMBER" or "統一編號", _) => "REGISTRATION_NUMBER",
+        ("IMO" or "IMO NUMBER" or "IMO NO.", _) => "IMO_NUMBER",
         var (other, _) => other,
     };
 
@@ -324,12 +326,16 @@ public static partial class TxtCaseReader
     private static partial Regex TrailingCode();
 
     // Profile file: "key:\tvalue" lines, or "key:" followed by a tab-separated table.
-    public static SourceProfile ReadProfile(string path)
+    public static SourceProfile ReadProfile(string path) => ParseProfile(File.ReadAllText(path));
+
+    /// <summary>One Profile file's content, as the export or as an HTML page.</summary>
+    public static SourceProfile ParseProfile(string content)
     {
+        if (content.TrimStart().TrimStart((char)0xFEFF).StartsWith('<')) content = HtmlExport.ToExportText(content, HtmlExport.Kind.Profile);
         var scalars = new Dictionary<string, string>();
         var tables = new Dictionary<string, List<string[]>>();
         string? section = null;
-        foreach (var line in File.ReadAllLines(path))
+        foreach (var line in content.ReplaceLineEndings("\n").Split('\n'))
         {
             var m = KeyLine().Match(line);
             if (m.Success)

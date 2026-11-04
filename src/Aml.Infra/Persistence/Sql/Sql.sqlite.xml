@@ -71,6 +71,23 @@
         WHERE a.case_id = @caseId AND a.revision = @revision
       ]]></sql>
     </statement>
+
+    <statement id="Case.InsertInput" kind="Insert">
+      <description>Store the input files of one analysis revision.</description>
+      <sql><![CDATA[
+        INSERT INTO case_input (case_id, revision, files_json, created_at)
+        VALUES (@caseId, @revision, @filesJson, @now)
+      ]]></sql>
+    </statement>
+
+    <statement id="Case.LatestInputs" kind="Select">
+      <description>Each Case's latest stored input, for re-analysis after a source update.</description>
+      <sql><![CDATA[
+        SELECT i.case_id, i.revision, i.files_json
+        FROM case_input i
+        WHERE i.revision = (SELECT MAX(x.revision) FROM case_input x WHERE x.case_id = i.case_id)
+      ]]></sql>
+    </statement>
   </module>
 
   <module name="Batch">
@@ -161,7 +178,44 @@
     </statement>
   </module>
 
-  <module name="Extraction"/>
+  <module name="Extraction">
+    <statement id="Extraction.InsertProfile" kind="Insert">
+      <description>Capture a new Profile version; the primary key rejects a duplicate version.</description>
+      <sql><![CDATA[
+        INSERT INTO list_profile (profile_id, version, content_hash, source_text, captured_at)
+        VALUES (@profileId, @version, @contentHash, @sourceText, @now)
+      ]]></sql>
+    </statement>
+
+    <statement id="Extraction.GetLatestProfile" kind="Select">
+      <description>The current version of one Profile.</description>
+      <sql><![CDATA[
+        SELECT p.profile_id, p.version, p.content_hash, p.source_text, p.captured_at
+        FROM list_profile p
+        WHERE p.profile_id = @profileId
+          AND p.version = (SELECT MAX(x.version) FROM list_profile x WHERE x.profile_id = p.profile_id)
+      ]]></sql>
+    </statement>
+
+    <statement id="Extraction.LatestProfiles" kind="Select">
+      <description>The current version of every Profile, for the search index.</description>
+      <sql><![CDATA[
+        SELECT p.profile_id, p.version, p.content_hash, p.source_text, p.captured_at
+        FROM list_profile p
+        WHERE p.version = (SELECT MAX(x.version) FROM list_profile x WHERE x.profile_id = p.profile_id)
+      ]]></sql>
+    </statement>
+
+    <statement id="Extraction.ProfileHistory" kind="Select">
+      <description>Every captured version of one Profile, oldest first.</description>
+      <sql><![CDATA[
+        SELECT p.profile_id, p.version, p.content_hash, p.source_text, p.captured_at
+        FROM list_profile p
+        WHERE p.profile_id = @profileId
+        ORDER BY p.version
+      ]]></sql>
+    </statement>
+  </module>
   <module name="Identity"/>
   <module name="Screening"/>
   <module name="Explanation"/>

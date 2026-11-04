@@ -37,7 +37,12 @@ public sealed record ScreenedSubject(
     IReadOnlyList<Address> Addresses,
     IReadOnlyList<string> Findings,
     IReadOnlyList<Employment>? Employments = null,
-    IReadOnlyList<Relative>? Relatives = null);
+    IReadOnlyList<Relative>? Relatives = null,
+    string? PartyType = null)
+{
+    /// <summary>A legal person or group (客戶類型 法人), compared on entity identifiers, never on DOB or nationality rules.</summary>
+    public bool IsEntity => PartyType is { } t && !t.Contains('個', StringComparison.Ordinal) && !t.Equals("Person", StringComparison.OrdinalIgnoreCase);
+}
 
 public sealed record SourceCategory(string Category, string? Subcategory);
 

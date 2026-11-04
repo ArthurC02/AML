@@ -13,4 +13,10 @@ public interface ICaseStore
     Task<bool> AcceptAnalysisAsync(AnalysisRecord analysis, CaseStatus status, CancellationToken ct);
 
     Task<AnalysisRecord?> GetAnalysisAsync(string caseId, int revision, CancellationToken ct);
+
+    /// <summary>The input files (name → content) an analysis revision was run on.</summary>
+    Task SaveInputAsync(string caseId, int revision, IReadOnlyDictionary<string, string> files, DateTimeOffset now, CancellationToken ct);
+
+    /// <summary>Each Case's latest stored input.</summary>
+    Task<IReadOnlyList<(string CaseId, int Revision, IReadOnlyDictionary<string, string> Files)>> LatestInputsAsync(CancellationToken ct);
 }

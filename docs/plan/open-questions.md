@@ -52,7 +52,9 @@ Questions that need a bank decision. When one is answered, record the answer her
 - Will production use Microsoft SQL Server or Oracle, and which version?
 - Which container platform, identity provider and CI/CD controls are standard?
 - List data refreshes on a schedule or on an event ([operating architecture](../feature/system-overview.md#operating-architecture), 2026-11-03). What schedule, and which source events trigger a refresh and re-analysis?
-- The operating architecture includes a list database with a search index (BM25 / n-gram); the PoC decision of 2026-11-02 excludes it. In which phase does it enter scope?
+- The list database and search index are built ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)); should index search feed Cases automatically, and with which Top N?
+- Calibrate the Fellegi-Sunter shadow (m and u per group) and approve, or not, an AML risk policy; neither affects decisions today.
+- Approve the entity evidence groups (registration number, IMO) with an entity Golden Case.
 - Which name and address similarity thresholds (Jaro-Winkler, Levenshtein, Jaccard) does the bank accept, and from which labelled cases are they set?
 - What are required SAST, SCA, SBOM and patch SLAs?
 

@@ -80,6 +80,7 @@ Built so far (2026-11-02):
 - Each revision records source condition status and basis, pair result, review priority, pair reason codes and the changes from the previous revision; a missing Profile makes the revision PARTIAL and keeps the previous effective result.
 - Persistence is SQLite-only (`SqliteDatabase`, `SqlCatalog`, `CaseStore`); `IDbConnectionFactory` and `ISqlDialect` are extracted when a second provider is chosen.
 - `GET /health` runs `System.Ping`. OpenTelemetry traces, metrics and logs are on (ASP.NET Core plus the `Aml` source and meter: `aml.analyses`, `aml.analysis.duration`, `aml.job.attempts`); OTLP export starts only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set.
+- List database and retrieval (2026-11-04, [ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)): `POST /api/lists/profiles`, `GET /api/lists/profiles/{profileId}/versions`, `GET /api/lists/candidates`, `GET /api/lists/merges`; uploads accept `.txt` and `.html`; each revision stores its input files.
 - Authentication is not wired (identity provider pending).
 - Golden Case metrics are computed by `tests/Aml.Tests/GoldenCases/GoldenMetricsTests` ([results](poc-delivery-plan.md#current-results)).
 

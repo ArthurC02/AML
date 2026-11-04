@@ -26,13 +26,22 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
     /// <param name="files">The input files, stored with the revision so a later source update can re-analyze them.</param>
     /// <param name="beforeWrite">Runs after the analysis and before the revision is stored (a queued job renews its lease here).</param>
     public async Task<CaseRecord> CreateAsync(string subjectRef, string triggerEventId, CaseInput input, CancellationToken ct,
+        IReadOnlyDictionary<string, string>? files = null, Func<Task>? beforeWrite = null) =>
+        (await CreateOrGetAsync(subjectRef, triggerEventId, input, ct, files, beforeWrite).ConfigureAwait(false)).Case;
+
+    /// <summary>
+    /// <see cref="CreateAsync"/>, also saying whether this call inserted the Case. False for an existing Case, one resumed
+    /// from revision 0, or one a concurrent request inserted first.
+    /// </summary>
+    public async Task<(CaseRecord Case, bool Inserted)> CreateOrGetAsync(string subjectRef, string triggerEventId, CaseInput input, CancellationToken ct,
         IReadOnlyDictionary<string, string>? files = null, Func<Task>? beforeWrite = null)
     {
         var now = clock.GetUtcNow();
-        var created = await store.CreateAsync(
-            new CaseRecord(Guid.CreateVersion7().ToString(), subjectRef, triggerEventId, CaseStatus.Open, 0, null, now, now), ct).ConfigureAwait(false);
-        if (created.CurrentRevision > 0) return created;
-        return await AnalyzeAsync(created, input, files, beforeWrite, ct, firstOnly: true).ConfigureAwait(false);
+        var id = Guid.CreateVersion7().ToString();
+        var created = await store.CreateAsync(new CaseRecord(id, subjectRef, triggerEventId, CaseStatus.Open, 0, null, now, now), ct).ConfigureAwait(false);
+        var inserted = created.CaseId == id;
+        if (created.CurrentRevision > 0) return (created, inserted);
+        return (await AnalyzeAsync(created, input, files, beforeWrite, ct, firstOnly: true).ConfigureAwait(false), inserted);
     }
 
     /// <summary>New analysis revision for an existing Case (changed inputs or manual re-analysis).</summary>
@@ -44,14 +53,6 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
     }
 
     public Task<CaseRecord?> GetAsync(string caseId, CancellationToken ct) => store.GetAsync(caseId, ct);
-
-    /// <summary>Explanation of the effective revision.</summary>
-    public async Task<CaseExplanation?> GetExplanationAsync(string caseId, CancellationToken ct)
-    {
-        var c = await store.GetAsync(caseId, ct).ConfigureAwait(false);
-        if (c?.EffectiveRevision is not { } rev) return null;
-        return (await store.GetAnalysisAsync(caseId, rev, ct).ConfigureAwait(false))?.Explanation;
-    }
 
     public Task<AnalysisRecord?> GetAnalysisAsync(string caseId, int revision, CancellationToken ct) => store.GetAnalysisAsync(caseId, revision, ct);
 

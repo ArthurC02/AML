@@ -47,6 +47,40 @@ public sealed class JobTests : ServiceTestBase
     }
 
     [Fact]
+    public async Task Batch_items_page_oldest_first_and_filter_by_view_or_status()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var batch = Batch();
+        string[] ids = ["j0", "j1", "j2", "j3", "j4"];
+        int[] seconds = [0, 1, 2, 2, 3]; // j2 and j3 tie on created_at: the job id breaks it
+        foreach (var (id, s) in ids.Zip(seconds))
+            await _jobs.EnqueueAsync(id, "T", "b1", id, "{}", T0.AddSeconds(s), ct);
+        await using (var conn = await _db.OpenAsync(ct))
+            await conn.ExecuteAsync("UPDATE job SET status = 'SUCCEEDED' WHERE job_id = 'j0'; UPDATE job SET status = 'DEAD_LETTER' WHERE job_id = 'j3';");
+
+        async Task<List<string>> All(BatchView view, JobStatus? status = null)
+        {
+            var seen = new List<string>();
+            (DateTimeOffset, string)? after = null;
+            while (true)
+            {
+                var page = (await batch.GetAsync("b1", ct, view, status, 2, after))!;
+                Assert.InRange(page.Items.Count, 1, 2);
+                Assert.Equal((3, 0, 1, 1), (page.Pending, page.Running, page.Succeeded, page.DeadLetter));
+                seen.AddRange(page.Items.Select(i => i.JobId));
+                if (page.NextPageToken is null) return seen;
+                Assert.True(PageToken.TryDecode(page.NextPageToken, out var key));
+                after = key;
+            }
+        }
+
+        Assert.Equal(ids, await All(BatchView.Full));
+        Assert.Equal(["j1", "j2", "j3", "j4"], await All(BatchView.Summary));
+        Assert.Equal(["j3"], await All(BatchView.Full, JobStatus.DeadLetter));
+        Assert.Null(await batch.GetAsync("unknown", ct));
+    }
+
+    [Fact]
     public async Task Only_the_lease_owner_can_renew_complete_or_fail()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -110,7 +144,10 @@ public sealed class JobTests : ServiceTestBase
         public Task<bool> FailAsync(string jobId, string leaseOwner, bool deadLetter, string errorCode, DateTimeOffset nextAttemptAt, DateTimeOffset now, CancellationToken ct) =>
             inner.FailAsync(jobId, leaseOwner, deadLetter, errorCode, nextAttemptAt, now, ct);
         public Task<int> ReclaimExpiredAsync(int maxAttempts, DateTimeOffset now, CancellationToken ct) => inner.ReclaimExpiredAsync(maxAttempts, now, ct);
-        public Task<IReadOnlyList<JobItem>> ListItemsAsync(string batchId, CancellationToken ct) => inner.ListItemsAsync(batchId, ct);
+        public Task<IReadOnlyList<JobItem>> ListItemsAsync(string batchId, CancellationToken ct,
+            IReadOnlyCollection<JobStatus>? statuses = null, (DateTimeOffset At, string Id)? after = null, int limit = int.MaxValue) =>
+            inner.ListItemsAsync(batchId, ct, statuses, after, limit);
+        public Task<IReadOnlyDictionary<JobStatus, int>> CountsAsync(string batchId, CancellationToken ct) => inner.CountsAsync(batchId, ct);
         public Task<int> RerunAsync(string batchId, DateTimeOffset now, CancellationToken ct) => inner.RerunAsync(batchId, now, ct);
     }
 }

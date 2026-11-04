@@ -12,7 +12,11 @@ public enum RetrievalMode { DirectReference, ControlledSet, IndexSearch, Previou
 /// becomes evidence (ADR-0001). <paramref name="Truncated"/> marks a result list that holds fewer Profiles than matched,
 /// or more than asked for because exact alias matches are never cut.
 /// </summary>
-public sealed record RetrievedCandidate(string ProfileKey, string MatchedName, string Route, double Score, RetrievalMode Mode, bool Truncated = false);
+public sealed record RetrievedCandidate(string ProfileKey, string MatchedName, string Route, double Score, RetrievalMode Mode, bool Truncated = false)
+{
+    /// <summary>The Profile ID without the DJ: key prefix, as the /api/profiles routes take it.</summary>
+    public string ProfileId => ProfileKey.StartsWith("DJ:", StringComparison.Ordinal) ? ProfileKey[3..] : ProfileKey;
+}
 
 /// <summary>
 /// Search index over Profile names and aliases. Exact alias matches (after normalization and controlled variants) form

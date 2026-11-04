@@ -34,7 +34,7 @@ All triggers are events; timed triggers are an [open question](../plan/open-ques
 |---|---|---|
 | CaseService | `/api/cases` | the readers (Extraction and Data Quality), `CaseAnalyzer` (Candidate and Identity Adjudication, Source Screening and Risk Assessment), `Explanation` (Explanation and Reporting) |
 | BatchService | `/api/batches` | CaseService and ListService, through the job table (Batch and Work Management) |
-| ListService | `/api/lists` | the list database, `ProfileIndex` and `ProfileMerge`; queues and runs the re-analysis of Cases whose Profile changed |
+| ListService | `/api/profiles`, `/api/cases/{caseId}/candidates` | the list database, `ProfileIndex` and `ProfileMerge`; queues and runs the re-analysis of Cases whose Profile changed |
 
 The module policies in Aml.Core are plain functions called by these services; they hold no state.
 
@@ -48,15 +48,15 @@ GET  /api/cases/{caseId}
 GET  /api/cases/{caseId}/hits/{hit}?view=summary|detail&revision=
 GET  /api/cases/{caseId}/revisions
 GET  /api/cases/{caseId}/revisions/{revision}
-GET  /api/cases/{caseId}/analyses/{revision}
-GET  /api/cases/{caseId}/explanation
+GET  /api/cases/{caseId}/candidates?source=table|previous&top=
 POST /api/batches
-GET  /api/batches/{batchId}
+GET  /api/batches/{batchId}?view=summary|full&status=&pageSize=&pageToken=
 POST /api/batches/{batchId}/rerun
-POST /api/lists/profiles
-GET  /api/lists/profiles/{profileId}/versions
-GET  /api/lists/candidates?mode=
-GET  /api/lists/merges
+POST /api/profiles/import
+GET  /api/profiles/search?name=&top=
+GET  /api/profiles/{profileId}?version=
+GET  /api/profiles/{profileId}/versions
+GET  /api/profiles/merges
 GET  /api/codes?kind=
 GET  /api/codes/{code}
 GET  /api/schemas
@@ -64,6 +64,8 @@ GET  /api/schemas/{name}
 ```
 
 `/api/codes` is the code catalog (`Core/Codes/CodeCatalog`): every code the system emits, with its kind, Chinese name, one-line meaning, the rule that emits it and the document section that defines it. A value with detail attached is listed under its key (`SOFT_DIFFERENCE（Jaccard …）` → `SOFT_DIFFERENCE`, `ENCODING_FALLBACK:<file>` → `ENCODING_FALLBACK`); a value joined with `；` is looked up part by part. `/api/schemas` publishes the JSON Schemas of the stored records (`case-analysis`, `case-explanation`, `analysis-lineage`, `analysis-quality`, `revision`) and of the views (`case-summary`, `hit-summary`, `revision-line`, `case-page`; [data contracts](data-contracts.md#published-schemas)).
+
+`POST /api/cases` takes multipart form fields (`subjectRef`, `triggerEventId`, `files`) or a JSON body shaped as one batch item (`{subjectRef, triggerEventId, files: {name: text}}`). It returns `201` with `Location` when this call created the Case, and `200` when a Case for the trigger and subject already existed: created earlier, left at revision 0 and resumed now, or created by a concurrent request. A request body over `Api:MaxRequestBytes` (100 MB) is refused with `413` (`HTTP_ERROR`).
 
 ## Views
 
@@ -80,13 +82,15 @@ The hit views read the effective revision unless `?revision=` names another. The
 
 `GET /api/cases` needs `subjectRef`, `triggerEventId` or both. It returns Cases ordered by creation time, then id, in pages of `pageSize` (default 20, at most 100), with `nextPageToken` only when more follow. The token is the sort key of the page's last Case, base64url-encoded; it is passed back unchanged as `pageToken`, and one this API did not issue is `INVALID_REQUEST`. Paging by key, not offset, never repeats a Case and skips none that existed when paging started; a Case created meanwhile appears on a later page if its creation time sorts after the current position.
 
+`GET /api/batches/{batchId}` pages its items the same way, by creation time, then job id, with `nextPageToken` null on the last page: `view=summary` (the default) lists the items not yet succeeded, `view=full` every item, and `status=` (`PENDING`, `RUNNING`, `SUCCEEDED`, `DEAD_LETTER`) the items in one status. A filter applies when each page is read, so an item whose status changes while paging can drop out of a filtered listing. The counts per status cover the whole batch as of that read.
+
 ## Errors
 
 Every 4xx and 5xx response is an RFC 9457 problem (`application/problem+json`): `type`, `title`, `status` and `detail`, plus `errors[]` (what is wrong where) and `fix` (what to send instead) when the handler knows them. `type` is the problem's entry in the code catalog, `/api/codes/{code}`:
 
 | Code | Status | When |
 |---|---|---|
-| `INVALID_REQUEST` | 400 | a parameter or body the endpoint cannot use: no files, a batch item without ids or files, an unknown retrieval mode or view, a search without a filter, a page size out of range, a page token this API did not issue; `errors[]` lists the batch items by index or names the parameter |
+| `INVALID_REQUEST` | 400 | a parameter or body the endpoint cannot use: no files, a batch item without ids or files, an unknown candidate source or view, a search without a name or filter, a `top` or page size out of range, a page token this API did not issue; `errors[]` lists the batch items by index or names the parameter |
 | `UNSUPPORTED_FILE` | 400 | an upload that is not `.txt`, `.html` or `.htm`, or over 5 MB; `errors[]` names the files |
 | `INPUT_INCOMPLETE` | 400 | a required input file is missing or not unique: exactly one `案件資訊*.txt`, and the subject's own file (`客戶-背景資料.txt` for a customer, `客戶-關聯人背景資料.txt` for a related party) |
 | `INPUT_UNREADABLE` | 400 | a file that is not in the export layout; `errors[]` gives `file`, `table` and `problem` (`MISSING_SECTION`, `MISSING_COLUMN`, `MALFORMED`) |
@@ -96,16 +100,16 @@ Every 4xx and 5xx response is an RFC 9457 problem (`application/problem+json`): 
 
 A missing Profile file is not an input problem: that candidate is `NOT_EVALUATED` and the revision `PARTIAL`. The required-file check runs in the case reader (`TxtCaseReader.RequiredFileProblem`), which reports every unusable input as `CaseInputException`; the endpoints turn it into a problem, and a batch job into `INVALID_INPUT`.
 
-Uploads accept `.txt`, `.html` and `.htm` files (extension in any case) up to 5 MB each: a multipart file by its own bytes, a batch item's file (sent as JSON text) by its UTF-8 encoding, so the same CP950 export counts larger in a batch. A batch item that is null, lacks `subjectRef` or `triggerEventId`, or has a null file content is refused. Multipart uploads are read as raw bytes: the case reader decodes export files as strict UTF-8 (BOM dropped), else CP950 (Big5) with an `ENCODING_FALLBACK:<file>` finding, and HTML pages by their own declared encoding. The reader records each file's SHA-256 as its source hash on the case input (`SourceHashes`): of the uploaded bytes for an upload, of the UTF-8 encoding of the text for batch items (files sent as JSON text) and re-analyses. The hashes are stored in the revision's lineage ([lineage and quality](#lineage-and-quality)). Each revision stores its input files as decoded text for re-analysis.
+Uploads accept `.txt`, `.html` and `.htm` files (extension in any case) up to 5 MB each: a multipart file by its own bytes, a file sent as JSON text (a batch item or a JSON `POST /api/cases`) by its UTF-8 encoding, so the same CP950 export counts larger as JSON. A JSON item that is null, lacks `subjectRef` or `triggerEventId`, has a file name with a path or characters not allowed in a file name, or has a null file content is refused, as is a form that repeats `subjectRef` or `triggerEventId`. Multipart uploads are read as raw bytes: the case reader decodes export files as strict UTF-8 (BOM dropped), else CP950 (Big5) with an `ENCODING_FALLBACK:<file>` finding, and HTML pages by their own declared encoding. The reader records each file's SHA-256 as its source hash on the case input (`SourceHashes`): of the uploaded bytes for an upload, of the UTF-8 encoding of the text for JSON input and re-analyses. The hashes are stored in the revision's lineage ([lineage and quality](#lineage-and-quality)). Each revision stores its input files as decoded text for re-analysis.
 
 - Publication has no endpoint: step 14 publishes automatically when the version and completeness checks of the [case-level result](case-management.md#case-level-result) pass.
 - Imported decisions are read from the input files, stored with `independentlyVerified` and never become SystemDecisions; there is no endpoint to submit decisions ([ADR-0020](../adr/0020-identification-only.md)).
-- `GET …/explanation` is the explanation and audit view ([ADR-0009](../adr/0009-api-only.md)).
+- The revision record (`GET …/revisions/{revision}`) is the explanation and audit view ([ADR-0009](../adr/0009-api-only.md)).
 - Authentication is OIDC/OAuth 2.0 with policy-based authorization, wired once the identity provider is known.
 
 ### Profile import
 
-`POST /api/lists/profiles` takes `名單資料_<id>.txt` or `.html` files (file pattern matched in any case), decoded as strict UTF-8, else CP950 (Big5), and returns:
+`POST /api/profiles/import` takes `名單資料_<id>.txt` or `.html` files (file pattern matched in any case), decoded as strict UTF-8, else CP950 (Big5), and returns:
 
 ```text
 profiles[]          profileId, version, changed
@@ -121,12 +125,13 @@ rejected[]          file names not imported
 
 ### Retrieval and merges
 
-- `GET /api/lists/candidates` returns candidates with `profileKey` (`DJ:<id>`), `matchedName`, `route`, `score`, `mode` and `truncated`. `truncated` is true on every candidate when the result holds fewer Profiles than matched, or more than `top` because exact alias matches are never cut. `DIRECT_REFERENCE` accepts the Profile ID with or without the `DJ:` prefix. The `INDEX_SEARCH` index is built once per list database version and rebuilt on the first search after a capture.
-- `GET /api/lists/merges` returns `{ groups, rejected }`. Each group has `profileKeys`, `edges` (each accepted merge with `a`, `b`, `basis` and `documentKey`), `findings` and `basis`; `rejected` lists the merge edges refused because of a DOB or gender conflict, with `conflict`.
+- `GET /api/profiles/search?name=` (`INDEX_SEARCH`) and `GET /api/cases/{caseId}/candidates` (`source=table`, the default: the Case's own candidate table, `CONTROLLED_SET`; `source=previous`: the Profiles of its latest input, `PREVIOUS_LINK`) return candidates with `profileId`, `profileKey` (`DJ:<id>`), `matchedName`, `route`, `score`, `mode` and `truncated`, at most `top` (1 to 100, default 10). `truncated` is true on every candidate when the result holds fewer Profiles than matched, or more than `top` because exact alias matches are never cut. The `INDEX_SEARCH` index is built once per list database version and rebuilt on the first search after a capture.
+- `GET /api/profiles/{profileId}` (`DIRECT_REFERENCE`) returns one captured Profile: `profileId`, `profileKey`, `version`, `latestVersion`, `contentHash`, `capturedAt` and the Profile as read, at its latest version unless `?version=` names another. Routes take the Profile ID with or without the `DJ:` prefix. `GET …/versions` lists every version with its content hash.
+- `GET /api/profiles/merges` returns `{ groups, rejected }`. Each group has `profileKeys`, `edges` (each accepted merge with `a`, `b`, `basis` and `documentKey`), `findings` and `basis`; `rejected` lists the merge edges refused because of a DOB or gender conflict, with `conflict`.
 
 ## Explanation contents
 
-`GET …/explanation` returns, per pair:
+The revision record's `explanation` holds, per pair:
 
 - hit reason: hit number, screened subject (`customer` or `related party` with name), Profile ID and main name (`profileName`), list types, Name Property, `Is RCA?`, matched field, similarity type and why the flags or category were used;
 - comparison table in fixed order: Chinese name (with aliases, former and maiden names), English name / romanization / order, nationality, DOB or age, gender, document, address, occupation or employer, other identifiers; each row has subject value, Profile value, comparisonStatus, `difference` (codes, joined with `；`) and `note` (reviewer text, such as how a stated age was reckoned);
@@ -162,7 +167,7 @@ Job types:
 | Type | Queued by | Payload | Runs |
 |---|---|---|---|
 | `ANALYZE_CASE` | `POST /api/batches` | subjectRef, triggerEventId, files | Case creation and first analysis, as `POST /api/cases` |
-| `REANALYZE_CASE` | `POST /api/lists/profiles`, in the capture transaction | jobId, caseId, profileId, version | re-analysis of the Case's latest input with the current list versions of its Profiles |
+| `REANALYZE_CASE` | `POST /api/profiles/import`, in the capture transaction | jobId, caseId, profileId, version | re-analysis of the Case's latest input with the current list versions of its Profiles |
 
 Jobs are claimed optimistically ([job claim](persistence.md#job-claim)). Controls:
 
@@ -178,7 +183,7 @@ Jobs are claimed optimistically ([job claim](persistence.md#job-claim)). Control
 | outcome not recorded | a database error while recording the result is logged as a warning; the job returns to the queue when its lease expires |
 | operator re-run | `POST /api/batches/{batchId}/rerun` gives dead-lettered items a fresh budget |
 
-Job statuses: `PENDING`, `RUNNING`, `SUCCEEDED` (with `caseId` and `analysisRevision`), `DEAD_LETTER`. The payload is stored in the job row so a restart loses nothing. `GET /api/batches/{batchId}` reports counts per status and each item with its idempotency key, attempts, `caseId`, `analysisRevision` and `errorCode`, for submitted batches and re-analysis batches alike.
+Job statuses: `PENDING`, `RUNNING`, `SUCCEEDED` (with `caseId` and `analysisRevision`), `DEAD_LETTER`. The payload is stored in the job row so a restart loses nothing. `GET /api/batches/{batchId}` reports counts per status and, a page at a time ([pagination](#pagination)), the items with their idempotency key, attempts, `caseId`, `analysisRevision` and `errorCode`, for submitted batches and re-analysis batches alike.
 
 ## Idempotency and late results
 

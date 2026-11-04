@@ -23,7 +23,7 @@
 
 ## Batch operations
 
-1. `GET /api/batches/{batchId}`: counts per status and each item with attempts and `errorCode`. Re-analyses queued by a Profile import are batch jobs too (`REANALYZE_CASE`); their `batchId` is in the import response.
+1. `GET /api/batches/{batchId}`: counts per status and the items not yet succeeded, with attempts and `errorCode` (`?view=full` lists every item, `?status=DEAD_LETTER` one status; follow `nextPageToken` for more). Re-analyses queued by a Profile import are batch jobs too (`REANALYZE_CASE`); their `batchId` is in the import response.
 2. `INVALID_INPUT`: the files are incomplete or not in the export layout. Fix the files and submit a new batch; re-running the same files fails the same way.
 3. `INVALID_PAYLOAD`: the job row has an unknown type, unreadable JSON or a missing field. It is dead-lettered at once; re-running it fails the same way.
 4. `TIMEOUT`, `SqliteException` or other transient codes: fix the cause, then `POST /api/batches/{batchId}/rerun`.

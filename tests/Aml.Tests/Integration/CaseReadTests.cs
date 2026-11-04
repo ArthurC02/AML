@@ -1,5 +1,6 @@
 using Aml.Core.Cases;
 using Aml.Infra.Txt;
+using Aml.Services;
 
 namespace Aml.Tests.Integration;
 
@@ -27,6 +28,46 @@ public sealed class CaseReadTests : ServiceTestBase
         Assert.Equal([null, 0, null, 2], list.Select(r => r.Changes));
         Assert.Equal(ExecutionStatus.Failed, list[2].ExecutionStatus);
         Assert.Null(await _caseService.GetRevisionsAsync("no-such-case", ct));
+    }
+
+    [Theory]
+    [InlineData(CandidateSource.Table)]
+    [InlineData(CandidateSource.Previous)]
+    public async Task A_case_candidate_list_cut_by_top_is_marked_truncated(CandidateSource source)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var files = Directory.GetFiles(GoldenCases.GoldenCaseTests.Folder("GC-01"), "*.txt").ToDictionary(p => Path.GetFileName(p), File.ReadAllText);
+        var created = await _caseService.CreateAsync("s", "e", TxtCaseReader.ReadFiles(files), ct, files);
+
+        var all = (await _listService.CaseCandidatesAsync(created.CaseId, source, 10, ct))!;
+        Assert.Equal(2, all.Count);
+        Assert.All(all, c => Assert.False(c.Truncated));
+        var cut = Assert.Single((await _listService.CaseCandidatesAsync(created.CaseId, source, 1, ct))!);
+        Assert.True(cut.Truncated);
+        Assert.Null(await _listService.CaseCandidatesAsync("unknown", source, 10, ct));
+    }
+
+    [Fact]
+    public async Task Only_the_call_that_inserts_a_case_reports_it_as_inserted()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var files = CaseFiles();
+        var input = TxtCaseReader.ReadFiles(files);
+
+        var (first, inserted) = await _caseService.CreateOrGetAsync("s", "e", input, ct, files);
+        Assert.True(inserted);
+        var (again, insertedAgain) = await _caseService.CreateOrGetAsync("s", "e", input, ct, files);
+        Assert.Equal((first.CaseId, false, 1), (again.CaseId, insertedAgain, again.CurrentRevision));
+
+        // A Case left at revision 0 is resumed, not inserted.
+        await _cases.CreateAsync(new CaseRecord("case-r0", "s", "e-r0", CaseStatus.Open, 0, null, T0, T0), ct);
+        var (resumed, insertedResumed) = await _caseService.CreateOrGetAsync("s", "e-r0", input, ct, files);
+        Assert.Equal(("case-r0", false, 1), (resumed.CaseId, insertedResumed, resumed.CurrentRevision));
+
+        // Concurrent creates: exactly one inserts.
+        var race = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => Task.Run(() => _caseService.CreateOrGetAsync("s", "e-race", input, ct, files), ct)));
+        Assert.Single(race, r => r.Inserted);
+        Assert.Single(race.Select(r => r.Case.CaseId).Distinct());
     }
 
     [Fact]

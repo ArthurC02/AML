@@ -8,6 +8,12 @@ namespace Aml.Services;
 
 public sealed record ProfileImport(string ProfileId, int Version, bool Changed);
 
+/// <summary>One captured Profile version, parsed.</summary>
+public sealed record ProfileView(string ProfileId, string ProfileKey, int Version, int LatestVersion, string ContentHash, DateTimeOffset CapturedAt, SourceProfile Profile);
+
+/// <summary>Where a Case's candidates come from: its own candidate table, or the Profile files of its latest input.</summary>
+public enum CandidateSource { Table, Previous }
+
 /// <summary>A queued REANALYZE_CASE job: the Case is re-analyzed because the Profile got this version.</summary>
 public sealed record ReanalysisJob(string JobId, string CaseId, string ProfileId, int Version);
 
@@ -92,35 +98,34 @@ public sealed class ListService(
     }
 
     public async Task<IReadOnlyList<ListProfileRecord>> HistoryAsync(string profileId, CancellationToken ct) =>
-        await lists.HistoryAsync(profileId, ct).ConfigureAwait(false);
+        await lists.HistoryAsync(IdOf(profileId), ct).ConfigureAwait(false);
+
+    /// <summary>Profiles in the list database by name (INDEX_SEARCH).</summary>
+    public async Task<IReadOnlyList<RetrievedCandidate>> SearchAsync(string name, int top, CancellationToken ct) =>
+        (await IndexAsync(ct).ConfigureAwait(false)).Search(name, top);
+
+    /// <summary>One version of a Profile (the latest when null), by ID with or without the DJ: prefix; null when it does not exist.</summary>
+    public async Task<ProfileView?> GetProfileAsync(string profileId, int? version, CancellationToken ct)
+    {
+        var history = await lists.HistoryAsync(IdOf(profileId), ct).ConfigureAwait(false);
+        var r = version is { } v ? history.FirstOrDefault(h => h.Version == v) : history.Count > 0 ? history[^1] : null;
+        return r is null ? null : new ProfileView(r.ProfileId, KeyPrefix + r.ProfileId, r.Version, history[^1].Version, r.ContentHash, r.CapturedAt, parseProfile(r.SourceText));
+    }
 
     /// <summary>
-    /// Candidates by retrieval mode: INDEX_SEARCH by name over the list database, DIRECT_REFERENCE by Profile ID,
-    /// CONTROLLED_SET from a Case's own candidate table, PREVIOUS_LINK from the Profiles a Case's latest input used.
+    /// A Case's candidates: its own candidate table (CONTROLLED_SET) or the Profiles its latest input held (PREVIOUS_LINK).
+    /// Null when the Case has no stored input.
     /// </summary>
-    public async Task<IReadOnlyList<RetrievedCandidate>> RetrieveAsync(RetrievalMode mode, string? name, string? profileId, string? caseId, int top, CancellationToken ct)
+    public async Task<IReadOnlyList<RetrievedCandidate>?> CaseCandidatesAsync(string caseId, CandidateSource source, int top, CancellationToken ct)
     {
-        switch (mode)
-        {
-            case RetrievalMode.IndexSearch when name is not null:
-                return (await IndexAsync(ct).ConfigureAwait(false)).Search(name, top);
-            case RetrievalMode.DirectReference when profileId is not null:
-                // Accepts the Profile ID with or without the DJ: key prefix.
-                var id = profileId.StartsWith(KeyPrefix, StringComparison.OrdinalIgnoreCase) ? profileId[KeyPrefix.Length..] : profileId;
-                return await lists.GetAsync(id, ct).ConfigureAwait(false) is { } r
-                    ? [new RetrievedCandidate(KeyPrefix + r.ProfileId, parseProfile(r.SourceText).Names is [var first, ..] ? first : "", "PROFILE_ID", 1, mode)]
-                    : [];
-            case RetrievalMode.ControlledSet or RetrievalMode.PreviousLink when caseId is not null:
-                var input = await caseStore.LatestInputAsync(caseId, ct).ConfigureAwait(false);
-                if (input is null) return [];
-                if (mode == RetrievalMode.PreviousLink)
-                    return input.Keys.Select(ProfileIdOf).OfType<string>().Distinct()
-                        .Select(p => new RetrievedCandidate(KeyPrefix + p, "", "PREVIOUS_CASE_INPUT", 1, mode)).Take(top).ToList();
-                return readCase(input).Rows.GroupBy(r => r.ProfileId)
-                    .Select(g => new RetrievedCandidate(KeyPrefix + g.Key, g.First().MatchedName, "CASE_TABLE", 1, mode)).Take(top).ToList();
-            default:
-                throw new ArgumentException($"{mode} needs {(mode == RetrievalMode.IndexSearch ? "name" : mode == RetrievalMode.DirectReference ? "profileId" : "caseId")}");
-        }
+        var input = await caseStore.LatestInputAsync(caseId, ct).ConfigureAwait(false);
+        if (input is null) return null;
+        var all = source == CandidateSource.Previous
+            ? input.Keys.Select(ProfileIdOf).OfType<string>().Distinct()
+                .Select(p => new RetrievedCandidate(KeyPrefix + p, "", "PREVIOUS_CASE_INPUT", 1, RetrievalMode.PreviousLink)).ToList()
+            : readCase(input).Rows.GroupBy(r => r.ProfileId)
+                .Select(g => new RetrievedCandidate(KeyPrefix + g.Key, g.First().MatchedName, "CASE_TABLE", 1, RetrievalMode.ControlledSet)).ToList();
+        return all.Take(top).Select(c => c with { Truncated = all.Count > top }).ToList();
     }
 
     /// <summary>Profiles in the list database that describe the same person (shared document key or recorded source link).</summary>
@@ -128,6 +133,9 @@ public sealed class ListService(
         ProfileMerge.Resolve((await lists.LatestAsync(ct).ConfigureAwait(false)).Select(r => parseProfile(r.SourceText)));
 
     private const string KeyPrefix = "DJ:";
+
+    private static string IdOf(string profileId) =>
+        profileId.StartsWith(KeyPrefix, StringComparison.OrdinalIgnoreCase) ? profileId[KeyPrefix.Length..] : profileId;
 
     // Built once per list database version; a capture changes the version and the next search rebuilds it.
     private async Task<ProfileIndex> IndexAsync(CancellationToken ct)

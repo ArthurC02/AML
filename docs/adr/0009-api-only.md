@@ -13,5 +13,5 @@ The PoC delivers an API documented with OpenAPI and Swagger UI. No UI is built.
 
 ## Consequences
 
-- Reviewer and audit views are API responses, mainly `GET /api/cases/{caseId}/explanation` ([pipeline, API and batch](../feature/pipeline-api-and-batch.md#rest-resources)).
+- Reviewer and audit views are API responses, read in layers: the Case summary, the hit summary and detail, and the full revision record (`GET /api/cases/{caseId}`, `…/hits/{hit}`, `…/revisions/{revision}`; [pipeline, API and batch](../feature/pipeline-api-and-batch.md#views)).
 - Sensitive evidence is returned only by authorized Case API endpoints.

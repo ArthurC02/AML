@@ -10,7 +10,11 @@ public sealed record BatchItemRequest(string SubjectRef, string TriggerEventId, 
 
 public sealed record BatchSubmitted(string BatchId, int Queued, IReadOnlyList<string> Duplicates);
 
-public sealed record BatchStatus(string BatchId, int Pending, int Running, int Succeeded, int DeadLetter, IReadOnlyList<JobItem> Items);
+/// <summary>SUMMARY lists the items not yet succeeded; FULL lists every item.</summary>
+public enum BatchView { Summary, Full }
+
+/// <summary>Counts per status, and one page of items (the next page from NextPageToken).</summary>
+public sealed record BatchStatus(string BatchId, int Pending, int Running, int Succeeded, int DeadLetter, IReadOnlyList<JobItem> Items, string? NextPageToken = null);
 
 public sealed record BatchOptions
 {
@@ -59,12 +63,22 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         return new BatchSubmitted(batchId, items.Count - duplicates.Count, duplicates);
     }
 
-    public async Task<BatchStatus?> GetAsync(string batchId, CancellationToken ct)
+    /// <summary>
+    /// Counts per status and one page of items: those in <paramref name="status"/> when given, else every item (FULL) or the
+    /// ones not yet succeeded (SUMMARY). Null for an unknown batch.
+    /// </summary>
+    public async Task<BatchStatus?> GetAsync(string batchId, CancellationToken ct, BatchView view = BatchView.Full, JobStatus? status = null,
+        int pageSize = int.MaxValue - 1, (DateTimeOffset At, string Id)? after = null)
     {
-        var items = await queue.ListItemsAsync(batchId, ct).ConfigureAwait(false);
-        if (items.Count == 0) return null;
-        int Count(JobStatus s) => items.Count(i => i.Status == s);
-        return new BatchStatus(batchId, Count(JobStatus.Pending), Count(JobStatus.Running), Count(JobStatus.Succeeded), Count(JobStatus.DeadLetter), items);
+        var counts = await queue.CountsAsync(batchId, ct).ConfigureAwait(false);
+        if (counts.Count == 0) return null;
+        IReadOnlyCollection<JobStatus>? statuses = status is { } s ? [s]
+            : view == BatchView.Summary ? [JobStatus.Pending, JobStatus.Running, JobStatus.DeadLetter] : null;
+        var rows = await queue.ListItemsAsync(batchId, ct, statuses, after, pageSize + 1).ConfigureAwait(false);
+        var page = rows.Take(pageSize).ToList();
+        int Count(JobStatus st) => counts.GetValueOrDefault(st);
+        return new BatchStatus(batchId, Count(JobStatus.Pending), Count(JobStatus.Running), Count(JobStatus.Succeeded), Count(JobStatus.DeadLetter), page,
+            rows.Count > pageSize ? PageToken.Encode(page[^1].CreatedAt, page[^1].JobId) : null);
     }
 
     public Task<int> RerunAsync(string batchId, CancellationToken ct) => queue.RerunAsync(batchId, clock.GetUtcNow(), ct);

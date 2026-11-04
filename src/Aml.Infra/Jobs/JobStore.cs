@@ -13,7 +13,14 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
     private sealed record ClaimedRow(string JobId, string JobType, long AttemptCount, string Payload);
 
     private sealed record ItemRow(string JobId, string IdempotencyKey, string Status, long AttemptCount,
-        string? CaseId, long? AnalysisRevision, string? ErrorCode, string? CompletedAt);
+        string? CaseId, long? AnalysisRevision, string? ErrorCode, string? CompletedAt, string CreatedAt);
+
+    // Settable properties: with no rows the COUNT column has no type a constructor match could use.
+    private sealed class CountRow
+    {
+        public string Status { get; set; } = "";
+        public long Items { get; set; }
+    }
 
     public async Task<bool> EnqueueAsync(string jobId, string jobType, string batchId, string idempotencyKey, string payload, DateTimeOffset now, CancellationToken ct)
     {
@@ -66,7 +73,9 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
         return await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.Fail"], new
         {
-            jobId, leaseOwner, errorCode,
+            jobId,
+            leaseOwner,
+            errorCode,
             status = Enum(deadLetter ? JobStatus.DeadLetter : JobStatus.Pending),
             nextAttemptAt = Time(nextAttemptAt),
             completedAt = deadLetter ? Time(now) : null,
@@ -79,12 +88,28 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
         return await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.ReclaimExpired"], new { maxAttempts, now = Time(now) }, cancellationToken: ct)).ConfigureAwait(false);
     }
 
-    public async Task<IReadOnlyList<JobItem>> ListItemsAsync(string batchId, CancellationToken ct)
+    public async Task<IReadOnlyList<JobItem>> ListItemsAsync(string batchId, CancellationToken ct,
+        IReadOnlyCollection<JobStatus>? statuses = null, (DateTimeOffset At, string Id)? after = null, int limit = int.MaxValue)
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
-        var rows = await c.QueryAsync<ItemRow>(new CommandDefinition(db.Sql["Batch.ListItems"], new { batchId }, cancellationToken: ct)).ConfigureAwait(false);
+        var rows = await c.QueryAsync<ItemRow>(new CommandDefinition(db.Sql["Batch.ListItems"], new
+        {
+            batchId,
+            allStatuses = statuses is null,
+            statuses = (statuses ?? []).Select(s => Enum(s)).DefaultIfEmpty("").ToArray(),
+            afterAt = after is { } a ? Time(a.At) : null,
+            afterId = after?.Id,
+            limit,
+        }, cancellationToken: ct)).ConfigureAwait(false);
         return rows.Select(r => new JobItem(r.JobId, r.IdempotencyKey, Parse<JobStatus>(r.Status), (int)r.AttemptCount,
-            r.CaseId, (int?)r.AnalysisRevision, r.ErrorCode, r.CompletedAt is null ? null : ParseTime(r.CompletedAt))).ToList();
+            r.CaseId, (int?)r.AnalysisRevision, r.ErrorCode, r.CompletedAt is null ? null : ParseTime(r.CompletedAt), ParseTime(r.CreatedAt))).ToList();
+    }
+
+    public async Task<IReadOnlyDictionary<JobStatus, int>> CountsAsync(string batchId, CancellationToken ct)
+    {
+        await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
+        var rows = await c.QueryAsync<CountRow>(new CommandDefinition(db.Sql["Batch.Counts"], new { batchId }, cancellationToken: ct)).ConfigureAwait(false);
+        return rows.ToDictionary(r => Parse<JobStatus>(r.Status), r => (int)r.Items);
     }
 
     public async Task<int> RerunAsync(string batchId, DateTimeOffset now, CancellationToken ct)

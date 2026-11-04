@@ -11,6 +11,11 @@ internal static class Uploads
 
     public static bool Accepted(string name) => Path.GetExtension(name).ToLowerInvariant() is ".txt" or ".html" or ".htm";
 
+    /// <summary>An item with both ids and accepted files of at most 5 MB each (a UTF-8 byte count is never below the character count, so the cheap length check runs first).</summary>
+    public static bool ValidItem(Aml.Services.BatchItemRequest? i) =>
+        i is not null && !string.IsNullOrWhiteSpace(i.SubjectRef) && !string.IsNullOrWhiteSpace(i.TriggerEventId) && i.Files is { Count: > 0 }
+        && i.Files.All(f => Accepted(f.Key) && Path.GetFileName(f.Key) == f.Key && f.Key.IndexOfAny(Path.GetInvalidFileNameChars()) < 0 && f.Value is not null && f.Value.Length <= MaxBytes && System.Text.Encoding.UTF8.GetByteCount(f.Value) <= MaxBytes);
+
     // Reads uploaded files in memory as raw bytes (file names reduced to their last segment).
     public static async Task<(Dictionary<string, byte[]>? Bytes, ProblemHttpResult? Error)> ReadBytesAsync(IFormFileCollection files, CancellationToken ct)
     {

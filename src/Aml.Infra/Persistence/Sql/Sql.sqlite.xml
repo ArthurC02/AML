@@ -266,12 +266,25 @@
     </statement>
 
     <statement id="Batch.ListItems" kind="Select">
-      <description>Progress of one batch.</description>
+      <description>Items of one batch in the given statuses, keyset-paged by (created_at, job_id).</description>
       <sql><![CDATA[
-        SELECT job_id, idempotency_key, status, attempt_count, case_id, analysis_revision, error_code, completed_at
+        SELECT job_id, idempotency_key, status, attempt_count, case_id, analysis_revision, error_code, completed_at, created_at
         FROM job
         WHERE batch_id = @batchId
+          AND (@allStatuses OR status IN @statuses)
+          AND (@afterAt IS NULL OR created_at > @afterAt OR (created_at = @afterAt AND job_id > @afterId))
         ORDER BY created_at, job_id
+        LIMIT @limit
+      ]]></sql>
+    </statement>
+
+    <statement id="Batch.Counts" kind="Select">
+      <description>Items of one batch per status.</description>
+      <sql><![CDATA[
+        SELECT status, COUNT(*) AS items
+        FROM job
+        WHERE batch_id = @batchId
+        GROUP BY status
       ]]></sql>
     </statement>
 

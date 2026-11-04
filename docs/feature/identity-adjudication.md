@@ -20,7 +20,7 @@ BM25 and displayed similarity values are not identity probabilities ([ADR-0001](
 | INDEX_SEARCH | a name query over the list database | large source sets |
 | PREVIOUS_LINK | the Profiles used by the Case's latest input | re-analysis after a source update |
 
-All four are served by `GET /api/lists/candidates?mode=` ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)). INDEX_SEARCH (steps 3 and 5 of the [operating architecture](system-overview.md#operating-architecture)) runs `Core/Retrieval/ProfileIndex` over the structured Profiles of the list database:
+They are served by `GET /api/profiles/search` (INDEX_SEARCH), `GET /api/profiles/{profileId}` (DIRECT_REFERENCE) and `GET /api/cases/{caseId}/candidates?source=table|previous` (CONTROLLED_SET, PREVIOUS_LINK) ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)). INDEX_SEARCH (steps 3 and 5 of the [operating architecture](system-overview.md#operating-architecture)) runs `Core/Retrieval/ProfileIndex` over the structured Profiles of the list database:
 
 - Exact alias tier: the query key (after controlled variant folding, in source order or with the surname moved to either end) equals an alias key. These Profiles are listed first, ordered by alias text, and never cut by Top N.
 - The other Profiles are ranked by three routes, each on its own scale, and fused by reciprocal rank (k 60):
@@ -36,7 +36,7 @@ A name query returns the Top N Profiles, counted after deduplication; when more 
 
 All hits with the same `sourceNamespace + profileId` become one CandidateProfile. Top K is counted by Profile, not alias rows.
 
-Merging different Profiles that describe the same person (across Profile IDs or sources) happens when the list database is built, not per Case. A merge needs a shared direct identifier or a recorded source link; name similarity alone never merges. Merged Profiles keep their own IDs and sources so every value stays traceable. Implemented by `ProfileMerge`, served by `GET /api/lists/merges`:
+Merging different Profiles that describe the same person (across Profile IDs or sources) happens when the list database is built, not per Case. A merge needs a shared direct identifier or a recorded source link; name similarity alone never merges. Merged Profiles keep their own IDs and sources so every value stays traceable. Implemented by `ProfileMerge`, served by `GET /api/profiles/merges`:
 
 - `SHARED_DOCUMENT_KEY`: the same document type, issuing country and number. A number that is blank, a placeholder, shorter than four characters or one repeated character, or a document with an unknown type or country, gives no key.
 - `RECORDED_SOURCE_LINK`: a relationship the source labels as the same person (Same As, Duplicate, Duplicate Of, Alias Profile, 同一人).

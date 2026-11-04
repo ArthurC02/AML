@@ -16,6 +16,8 @@ using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
+// A batch carries many files as JSON text (CJK escapes to 6 bytes a character), so the body limit is above Kestrel's 30 MB default.
+builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = builder.Configuration.GetValue<long?>("Api:MaxRequestBytes") ?? 100L * 1024 * 1024);
 
 var db = new SqliteDatabase(builder.Configuration["Database:ConnectionString"] ?? "Data Source=aml.db");
 db.Upgrade();
@@ -76,7 +78,7 @@ app.UseSwaggerUI(o => o.SwaggerEndpoint("/openapi/v1.json", "AML PoC"));
 
 app.MapCases();
 app.MapBatches();
-app.MapLists();
+app.MapProfiles();
 app.MapCodes();
 
 app.Run();

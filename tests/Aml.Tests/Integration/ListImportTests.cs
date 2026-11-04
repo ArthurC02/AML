@@ -99,13 +99,14 @@ public sealed class ListImportTests : ServiceTestBase
         var profile = CaseFiles()[ProfileName];
         await _listService.ImportAsync(new Dictionary<string, string> { [ProfileName] = profile }, ct);
 
-        var direct = await _listService.RetrieveAsync(RetrievalMode.DirectReference, null, "DJ:90000011", null, 10, ct);
-        Assert.Equal("DJ:90000011", Assert.Single(direct).ProfileKey);
+        var direct = (await _listService.GetProfileAsync("DJ:90000011", null, ct))!;
+        Assert.Equal(("90000011", "DJ:90000011", 1, 1), (direct.ProfileId, direct.ProfileKey, direct.Version, direct.LatestVersion));
+        Assert.Null(await _listService.GetProfileAsync("90000011", 2, ct));
 
-        Assert.Empty(await _listService.RetrieveAsync(RetrievalMode.IndexSearch, "WANG Wei", null, null, 10, ct));
+        Assert.Empty(await _listService.SearchAsync("WANG Wei", 10, ct));
         await _listService.ImportAsync(new Dictionary<string, string> { ["名單資料_123.txt"] = "Profile_ID:\t123\n主要名稱:\n1\tWei\tWANG\n" }, ct);
-        var search = await _listService.RetrieveAsync(RetrievalMode.IndexSearch, "WANG Wei", null, null, 10, ct);
-        Assert.Contains(search, s => s.ProfileKey == "DJ:123");
+        var search = await _listService.SearchAsync("WANG Wei", 10, ct);
+        Assert.Contains(search, s => (s.ProfileKey, s.ProfileId) == ("DJ:123", "123"));
     }
 
     [Fact]

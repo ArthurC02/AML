@@ -40,17 +40,17 @@ public sealed class ListsApiTests(ApiHost api) : IClassFixture<ApiHost>
 
         // First capture of the same text the Case used: version 1, nothing to re-analyze.
         var original = caseFiles.Single(f => f.Item1 == ProfileName).Item2;
-        var first = await Json(await http.PostAsync("/api/lists/profiles", Files((ProfileName, original)), ct), ct);
+        var first = await Json(await http.PostAsync("/api/profiles/import", Files((ProfileName, original)), ct), ct);
         Assert.Equal(1, first.GetProperty("profiles")[0].GetProperty("version").GetInt32());
         Assert.Equal(0, first.GetProperty("queuedReanalyses").GetArrayLength());
 
         // Same content again: unchanged.
-        var again = await Json(await http.PostAsync("/api/lists/profiles", Files((ProfileName, original)), ct), ct);
+        var again = await Json(await http.PostAsync("/api/profiles/import", Files((ProfileName, original)), ct), ct);
         Assert.False(again.GetProperty("profiles")[0].GetProperty("changed").GetBoolean());
 
         // A source update: full DOB. New version, the old one kept, and the queued job gives the Case revision 2.
         var updated = original.Replace("Date of Birth\t1973", "Date of Birth\t1973/6/12", StringComparison.Ordinal);
-        var refresh = await Json(await http.PostAsync("/api/lists/profiles", Files((ProfileName, updated)), ct), ct);
+        var refresh = await Json(await http.PostAsync("/api/profiles/import", Files((ProfileName, updated)), ct), ct);
         Assert.Equal(2, refresh.GetProperty("profiles")[0].GetProperty("version").GetInt32());
         Assert.Equal(caseId, refresh.GetProperty("queuedReanalyses")[0].GetProperty("caseId").GetString());
         var batchId = refresh.GetProperty("batchId").GetString();
@@ -58,29 +58,30 @@ public sealed class ListsApiTests(ApiHost api) : IClassFixture<ApiHost>
             b => b.GetProperty("succeeded").GetInt32() == 1, "the queued re-analysis to succeed", ct);
         var c = await Json(await http.GetAsync($"/api/cases/{caseId}", ct), ct);
         Assert.Equal(2, c.GetProperty("currentRevision").GetInt32());
-        var versions = await Json(await http.GetAsync("/api/lists/profiles/90000011/versions", ct), ct);
+        var versions = await Json(await http.GetAsync("/api/profiles/DJ:90000011/versions", ct), ct);
         Assert.Equal(2, versions.GetArrayLength());
 
-        // Retrieval modes.
-        var search = await Json(await http.GetAsync("/api/lists/candidates?mode=IndexSearch&name=" + Uri.EscapeDataString("鍾仁聲"), ct), ct);
-        Assert.Equal(("DJ:90000011", "EXACT_ALIAS"), (search[0].GetProperty("profileKey").GetString(), search[0].GetProperty("route").GetString()));
-        var direct = await Json(await http.GetAsync("/api/lists/candidates?mode=DirectReference&profileId=90000011", ct), ct);
-        Assert.Equal("DJ:90000011", direct[0].GetProperty("profileKey").GetString());
-        var previous = await Json(await http.GetAsync($"/api/lists/candidates?mode=PreviousLink&caseId={caseId}", ct), ct);
+        // Retrieval: search, direct reference, and a Case's own candidates.
+        var search = await Json(await http.GetAsync("/api/profiles/search?name=" + Uri.EscapeDataString("鍾仁聲"), ct), ct);
+        Assert.Equal(("DJ:90000011", "90000011", "EXACT_ALIAS"), (search[0].GetProperty("profileKey").GetString(), search[0].GetProperty("profileId").GetString(), search[0].GetProperty("route").GetString()));
+        var direct = await Json(await http.GetAsync("/api/profiles/DJ:90000011", ct), ct);
+        Assert.Equal((2, "DJ:90000011"), (direct.GetProperty("version").GetInt32(), direct.GetProperty("profileKey").GetString()));
+        Assert.Equal(1, (await Json(await http.GetAsync("/api/profiles/90000011?version=1", ct), ct)).GetProperty("version").GetInt32());
+        var previous = await Json(await http.GetAsync($"/api/cases/{caseId}/candidates?source=previous", ct), ct);
         Assert.Equal("DJ:90000011", previous[0].GetProperty("profileKey").GetString());
-        var controlled = await Json(await http.GetAsync($"/api/lists/candidates?mode=ControlledSet&caseId={caseId}", ct), ct);
+        var controlled = await Json(await http.GetAsync($"/api/cases/{caseId}/candidates", ct), ct);
         Assert.Equal(1, controlled.GetArrayLength()); // two candidate rows, one Profile
 
-        var missing = await http.GetAsync("/api/lists/candidates?mode=IndexSearch", ct);
+        var missing = await http.GetAsync("/api/profiles/search", ct);
         Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
         Assert.Equal("/api/codes/INVALID_REQUEST", (await missing.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("type").GetString());
 
         // Wiring: an HTML page and its .txt export hash to one Profile version; merges list refused merges apart.
-        await http.PostAsync("/api/lists/profiles", Files(("名單資料_123.txt", "Profile_ID:\t123\nGender:\tMale\n")), ct);
-        var html = await Json(await http.PostAsync("/api/lists/profiles", Files(("名單資料_123.html",
+        await http.PostAsync("/api/profiles/import", Files(("名單資料_123.txt", "Profile_ID:\t123\nGender:\tMale\n")), ct);
+        var html = await Json(await http.PostAsync("/api/profiles/import", Files(("名單資料_123.html",
             "<html><body><table><tr><td>Profile_ID</td><td>123</td></tr><tr><td>Gender</td><td>Male</td></tr></table></body></html>")), ct), ct);
         Assert.Equal(1, html.GetProperty("profiles")[0].GetProperty("version").GetInt32());
-        var merges = await Json(await http.GetAsync("/api/lists/merges", ct), ct);
+        var merges = await Json(await http.GetAsync("/api/profiles/merges", ct), ct);
         Assert.Equal(JsonValueKind.Array, merges.GetProperty("rejected").ValueKind);
     }
 }

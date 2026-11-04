@@ -2,7 +2,11 @@ using Aml.Core.Cases;
 using Aml.Core.Explanation;
 using Aml.Services;
 using Microsoft.AspNetCore.Http.HttpResults;
-using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
+using Microsoft.OpenApi;
+using Aml.Core.Retrieval;
+using Aml.Core.Subjects;
+using Aml.Infra.Txt;
 using static Aml.Api.Endpoints.Uploads;
 
 namespace Aml.Api.Endpoints;
@@ -14,18 +18,29 @@ internal static class CasesEndpoints
     {
         var cases = app.MapGroup("/api/cases").DisableAntiforgery(); // token-based API, no cookies
 
-        cases.MapPost("/", async Task<Results<JsonHttpResult<CaseSummary>, ProblemHttpResult>> (
-            [FromForm] string subjectRef, [FromForm] string triggerEventId, IFormFileCollection files, CaseService service, HttpContext http, CancellationToken ct) =>
+        cases.MapPost("/", async Task<Results<JsonHttpResult<CaseSummary>, ProblemHttpResult>> (HttpRequest request, CaseService service, CancellationToken ct) =>
         {
-            var (input, contents, error) = await ReadUploadAsync(files, ct);
+            var (item, input, contents, error) = request.HasFormContentType ? await ReadFormAsync(request, ct) : await ReadJsonAsync(request, ct);
             if (input is null) return error!;
-            var c = await service.CreateAsync(subjectRef, triggerEventId, input, ct, contents);
-            http.Response.Headers.Location = $"/api/cases/{c.CaseId}";
-            return View((await service.GetSummaryAsync(c.CaseId, ct))!, StatusCodes.Status201Created);
+            var (c, inserted) = await service.CreateOrGetAsync(item!.SubjectRef, item.TriggerEventId, input, ct, contents);
+            var summary = (await service.GetSummaryAsync(c.CaseId, ct))!;
+            if (!inserted) return View(summary);
+            request.HttpContext.Response.Headers.Location = $"/api/cases/{c.CaseId}";
+            return View(summary, StatusCodes.Status201Created);
+        })
+        .AddOpenApiOperationTransformer(async (op, ctx, ct) => op.RequestBody = new OpenApiRequestBody
+        {
+            Required = true,
+            Content = new Dictionary<string, OpenApiMediaType>
+            {
+                ["multipart/form-data"] = new() { Schema = await ctx.GetOrCreateSchemaAsync(typeof(CaseUploadForm), cancellationToken: ct) },
+                ["application/json"] = new() { Schema = await ctx.GetOrCreateSchemaAsync(typeof(BatchItemRequest), cancellationToken: ct) },
+            },
         })
         .Produces<CaseSummary>(StatusCodes.Status201Created)
-        .WithSummary("Create a Case from the .txt export files (or the same pages as HTML) and run the first analysis")
-        .WithDescription("Upload 案件資訊*.txt, 名單資料_<id>.txt, the customer or related-party files and any 新聞資訊_<id>.txt. Repeating the same triggerEventId and subjectRef returns the existing Case. Returns the Case summary.");
+        .Produces<CaseSummary>()
+        .WithSummary("Create a Case from the export files and run the first analysis; 201 when created, 200 when it already existed")
+        .WithDescription("Send multipart form fields subjectRef, triggerEventId and files (案件資訊*.txt, 名單資料_<id>.txt, the customer or related-party files and any 新聞資訊_<id>.txt, or the same pages as HTML), or JSON {subjectRef, triggerEventId, files: {name: text}} as one batch item. Repeating the same triggerEventId and subjectRef returns the existing Case with 200. Returns the Case summary.");
 
         cases.MapPost("/{caseId}/analyses", async Task<Results<JsonHttpResult<CaseSummary>, NotFound, ProblemHttpResult>> (
             string caseId, IFormFileCollection files, CaseService service, CancellationToken ct) =>
@@ -74,6 +89,18 @@ internal static class CasesEndpoints
         .Produces<HitSummary>()
         .WithSummary("One hit of the effective revision (or ?revision=): view=summary (default) without compared values, view=detail with the full explanation (HitExplanation)");
 
+        cases.MapGet("/{caseId}/candidates", async Task<Results<Ok<IReadOnlyList<RetrievedCandidate>>, NotFound, ProblemHttpResult>> (
+            string caseId, string? source, int? top, ListService lists, CancellationToken ct) =>
+        {
+            if (source is not (null or "table" or "previous"))
+                return Problems.Of(Problems.InvalidRequest, $"Unknown source '{source}'.", "Send source=table (the Case's candidate table) or source=previous (the Profiles of its latest input).", new { parameter = "source" });
+            if (top is < 1 or > ProfilesEndpoints.MaxTop)
+                return Problems.Of(Problems.InvalidRequest, $"top must be 1 to {ProfilesEndpoints.MaxTop}.", $"Send a top from 1 to {ProfilesEndpoints.MaxTop}, or leave it out for {ProfilesEndpoints.DefaultTop}.", new { parameter = "top" });
+            var found = await lists.CaseCandidatesAsync(caseId, source == "previous" ? CandidateSource.Previous : CandidateSource.Table, top ?? ProfilesEndpoints.DefaultTop, ct);
+            return found is null ? TypedResults.NotFound() : TypedResults.Ok(found);
+        })
+        .WithSummary("A Case's candidate Profiles: source=table (CONTROLLED_SET, its own candidate table, the default) or source=previous (PREVIOUS_LINK, the Profiles of its latest input)");
+
         cases.MapGet("/{caseId}/revisions", async Task<Results<JsonHttpResult<IReadOnlyList<RevisionLine>>, NotFound>> (string caseId, CaseService service, CancellationToken ct) =>
             await service.GetRevisionsAsync(caseId, ct) is { } list ? View(list) : TypedResults.NotFound())
         .Produces<IReadOnlyList<RevisionLine>>()
@@ -83,22 +110,60 @@ internal static class CasesEndpoints
             await service.GetAnalysisAsync(caseId, revision, ct) is { } a ? View(a) : TypedResults.NotFound())
         .Produces<AnalysisRecord>()
         .WithSummary("The full record of one revision: result, explanation, lineage and data quality");
-
-        cases.MapGet("/{caseId}/analyses/{revision:int}", async Task<Results<JsonHttpResult<CaseAnalysis>, NotFound>> (string caseId, int revision, CaseService service, CancellationToken ct) =>
-            await service.GetAnalysisAsync(caseId, revision, ct) is { } a
-                ? TypedResults.Json(a.Result, CaseJson.Options)
-                : TypedResults.NotFound())
-        .WithSummary("Analysis result: hits, source conditions, evidence, identity decision and reason codes");
-
-        cases.MapGet("/{caseId}/explanation", async Task<Results<JsonHttpResult<CaseExplanation>, NotFound>> (string caseId, CaseService service, CancellationToken ct) =>
-            await service.GetExplanationAsync(caseId, ct) is { } explanation
-                ? TypedResults.Json(explanation, CaseJson.Options)
-                : TypedResults.NotFound())
-        .WithSummary("Reviewer and audit view of the effective revision: hit reason, comparison table, evidence, reason codes and a five-part summary");
     }
 
     private static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
 
+    private const string ItemFix = "Send subjectRef, triggerEventId and files: .txt, .html or .htm files up to 5 MB each.";
+
+    // Multipart: the file bytes decide the encoding, as for any upload.
+    private static async Task<(BatchItemRequest? Item, CaseInput? Input, IReadOnlyDictionary<string, string>? Contents, ProblemHttpResult? Error)> ReadFormAsync(HttpRequest request, CancellationToken ct)
+    {
+        IFormCollection form;
+        try
+        {
+            form = await request.ReadFormAsync(ct);
+        }
+        catch (Exception e) when (e is InvalidDataException or IOException)
+        {
+            return (null, null, null, Problems.Of(Problems.InvalidRequest, "The body is not a readable multipart form.", ItemFix));
+        }
+        var (subjectRef, triggerEventId) = (form["subjectRef"].ToString(), form["triggerEventId"].ToString());
+        if (form["subjectRef"].Count != 1 || form["triggerEventId"].Count != 1 || string.IsNullOrWhiteSpace(subjectRef) || string.IsNullOrWhiteSpace(triggerEventId))
+            return (null, null, null, Problems.Of(Problems.InvalidRequest, "subjectRef and triggerEventId are required.", ItemFix, new { parameter = "subjectRef" }, new { parameter = "triggerEventId" }));
+        var (input, contents, error) = await ReadUploadAsync(form.Files, ct);
+        return (new BatchItemRequest(subjectRef, triggerEventId, contents ?? []), input, contents, error);
+    }
+
+    // JSON: one batch item; the files are text, hashed as their UTF-8 encoding.
+    private static async Task<(BatchItemRequest? Item, CaseInput? Input, IReadOnlyDictionary<string, string>? Contents, ProblemHttpResult? Error)> ReadJsonAsync(HttpRequest request, CancellationToken ct)
+    {
+        if (!request.HasJsonContentType())
+            return (null, null, null, Problems.Of(Problems.InvalidRequest, "Send multipart/form-data or application/json.", ItemFix));
+        BatchItemRequest? item;
+        try
+        {
+            item = await request.ReadFromJsonAsync<BatchItemRequest>(ct);
+        }
+        catch (Exception e) when (e is JsonException or InvalidOperationException)
+        {
+            return (null, null, null, Problems.Of(Problems.InvalidRequest, "The body is not a JSON object with subjectRef, triggerEventId and files.", ItemFix));
+        }
+        if (!ValidItem(item))
+            return (null, null, null, Problems.Of(Problems.InvalidRequest, "subjectRef, triggerEventId and .txt, .html or .htm files up to 5 MB each are required.", ItemFix));
+        try
+        {
+            return (item, TxtCaseReader.ReadFiles(item!.Files), item.Files, null);
+        }
+        catch (CaseInputException e)
+        {
+            return (null, null, null, Problems.Input(e));
+        }
+    }
+
     // Views and stored records are written as their schemas describe them: nulls left out.
     private static JsonHttpResult<T> View<T>(T value, int status = StatusCodes.Status200OK) => TypedResults.Json(value, CaseJson.Options, statusCode: status);
 }
+
+/// <summary>The multipart form of POST /api/cases (OpenAPI description only).</summary>
+internal sealed record CaseUploadForm(string SubjectRef, string TriggerEventId, IFormFileCollection Files);

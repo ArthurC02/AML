@@ -35,17 +35,17 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(1, c.GetProperty("currentRevision").GetInt32());
 
         var caseId = c.GetProperty("caseId").GetString();
-        var analysis = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/analyses/1", ct);
-        var hit = analysis.GetProperty("hits")[0];
+        var revision = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/revisions/1", ct);
+        var hit = revision.GetProperty("result").GetProperty("hits")[0];
         Assert.Equal(identityDecision, hit.GetProperty("identity").GetProperty("decision").GetString());
-
-        var explanation = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/explanation", ct);
-        var first = explanation.GetProperty("hits")[0];
+        var first = revision.GetProperty("explanation").GetProperty("hits")[0];
         Assert.Equal(9, first.GetProperty("comparison").GetArrayLength());
         Assert.False(string.IsNullOrEmpty(first.GetProperty("summary").GetProperty("conclusion").GetString()));
 
-        // Same trigger and subject: the existing Case comes back, no new revision.
+        // Same trigger and subject: the existing Case comes back with 200, no new revision.
         using var repeated = await client.PostAsync("/api/cases", Upload(gc, "evt-" + gc), ct);
+        Assert.Equal(HttpStatusCode.OK, repeated.StatusCode);
+        Assert.Null(repeated.Headers.Location);
         var again = await repeated.Content.ReadFromJsonAsync<JsonElement>(ct);
         Assert.Equal(caseId, again.GetProperty("caseId").GetString());
         Assert.Equal(1, again.GetProperty("currentRevision").GetInt32());
@@ -89,6 +89,40 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Contains(found.GetProperty("items").EnumerateArray(), i => i.GetProperty("caseId").GetString() == caseId);
     }
 
+    [Fact]
+    public async Task A_case_is_created_from_json_with_201_and_a_repeat_returns_200()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var client = api.CreateClient();
+        var files = Directory.GetFiles(GoldenCases.GoldenCaseTests.Folder("GC-11"), "*.txt").ToDictionary(p => Path.GetFileName(p), File.ReadAllText);
+        var body = new { subjectRef = "subject-json", triggerEventId = "evt-json", files };
+
+        using var created = await client.PostAsJsonAsync("/api/cases", body, ct);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var caseId = (await created.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("caseId").GetString();
+        Assert.Equal($"/api/cases/{caseId}", created.Headers.Location?.OriginalString);
+        // JSON files are text: their source hash is the SHA-256 of the UTF-8 encoding.
+        var lineage = (await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/revisions/1", ct)).GetProperty("lineage");
+        var caseFile = lineage.GetProperty("inputFiles").EnumerateArray().Single(f => f.GetProperty("name").GetString()!.StartsWith("案件資訊", StringComparison.Ordinal));
+        Assert.Equal(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(files[caseFile.GetProperty("name").GetString()!]))),
+            caseFile.GetProperty("sha256").GetString());
+
+        using var repeated = await client.PostAsJsonAsync("/api/cases", body, ct);
+        Assert.Equal(HttpStatusCode.OK, repeated.StatusCode);
+        Assert.Equal(caseId, (await repeated.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("caseId").GetString());
+
+        var openApi = await client.GetFromJsonAsync<JsonElement>("/openapi/v1.json", ct);
+        var content = openApi.GetProperty("paths").GetProperty("/api/cases").GetProperty("post").GetProperty("requestBody").GetProperty("content");
+        Assert.True(content.TryGetProperty("multipart/form-data", out _));
+        Assert.True(content.TryGetProperty("application/json", out _));
+    }
+
+    private static StringContent Charset(StringContent content, string charset)
+    {
+        content.Headers.ContentType!.CharSet = charset;
+        return content;
+    }
+
     private static MultipartFormDataContent Files(string gc, Func<string, string, string>? edit = null)
     {
         var form = new MultipartFormDataContent();
@@ -113,8 +147,8 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         // Unchanged inputs: revision 2, no changes.
         using var same = await client.PostAsync($"/api/cases/{caseId}/analyses", Files("GC-11"), ct);
         Assert.Equal(2, (await same.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("currentRevision").GetInt32());
-        var stable = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/explanation", ct);
-        Assert.Equal(0, stable.GetProperty("changesFromPreviousRevision").GetArrayLength());
+        var stable = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/revisions/2", ct);
+        Assert.Equal(0, stable.GetProperty("explanation").GetProperty("changesFromPreviousRevision").GetArrayLength());
 
         // Source update: the Profile's birth years become 1960 only → DOB conflict, identity PROBABLE_MATCH → REVIEW.
         using var updated = await client.PostAsync($"/api/cases/{caseId}/analyses", Files("GC-11", (name, text) =>
@@ -123,14 +157,14 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
                       .Replace("2	Date of Birth	1972", "2	Date of Birth	1960", StringComparison.Ordinal)
                 : text), ct);
         Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
-        var changed = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/explanation", ct);
-        var changes = changed.GetProperty("changesFromPreviousRevision").EnumerateArray().ToList();
+        var changed = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/revisions/3", ct);
+        var changes = changed.GetProperty("explanation").GetProperty("changesFromPreviousRevision").EnumerateArray().ToList();
         Assert.Contains(changes, c => c.GetProperty("kind").GetString() == "IDENTITY_CHANGED"
             && c.GetProperty("from").GetString() == "PROBABLE_MATCH" && c.GetProperty("to").GetString() == "REVIEW");
 
         // Revision 2 is kept unchanged as history.
-        var rev2 = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/analyses/2", ct);
-        Assert.Equal("PROBABLE_MATCH", rev2.GetProperty("hits")[0].GetProperty("identity").GetProperty("decision").GetString());
+        var rev2 = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/revisions/2", ct);
+        Assert.Equal("PROBABLE_MATCH", rev2.GetProperty("result").GetProperty("hits")[0].GetProperty("identity").GetProperty("decision").GetString());
     }
 
     [Fact]
@@ -182,10 +216,26 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
     [InlineData("GET", "/api/cases/unknown", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("GET", "/api/cases/unknown/analyses/1", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("GET", "/api/cases/unknown/explanation", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/lists/merges", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/cases/unknown/candidates", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/cases/unknown/candidates?source=other", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("GET", "/api/profiles/unknown", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/profiles/search?name=x&top=0", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("GET", "/api/batches/unknown?view=table", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("GET", "/api/batches/unknown?pageSize=0", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("GET", "/api/batches/unknown?status=DONE", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("GET", "/api/batches/unknown?status=1", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/cases", "json-no-ids", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/cases", "json-broken", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/cases", "form-no-ids", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/cases", "form-broken", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/cases", "form-twice", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/cases", "json-charset", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/cases", """{"subjectRef":"s","triggerEventId":"t","files":{"x/案件資訊.txt":"x"}}""", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("POST", "/api/cases/unknown/analyses", "case-files", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("GET", "/api/batches/unknown", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("POST", "/api/batches/unknown/rerun", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
-    [InlineData("GET", "/api/lists/profiles/unknown/versions", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/profiles/unknown/versions", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("POST", "/api/cases", "no-files", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("POST", "/api/cases", "oversize", HttpStatusCode.BadRequest, "UNSUPPORTED_FILE")]
     [InlineData("POST", "/api/batches", "[]", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
@@ -196,7 +246,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
     [InlineData("POST", "/api/batches", "batch-null-item", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("POST", "/api/batches", "batch-no-ids", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("POST", "/api/batches", """[{"subjectRef":" ","triggerEventId":"t","files":{"a.txt":"x"}}]""", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
-    [InlineData("GET", "/api/lists/candidates?mode=Nickname&name=x", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("GET", "/api/profiles/search", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("GET", "/api/no-such-route", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("GET", "/api/codes/NO_SUCH_CODE", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("GET", "/api/schemas/no-such-schema", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
@@ -229,6 +279,16 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
             "batch-null-file" => new StringContent("""[{"subjectRef":"s","triggerEventId":"t","files":{"a.txt":null}}]""", System.Text.Encoding.UTF8, "application/json"),
             "batch-null-item" => new StringContent("[null]", System.Text.Encoding.UTF8, "application/json"),
             "batch-no-ids" => new StringContent("""[{"files":{"a.txt":"x"}}]""", System.Text.Encoding.UTF8, "application/json"),
+            "json-no-ids" => new StringContent("""{"files":{"a.txt":"x"}}""", System.Text.Encoding.UTF8, "application/json"),
+            "json-broken" => new StringContent("""{"subjectRef":""", System.Text.Encoding.UTF8, "application/json"),
+            "form-no-ids" => new MultipartFormDataContent { { new StringContent("x"), "files", "案件資訊.txt" } },
+            "form-broken" => new StringContent("x", System.Text.Encoding.UTF8, "multipart/form-data"),
+            "form-twice" => new MultipartFormDataContent
+            {
+                { new StringContent("a"), "subjectRef" }, { new StringContent("b"), "subjectRef" }, { new StringContent("t"), "triggerEventId" },
+                { new StringContent("x"), "files", "案件資訊.txt" },
+            },
+            "json-charset" => Charset(new StringContent("{}", System.Text.Encoding.UTF8, "application/json"), "foo"),
             _ => new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
         };
         using var request = new HttpRequestMessage(new HttpMethod(method), path) { Content = content };
@@ -254,9 +314,18 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(HttpStatusCode.Accepted, posted.StatusCode);
         var batchId = (await posted.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("batchId").GetString();
 
-        var batch = await Wait.UntilAsync(() => client.GetFromJsonAsync<JsonElement>($"/api/batches/{batchId}", ct),
+        // The default summary view lists only the items not yet succeeded.
+        var summary = await Wait.UntilAsync(() => client.GetFromJsonAsync<JsonElement>($"/api/batches/{batchId}", ct),
             b => b.GetProperty("succeeded").GetInt32() == 2, "both batch items to succeed", ct);
-        foreach (var item in batch.GetProperty("items").EnumerateArray())
+        Assert.Equal(0, summary.GetProperty("items").GetArrayLength());
+        var batch = await client.GetFromJsonAsync<JsonElement>($"/api/batches/{batchId}?view=full&pageSize=1", ct);
+        Assert.Equal(1, batch.GetProperty("items").GetArrayLength());
+        var rest = await client.GetFromJsonAsync<JsonElement>($"/api/batches/{batchId}?view=full&pageSize=1&pageToken={batch.GetProperty("nextPageToken").GetString()}", ct);
+        Assert.Equal(JsonValueKind.Null, rest.GetProperty("nextPageToken").ValueKind);
+        Assert.NotEqual(batch.GetProperty("items")[0].GetProperty("jobId").GetString(), rest.GetProperty("items")[0].GetProperty("jobId").GetString());
+        var succeeded = await client.GetFromJsonAsync<JsonElement>($"/api/batches/{batchId}?status=SUCCEEDED", ct);
+        Assert.Equal(2, succeeded.GetProperty("items").GetArrayLength());
+        foreach (var item in batch.GetProperty("items").EnumerateArray().Concat(rest.GetProperty("items").EnumerateArray()))
         {
             Assert.Equal(1, item.GetProperty("analysisRevision").GetInt32());
             var c = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{item.GetProperty("caseId").GetString()}", ct);

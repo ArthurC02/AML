@@ -100,7 +100,9 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
             throw;
         }
         if (jobs.Count < free) _slots.Release(free - jobs.Count);
-        return jobs.Select(j => RunInSlotAsync(j, ct)).ToList();
+        // Task.Run: reading and analysis are CPU-bound and SQLite's async calls complete synchronously, so without it each
+        // job would run to the end before the next one starts. No token: a job that never starts would never free its slot.
+        return jobs.Select(j => Task.Run(() => RunInSlotAsync(j, ct), CancellationToken.None)).ToList();
     }
 
     private async Task RunInSlotAsync(ClaimedJob job, CancellationToken ct)

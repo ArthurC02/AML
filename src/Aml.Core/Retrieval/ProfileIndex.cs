@@ -43,6 +43,14 @@ public sealed class ProfileIndex
     private readonly Dictionary<string, SourceProfile> _profiles = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _documentFrequency = new(StringComparer.Ordinal);
     private readonly Dictionary<bool, double> _averageLength = [];
+    // Postings (alias positions) by normalized key and by each route's terms. Every route scores 0 on an alias that shares
+    // no term with the query, so a search scores only the aliases its terms reach, never the whole list.
+    // ponytail: a very common term (a frequent surname, the "^ch" gram) still reaches a large share of the list; add top-k
+    // pruning (WAND / MaxScore) or a stop-term cut-off when list-scale latency demands it.
+    private readonly Dictionary<string, List<int>> _byKey = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<int>> _byToken = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<int>> _byGram = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<int>> _byReading = new(StringComparer.Ordinal);
 
     /// <param name="profiles">A ProfileKey given twice keeps its last Profile only, aliases and term counts included.</param>
     public ProfileIndex(IEnumerable<SourceProfile> profiles)
@@ -54,9 +62,14 @@ public sealed class ProfileIndex
             {
                 var key = Normalize.NameKey(name, true);
                 if (key.Length == 0) continue; // 「-」 or punctuation only: it would match every other empty key
-                var tokens = Tokens(name);
-                _aliases.Add(new Alias(p.ProfileKey, name, key, tokens, Grams(key), IsCjk(key), ReadingKeys(name)));
-                foreach (var t in tokens.Distinct()) _documentFrequency[t] = _documentFrequency.GetValueOrDefault(t) + 1;
+                var alias = new Alias(p.ProfileKey, name, key, Tokens(name), Grams(key), IsCjk(key), ReadingKeys(name));
+                var at = _aliases.Count;
+                _aliases.Add(alias);
+                Post(_byKey, [key], at);
+                Post(_byToken, alias.Tokens.Distinct(), at);
+                Post(_byGram, alias.Grams, at);
+                Post(_byReading, alias.ReadingKeys, at);
+                foreach (var t in alias.Tokens.Distinct()) _documentFrequency[t] = _documentFrequency.GetValueOrDefault(t) + 1;
             }
         }
         // Chinese aliases are counted in characters, Latin ones in words: one shared average would skew both.
@@ -77,7 +90,7 @@ public sealed class ProfileIndex
         var keys = Normalize.NameKeys(name, true).Where(k => k.Length > 0).ToHashSet(StringComparer.Ordinal);
         if (keys.Count == 0) return [];
 
-        var exact = _aliases.Where(a => keys.Contains(a.Key))
+        var exact = Lookup(_byKey, keys).Select(i => _aliases[i])
             .GroupBy(a => a.ProfileKey)
             .Select(g => g.MinBy(a => a.Name, StringComparer.Ordinal)!)
             .OrderBy(a => a.Name, StringComparer.Ordinal).ThenBy(a => a.ProfileKey, StringComparer.Ordinal)
@@ -97,10 +110,13 @@ public sealed class ProfileIndex
             (Reading, a => a.ReadingKeys.Count(readings.Contains), 0),
         ];
 
+        // Every ordering below ends in a total order (score, alias, Profile key), so the order postings are read in does not matter.
+        var reached = Lookup(_byToken, tokens).Concat(Lookup(_byGram, grams)).Concat(Lookup(_byReading, readings))
+            .Distinct().Select(i => _aliases[i]).Where(a => !exactProfiles.Contains(a.ProfileKey)).ToList();
         var fused = new Dictionary<string, (double Rrf, int BestRank, string Route, string Name)>(StringComparer.Ordinal);
         foreach (var (route, score, floor) in routes)
         {
-            var ranked = _aliases.Where(a => !exactProfiles.Contains(a.ProfileKey))
+            var ranked = reached
                 .Select(a => (Alias: a, Score: score(a)))
                 .Where(x => x.Score > 0 && x.Score >= floor)
                 .GroupBy(x => x.Alias.ProfileKey)
@@ -142,6 +158,18 @@ public sealed class ProfileIndex
         }
         return score;
     }
+
+    private static void Post(Dictionary<string, List<int>> postings, IEnumerable<string> terms, int at)
+    {
+        foreach (var t in terms)
+        {
+            if (!postings.TryGetValue(t, out var list)) postings[t] = list = [];
+            list.Add(at);
+        }
+    }
+
+    private static IEnumerable<int> Lookup(Dictionary<string, List<int>> postings, IEnumerable<string> terms) =>
+        terms.Distinct().SelectMany(t => postings.GetValueOrDefault(t) ?? []);
 
     private static HashSet<string> ReadingKeys(string name) => Romanization.ReadingKeys(name).ToHashSet(StringComparer.Ordinal);
 

@@ -51,12 +51,17 @@ public sealed partial class ListService(
 
         // ponytail: Cases created between this read and the capture are not queued; they carry their own Profile files.
         var inputs = await caseStore.LatestInputsAsync(ct).ConfigureAwait(false);
+        // Each Case file of an imported Profile is hashed once, not once per imported Profile (a hash may first convert HTML).
+        var ids = accepted.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
+        var used = inputs.SelectMany(i => i.Files.Select(f => (i.CaseId, ProfileId: ProfileIdOf(f.Key), f.Value)))
+            .Where(f => f.ProfileId is not null && ids.Contains(f.ProfileId))
+            .ToLookup(f => f.ProfileId!, f => (f.CaseId, Hash: Hash(f.Value)), StringComparer.Ordinal);
         var batchId = Guid.CreateVersion7().ToString();
         var queued = new List<ReanalysisJob>();
         foreach (var (id, content) in accepted)
         {
             var hash = Hash(content);
-            var affected = inputs.Where(i => FilesOf(i.Files, id).Any(f => Hash(f.Value) != hash)).Select(i => i.CaseId).ToList();
+            var affected = used[id].Where(f => f.Hash != hash).Select(f => f.CaseId).Distinct().ToList();
             List<ReanalysisJob> planned = [];
             var (current, changed, jobIds) = await lists.CaptureAsync(id, hash, content, clock.GetUtcNow(), version =>
             {

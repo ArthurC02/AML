@@ -85,6 +85,26 @@ public sealed class BatchTests : IDisposable
     }
 
     [Fact]
+    public async Task Claimed_jobs_run_at_the_same_time_up_to_MaxWorkers()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // Each read waits until all four are in flight: run one after another, the first would wait alone and time out.
+        using var allIn = new CountdownEvent(4);
+        var together = 0;
+        using var batch = new BatchService(_jobs, new CaseService(new CaseStore(_db), TimeProvider.System), _ =>
+            {
+                allIn.Signal();
+                if (allIn.Wait(TimeSpan.FromSeconds(10), ct)) Interlocked.Increment(ref together);
+                throw new InvalidOperationException("stop here");
+            },
+            new BatchOptions { MaxWorkers = 4 }, TimeProvider.System);
+        await batch.SubmitAsync([.. Enumerable.Range(1, 4).Select(i => new BatchItemRequest("s1", $"e{i}", new Dictionary<string, string>()))], ct);
+
+        Assert.Equal(4, await batch.RunOnceAsync(ct));
+        Assert.Equal(4, together);
+    }
+
+    [Fact]
     public async Task Transient_failures_retry_until_the_budget_is_spent()
     {
         var ct = TestContext.Current.CancellationToken;

@@ -52,6 +52,7 @@ AML/
 │   │   ├── CaseService.cs        # sole writer of Case state; builds each revision's lineage and quality
 │   │   ├── ProfileFiles.cs       # Profile file names and the list content hash
 │   │   ├── BatchService.cs       # job-table batches
+│   │   ├── AmlTelemetry.cs       # traces and metrics: analyses, durations, job attempts
 │   │   └── ListService.cs        # list database, retrieval, merges, REANALYZE_CASE jobs on Profile change
 │   ├── Aml.Infra/                # implements Core/Ports
 │   │   ├── Persistence/          # see feature/persistence.md
@@ -64,7 +65,7 @@ AML/
 │       └── Workers/JobWorker.cs  # BackgroundService
 └── tests/
     └── Aml.Tests/
-        ├── Unit/                 # in process, no database: Extraction, Identity, Names, Retrieval, Screening
+        ├── Unit/                 # in process, no database: Cases, Extraction, Identity, Names, Retrieval, Screening
         ├── GoldenCases/          # Golden Cases through the analyzer, augmented cases, explanation, views, metrics (in process)
         ├── Integration/          # services, repositories and the job table on SQLite
         ├── E2E/                  # critical API flows through WebApplicationFactory
@@ -99,7 +100,7 @@ The purpose of the tests is to find defects. A test that only replays a known ex
 
 ### Layers
 
-Tests follow the test pyramid: many in-process tests of Core rules and the readers, fewer service and repository tests on SQLite, and API tests only for the critical flows (upload and analysis, upload validation, refused requests and unknown ids, batch, health, Profile import with queued re-analysis, retrieval modes and the export-text wiring) and the contract: `ContractTests` compares the OpenAPI document and every published schema with the snapshots in `tests/Aml.Tests/E2E/Contracts` and checks that each operation has an `operationId`, a tag and a description. After an intended contract change, run the tests with `AML_UPDATE_SNAPSHOTS=1` and review the snapshot diff. A behaviour is tested at the lowest layer that can show it; an API test covers only what needs the HTTP pipeline or the DI wiring. `TestPyramidTests` counts test methods by namespace (`Aml.Tests.E2E`, `Aml.Tests.Integration`, everything else in process) and fails when integration tests fall below twice the E2E tests or in-process tests below three times the integration tests. A `[Theory]` counts as one method however many rows it has.
+Tests follow the test pyramid: many in-process tests of Core rules and the readers, fewer service and repository tests on SQLite, and API tests only for the critical flows (upload and analysis, upload validation, refused requests and unknown ids, batch, health, Profile import with queued re-analysis, retrieval modes and the export-text wiring, the code and schema endpoints) and the contract: `ContractTests` compares the OpenAPI document and every published schema with the snapshots in `tests/Aml.Tests/E2E/Contracts` and checks that each operation has an `operationId`, a tag and a description. After an intended contract change, run the tests with `AML_UPDATE_SNAPSHOTS=1` and review the snapshot diff. A behaviour is tested at the lowest layer that can show it; an API test covers only what needs the HTTP pipeline or the DI wiring. `TestPyramidTests` counts test methods by namespace (`Aml.Tests.E2E`, `Aml.Tests.Integration`, everything else in process) and fails when integration tests fall below twice the E2E tests or in-process tests below three times the integration tests. A `[Theory]` counts as one method however many rows it has.
 
 ### Test design
 

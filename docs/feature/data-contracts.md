@@ -19,7 +19,6 @@ The stored analysis result and explanation, each revision's lineage and quality,
 - `analysisRevision`
 - `profileKey = sourceNamespace + profileId`
 - `sourceVersion`
-- `evidenceId`
 - `decisionId`
 - `batchId / itemId`
 
@@ -60,25 +59,21 @@ A deduplicated Profile with all matching hits attached.
 ## Evidence
 
 ```yaml
-evidenceId: ev-001
 group: DATE_OF_BIRTH
-direction: SUPPORT | CONFLICT | UNKNOWN | PREREQUISITE
-strength: LOW | MEDIUM | HIGH | UNIQUE
-comparisonStatus: EXACT | PARTIAL | CONFLICT | UNCERTAIN
-                | SUBJECT_MISSING | PROFILE_MISSING
-asOf: null                # time point both values refer to, when known
-rawValues: []
-normalizedValues: []
-sourceRefs: []
-ruleVersion: normalization-v2
+direction: PREREQUISITE | SUPPORT | CONFLICT | NEUTRAL
+status: EXACT | PARTIAL | CONFLICT | UNCERTAIN
+      | SUBJECT_MISSING | PROFILE_MISSING
+strength: NONE | LOW | MEDIUM | HIGH | UNIQUE
+detail: BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE   # code, see /api/codes
+note: null                # reviewer text
 ```
 
-| comparisonStatus | When |
+| status | When |
 |---|---|
 | `EXACT` | values identical after normalization |
 | `PARTIAL` | only part agrees (spelling variant, name order, birth year only); the explanation says which part |
 | `CONFLICT` | same field, same period, values genuinely differ |
-| `UNCERTAIN` | both present but ambiguous, from different periods or period unknown; direction is UNKNOWN |
+| `UNCERTAIN` | both present but ambiguous, from different periods or period unknown; direction is NEUTRAL |
 | `SUBJECT_MISSING` / `PROFILE_MISSING` | one side has no value; no other status is allowed then |
 
 `PREREQUISITE` marks NAME, NATIONALITY and GENDER evidence: compared and shown, never counted as support ([identity adjudication](identity-adjudication.md#hit-prerequisites-and-direct-identifiers)).
@@ -143,14 +138,10 @@ PROBABLE_MATCH is never exposed; it surfaces as REVIEW with high priority. Case-
 ## DispositionRecommendation
 
 ```yaml
-subjectRef: customer-001
-profileKey: DJ:14001741
-recommendation: ON_LIST | NOT_ON_LIST | NONE
+recommendation: ON_LIST | NOT_ON_LIST   # null when no rule resolves the pair
+reasonCodes: []           # e.g. ART22_FOREIGN_PEP_PRESUMPTION
+pendingChecks: []         # checks still to run outside the system, with or without a recommendation
 advisory: true            # always: the final selection happens outside the system
-basis: IDENTITY | ART22_FOREIGN_PEP_PRESUMPTION | ART22_ADVERSE_UNRELATED
-setAsideConditions: []    # conditions excluded by Article 22 ②
-policyVersion: disposition-policy-0.1
-reasonCodes: []
 ```
 
 Never changes the IdentityComparison or SourceConditionResults ([ADR-0017](../adr/0017-article-22-disposition-policy.md)).

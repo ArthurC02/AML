@@ -82,8 +82,8 @@ Direct identifiers are a full date of birth (DAY precision) and a comparable doc
 
 ## Comparison rules
 
-- Values from different periods are compared at the same time point. Different values from different or unknown periods are `UNCERTAIN` with direction UNKNOWN.
-- Employment and address count as same-period support only when both sides have an explicit attribution and validity period. Without them, they stay UNKNOWN and the limitation is recorded.
+- Values from different periods are compared at the same time point. Different values from different or unknown periods are `UNCERTAIN` with direction NEUTRAL.
+- Employment and address count as same-period support only when both sides have an explicit attribution and validity period. Without them, they stay `UNCERTAIN` with direction NEUTRAL and the limitation is recorded.
 - Different residence, registration or incident locations are weak evidence and can never alone, or as the main reason, push towards NO_MATCH.
 - An event location is not a residential address; a report date or account-opening date is not an employment or residence period.
 - Two values from different records or sources are not independent unless their source relationship is known; otherwise the explanation states "source relationship unknown". Several reports of the same event are one piece of evidence.

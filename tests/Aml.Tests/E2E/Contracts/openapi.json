@@ -403,7 +403,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HitSummary"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/HitSummary"
+                    },
+                    {
+                      "$ref": "#/components/schemas/HitExplanation"
+                    }
+                  ]
                 }
               }
             }

@@ -98,6 +98,17 @@ internal static class CasesEndpoints
             return view == "detail" ? View(h) : View(CaseViews.Hit(caseId, rev, h));
         })
         .Produces<HitSummary>()
+        // The 200 body depends on view: HitSummary (summary) or HitExplanation (detail). Both are referenced, not registered:
+        // HitExplanation is a component through getRevision's AnalysisRecord (registering it here inlines its nested types).
+        // ContractTests fails if either reference dangles.
+        .AddOpenApiOperationTransformer((op, ctx, ct) =>
+        {
+            op.Responses!["200"].Content!["application/json"].Schema = new OpenApiSchema
+            {
+                OneOf = [new OpenApiSchemaReference(nameof(HitSummary), ctx.Document), new OpenApiSchemaReference(nameof(HitExplanation), ctx.Document)],
+            };
+            return Task.CompletedTask;
+        })
         .WithSummary("One hit of the effective revision (or ?revision=): view=summary (default) without compared values, view=detail with the full explanation (HitExplanation)")
         .WithDescription("Use view=summary to learn why the hit was decided: decisive evidence, reason codes and wouldChangeIf. Use view=detail only when the compared subject and Profile values are needed. wouldChangeIf names the stage 3 row a comparable document or full DOB would move the identity decision to; it never states an external result. Example: GC-03 hit 1 has sourceConditions [OFFICIAL_WANTED_LIST], identityDecision PROBABLE_MATCH at stage 3 row 4 and pairResult REVIEW. Next: getCode for any code.")
         .WithName("getHit")

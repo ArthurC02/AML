@@ -45,7 +45,7 @@ AML/
 │   │   ├── Identity/             # evidence groups, HardConflictGate, IdentityDecisionPolicy (with Contrast), Fellegi-Sunter shadow
 │   │   ├── Screening/            # source-condition policies, combination matrix, DispositionPolicy, risk scoring
 │   │   ├── Retrieval/            # ProfileIndex (alias, BM25, n-gram, reading-key routes), ProfileMerge
-│   │   ├── Cases/                # CaseAnalyzer, Case records, revision changes, lineage, quality, CaseJson (JSON form and schemas)
+│   │   ├── Cases/                # CaseAnalyzer, Case records, revision changes, lineage, quality, CaseViews and page tokens, CaseJson (JSON form and schemas)
 │   │   ├── Explanation/          # ExplanationBuilder
 │   │   └── Ports/                # ICaseStore, IJobStore, IListStore
 │   ├── Aml.Services/             # orchestration
@@ -65,7 +65,7 @@ AML/
 └── tests/
     └── Aml.Tests/
         ├── Unit/                 # in process, no database: Extraction, Identity, Names, Retrieval, Screening
-        ├── GoldenCases/          # Golden Cases through the analyzer, augmented cases, explanation, metrics (in process)
+        ├── GoldenCases/          # Golden Cases through the analyzer, augmented cases, explanation, views, metrics (in process)
         ├── Integration/          # services, repositories and the job table on SQLite
         ├── E2E/                  # critical API flows through WebApplicationFactory
         ├── TestSupport.cs        # TestDatabase, ApiHost, ManualTimeProvider, Wait

@@ -43,7 +43,11 @@ The module policies in Aml.Core are plain functions called by these services; th
 ```text
 POST /api/cases
 POST /api/cases/{caseId}/analyses
+GET  /api/cases?subjectRef=&triggerEventId=&pageSize=&pageToken=
 GET  /api/cases/{caseId}
+GET  /api/cases/{caseId}/hits/{hit}?view=summary|detail&revision=
+GET  /api/cases/{caseId}/revisions
+GET  /api/cases/{caseId}/revisions/{revision}
 GET  /api/cases/{caseId}/analyses/{revision}
 GET  /api/cases/{caseId}/explanation
 POST /api/batches
@@ -59,7 +63,22 @@ GET  /api/schemas
 GET  /api/schemas/{name}
 ```
 
-`/api/codes` is the code catalog (`Core/Codes/CodeCatalog`): every code the system emits, with its kind, Chinese name, one-line meaning, the rule that emits it and the document section that defines it. A value with detail attached is listed under its key (`SOFT_DIFFERENCE（Jaccard …）` → `SOFT_DIFFERENCE`, `ENCODING_FALLBACK:<file>` → `ENCODING_FALLBACK`); a value joined with `；` is looked up part by part. `/api/schemas` publishes the JSON Schemas of the stored records (`case-analysis`, `case-explanation`, `analysis-lineage`, `analysis-quality`; [data contracts](data-contracts.md#published-schemas)); lineage and quality are stored with each revision ([lineage and quality](#lineage-and-quality)) and read from the database.
+`/api/codes` is the code catalog (`Core/Codes/CodeCatalog`): every code the system emits, with its kind, Chinese name, one-line meaning, the rule that emits it and the document section that defines it. A value with detail attached is listed under its key (`SOFT_DIFFERENCE（Jaccard …）` → `SOFT_DIFFERENCE`, `ENCODING_FALLBACK:<file>` → `ENCODING_FALLBACK`); a value joined with `；` is looked up part by part. `/api/schemas` publishes the JSON Schemas of the stored records (`case-analysis`, `case-explanation`, `analysis-lineage`, `analysis-quality`, `revision`) and of the views (`case-summary`, `hit-summary`, `revision-line`, `case-page`; [data contracts](data-contracts.md#published-schemas)).
+
+## Views
+
+A Case is read in layers, each linking to the next; the summaries leave detail out and never add any (`Core/Cases/CaseViews`, pure functions over the stored revision):
+
+- **Case summary** (`GET /api/cases/{caseId}`, also returned by `POST /api/cases` and `POST …/analyses`): the Case's ids and status, the effective revision and its time, the case result, a conclusion sentence and one line per hit (Profile key and name, pair result, review priority, identity decision, and a link to that hit in the same revision). Hits are ordered by review priority, then hit number; at most 10 are listed and the rest counted in `omitted`. Without an effective revision there is no result, the conclusion says why and `revision` links the latest one (none before the first analysis). `newerRevisionIncomplete` marks a newer revision that is not complete and so did not replace the result.
+- **Hit summary** (`GET …/hits/{hit}`, `view=summary` by default): the Profile, the source condition types that are HIT, the identity decision with its hard conflict or stage 3 row and its reason codes, the pair result and priority, up to 3 decisive pieces of evidence and `wouldChangeIf`. The decisive evidence is what decided the hit: on stage 3 rows 2 to 5 the strongest support; otherwise (row 1, row 6, a hard conflict, a non-Person rule) the conflicts whose code is one of the hit's reason codes, in reason-code order, so the deciding conflict comes first. A rule with no evidence of its own, such as a death before the subject's birth, lists none. On row 6 without conflicts the note 「僅前提條件相符」 stands in. The reason codes name the rule, such as a hard conflict downgraded to REVIEW for source quality (`SOURCE_QUALITY_DOWNGRADE`). Evidence is listed by group, status, strength and code, without the compared values.
+- **Hit detail** (`view=detail`): the full hit explanation ([explanation contents](#explanation-contents)).
+- **Revision** (`GET …/revisions/{revision}`): the full record of one revision: result, explanation, lineage and data quality. `GET …/revisions` lists every revision with its time, execution status, case result, whether it is effective and how many changes it made against the previous effective revision (none for the first analysis or a revision without an explanation).
+
+The hit views read the effective revision unless `?revision=` names another. The summaries hold no field marked `IDENTIFIER` and, of the `PERSONAL` fields, only names ([data classification](security-and-privacy.md#data-classification)). Views and revision records leave out null fields; the Case and hit summaries also leave out empty lists.
+
+## Pagination
+
+`GET /api/cases` needs `subjectRef`, `triggerEventId` or both. It returns Cases ordered by creation time, then id, in pages of `pageSize` (default 20, at most 100), with `nextPageToken` only when more follow. The token is the sort key of the page's last Case, base64url-encoded; it is passed back unchanged as `pageToken`, and one this API did not issue is `INVALID_REQUEST`. Paging by key, not offset, never repeats a Case and skips none that existed when paging started; a Case created meanwhile appears on a later page if its creation time sorts after the current position.
 
 ## Errors
 
@@ -67,11 +86,11 @@ Every 4xx and 5xx response is an RFC 9457 problem (`application/problem+json`): 
 
 | Code | Status | When |
 |---|---|---|
-| `INVALID_REQUEST` | 400 | a parameter or body the endpoint cannot use: no files, a batch item without ids or files, an unknown retrieval mode; `errors[]` lists the batch items by index |
+| `INVALID_REQUEST` | 400 | a parameter or body the endpoint cannot use: no files, a batch item without ids or files, an unknown retrieval mode or view, a search without a filter, a page size out of range, a page token this API did not issue; `errors[]` lists the batch items by index or names the parameter |
 | `UNSUPPORTED_FILE` | 400 | an upload that is not `.txt`, `.html` or `.htm`, or over 5 MB; `errors[]` names the files |
 | `INPUT_INCOMPLETE` | 400 | a required input file is missing or not unique: exactly one `案件資訊*.txt`, and the subject's own file (`客戶-背景資料.txt` for a customer, `客戶-關聯人背景資料.txt` for a related party) |
 | `INPUT_UNREADABLE` | 400 | a file that is not in the export layout; `errors[]` gives `file`, `table` and `problem` (`MISSING_SECTION`, `MISSING_COLUMN`, `MALFORMED`) |
-| `NOT_FOUND` | 404 | an unknown case, revision, batch, Profile, code or schema, or no such route |
+| `NOT_FOUND` | 404 | an unknown case, revision, hit, batch, Profile, code or schema, or no such route |
 | `HTTP_ERROR` | other 4xx | e.g. a method the route does not allow |
 | `INTERNAL_ERROR` | 5xx | an unexpected failure |
 

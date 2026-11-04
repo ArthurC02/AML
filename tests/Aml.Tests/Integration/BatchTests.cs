@@ -62,6 +62,8 @@ public sealed class BatchTests : IDisposable
         public Task<Aml.Core.Cases.CaseRecord?> GetAsync(string caseId, CancellationToken ct) => throw new NotSupportedException();
         public Task<bool> AcceptAnalysisAsync(Aml.Core.Cases.AnalysisRecord analysis, Aml.Core.Cases.CaseStatus status, IReadOnlyDictionary<string, string>? files, CancellationToken ct) => throw new NotSupportedException();
         public Task<Aml.Core.Cases.AnalysisRecord?> GetAnalysisAsync(string caseId, int revision, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<Aml.Core.Cases.RevisionLine>> RevisionsAsync(string caseId, CancellationToken ct) => throw new NotSupportedException();
+        public Task<IReadOnlyList<Aml.Core.Cases.CaseRecord>> SearchAsync(string? subjectRef, string? triggerEventId, (DateTimeOffset At, string Id)? after, int limit, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyDictionary<string, string>?> LatestInputAsync(string caseId, CancellationToken ct) => throw new NotSupportedException();
         public Task<IReadOnlyList<(string CaseId, int Revision, IReadOnlyDictionary<string, string> Files)>> LatestInputsAsync(CancellationToken ct) => throw new NotSupportedException();
     }

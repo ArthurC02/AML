@@ -30,6 +30,12 @@
 5. `LEASE_EXPIRED`: a worker stopped mid-job. The job returns to the queue by itself while budget remains; otherwise re-run.
 6. Scale-out: several instances may share one database; the claim is optimistic, so a job runs on one worker at a time.
 
+## Looking up a Case
+
+- `GET /api/cases?subjectRef=` or `?triggerEventId=` finds the Case; `GET /api/cases/{caseId}` gives its result, conclusion and hits, with links to each hit and to the full revision.
+- `GET /api/cases/{caseId}/revisions` shows every revision and which one is effective; a PARTIAL latest revision means a Profile file was missing (`notEvaluatedProfiles` in that revision), and the Case keeps its previous result.
+- `GET /api/cases/{caseId}/revisions/{revision}` is the full record: result, explanation, lineage (input hashes, Profile list versions, rule-set versions) and data quality.
+
 ## Audit
 
 - Every analysis revision is kept (`case_analysis`); nothing is overwritten. A late revision never replaces a newer effective one.

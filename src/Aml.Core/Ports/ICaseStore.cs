@@ -18,6 +18,12 @@ public interface ICaseStore
 
     Task<AnalysisRecord?> GetAnalysisAsync(string caseId, int revision, CancellationToken ct);
 
+    /// <summary>Every revision of one Case, oldest first; empty for an unknown Case.</summary>
+    Task<IReadOnlyList<RevisionLine>> RevisionsAsync(string caseId, CancellationToken ct);
+
+    /// <summary>Cases matching every given filter, ordered by (created at, id), after the given key, at most <paramref name="limit"/>.</summary>
+    Task<IReadOnlyList<CaseRecord>> SearchAsync(string? subjectRef, string? triggerEventId, (DateTimeOffset At, string Id)? after, int limit, CancellationToken ct);
+
     /// <summary>The latest stored input of one Case, or null when it has none.</summary>
     Task<IReadOnlyDictionary<string, string>?> LatestInputAsync(string caseId, CancellationToken ct);
 

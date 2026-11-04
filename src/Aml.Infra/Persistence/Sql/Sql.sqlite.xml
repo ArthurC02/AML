@@ -72,6 +72,33 @@
       ]]></sql>
     </statement>
 
+    <statement id="Case.Revisions" kind="Select">
+      <description>Every revision of one Case with its effective flag and the number of changes from the previous effective revision.</description>
+      <sql><![CDATA[
+        SELECT a.revision, a.created_at, a.execution_status, a.case_result,
+               a.revision IS c.effective_revision AS effective,
+               json_array_length(a.explanation_json, '$.changesFromPreviousRevision') AS changes
+        FROM case_analysis a
+        JOIN aml_case c ON c.case_id = a.case_id
+        WHERE a.case_id = @caseId
+        ORDER BY a.revision
+      ]]></sql>
+    </statement>
+
+    <statement id="Case.Search" kind="Select">
+      <description>Cases by subject and/or trigger event, keyset-paged by (created_at, case_id).</description>
+      <sql><![CDATA[
+        SELECT c.case_id, c.subject_ref, c.trigger_event_id, c.case_status,
+               c.current_revision, c.effective_revision, c.created_at, c.updated_at
+        FROM aml_case c
+        WHERE (@subjectRef IS NULL OR c.subject_ref = @subjectRef)
+          AND (@triggerEventId IS NULL OR c.trigger_event_id = @triggerEventId)
+          AND (@afterAt IS NULL OR c.created_at > @afterAt OR (c.created_at = @afterAt AND c.case_id > @afterId))
+        ORDER BY c.created_at, c.case_id
+        LIMIT @limit
+      ]]></sql>
+    </statement>
+
     <statement id="Case.InsertLineage" kind="Insert">
       <description>What one revision was computed from.</description>
       <sql><![CDATA[

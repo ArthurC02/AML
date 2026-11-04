@@ -55,6 +55,36 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
 
     public Task<AnalysisRecord?> GetAnalysisAsync(string caseId, int revision, CancellationToken ct) => store.GetAnalysisAsync(caseId, revision, ct);
 
+    /// <summary>The Case with its effective revision summarized; null for an unknown Case.</summary>
+    public async Task<CaseSummary?> GetSummaryAsync(string caseId, CancellationToken ct)
+    {
+        var c = await store.GetAsync(caseId, ct).ConfigureAwait(false);
+        if (c is null) return null;
+        var effective = c.EffectiveRevision is { } rev ? await store.GetAnalysisAsync(caseId, rev, ct).ConfigureAwait(false) : null;
+        return CaseViews.Summary(c, effective);
+    }
+
+    /// <summary>One hit of the given revision, or of the effective one; null when the Case, revision or hit does not exist.</summary>
+    public async Task<(int Revision, HitExplanation Hit)?> GetHitAsync(string caseId, int hitNumber, int? revision, CancellationToken ct)
+    {
+        var rev = revision ?? (await store.GetAsync(caseId, ct).ConfigureAwait(false))?.EffectiveRevision;
+        if (rev is not { } r) return null;
+        var hit = (await store.GetAnalysisAsync(caseId, r, ct).ConfigureAwait(false))?.Explanation?.Hits.FirstOrDefault(h => h.HitNumber == hitNumber);
+        return hit is null ? null : (r, hit);
+    }
+
+    /// <summary>Every revision of the Case; null for an unknown Case.</summary>
+    public async Task<IReadOnlyList<RevisionLine>?> GetRevisionsAsync(string caseId, CancellationToken ct) =>
+        await store.GetAsync(caseId, ct).ConfigureAwait(false) is null ? null : await store.RevisionsAsync(caseId, ct).ConfigureAwait(false);
+
+    /// <summary>One page of Cases matching the filters, after the given key.</summary>
+    public async Task<CasePage> SearchAsync(string? subjectRef, string? triggerEventId, int pageSize, (DateTimeOffset At, string Id)? after, CancellationToken ct)
+    {
+        var rows = await store.SearchAsync(subjectRef, triggerEventId, after, pageSize + 1, ct).ConfigureAwait(false);
+        var page = rows.Take(pageSize).ToList();
+        return new CasePage(page, rows.Count > pageSize ? PageToken.Encode(page[^1].CreatedAt, page[^1].CaseId) : null);
+    }
+
     private async Task<IReadOnlyList<PairSnapshot>> SnapshotAsync(string caseId, int revision, CancellationToken ct) =>
         await store.GetAnalysisAsync(caseId, revision, ct).ConfigureAwait(false) is { } stored ? RevisionChanges.Snapshot(stored.Result) : [];
 

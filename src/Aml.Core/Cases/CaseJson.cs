@@ -37,6 +37,11 @@ public static class CaseJson
         ["case-explanation"] = typeof(CaseExplanation),
         ["analysis-lineage"] = typeof(AnalysisLineage),
         ["analysis-quality"] = typeof(AnalysisQuality),
+        ["revision"] = typeof(AnalysisRecord),
+        ["revision-line"] = typeof(RevisionLine),
+        ["case-summary"] = typeof(CaseSummary),
+        ["hit-summary"] = typeof(HitSummary),
+        ["case-page"] = typeof(CasePage),
     };
 
     /// <summary>JSON Schema of <paramref name="type"/>: field descriptions from [Description], sensitivity as x-sensitivity.</summary>

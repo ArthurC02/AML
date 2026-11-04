@@ -22,6 +22,17 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
 
     private sealed record LineageRow(string InputFilesJson, string ProfilesJson, string SourcePolicyVersion, string ModelVersion, string CodeCatalogVersion, long SchemaVersion, string AppVersion);
 
+    // Settable properties, not a constructor: the change count is NULL on a first revision, which a constructor match cannot type.
+    private sealed class RevisionRow
+    {
+        public long Revision { get; set; }
+        public string CreatedAt { get; set; } = "";
+        public string ExecutionStatus { get; set; } = "";
+        public string CaseResult { get; set; } = "";
+        public bool Effective { get; set; }
+        public long? Changes { get; set; }
+    }
+
     private sealed record QualityRow(long Hits, long ComparisonCells, long MissingCells, long UncertainCells, long ConflictCells, long NotEvaluated, string FindingsJson);
 
     public async Task<CaseRecord> CreateAsync(CaseRecord record, CancellationToken ct)
@@ -112,6 +123,23 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
             q is null ? null : new AnalysisQuality((int)q.Hits, (int)q.ComparisonCells, (int)q.MissingCells, (int)q.UncertainCells, (int)q.ConflictCells,
                 Rate(q.MissingCells), Rate(q.UncertainCells), Rate(q.ConflictCells), (int)q.NotEvaluated, Read<Dictionary<string, int>>(q.FindingsJson)),
             ParseTime(row.CreatedAt));
+    }
+
+    public async Task<IReadOnlyList<RevisionLine>> RevisionsAsync(string caseId, CancellationToken ct)
+    {
+        await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
+        var rows = await c.QueryAsync<RevisionRow>(new CommandDefinition(db.Sql["Case.Revisions"], new { caseId }, cancellationToken: ct)).ConfigureAwait(false);
+        return rows.Select(r => new RevisionLine((int)r.Revision, ParseTime(r.CreatedAt), Parse<ExecutionStatus>(r.ExecutionStatus),
+            Parse<ScreeningAssessment>(r.CaseResult), r.Effective, (int?)r.Changes)).ToList();
+    }
+
+    // ponytail: "@x IS NULL OR" filters keep one statement; split per filter if the planner skips the indexes at volume.
+    public async Task<IReadOnlyList<CaseRecord>> SearchAsync(string? subjectRef, string? triggerEventId, (DateTimeOffset At, string Id)? after, int limit, CancellationToken ct)
+    {
+        await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
+        var rows = await c.QueryAsync<CaseRow>(new CommandDefinition(db.Sql["Case.Search"],
+            new { subjectRef, triggerEventId, afterAt = after is { } a ? Time(a.At) : null, afterId = after?.Id, limit }, cancellationToken: ct)).ConfigureAwait(false);
+        return rows.Select(Map).ToList();
     }
 
     // A stored record that no longer reads as its type means the format changed: rebuild the PoC database (no old formats are read).

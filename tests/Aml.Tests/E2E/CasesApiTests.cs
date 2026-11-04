@@ -51,6 +51,44 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(1, again.GetProperty("currentRevision").GetInt32());
     }
 
+    [Fact]
+    public async Task A_case_reads_from_summary_to_hit_detail_to_its_revisions()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var client = api.CreateClient();
+
+        using var created = await client.PostAsync("/api/cases", Upload("GC-03", "evt-views"), ct);
+        var summary = await created.Content.ReadFromJsonAsync<JsonElement>(ct);
+        var caseId = summary.GetProperty("caseId").GetString();
+        Assert.Equal($"/api/cases/{caseId}", created.Headers.Location?.OriginalString);
+        Assert.Equal("REVIEW", summary.GetProperty("result").GetString());
+        Assert.False(string.IsNullOrEmpty(summary.GetProperty("conclusion").GetString()));
+
+        var hit = await client.GetFromJsonAsync<JsonElement>(summary.GetProperty("hits")[0].GetProperty("link").GetString(), ct);
+        Assert.Equal(4, hit.GetProperty("stage3Row").GetInt32());
+        Assert.False(hit.TryGetProperty("comparison", out _));
+        Assert.True(hit.GetProperty("wouldChangeIf").GetArrayLength() > 0);
+        var detail = await client.GetFromJsonAsync<JsonElement>(hit.GetProperty("detail").GetString(), ct);
+        Assert.Equal(9, detail.GetProperty("comparison").GetArrayLength());
+        using var missing = await client.GetAsync($"/api/cases/{caseId}/hits/99", ct);
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+
+        using var again = await client.PostAsync($"/api/cases/{caseId}/analyses", Files("GC-03"), ct);
+        Assert.Equal(2, (await again.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("effectiveRevision").GetInt32());
+        var revisions = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/revisions", ct);
+        Assert.Equal(2, revisions.GetArrayLength());
+        Assert.True(revisions[1].GetProperty("effective").GetBoolean());
+        Assert.Equal(1, (await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/hits/1?revision=1", ct)).GetProperty("revision").GetInt32());
+        Assert.Equal(2, (await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/hits/1", ct)).GetProperty("revision").GetInt32());
+        var revision = await client.GetFromJsonAsync<JsonElement>((await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}", ct)).GetProperty("revision").GetString(), ct);
+        Assert.Equal(2, revision.GetProperty("revision").GetInt32());
+        Assert.True(revision.GetProperty("lineage").GetProperty("inputFiles").GetArrayLength() > 0);
+        Assert.Equal(1, revision.GetProperty("quality").GetProperty("hits").GetInt32());
+
+        var found = await client.GetFromJsonAsync<JsonElement>("/api/cases?subjectRef=subject-GC-03", ct);
+        Assert.Contains(found.GetProperty("items").EnumerateArray(), i => i.GetProperty("caseId").GetString() == caseId);
+    }
+
     private static MultipartFormDataContent Files(string gc, Func<string, string, string>? edit = null)
     {
         var form = new MultipartFormDataContent();
@@ -162,6 +200,13 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
     [InlineData("GET", "/api/no-such-route", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("GET", "/api/codes/NO_SUCH_CODE", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("GET", "/api/schemas/no-such-schema", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/cases/unknown/hits/1", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/cases/unknown/hits/1?view=table", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("GET", "/api/cases/unknown/revisions", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/cases/unknown/revisions/1", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/cases", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("GET", "/api/cases?subjectRef=s&pageSize=101", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("GET", "/api/cases?subjectRef=s&pageToken=bm90LWEtdG9rZW4", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     public async Task Unknown_ids_and_invalid_requests_are_refused(string method, string path, string body, HttpStatusCode expected, string code)
     {
         var ct = TestContext.Current.CancellationToken;

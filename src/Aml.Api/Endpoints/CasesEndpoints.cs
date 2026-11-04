@@ -99,7 +99,7 @@ internal static class CasesEndpoints
         })
         .Produces<HitSummary>()
         .WithSummary("One hit of the effective revision (or ?revision=): view=summary (default) without compared values, view=detail with the full explanation (HitExplanation)")
-        .WithDescription("Use view=summary to learn why the hit was decided: decisive evidence, reason codes and wouldChangeIf. Use view=detail only when the compared subject and Profile values are needed. wouldChangeIf names the stage 3 row a comparable document or full DOB would move the identity decision to; it never states an external result. Example: GC-03 hit 1 is HIT on OFFICIAL_WANTED_LIST, PROBABLE_MATCH at stage 3 row 4. Next: getCode for any code.")
+        .WithDescription("Use view=summary to learn why the hit was decided: decisive evidence, reason codes and wouldChangeIf. Use view=detail only when the compared subject and Profile values are needed. wouldChangeIf names the stage 3 row a comparable document or full DOB would move the identity decision to; it never states an external result. Example: GC-03 hit 1 has sourceConditions [OFFICIAL_WANTED_LIST], identityDecision PROBABLE_MATCH at stage 3 row 4 and pairResult REVIEW. Next: getCode for any code.")
         .WithName("getHit")
         .WithTags("read");
 

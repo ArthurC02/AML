@@ -62,7 +62,7 @@ internal static class BatchesEndpoints
         batches.MapPost("/{batchId}/rerun", async Task<Results<Ok<RerunResponse>, NotFound>> (string batchId, BatchService service, CancellationToken ct) =>
             await service.GetAsync(batchId, ct, pageSize: 1) is null ? TypedResults.NotFound() : TypedResults.Ok(new RerunResponse(await service.RerunAsync(batchId, ct))))
         .WithSummary("Operator re-run: dead-lettered items of the batch go back to the queue with a fresh retry budget")
-        .WithDescription("Use it only after fixing the cause of a transient failure (TIMEOUT, LEASE_EXPIRED, or an exception type name such as SqliteException); every dead-lettered item is requeued, and INVALID_INPUT and INVALID_PAYLOAD fail the same way again. Returns how many items were requeued. Next: getBatchStatus.")
+        .WithDescription("Use it only after fixing the cause of a transient failure (TIMEOUT, LEASE_EXPIRED, EXCEPTION:<type>); every dead-lettered item is requeued, and INVALID_INPUT and INVALID_PAYLOAD fail the same way again; for INVALID_INPUT send the fixed files with createCase instead. Returns how many items were requeued. Next: getBatchStatus; getCode explains an error code.")
         .WithName("rerunBatch")
         .WithTags("operations");
     }

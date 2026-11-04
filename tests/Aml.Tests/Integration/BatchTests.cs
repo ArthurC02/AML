@@ -3,6 +3,7 @@ using Aml.Core.Subjects;
 using Aml.Infra.Jobs;
 using Aml.Infra.Persistence;
 using Aml.Infra.Persistence.Repositories;
+using Aml.Infra.Txt;
 using Aml.Services;
 using Microsoft.Data.Sqlite;
 
@@ -49,7 +50,7 @@ public sealed class BatchTests : IDisposable
         await _jobs.ClaimAsync("dead-worker", 1, T0.AddMinutes(2), T0.AddMinutes(3), ct); // attempt 2 of 2
         await _jobs.ReclaimExpiredAsync(maxAttempts: 2, T0.AddMinutes(4), ct);
         var item = (await _jobs.ListItemsAsync("b1", ct))[0];
-        Assert.Equal((JobStatus.DeadLetter, "LEASE_EXPIRED"), (item.Status, item.ErrorCode));
+        Assert.Equal((JobStatus.DeadLetter, BatchService.LeaseExpired), (item.Status, item.ErrorCode));
 
         Assert.Equal(1, await _jobs.RerunAsync("b1", T0.AddMinutes(5), ct));
         item = (await _jobs.ListItemsAsync("b1", ct))[0];
@@ -74,8 +75,8 @@ public sealed class BatchTests : IDisposable
     public async Task Invalid_input_dead_letters_at_once_and_duplicates_are_not_queued()
     {
         var ct = TestContext.Current.CancellationToken;
-        var batch = new BatchService(_jobs, new CaseService(new CaseStore(_db), TimeProvider.System),
-            _ => throw new InvalidOperationException("unusable"), new BatchOptions(), TimeProvider.System);
+        var cases = new CaseService(new CaseStore(_db), TimeProvider.System);
+        var batch = new BatchService(_jobs, cases, _ => throw new InvalidOperationException("unusable"), new BatchOptions(), TimeProvider.System);
 
         var b = await batch.SubmitAsync([Item("a.txt")], ct);
         Assert.Equal(1, await batch.RunOnceAsync(ct));
@@ -84,6 +85,11 @@ public sealed class BatchTests : IDisposable
 
         var again = await batch.SubmitAsync([Item("a.txt")], ct);
         Assert.Equal((0, "ANALYZE_CASE:e1:s1"), (again.Queued, Assert.Single(again.Duplicates)));
+
+        // The way forward: the fixed files create the Case directly; no Case row was left behind.
+        var files = Directory.GetFiles(GoldenCases.GoldenCaseTests.Folder("GC-11"), "*.txt").ToDictionary(p => Path.GetFileName(p), File.ReadAllText);
+        var (created, inserted) = await cases.CreateOrGetAsync("s1", "e1", TxtCaseReader.ReadFiles(files), ct, files);
+        Assert.Equal((true, 1), (inserted, created.CurrentRevision));
     }
 
     [Fact]
@@ -117,7 +123,7 @@ public sealed class BatchTests : IDisposable
         var b = await batch.SubmitAsync([Item("a.txt")], ct);
         await batch.RunOnceAsync(ct);
         var item = (await batch.GetAsync(b.BatchId, ct))!.Items[0];
-        Assert.Equal((JobStatus.Pending, "TimeoutException", 1), (item.Status, item.ErrorCode, item.AttemptCount));
+        Assert.Equal((JobStatus.Pending, "EXCEPTION:TimeoutException", 1), (item.Status, item.ErrorCode, item.AttemptCount));
 
         await batch.RunOnceAsync(ct);
         item = (await batch.GetAsync(b.BatchId, ct))!.Items[0];

@@ -9,7 +9,7 @@ public sealed record CodeEntry(string Code, string Kind, string Name, string Des
 /// </summary>
 public static class CodeCatalog
 {
-    public const string Version = "codes-2";
+    public const string Version = "codes-3";
 
     private const string Identity = "docs/feature/identity-adjudication.md";
     private const string Extraction = "docs/feature/extraction-and-normalization.md";
@@ -167,9 +167,10 @@ public static class CodeCatalog
         ("PROBLEM", "NOT_FOUND", "找不到", "案件、revision、批次、名單或路徑不存在。", "Api", Api + "#errors"),
         ("PROBLEM", "HTTP_ERROR", "HTTP 錯誤", "其他 4xx，例如方法不允許；依 status 處理。", "Api", Api + "#errors"),
         ("PROBLEM", "INTERNAL_ERROR", "系統錯誤", "未預期的錯誤；不需修改請求，稍後重試或通報。", "Api", Api + "#errors"),
-        ("JOB_ERROR", "INVALID_INPUT", "輸入不可用", "批次項目的檔案不完整或不是匯出版面；修正檔案後另送新批次，重跑會同樣失敗。", "BatchService", Api + "#durable-batch-execution"),
+        ("JOB_ERROR", "INVALID_INPUT", "輸入不可用", "批次項目的檔案不完整或不是匯出版面；重跑會同樣失敗，同一 triggerEventId 與 subjectRef 再送批次也只會列為重複。修正檔案後以 POST /api/cases 建立。", "BatchService", Api + "#durable-batch-execution"),
         ("JOB_ERROR", "INVALID_PAYLOAD", "工作內容無法讀取", "未知的工作類型、無法解析的 JSON 或缺欄位；立即進入 DEAD_LETTER，重跑會同樣失敗。", "BatchService", Api + "#durable-batch-execution"),
         ("JOB_ERROR", "TIMEOUT", "逾時", "工作超過 Batch:Timeout，不寫入 revision；依重試預算重試。", "BatchService", Api + "#durable-batch-execution"),
+        ("JOB_ERROR", "EXCEPTION", "未預期的例外", "EXCEPTION:<例外型別>，例如資料庫錯誤；依重試預算重試，預算用盡後修正原因再以 rerun 重跑。", "BatchService", Api + "#durable-batch-execution"),
         ("JOB_ERROR", "LEASE_EXPIRED", "租約逾期", "工作者中途停止，租約到期後工作回到佇列；預算用盡則進入 DEAD_LETTER。", "JobStore.ReclaimExpiredAsync", Api + "#durable-batch-execution"),
         ("INPUT_PROBLEM", "MISSING", "缺檔", "必要檔案不存在。", "TxtCaseReader.RequiredFileProblem", Api + "#errors"),
         ("INPUT_PROBLEM", "DUPLICATE", "重複", "同一份必要檔案出現兩次，或兩個檔案讀成同一名稱。", "TxtCaseReader", Api + "#errors"),

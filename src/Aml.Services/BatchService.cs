@@ -39,6 +39,10 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
     public const string InvalidInput = "INVALID_INPUT";
     public const string InvalidPayload = "INVALID_PAYLOAD";
     public const string Timeout = "TIMEOUT";
+    public const string LeaseExpired = "LEASE_EXPIRED"; // written by the job store when it reclaims an expired lease
+
+    /// <summary>Error code of an unexpected exception: EXCEPTION:&lt;type name&gt;, catalogued under EXCEPTION.</summary>
+    public static string ExceptionCode(Exception e) => "EXCEPTION:" + e.GetType().Name;
 
     private readonly string _owner = $"{Environment.MachineName}:{Guid.NewGuid():N}";
     private readonly SemaphoreSlim _slots = new(options.MaxWorkers, options.MaxWorkers);
@@ -182,7 +186,7 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         catch (Exception e)
 #pragma warning restore CA1031
         {
-            await FailAsync(job, e is OperationCanceledException ? Timeout : e.GetType().Name, job.AttemptCount >= options.MaxAttempts, ct).ConfigureAwait(false);
+            await FailAsync(job, e is OperationCanceledException ? Timeout : ExceptionCode(e), job.AttemptCount >= options.MaxAttempts, ct).ConfigureAwait(false);
         }
     }
 

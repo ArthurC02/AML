@@ -2,12 +2,21 @@ using Aml.Core.Cases;
 using Aml.Core.Subjects;
 using Aml.Core.Codes;
 using Aml.Infra.Txt;
+using Aml.Services;
 
 namespace Aml.Tests.GoldenCases;
 
 /// <summary>Every code the Golden Cases emit is in the catalog with a name and a description; augmented cases check theirs in Augment.</summary>
 public class CodeCatalogTests
 {
+    [Fact]
+    public void Every_job_error_code_is_in_the_catalog()
+    {
+        string[] codes = [BatchService.InvalidInput, BatchService.InvalidPayload, BatchService.Timeout, BatchService.LeaseExpired,
+            BatchService.ExceptionCode(new InvalidOperationException())];
+        Assert.All(codes, c => Assert.Equal("JOB_ERROR", CodeCatalog.Find(c)?.Kind));
+    }
+
     internal static void AssertKnown(CaseInput input, CaseAnalysis a)
     {
         var missing = EmittedCodes.Of(input, a).Where(c => !CodeCatalog.All.ContainsKey(c)).ToList();

@@ -24,9 +24,9 @@
 ## Batch operations
 
 1. `GET /api/batches/{batchId}`: counts per status and the items not yet succeeded, with attempts and `errorCode` (`?view=full` lists every item, `?status=DEAD_LETTER` one status; follow `nextPageToken` for more). Re-analyses queued by a Profile import are batch jobs too (`REANALYZE_CASE`); their `batchId` is in the import response.
-2. `INVALID_INPUT`: the files are incomplete or not in the export layout. Fix the files and submit a new batch; re-running the same files fails the same way.
+2. `INVALID_INPUT`: the files are incomplete or not in the export layout. Re-running fails the same way, and a new batch with the same `triggerEventId` and `subjectRef` is reported as a duplicate; create the Case from the fixed files with `POST /api/cases`. The batch item stays `DEAD_LETTER` and is not linked to that Case; a later re-run of the batch fails it again.
 3. `INVALID_PAYLOAD`: the job row has an unknown type, unreadable JSON or a missing field. It is dead-lettered at once; re-running it fails the same way.
-4. `TIMEOUT`, `SqliteException` or other transient codes: fix the cause, then `POST /api/batches/{batchId}/rerun`.
+4. `TIMEOUT` or `EXCEPTION:<type>` (for example `EXCEPTION:SqliteException`): fix the cause, then `POST /api/batches/{batchId}/rerun`.
 5. `LEASE_EXPIRED`: a worker stopped mid-job. The job returns to the queue by itself while budget remains; otherwise re-run.
 6. Scale-out: several instances may share one database; the claim is optimistic, so a job runs on one worker at a time.
 

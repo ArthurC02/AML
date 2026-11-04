@@ -181,7 +181,7 @@ Jobs are claimed optimistically ([job claim](persistence.md#job-claim)). Control
 | retry budget | `Batch:MaxAttempts` (3); backoff `Batch:RetryDelay` (10 s), doubling per attempt |
 | idempotency key | unique across the job table. `ANALYZE_CASE:{triggerEventId}:{subjectRef}`: a repeat is reported as a duplicate, not queued. `REANALYZE:{caseId}:{profileId}:{version}`: a repeat is skipped in the outbox |
 | checkpoint | Case creation is idempotent on trigger and subject, so a retry after a crash reuses the stored revision; a re-analysis whose input already matches the list database creates no revision |
-| failed/dead-letter | `DEAD_LETTER` when the budget is spent, or at once without retry when the payload is unreadable (`INVALID_PAYLOAD`: unknown job type, bad JSON or a missing field) or the files are unusable (`INVALID_INPUT`); `LEASE_EXPIRED` for abandoned jobs |
+| failed/dead-letter | `DEAD_LETTER` when the budget is spent, or at once without retry when the payload is unreadable (`INVALID_PAYLOAD`: unknown job type, bad JSON or a missing field) or the files are unusable (`INVALID_INPUT`, after which the fixed files go to `POST /api/cases`, since the idempotency key refuses a second batch item); `TIMEOUT` past the deadline; `EXCEPTION:<type>` for an unexpected exception; `LEASE_EXPIRED` for abandoned jobs |
 | outcome not recorded | a database error while recording the result is logged as a warning; the job returns to the queue when its lease expires |
 | operator re-run | `POST /api/batches/{batchId}/rerun` gives dead-lettered items a fresh budget |
 

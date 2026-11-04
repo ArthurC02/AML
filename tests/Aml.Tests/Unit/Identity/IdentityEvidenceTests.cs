@@ -5,10 +5,10 @@ using Aml.Core.Subjects;
 using Aml.Infra.Txt;
 using static Aml.Core.Shared.ComparisonStatus;
 
-namespace Aml.Tests.Fixes;
+namespace Aml.Tests.Unit.Identity;
 
-/// <summary>WP-B fixes: date parsing (P0-2), source-quality downgrade (P0-7) and identity rules I1–I5.</summary>
-public class IdentityFixTests
+/// <summary>Date parsing, the source-quality downgrade, Profile DOB handling, employment and document comparability, gender conflict and stated ages.</summary>
+public class IdentityEvidenceTests
 {
     private static ScreenedSubject Subject(PartialDate? dob = null, Gender gender = Gender.Male) =>
         new(SubjectRole.Customer, null, ["陳志明"], gender, dob ?? new PartialDate(1980, 5, 20), ["TW"],
@@ -20,7 +20,7 @@ public class IdentityFixTests
 
     private static NewsItem News(string text) => new("1", "DOC1", "標題", "某報", new PartialDate(2026, 3, 1), text);
 
-    // P0-2
+    // Date parsing.
 
     [Theory]
     [InlineData("1990/13/45")]
@@ -47,7 +47,7 @@ public class IdentityFixTests
         Assert.Equal((expected, precision), (d.ToString(), d.Precision));
     }
 
-    // P0-7
+    // Source-quality downgrade.
 
     private static readonly ProfileRole DirectorFrom2010 = new("董事", "宏遠投資股份有限公司", new PartialDate(2010, 1));
 
@@ -86,7 +86,7 @@ public class IdentityFixTests
         Assert.All(a.Hits, h => Assert.Equal(IdentityDecision.NoMatch, h.Identity.Decision));
     }
 
-    // I1
+    // Coarser Profile DOBs.
 
     [Fact]
     public void Coarser_profile_dob_covered_by_a_precise_one_cannot_mask_a_full_dob_conflict()
@@ -96,7 +96,7 @@ public class IdentityFixTests
         Assert.Equal(ReasonCodes.FullDobConflict, r.ReasonCodes[0]);
     }
 
-    // I2
+    // Many or scattered Profile DOBs.
 
     [Fact]
     public void Agreeing_with_one_of_many_scattered_dobs_is_not_support()
@@ -121,7 +121,7 @@ public class IdentityFixTests
         Assert.Equal(Math.Log2(FellegiSunter.M * 60 / 2), dob.Weight, 6);
     }
 
-    // I3
+    // Employment and document comparability.
 
     [Fact]
     public void Occupation_without_employer_is_not_comparable_and_keeps_gc_11_at_row_4()
@@ -154,7 +154,7 @@ public class IdentityFixTests
         Assert.Equal((4, IdentityDecision.ProbableMatch), (r.Stage3Row, r.Decision));
     }
 
-    // I4
+    // Gender conflict.
 
     [Fact]
     public void Gender_conflict_rules_out_rows_3_and_4()
@@ -172,7 +172,7 @@ public class IdentityFixTests
         Assert.Contains(ReasonCodes.GenderConflict, row4.ReasonCodes);
     }
 
-    // I5
+    // Stated ages and adult-only titles.
 
     [Fact]
     public void Age_at_the_event_is_not_compared_with_the_report_date()

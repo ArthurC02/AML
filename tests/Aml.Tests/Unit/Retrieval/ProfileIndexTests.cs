@@ -2,10 +2,10 @@ using Aml.Core.Retrieval;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
 
-namespace Aml.Tests.Fixes;
+namespace Aml.Tests.Unit.Retrieval;
 
-/// <summary>WP-D: candidate retrieval (R1–R5) and Profile merging (P0-8).</summary>
-public class RetrievalFixTests
+/// <summary>Candidate retrieval routes and fusion, Recall@10 on a labelled set, and Profile merging.</summary>
+public class ProfileIndexTests
 {
     private static SourceProfile Profile(string key, string[] names, Gender? gender = Gender.Male, IReadOnlyList<Document>? docs = null,
         IReadOnlyList<ProfileRelationship>? links = null, IReadOnlyList<PartialDate>? dobs = null) =>
@@ -14,7 +14,7 @@ public class RetrievalFixTests
 
     private static readonly Document Id = new("TW_NATIONAL_ID", "A123456789", "TW");
 
-    // ---- P0-8 merging ----
+    // ---- merging ----
 
     [Fact]
     public void Placeholder_short_repeated_or_unqualified_document_numbers_never_merge()
@@ -139,7 +139,7 @@ public class RetrievalFixTests
         Assert.Equal(["Lee Al", "Lee Bo"], tie.Select(h => h.MatchedName));
     }
 
-    // ---- R6 reading keys ----
+    // ---- reading keys ----
 
     [Theory]
     [InlineData("陳水扁", "Chen Shui-bian")]
@@ -195,8 +195,8 @@ public class RetrievalFixTests
     {
         { "romanization", "Chen Zhiming", "DJ:T01" },
         { "romanization", "Chen Jhih-Ming", "DJ:T01" }, // Tongyong
-        { "romanization", "Jiang Jingguo", "DJ:T07" }, // Pinyin vs Wade-Giles: reading-key route (R6)
-        { "cross-script", "陳水扁", "DJ:T09" }, // Chinese query, Latin-only Profile: reading-key route (R6)
+        { "romanization", "Jiang Jingguo", "DJ:T07" }, // Pinyin vs Wade-Giles: reading-key route
+        { "cross-script", "陳水扁", "DJ:T09" }, // Chinese query, Latin-only Profile: reading-key route
         { "romanization", "Li Minghui", "DJ:T08" },
         { "simplified", "陈志明", "DJ:T01" },
         { "simplified", "蒋经国", "DJ:T07" },

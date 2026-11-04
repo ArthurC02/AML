@@ -4,7 +4,7 @@ using Aml.Core.Shared;
 using Aml.Core.Subjects;
 using static Aml.Core.Shared.ComparisonStatus;
 
-namespace Aml.Tests.Core;
+namespace Aml.Tests.Unit.Identity;
 
 /// <summary>Rules without a dedicated Golden Case yet, tested on minimal synthetic data.</summary>
 public class IdentityRuleTests

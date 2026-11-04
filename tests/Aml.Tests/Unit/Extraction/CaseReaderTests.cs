@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using Aml.Core.Cases;
 using Aml.Core.Explanation;
@@ -8,17 +9,17 @@ using Aml.Infra.Html;
 using Aml.Infra.Txt;
 using Aml.Tests.GoldenCases;
 
-namespace Aml.Tests.Fixes;
+namespace Aml.Tests.Unit.Extraction;
 
-/// <summary>WP-F parsing fixes: countries, the candidate table, encodings, HTML, Profile rows, file names and dates.</summary>
-public class ParsingFixTests
+/// <summary>Case reader: countries, the candidate table, encodings, HTML, Profile rows, file names and dates.</summary>
+public class CaseReaderTests
 {
     private const string Case = "案件資訊.txt";
     private const string Customer = "客戶-背景資料.txt";
     private const string Profile11 = "名單資料_90000011.txt";
     private const string Gc11Row1 = "1\t鐘仁聲\t100\tDJ ALT\t90000011\t未符合\t符合\t確認後符合\t不是";
 
-    static ParsingFixTests() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+    static CaseReaderTests() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
     private static Encoding Big5 => Encoding.GetEncoding(950, EncoderFallback.ExceptionFallback, DecoderFallback.ExceptionFallback);
 
@@ -53,7 +54,7 @@ public class ParsingFixTests
     private static ComparisonRow Nationality(CaseInput input) =>
         ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input)).Hits[0].Comparison.Single(r => r.Field == "國籍");
 
-    // P0-3
+    // Countries.
 
     [Theory]
     [InlineData("TW", "TW")]
@@ -96,7 +97,7 @@ public class ParsingFixTests
         Assert.Contains("AMBIGUOUS:Citizenship", profile.Findings);
     }
 
-    // P0-9
+    // Candidate rows.
 
     [Fact]
     public void Short_candidate_row_is_unparseable_and_the_others_are_read()
@@ -121,7 +122,7 @@ public class ParsingFixTests
         Assert.True(TxtCaseReader.IsInputError(e));
     }
 
-    // P0-10
+    // Candidate table header.
 
     [Fact]
     public void Flags_are_read_under_the_expanded_two_row_header()
@@ -151,7 +152,7 @@ public class ParsingFixTests
         Assert.All(input.Rows, r => Assert.Equal(FlagValue.Unparseable, r.Flags!.Pep));
     }
 
-    // X1
+    // Encodings.
 
     [Fact]
     public void Big5_file_is_read_with_an_encoding_fallback_finding()
@@ -171,7 +172,7 @@ public class ParsingFixTests
         Assert.DoesNotContain(TxtCaseReader.Read(GoldenCaseTests.Folder("GC-11")).Subject.Findings,
             f => f.StartsWith("ENCODING_FALLBACK", StringComparison.Ordinal));
 
-    // X2
+    // HTML pages.
 
     private static string[] Lines(string html, HtmlExport.Kind kind = HtmlExport.Kind.Customer) =>
         HtmlExport.ToExportText(html, kind).Split('\n');
@@ -221,7 +222,7 @@ public class ParsingFixTests
         Assert.Contains("FIELD_BLANK:國籍 1", input.Subject.Findings);
     }
 
-    // X3
+    // Profile rows.
 
     [Fact]
     public void Short_profile_rows_are_unparseable_and_the_case_continues()
@@ -236,7 +237,7 @@ public class ParsingFixTests
         Assert.Contains("UNPARSEABLE:國家資料", shortCountry.Findings);
     }
 
-    // X4
+    // File names.
 
     [Fact]
     public void Upper_case_html_extension_is_converted()
@@ -250,7 +251,7 @@ public class ParsingFixTests
         Assert.DoesNotContain(input.Subject.Findings, f => f.StartsWith("UNSUPPORTED_ATTACHMENT", StringComparison.Ordinal));
     }
 
-    // X5
+    // News dates.
 
     [Fact]
     public void News_date_without_spaces_is_read()
@@ -259,7 +260,7 @@ public class ParsingFixTests
         Assert.Equal(new PartialDate(2026, 5, 7), input.NewsByProfileId["90000011"].PublishedOn);
     }
 
-    // X6
+    // Customer and related-party layouts.
 
     [Fact]
     public void Customer_value_line_that_is_a_label_means_blank()
@@ -283,5 +284,41 @@ public class ParsingFixTests
         ]);
         Assert.Equal(["TW"], input.Subject.Nationalities);
         Assert.Contains(input.Subject.Addresses, a => a.Raw == "32556桃園市龍潭區 中興里１鄰中興路８８巷１２號");
+    }
+
+    // Source hashes, role dates and Profile row numbers.
+
+    [Fact]
+    public void Source_hashes_are_taken_on_the_uploaded_bytes()
+    {
+        var files = Directory.GetFiles(GoldenCaseTests.Folder("GC-11")).ToDictionary(f => Path.GetFileName(f), File.ReadAllBytes);
+        Dictionary<string, byte[]> Endings(string newline) => files.ToDictionary(f => f.Key, f => f.Key.EndsWith(".txt", StringComparison.Ordinal)
+            ? Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(f.Value).ReplaceLineEndings(newline)) : f.Value);
+
+        var (lfFiles, crlfFiles) = (Endings("\n"), Endings("\r\n"));
+        var lf = TxtCaseReader.ReadFiles(lfFiles).SourceHashes!;
+        var crlf = TxtCaseReader.ReadFiles(crlfFiles).SourceHashes!;
+        Assert.All(lfFiles, f => Assert.Equal(Convert.ToHexString(SHA256.HashData(f.Value)), lf[f.Key]));
+        Assert.NotEqual(lf["案件資訊.txt"], crlf["案件資訊.txt"]);
+    }
+
+    [Fact]
+    public void An_unreadable_role_date_is_unparseable_and_a_future_end_is_an_open_term()
+    {
+        var text = File.ReadAllText(Path.Combine(GoldenCaseTests.Folder("GC-01"), "名單資料_90000001.txt"));
+        var bad = TxtCaseReader.ParseProfile(text.Replace("\t1990/7\t1995/12", "\t1990/13\t1995/12", StringComparison.Ordinal));
+        Assert.Contains("UNPARSEABLE:職位", bad.Findings);
+
+        var future = TxtCaseReader.ParseProfile(text.Replace("\t1990/7\t1995/12", $"\t1990/7\t{DateTime.UtcNow.Year + 2}/12", StringComparison.Ordinal));
+        Assert.DoesNotContain("UNPARSEABLE:職位", future.Findings);
+        Assert.Null(future.Roles[0].To);
+    }
+
+    [Fact]
+    public void A_full_width_profile_row_number_is_read()
+    {
+        var text = File.ReadAllText(Path.Combine(GoldenCaseTests.Folder("GC-01"), "名單資料_90000001.txt"));
+        var p = TxtCaseReader.ParseProfile(text.Replace("1\t董事長\t", "１\t董事長\t", StringComparison.Ordinal));
+        Assert.Contains(p.Roles, r => r.Title == "董事長");
     }
 }

@@ -61,12 +61,14 @@ AML/
 │       └── Workers/JobWorker.cs  # BackgroundService
 └── tests/
     └── Aml.Tests/
-        ├── Core/                 # extraction, identity, screening, retrieval and scoring rules; no database
-        ├── Api/                  # endpoints through WebApplicationFactory
-        ├── Persistence/          # repository and batch tests
-        ├── Fixes/                # regression tests for parsing, names, identity, retrieval, screening, persistence and integration
-        └── GoldenCases/          # Golden Cases end to end, augmented cases, explanation, metrics
+        ├── Unit/                 # in process, no database: Extraction, Identity, Names, Retrieval, Screening
+        ├── GoldenCases/          # Golden Cases through the analyzer, augmented cases, explanation, metrics (in process)
+        ├── Integration/          # services, repositories and the job table on SQLite
+        ├── E2E/                  # critical API flows through WebApplicationFactory
+        └── TestPyramidTests.cs   # keeps each layer well below the one under it
 ```
+
+Tests follow the test pyramid: many in-process tests of Core rules and the readers, fewer service and repository tests on SQLite, and API tests only for the critical flows (upload and analysis, upload validation, batch, health, Profile import with queued re-analysis, retrieval modes and the export-text wiring). A behaviour is tested at the lowest layer that can show it; an API test covers only what needs the HTTP pipeline or the DI wiring. `TestPyramidTests` counts test methods by namespace (`Aml.Tests.E2E`, `Aml.Tests.Integration`, everything else in process) and fails when integration tests fall below twice the E2E tests or in-process tests below three times the integration tests.
 
 Rules:
 
@@ -157,5 +159,5 @@ Not used: MediatR, AutoMapper, FluentAssertions ([ADR-0015](../adr/0015-no-comme
 | Authorization | Policy-based authorization |
 | Observability | OpenTelemetry |
 | Deployment | Linux container on approved Kubernetes/OpenShift/server platform |
-| Testing | xUnit, Golden Case regression, repository contract tests |
+| Testing | xUnit; test pyramid (in process, then SQLite integration, then critical API flows); Golden Case regression; repository contract tests |
 | Supply chain | Central Package Management, lock files, package source mapping, NuGet Audit, SBOM, SAST/SCA, container scanning |

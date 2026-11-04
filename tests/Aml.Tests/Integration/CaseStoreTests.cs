@@ -4,7 +4,7 @@ using Aml.Infra.Persistence;
 using Aml.Infra.Persistence.Repositories;
 using Microsoft.Data.Sqlite;
 
-namespace Aml.Tests.Persistence;
+namespace Aml.Tests.Integration;
 
 /// <summary>Repository contract: the same suite must pass on SQL Server or Oracle before either replaces SQLite.</summary>
 public sealed class CaseStoreTests : IDisposable

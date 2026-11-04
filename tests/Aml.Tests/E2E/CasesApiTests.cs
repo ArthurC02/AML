@@ -4,7 +4,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 
-namespace Aml.Tests.Api;
+namespace Aml.Tests.E2E;
 
 public sealed class CasesApiTests : IDisposable
 {

@@ -3,7 +3,7 @@ using Aml.Core.Normalization;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
 
-namespace Aml.Tests.Core;
+namespace Aml.Tests.Unit.Extraction;
 
 /// <summary>Extraction and normalization rules (extraction-and-normalization.md) on minimal synthetic data.</summary>
 public class ExtractionRuleTests

@@ -5,7 +5,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Data.Sqlite;
 
-namespace Aml.Tests.Api;
+namespace Aml.Tests.E2E;
 
 /// <summary>List database, source refresh and retrieval modes through the API.</summary>
 public sealed class ListsApiTests : IDisposable
@@ -92,5 +92,13 @@ public sealed class ListsApiTests : IDisposable
 
         var missing = await http.GetAsync("/api/lists/candidates?mode=IndexSearch", ct);
         Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
+
+        // Wiring: an HTML page and its .txt export hash to one Profile version; merges list refused merges apart.
+        await http.PostAsync("/api/lists/profiles", Files(("名單資料_123.txt", "Profile_ID:\t123\nGender:\tMale\n")), ct);
+        var html = await Json(await http.PostAsync("/api/lists/profiles", Files(("名單資料_123.html",
+            "<html><body><table><tr><td>Profile_ID</td><td>123</td></tr><tr><td>Gender</td><td>Male</td></tr></table></body></html>")), ct), ct);
+        Assert.Equal(1, html.GetProperty("profiles")[0].GetProperty("version").GetInt32());
+        var merges = await Json(await http.GetAsync("/api/lists/merges", ct), ct);
+        Assert.Equal(JsonValueKind.Array, merges.GetProperty("rejected").ValueKind);
     }
 }

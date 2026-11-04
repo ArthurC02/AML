@@ -6,7 +6,7 @@ using Aml.Infra.Persistence.Repositories;
 using Aml.Services;
 using Microsoft.Data.Sqlite;
 
-namespace Aml.Tests.Persistence;
+namespace Aml.Tests.Integration;
 
 /// <summary>Job table contract and batch controls: exclusive claim, idempotency, retry budget, dead-letter, lease reclaim, re-run.</summary>
 public sealed class BatchTests : IDisposable

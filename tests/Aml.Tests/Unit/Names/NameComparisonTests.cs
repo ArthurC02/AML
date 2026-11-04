@@ -2,22 +2,22 @@ using Aml.Core.Normalization;
 using Aml.Core.Shared;
 using static Aml.Core.Shared.ComparisonStatus;
 
-namespace Aml.Tests.Fixes;
+namespace Aml.Tests.Unit.Names;
 
-/// <summary>WP-A name fixes (P0-1, N1..N6, ReadingKeys).</summary>
-public class NameFixTests
+/// <summary>Name keys, comparison relaxations, romanization, variant folding, similarity and reading keys.</summary>
+public class NameComparisonTests
 {
     private static (ComparisonStatus Status, string? Detail) Compare(string subject, string profile) =>
         Normalize.CompareNames([subject], [profile]);
 
-    [Theory]                                // P0-1: supplementary-plane and private-use characters stay in the key
+    [Theory]                                // supplementary-plane and private-use characters stay in the key
     [InlineData("黃𥕢明", "黃明")]
     [InlineData("陳𡔙明", "陳𠀀明")]
     [InlineData("陳明", "陳明")]
     public void Rare_characters_are_kept_per_code_point(string subject, string profile) =>
         Assert.NotEqual(Exact, Compare(subject, profile).Status);
 
-    [Theory]                                // P0-1: an unknown character is never EXACT, not even against itself
+    [Theory]                                // an unknown character is never EXACT, not even against itself
     [InlineData("黃?明")]
     [InlineData("黃＊明")]
     [InlineData("黃�明")]
@@ -34,7 +34,7 @@ public class NameFixTests
         Assert.Equal("黃?明", Normalize.NameKey("黃＊明"));
     }
 
-    [Theory]                                // N1
+    [Theory]                                // diacritic folding
     [InlineData("Nguyễn Văn Hùng", "Nguyễn Văn Hưng")]
     [InlineData("José", "Jose")]
     public void Match_only_after_diacritic_folding_is_disclosed(string subject, string profile)
@@ -43,7 +43,7 @@ public class NameFixTests
         Assert.Equal((Exact, (string?)null), Compare(subject, subject));
     }
 
-    [Theory]                                // N2 + N3
+    [Theory]                                // name order
     [InlineData("CHIH-MING　CHEN", "CHEN CHIH-MING")]
     [InlineData("穆罕默德·阿里", "阿里·穆罕默德")]
     [InlineData("Ming Chen", "Chen Ming")]
@@ -57,7 +57,7 @@ public class NameFixTests
         Assert.Equal((Exact, $"{Findings.VariantCharacters}；{Normalize.NameOrderVariant}"), Compare("志明 陈", "陳 志明"));
     }
 
-    [Theory]                                // N4
+    [Theory]                                // romanization
     [InlineData("Chen Zhiming", "Chen Chih-Ming")]
     [InlineData("Ouyang Xiu", "Ou-Yang Hsiu")]
     [InlineData("Chiang Ching-kuo", "Jiang Jingguo")]
@@ -70,7 +70,7 @@ public class NameFixTests
     public void Different_taiwanese_syllables_are_not_a_romanization_variant() =>
         Assert.NotEqual(Findings.RomanizationVariant, Compare("Chen Chih-Ming", "Chen Chi-Ming").Detail);
 
-    [Fact]                                  // N5
+    [Fact]                                  // variant characters
     public void Opencc_one_to_one_characters_fold()
     {
         Assert.Equal((Exact, Findings.VariantCharacters), Compare("蒋经国", "蔣經國"));
@@ -79,7 +79,7 @@ public class NameFixTests
         Assert.Equal(Partial, Compare("涂志明", "塗志明").Status);
     }
 
-    [Fact]                                  // N6
+    [Fact]                                  // similarity
     public void Cross_script_names_are_not_compared()
     {
         Assert.Equal((Partial, Normalize.NotComparableCrossScript), Compare("陳志明", "CHEN Chih-Ming"));
@@ -93,7 +93,7 @@ public class NameFixTests
         Assert.Equal(0.961, Similarity.JaroWinkler("MARTHA", "MARHTA"), 3);
     }
 
-    [Fact]                                  // W2 contract
+    [Fact]                                  // reading keys
     public void Reading_keys_meet_across_scripts()
     {
         var han = Romanization.ReadingKeys("陳水扁");

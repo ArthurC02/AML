@@ -12,10 +12,10 @@ using Aml.Services;
 using Dapper;
 using Microsoft.Data.Sqlite;
 
-namespace Aml.Tests.Fixes;
+namespace Aml.Tests.Integration;
 
-/// <summary>WP-E: revision numbering, one-transaction writes, queued re-analysis, WAL, job controls, Profile hashing, retrieval cache.</summary>
-public sealed class PersistenceFixTests : IDisposable
+/// <summary>Services on SQLite: revision numbering, one-transaction writes, queued re-analysis, WAL, job controls, Profile hashing, retrieval cache.</summary>
+public sealed class ServiceTests : IDisposable
 {
     private readonly string _file = Path.Combine(Path.GetTempPath(), $"aml-fix-e-{Guid.NewGuid():N}.db");
     private readonly SqliteDatabase _db;
@@ -29,7 +29,7 @@ public sealed class PersistenceFixTests : IDisposable
     private static readonly string Gc11 = GoldenCases.GoldenCaseTests.Folder("GC-11");
     private const string ProfileName = "名單資料_90000011.txt";
 
-    public PersistenceFixTests()
+    public ServiceTests()
     {
         _db = new SqliteDatabase($"Data Source={_file};Pooling=False");
         _db.Upgrade();
@@ -56,7 +56,7 @@ public sealed class PersistenceFixTests : IDisposable
     private static AnalysisRecord Failed(string caseId, int revision) =>
         new(caseId, revision, ExecutionStatus.Failed, ScreeningAssessment.NotEvaluated, "{}", null, T0);
 
-    // P1
+    // Revision numbering.
     [Fact]
     public async Task Two_concurrent_analyses_of_one_case_both_succeed_as_revisions_1_and_2()
     {

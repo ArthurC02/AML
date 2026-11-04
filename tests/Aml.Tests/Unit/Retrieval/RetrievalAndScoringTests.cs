@@ -6,7 +6,7 @@ using Aml.Core.Shared;
 using Aml.Core.Subjects;
 using Aml.Infra.Txt;
 
-namespace Aml.Tests.Core;
+namespace Aml.Tests.Unit.Retrieval;
 
 /// <summary>List index, Profile merging, the Fellegi-Sunter shadow score, risk scoring and entity evidence.</summary>
 public class RetrievalAndScoringTests

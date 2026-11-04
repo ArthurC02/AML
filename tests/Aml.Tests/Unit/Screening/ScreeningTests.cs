@@ -4,7 +4,7 @@ using Aml.Core.Screening;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
 
-namespace Aml.Tests.Core;
+namespace Aml.Tests.Unit.Screening;
 
 /// <summary>Combination matrix, Sanction/PEP policies and Phase 1 release controls, on minimal synthetic data.</summary>
 public class ScreeningTests

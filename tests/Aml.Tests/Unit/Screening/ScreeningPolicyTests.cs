@@ -8,10 +8,10 @@ using Aml.Core.Subjects;
 using Aml.Infra.Txt;
 using Aml.Services;
 
-namespace Aml.Tests.Fixes;
+namespace Aml.Tests.Unit.Screening;
 
-/// <summary>WP-C list conditions, disposition and risk scoring fixes (P0-4, P0-5, P0-6, S1–S6).</summary>
-public class ScreeningFixTests
+/// <summary>Flags and categories, legal stage and ② relevance from news, Article 22 ①, review priority, risk scoring, former PEP and RCA scope.</summary>
+public class ScreeningPolicyTests
 {
     private static ScreenedSubject Subject(params string[] nationality) =>
         new(SubjectRole.Customer, null, ["陳志明"], Gender.Male, new PartialDate(1980, 5, 20), nationality.Length == 0 ? ["TW"] : nationality,
@@ -36,10 +36,10 @@ public class ScreeningFixTests
         AmlRelevance? relevance = null, ConditionBasis basis = ConditionBasis.CategoryMapping, params string[] codes) =>
         new(type, status, basis, [], stage, relevance, SourceConditions.PolicyVersion, codes);
 
-    // P0-4: a mapped category whose flag is blank keeps its condition; 黑名單 = NO never clears a Sanction category.
+    // a mapped category whose flag is blank keeps its condition; 黑名單 = NO never clears a Sanction category.
 
     [Fact]
-    public void P0_4_sanction_category_with_pep_no_and_other_flags_blank_keeps_the_sanction_condition()
+    public void sanction_category_with_pep_no_and_other_flags_blank_keeps_the_sanction_condition()
     {
         var hit = Analyze(Profile("Sanctions Lists", list: new OfficialListEntry("OFAC", "SDN List", "Active", null)), Flags(pep: FlagValue.No));
         var sanction = hit.Conditions.Single(c => c.Type == ListType.Sanction);
@@ -48,7 +48,7 @@ public class ScreeningFixTests
     }
 
     [Fact]
-    public void P0_4_sanction_category_with_blacklist_no_is_unknown_with_a_conflict()
+    public void sanction_category_with_blacklist_no_is_unknown_with_a_conflict()
     {
         var hit = Analyze(Profile("Sanctions Lists"), Flags(FlagValue.No, FlagValue.No, FlagValue.No));
         var sanction = hit.Conditions.Single(c => c.Type == ListType.Sanction);
@@ -58,7 +58,7 @@ public class ScreeningFixTests
     }
 
     [Fact]
-    public void P0_4_rca_category_with_is_rca_blank_and_other_flags_set_keeps_the_rca_condition()
+    public void rca_category_with_is_rca_blank_and_other_flags_set_keeps_the_rca_condition()
     {
         var hit = Analyze(Profile("Relative or Close Associate (RCA)", "Spouse"), Flags(FlagValue.No, FlagValue.No, FlagValue.No));
         var rca = hit.Conditions.Single(c => c.Type == ListType.Rca);
@@ -67,14 +67,14 @@ public class ScreeningFixTests
     }
 
     [Fact]
-    public void P0_4_a_flag_with_a_value_still_wins_over_its_category()
+    public void a_flag_with_a_value_still_wins_over_its_category()
     {
         var pep = Analyze(Profile("Politically Exposed Person"), Flags(pep: FlagValue.No)).Conditions.Single(c => c.Type == ListType.Pep);
         Assert.Equal(ConditionStatus.NotHit, pep.Status);
         Assert.Contains(SourceConditions.FlagCategoryConflict, pep.ReasonCodes);
     }
 
-    // P0-5: legal stage.
+    // legal stage.
 
     [Theory]
     [InlineData("檢察官對陳志明為不起訴處分。", LegalStage.Dismissed)]
@@ -88,17 +88,17 @@ public class ScreeningFixTests
     [InlineData("法院判決陳志明無罪定讞。", LegalStage.Acquitted)]
     [InlineData("陳志明遭起訴，一審判處有期徒刑三年。", LegalStage.Convicted)]
     [InlineData("檢方已起訴。", LegalStage.Indicted)]                                 // subjectless: the person's
-    public void P0_5_legal_stage_from_news(string news, LegalStage expected) =>
+    public void legal_stage_from_news(string news, LegalStage expected) =>
         Assert.Equal(expected, Assert.Single(SourceConditions.Determine(Profile("Adverse Media"), false, news)).LegalStage);
 
     [Fact]
-    public void P0_5_gc_12_stays_indicted()
+    public void gc_12_stays_indicted()
     {
         var a = CaseAnalyzer.Analyze(TxtCaseReader.Read(GoldenCases.GoldenCaseTests.Folder("GC-12")));
         Assert.Equal(LegalStage.Indicted, Assert.Single(a.Hits).Conditions.Single(c => c.Type == ListType.AdverseMedia).LegalStage);
     }
 
-    // P0-6: ② never sets aside a predicate offence.
+    // ② never sets aside a predicate offence.
 
     [Theory]
     [InlineData("〔記者丙／台北報導〕陳志明酒駕肇事逃逸致人於死。", AmlRelevance.Uncertain)]
@@ -108,13 +108,13 @@ public class ScreeningFixTests
     [InlineData("〔記者丙／台北報導〕陳志明酒駕，並涉竊盜。", AmlRelevance.Uncertain)]
     [InlineData("〔記者丙／台北報導〕陳志明酒駕，另涉違反證券交易法。", AmlRelevance.Uncertain)]
     [InlineData("〔記者丙／台北報導〕陳志明肇事。", AmlRelevance.Uncertain)]                       // 肇事 alone states no conduct
-    public void P0_6_relevance_from_news(string news, AmlRelevance expected) =>
+    public void relevance_from_news(string news, AmlRelevance expected) =>
         Assert.Equal(expected, Assert.Single(SourceConditions.Determine(Profile("Adverse Media"), false, news)).AmlRelevance);
 
-    // S1: ① counts an UNKNOWN only for an unmapped category with no PEP flag NO.
+    // ① counts an UNKNOWN only for an unmapped category with no PEP flag NO.
 
     [Fact]
-    public void S1_pep_no_and_an_undecided_blacklist_type_give_no_foreign_pep_presumption()
+    public void pep_no_and_an_undecided_blacklist_type_give_no_foreign_pep_presumption()
     {
         var hit = Analyze(Profile("Special Interest Person (SIP)", citizenship: "VN"), Flags(FlagValue.No, FlagValue.Yes, FlagValue.No), subject: Subject("VN"));
         Assert.Contains(hit.Conditions, c => c.Type == ListType.Unknown && c.ReasonCodes.Contains(SourceConditions.BlacklistTypeUndecided));
@@ -122,7 +122,7 @@ public class ScreeningFixTests
     }
 
     [Fact]
-    public void S1_unmapped_category_with_pep_flag_no_gives_no_presumption_and_without_flags_still_does()
+    public void unmapped_category_with_pep_flag_no_gives_no_presumption_and_without_flags_still_does()
     {
         var unmapped = Condition(ListType.Unknown, ConditionStatus.Unknown, basis: ConditionBasis.Unmapped, codes: SourceConditions.UnmappedCategory);
         var pepNo = Condition(ListType.Pep, ConditionStatus.NotHit, basis: ConditionBasis.Flag);
@@ -132,10 +132,10 @@ public class ScreeningFixTests
         Assert.Equal(Recommendation.OnList, DispositionPolicy.Recommend(s, p, [unmapped], Identity(), false).Recommendation);
     }
 
-    // S2: a NOT_HIT Sanction does not raise the review priority.
+    // a NOT_HIT Sanction does not raise the review priority.
 
     [Fact]
-    public void S2_not_hit_sanction_does_not_raise_priority()
+    public void not_hit_sanction_does_not_raise_priority()
     {
         var pair = AssessmentPolicy.Assess([Condition(ListType.Sanction, ConditionStatus.NotHit), Condition(ListType.AdverseMedia)], Identity());
         Assert.Equal((ScreeningAssessment.Review, ReviewPriority.Low), (pair.Result, pair.Priority));
@@ -143,7 +143,7 @@ public class ScreeningFixTests
         Assert.Equal(ReviewPriority.High, unknown.Priority);
     }
 
-    // S3: monotone risk scoring.
+    // monotone risk scoring.
 
     private static readonly RiskPolicy Policy = new("risk-test", Approved: true,
         new Dictionary<ListType, int> { [ListType.AdverseMedia] = 10, [ListType.Sanction] = 50, [ListType.Pep] = 20 },
@@ -154,43 +154,43 @@ public class ScreeningFixTests
     private static RiskAssessment Score(params SourceCondition[] c) => RiskScoring.Assess(c, Identity(), Policy)!;
 
     [Fact]
-    public void S3_unknown_sanction_or_pep_scores_no_lower_than_hit()
+    public void unknown_sanction_or_pep_scores_no_lower_than_hit()
     {
         Assert.Equal(Score(Condition(ListType.Sanction)).Score, Score(Condition(ListType.Sanction, ConditionStatus.Unknown)).Score);
         Assert.Equal(Score(Condition(ListType.Pep)).Score, Score(Condition(ListType.Pep, ConditionStatus.Unknown)).Score);
     }
 
     [Fact]
-    public void S3_legal_stage_weighs_on_adverse_media_only()
+    public void legal_stage_weighs_on_adverse_media_only()
     {
         Assert.Equal(0, Score(Condition(ListType.OfficialWantedList, stage: LegalStage.Wanted)).Score); // WANTED is weighted, but not here
         Assert.Equal(20, Score(Condition(ListType.AdverseMedia, stage: LegalStage.Indicted)).Score);
     }
 
     [Fact]
-    public void S3_condition_set_aside_by_article_22_2_scores_nothing()
+    public void condition_set_aside_by_article_22_2_scores_nothing()
     {
         Assert.Equal(0, Score(Condition(ListType.AdverseMedia, stage: LegalStage.Indicted, relevance: AmlRelevance.Unrelated)).Score);
     }
 
     [Fact]
-    public void S3_contributions_carry_list_and_stage_prefixes()
+    public void contributions_carry_list_and_stage_prefixes()
     {
         Assert.Equal(["list:AdverseMedia+10", "stage:Indicted+10"], Score(Condition(ListType.AdverseMedia, stage: LegalStage.Indicted)).Contributions);
     }
 
     [Fact]
-    public void S3_any_raised_sanction_is_high()
+    public void any_raised_sanction_is_high()
     {
         Assert.Equal(RiskLevel.High, Score(Condition(ListType.Sanction)).Level);                         // 50 < HighFrom 100
         Assert.Equal(RiskLevel.High, Score(Condition(ListType.Sanction, ConditionStatus.Unknown)).Level);
         Assert.Equal(RiskLevel.Low, Score(Condition(ListType.Sanction, ConditionStatus.NotHit)).Level);
     }
 
-    // S4: former PEP.
+    // former PEP.
 
     [Fact]
-    public void S4_inactive_pep_is_former_with_an_influence_check_and_still_hit()
+    public void inactive_pep_is_former_with_an_influence_check_and_still_hit()
     {
         var hit = Analyze(Profile("Politically Exposed Person", "Inactive PEP"));
         var pep = Assert.Single(hit.Conditions);
@@ -199,7 +199,7 @@ public class ScreeningFixTests
     }
 
     [Fact]
-    public void S4_every_role_ended_is_former_and_the_rca_of_a_former_pep_gets_the_check()
+    public void every_role_ended_is_former_and_the_rca_of_a_former_pep_gets_the_check()
     {
         var ended = Analyze(Profile("Politically Exposed Person", roles: [new ProfileRole("部長", "某部", new PartialDate(2010), new PartialDate(2014))]));
         Assert.Equal("FORMER_PEP", Assert.Single(ended.Conditions).PepType);
@@ -212,12 +212,12 @@ public class ScreeningFixTests
         Assert.DoesNotContain(DispositionPolicy.FormerPepInfluence, Analyze(Profile("Politically Exposed Person")).Disposition.PendingChecks);
     }
 
-    // S5: RCA statutory scope (認定標準第 6 條).
+    // RCA statutory scope (認定標準第 6 條).
 
     [Theory]
     [InlineData("Cousin")]
     [InlineData("堂兄弟")]
-    public void S5_relation_outside_the_statutory_family_is_flagged_and_still_hit(string sub)
+    public void relation_outside_the_statutory_family_is_flagged_and_still_hit(string sub)
     {
         var rca = Assert.Single(Analyze(Profile("Relative or Close Associate (RCA)", sub)).Conditions);
         Assert.Equal(ConditionStatus.Hit, rca.Status);
@@ -226,17 +226,17 @@ public class ScreeningFixTests
     }
 
     [Fact]
-    public void S5_spouse_stays_pep_family()
+    public void spouse_stays_pep_family()
     {
         var rca = Assert.Single(Analyze(Profile("Relative or Close Associate (RCA)", "Spouse")).Conditions);
         Assert.Equal("PEP_FAMILY", rca.PepType);
         Assert.DoesNotContain(SourceConditions.RcaOutsideStatutoryScope, rca.ReasonCodes);
     }
 
-    // S6: every disposition in the analysis JSON is advisory.
+    // every disposition in the analysis JSON is advisory.
 
     [Fact]
-    public void S6_every_disposition_in_the_analysis_json_is_advisory()
+    public void every_disposition_in_the_analysis_json_is_advisory()
     {
         var input = TxtCaseReader.Read(GoldenCases.GoldenCaseTests.Folder("GC-01"));
         var analysis = CaseAnalyzer.Analyze(input);
@@ -246,5 +246,41 @@ public class ScreeningFixTests
             Assert.NotEmpty(dispositions);
             Assert.All(dispositions, d => Assert.True(d.GetProperty("advisory").GetBoolean()));
         }
+    }
+
+    // Is RCA? = NO, wanted-list entries and unmapped nationalities.
+
+    [Fact]
+    public void An_rca_category_with_is_rca_no_stays_for_review_with_a_conflict()
+    {
+        var no = SourceConditions.Determine(Profile("Relative or Close Associate (RCA)", "Spouse"), false, null, ListFlags.None with { Rca = FlagValue.No });
+        var rca = Assert.Single(no, c => c.Type == ListType.Rca);
+        Assert.Equal(ConditionStatus.Unknown, rca.Status);
+        Assert.Contains(SourceConditions.FlagCategoryConflict, rca.ReasonCodes);
+
+        var blank = SourceConditions.Determine(Profile("Relative or Close Associate (RCA)", "Spouse"), false, null, ListFlags.None);
+        Assert.Equal(ConditionStatus.Hit, Assert.Single(blank, c => c.Type == ListType.Rca).Status);
+    }
+
+    [Fact]
+    public void An_active_wanted_list_entry_does_not_confirm_a_sanction_measure()
+    {
+        SourceCondition Sanction(string list) => SourceConditions.Determine(
+            Profile("Sanctions Lists", list: new OfficialListEntry("MJIB", list, "Active", null)), false, null).Single(c => c.Type == ListType.Sanction);
+
+        Assert.Equal(ConditionStatus.Hit, Sanction("SDN List").Status);
+        var wanted = Sanction("Wanted List");
+        Assert.Equal(ConditionStatus.Unknown, wanted.Status);
+        Assert.Contains(SourceConditions.SanctionMeasureNotConfirmed, wanted.ReasonCodes);
+    }
+
+    [Fact]
+    public void An_unmapped_nationality_keeps_the_foreign_pep_presumption_off()
+    {
+        var pep = Condition(ListType.Pep);
+        var profile = Profile("Politically Exposed Person", citizenship: "VN");
+        Assert.Equal(Recommendation.OnList, DispositionPolicy.Recommend(Subject("VN"), profile, [pep], Identity(), false).Recommendation);
+        var ambiguous = DispositionPolicy.Recommend(Subject("VN") with { Findings = ["AMBIGUOUS:國籍 2"] }, profile, [pep], Identity(), false);
+        Assert.DoesNotContain(DispositionPolicy.ForeignPepPresumption, ambiguous.ReasonCodes);
     }
 }

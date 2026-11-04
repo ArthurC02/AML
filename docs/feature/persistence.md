@@ -126,4 +126,4 @@ DDL is not in the catalog; it stays in versioned DbUp scripts under `Scripts/<Pr
 
 ## Repository contract tests
 
-`tests/Aml.Tests/Persistence/` verifies repository behaviour: round-trip, idempotency keys, exclusive job claim, and late revisions not overwriting a newer effective result. It runs on SQLite. Replacing the database means running the same suite against SQL Server or Oracle (Testcontainers); passing it is the acceptance criterion.
+`tests/Aml.Tests/Integration/` verifies repository behaviour: round-trip, idempotency keys, exclusive job claim, and late revisions not overwriting a newer effective result. It runs on SQLite. Replacing the database means running the same suite against SQL Server or Oracle (Testcontainers); passing it is the acceptance criterion.

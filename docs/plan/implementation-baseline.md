@@ -57,7 +57,8 @@ AML/
 │   │   ├── Html/                 # HTML page to export layout (AngleSharp)
 │   │   └── Jobs/                 # JobStore
 │   └── Aml.Api/                  # composition root
-│       ├── Program.cs            # minimal API endpoints, DI, OpenAPI, OpenTelemetry, health check
+│       ├── Program.cs            # DI, OpenAPI, OpenTelemetry, health check, endpoint registration
+│       ├── Endpoints/            # minimal API endpoints per resource (cases, batches, lists) and upload reading
 │       └── Workers/JobWorker.cs  # BackgroundService
 └── tests/
     └── Aml.Tests/
@@ -78,7 +79,7 @@ Rules:
 
 Implementation notes:
 
-- Api uses minimal APIs in `Program.cs`; the endpoints are listed in [REST resources](../feature/pipeline-api-and-batch.md#rest-resources), plus `GET /health`. Uploads are multipart `.txt` or `.html` files, read as raw bytes: an export is strict UTF-8, else CP950 (Big5) with an `ENCODING_FALLBACK` finding; an HTML page's encoding is decided by AngleSharp (BOM, then meta charset). A Case keeps the SHA-256 of each uploaded file's bytes as its source hash.
+- Api uses minimal APIs, one module per resource in `Endpoints/` (`MapCases`, `MapBatches`, `MapLists`) with the shared upload reading in `Uploads`, registered from `Program.cs`; the endpoints are listed in [REST resources](../feature/pipeline-api-and-batch.md#rest-resources), plus `GET /health`. Uploads are multipart `.txt`, `.html` or `.htm` files, read as raw bytes: an export is strict UTF-8, else CP950 (Big5) with an `ENCODING_FALLBACK` finding; an HTML page's encoding is decided by AngleSharp (BOM, then meta charset). A Case keeps the SHA-256 of each uploaded file's bytes as its source hash.
 - The explanation is built in Core (`Explanation/ExplanationBuilder`) with each revision and stored beside the result; document and reference numbers are masked (first 3 and last 2 characters). The five-part summary is in Traditional Chinese for reviewers. Each hit lists its sources: Profile citations (`PROFILE_RECORD`, with publication and retrieval dates and URL) and attached news (`LEGAL_STAGE` when it set the legal stage of an ADVERSE_MEDIA condition).
 - No human workflow in the PoC ([ADR-0020](../adr/0020-identification-only.md)).
 - `POST /api/cases` analyzes synchronously; `POST /api/batches` queues items in the job table and `Workers/JobWorker` runs them through `BatchService` ([durable batch execution](../feature/pipeline-api-and-batch.md#durable-batch-execution)). The job store is `Infra/Jobs/JobStore` behind `Core/Ports/IJobStore` (named "Store" because CA1711 rejects a "Queue" suffix).

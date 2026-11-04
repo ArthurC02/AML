@@ -108,7 +108,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         };
         using var refused = await client.PostAsync("/api/cases", exe, ct);
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
-        Assert.Equal("\"Only .txt or .html files up to 5 MB are accepted\"", await refused.Content.ReadAsStringAsync(ct));
+        Assert.Equal("Only .txt, .html or .htm files up to 5 MB are accepted", await refused.Content.ReadFromJsonAsync<string>(ct));
 
         using var incomplete = new MultipartFormDataContent
         {
@@ -133,6 +133,11 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
     [InlineData("POST", "/api/batches", "[]", HttpStatusCode.BadRequest)]
     [InlineData("POST", "/api/batches", """[{"subjectRef":"s","triggerEventId":"t","files":{}}]""", HttpStatusCode.BadRequest)]
     [InlineData("POST", "/api/batches", """[{"subjectRef":"s","triggerEventId":"t","files":{"a.exe":"x"}}]""", HttpStatusCode.BadRequest)]
+    [InlineData("POST", "/api/batches", "batch-oversize", HttpStatusCode.BadRequest)]
+    [InlineData("POST", "/api/batches", "batch-null-file", HttpStatusCode.BadRequest)]
+    [InlineData("POST", "/api/batches", "batch-null-item", HttpStatusCode.BadRequest)]
+    [InlineData("POST", "/api/batches", "batch-no-ids", HttpStatusCode.BadRequest)]
+    [InlineData("POST", "/api/batches", """[{"subjectRef":" ","triggerEventId":"t","files":{"a.txt":"x"}}]""", HttpStatusCode.BadRequest)]
     [InlineData("GET", "/api/lists/candidates?mode=Nickname&name=x", "none", HttpStatusCode.BadRequest)]
     public async Task Unknown_ids_and_invalid_requests_are_refused(string method, string path, string body, HttpStatusCode expected)
     {
@@ -148,11 +153,21 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
                 { new StringContent("s"), "subjectRef" }, { new StringContent("t"), "triggerEventId" },
                 { new ByteArrayContent(new byte[5 * 1024 * 1024 + 1]), "files", "案件資訊.txt" },
             },
+            // Under 5 MB in characters, over 5 MB in UTF-8 bytes: the limit counts bytes.
+            "batch-oversize" => JsonContent.Create(new[]
+            {
+                new { subjectRef = "s", triggerEventId = "t", files = new Dictionary<string, string> { ["a.txt"] = new('名', 2_000_000) } },
+            }),
+            "batch-null-file" => new StringContent("""[{"subjectRef":"s","triggerEventId":"t","files":{"a.txt":null}}]""", System.Text.Encoding.UTF8, "application/json"),
+            "batch-null-item" => new StringContent("[null]", System.Text.Encoding.UTF8, "application/json"),
+            "batch-no-ids" => new StringContent("""[{"files":{"a.txt":"x"}}]""", System.Text.Encoding.UTF8, "application/json"),
             _ => new StringContent(body, System.Text.Encoding.UTF8, "application/json"),
         };
         using var request = new HttpRequestMessage(new HttpMethod(method), path) { Content = content };
         using var response = await client.SendAsync(request, ct);
         Assert.Equal(expected, response.StatusCode);
+        if (body.StartsWith("batch-", StringComparison.Ordinal))
+            Assert.Equal("Every item needs subjectRef, triggerEventId and .txt, .html or .htm files up to 5 MB each", await response.Content.ReadFromJsonAsync<string>(ct));
     }
 
     [Fact]

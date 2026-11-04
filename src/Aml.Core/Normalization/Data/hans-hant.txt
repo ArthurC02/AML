@@ -1,4 +1,5 @@
-# Source: OpenCC data/dictionary/STCharacters.txt https://github.com/BYVoid/OpenCC ; Apache-2.0. One-to-one simplified->traditional entries only (one-to-many dropped).
+# Source: OpenCC data/dictionary/STCharacters.txt https://github.com/BYVoid/OpenCC ; Apache License 2.0 (licenses/Apache-2.0.txt). See THIRD-PARTY-NOTICES.md.
+# Modified: one-to-one simplified->traditional entries only (one-to-many dropped); format changed.
 㐷傌
 㐽偑
 㑇㑳

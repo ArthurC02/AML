@@ -1,4 +1,6 @@
-# Source: Bureau of Consular Affairs, MOFA (Taiwan), 中文譯音對照表 https://www.boca.gov.tw/cp-2-4226-c0eff-1.html ; Government Website Open Information Announcement (Open Government Data License v1.0). Columns: Hanyu Pinyin, Wade-Giles (passport form, no apostrophes), Tongyong; Hanyu ü as V.
+# 外交部領事事務局 2026 護照外文姓名拼音對照表(發布 2026-05-28,更新 2026-05-29)。此開放資料依政府資料開放授權條款 (Open Government Data License) 進行公眾釋出，使用者於遵守本條款各項規定之前提下，得利用之。政府資料開放授權條款:https://data.gov.tw/license
+# Source: https://www.boca.gov.tw/cp-2-4226-c0eff-1.html ; OGDL-Taiwan-1.0 per the bureau's open data announcement https://www.boca.gov.tw/cp-71-3817-6ceb8-1.html . Not endorsed by the bureau. See THIRD-PARTY-NOTICES.md.
+# Modified: one row per syllable. Columns: Hanyu Pinyin, Wade-Giles (passport form, no apostrophes), Tongyong; Hanyu ü as V; listed alternatives kept.
 BA	PA	BA
 BO	PO	BO
 BAI	PAI	BAI

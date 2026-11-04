@@ -1,4 +1,5 @@
-# Source: Unicode Unihan database 18.0.0 (Unihan_Readings.txt: kMandarin, kTGHZ2013, kXHC1983) https://www.unicode.org/Public/UCD/latest/ucd/Unihan.zip ; Unicode License v3 https://www.unicode.org/license.txt . Toneless Hanyu Pinyin (ü as V), then every character with that reading; CJK URO, Ext A, Ext B only.
+# Source: Unicode Unihan database 18.0.0 (Unihan_Readings.txt: kMandarin, kTGHZ2013, kXHC1983) https://www.unicode.org/Public/UCD/latest/ucd/Unihan.zip ; Copyright © 1991-2026 Unicode, Inc.; Unicode License v3 (licenses/Unicode-3.0.txt). See THIRD-PARTY-NOTICES.md.
+# Modified: toneless Hanyu Pinyin (ü as V), then every character with that reading; CJK URO, Ext A, Ext B only.
 A	吖呵啊嗄腌錒锕阿𠼞𥥩𨉚
 AI	㕌㗒㘷㝶㢊㤅㦈㱯㶼㾢㿄䀳䅬䑂䔽䝽䠹䨠䶣伌僾凒叆呆哀哎唉啀嗌嗳嘊噯埃塧壒娭娾嫒嬡愛懓懝挨捱敱敳昹暧曖欸毐溰溾濭爱瑷璦癌皑皚皧瞹矮砹硋碍礙艾蔼薆藹譪譺躷銰鎄鑀锿閡隘霭靄靉餲馤騃鱫鴱𠊎𠳳𡁍𡉓𡟓𡰽𡶃𢟪𢟰𢣏𢣕𢰇𣉼𣋞𣜬𣝅𣤃𣩱𤢵𤸖𤸳𤻢𥡽𥤦𥴨𦗍𦗐𦥂𦥈𦩴𧏹𧓁𧡋𧪚𧰿𧵨𨶂𩈋𩪂𩫇𩮖𪇈𪕭
 AN	㛺㜝㞄㟁㫨㱘㸩㽢䀂䅁䅖䜙䢿䬓䮗䯥侒俺儑厂唵啽垵埯堓婩媕安岸峖广庵按揞晻暗案桉氨洝犴玵痷盦盫罯胺腤荌菴萻葊蓭誝諳谙豻貋銨錌铵闇隌雸鞌鞍韽馣鮟鵪鶕鹌黯鿷𠉬𠰑𠽪𡎑𡪁𡪙𡯏𡹼𡽜𢰍𣆛𣚖𣣚𣵱𣽥𤃷𤜁𤞿𤟉𥏮𥦍𥳬𦺽𧖮𧩸𧫥𧫧𧮍𨲊𩅝𩈴𩓤𩭢𩹎𩽾𪁟𪘒

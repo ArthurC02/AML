@@ -30,8 +30,10 @@ AML/
 │   ├── adr/
 │   ├── feature/
 │   └── plan/
+├── licenses/                     # license texts for the embedded third-party data
 ├── samples/                      # supplied samples, read-only
 │   └── golden/GC-01..03, 11, 12/ # anonymized inputs + expected.yaml per Golden Case
+├── THIRD-PARTY-NOTICES.md        # attribution for the embedded third-party data
 ├── src/
 │   ├── Aml.Core/                 # zero dependencies
 │   │   ├── Shared/               # Evidence, reason codes, findings, enums
@@ -88,11 +90,11 @@ Implementation notes:
 
 ## Third-party data
 
-Core embeds three public reference tables (`Normalization/Data/*.txt`, embedded resources). Each file's first line names its source and license.
+Core embeds three public reference tables (`Normalization/Data/*.txt`, embedded resources). Each file's header lines carry the required attribution, the source, the license and how the data was modified. [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md) and the license texts in `licenses/` are copied into every build output that contains Core and must ship with it.
 
 | File | Content | Source | License |
 |---|---|---|---|
-| `romanization.txt` | Hanyu Pinyin, Wade-Giles (passport form) and Tongyong spellings per syllable | Bureau of Consular Affairs, MOFA (Taiwan), 中文譯音對照表 | Open Government Data License v1.0 assumed; **unconfirmed** ([open question](open-questions.md#technology-governance)) |
+| `romanization.txt` | Hanyu Pinyin, Wade-Giles (passport form) and Tongyong spellings per syllable | 外交部領事事務局 護照外文姓名拼音對照表 (2026-05-28) | Open Government Data License v1.0 (OGDL-Taiwan-1.0), per the bureau's open data announcement; attribution required, no application needed |
 | `hans-hant.txt` | one-to-one simplified → traditional characters (one-to-many entries left out) | OpenCC `STCharacters.txt` | Apache-2.0 |
 | `hanzi-pinyin.txt` | toneless Hanyu Pinyin readings per character (CJK URO, Extensions A and B) | Unicode Unihan 18.0.0 (`kMandarin`, `kTGHZ2013`, `kXHC1983`) | Unicode License v3 |
 

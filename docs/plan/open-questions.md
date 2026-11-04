@@ -64,7 +64,6 @@ Questions that need a bank decision. When one is answered, record the answer her
   - the scattered-DOB cut-off (three or more Profile DOBs, or a span over two years, makes an agreeing DOB `PROFILE_MULTIPLE_DOB` without support);
   - the merge group size limit (10 Profiles) and the minimum comparable document length (4 characters).
 - What are required SAST, SCA, SBOM and patch SLAs?
-- Confirm the license of the MOFA Bureau of Consular Affairs 中文譯音對照表 embedded as `Normalization/Data/romanization.txt` ([third-party data](implementation-baseline.md#third-party-data)). It is used on the assumption that the Open Government Data License v1.0 applies; the license is not confirmed.
 
 ## Answered
 
@@ -82,3 +81,4 @@ Questions that need a bank decision. When one is answered, record the answer her
 | Photo comparison? | not used; bank specification | 2026-11-02 |
 | Numeric score or Fellegi-Sunter in Phase 1? | no; evidence-strength decision table, Fellegi-Sunter at Gate D ([ADR-0019](../adr/0019-strength-decision-table-before-fellegi-sunter.md)) | 2026-11-02 |
 | Weight of nationality and gender? | none; hit prerequisites like name (bank rules) | 2026-11-02 |
+| License of the consular romanization table? | Open Government Data License v1.0 per the Bureau of Consular Affairs' open data announcement: free use without application, attribution required ([third-party data](implementation-baseline.md#third-party-data)) | 2026-11-04 |

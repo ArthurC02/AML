@@ -66,6 +66,31 @@ public class ScreeningPolicyTests
         Assert.Equal(ScreeningAssessment.Review, hit.PairResult);
     }
 
+    // Decision table: PEP, 黑名單 and Is RCA? flags × category × an official-list entry naming a Sanction (or none).
+    // A 黑名單 YES takes its type from the official-list entry before the category; with neither, the type is undecided.
+    [Theory]
+    [InlineData(FlagValue.Missing, FlagValue.Yes, false, "Sanctions Lists", null, "SDN List", "Sanction:Hit")]
+    [InlineData(FlagValue.Missing, FlagValue.Yes, false, "Special Interest Person (SIP)", "Fraud", "UN Sanctions List", "Sanction:Hit,AdverseMedia:Hit")]
+    [InlineData(FlagValue.Missing, FlagValue.Yes, false, "Politically Exposed Person", null, "UN Sanctions List", "Sanction:Hit,Pep:Hit")]
+    [InlineData(FlagValue.Missing, FlagValue.Yes, false, "Relative or Close Associate (RCA)", "Spouse", "EU Sanctions Regime", "Sanction:Hit,Rca:Hit")]
+    [InlineData(FlagValue.Missing, FlagValue.Yes, false, "Politically Exposed Person", null, null, "Unknown:Unknown,Pep:Hit")]
+    [InlineData(FlagValue.Missing, FlagValue.No, false, "Sanctions Lists", null, null, "Sanction:Unknown")]
+    [InlineData(FlagValue.Missing, FlagValue.No, false, "Special Interest Person (SIP)", "Fraud", "UN Sanctions List", "Sanction:NotHit,AdverseMedia:Hit")]
+    [InlineData(FlagValue.Missing, FlagValue.No, false, "Politically Exposed Person", null, null, "Unknown:NotHit,Pep:Hit")]
+    [InlineData(FlagValue.Missing, FlagValue.Unparseable, false, "Sanctions Lists", null, "SDN List", "Sanction:Unknown")]
+    [InlineData(FlagValue.Missing, FlagValue.Unparseable, false, "Relative or Close Associate (RCA)", "Spouse", null, "Unknown:Unknown,Rca:Hit")]
+    [InlineData(FlagValue.Yes, FlagValue.Missing, false, "Politically Exposed Person", null, null, "Pep:Hit")]
+    [InlineData(FlagValue.Yes, FlagValue.Missing, false, "Special Interest Person (SIP)", "Fraud", null, "Pep:Hit,AdverseMedia:Hit")]
+    [InlineData(FlagValue.Missing, FlagValue.Missing, true, "Relative or Close Associate (RCA)", "Spouse", null, "Rca:Hit")]
+    [InlineData(FlagValue.Missing, FlagValue.Missing, true, "Politically Exposed Person", null, null, "Pep:Hit,Rca:Hit")]
+    [InlineData(FlagValue.No, FlagValue.Yes, true, "Sanctions Lists", null, "SDN List", "Pep:NotHit,Sanction:Hit,Rca:Hit")]
+    public void source_conditions_decision_table(FlagValue pep, FlagValue blacklist, bool isRca, string category, string? sub, string? list, string expected)
+    {
+        var entry = list is null ? null : new OfficialListEntry("UN", list, "Active", null);
+        var conditions = SourceConditions.Determine(Profile(category, sub, entry), isRca, null, Flags(pep, blacklist));
+        Assert.Equal(expected, string.Join(",", conditions.Select(c => $"{c.Type}:{c.Status}")));
+    }
+
     [Fact]
     public void a_flag_with_a_value_still_wins_over_its_category()
     {
@@ -132,7 +157,46 @@ public class ScreeningPolicyTests
         Assert.Equal(Recommendation.OnList, DispositionPolicy.Recommend(s, p, [unmapped], Identity(), false).Recommendation);
     }
 
-    // a NOT_HIT Sanction does not raise the review priority.
+    // ② sets aside the unrelated adverse media only: NOT_ON_LIST needs every remaining condition NOT_HIT.
+
+    [Fact]
+    public void article_22_2_gives_no_recommendation_while_an_unknown_sanction_remains()
+    {
+        var unrelated = Condition(ListType.AdverseMedia, relevance: AmlRelevance.Unrelated);
+        var unknown = DispositionPolicy.Recommend(Subject(), Profile("Sanctions Lists"), [unrelated, Condition(ListType.Sanction, ConditionStatus.Unknown)], Identity(), false);
+        Assert.Null(unknown.Recommendation);
+        Assert.Equal([DispositionPolicy.AdverseUnrelated, DispositionPolicy.NotDetermined], unknown.ReasonCodes);
+
+        var notHit = DispositionPolicy.Recommend(Subject(), Profile("Sanctions Lists"), [unrelated, Condition(ListType.Sanction, ConditionStatus.NotHit)], Identity(), false);
+        Assert.Equal(Recommendation.NotOnList, notHit.Recommendation);
+        Assert.Equal([DispositionPolicy.AdverseUnrelated], notHit.ReasonCodes);
+    }
+
+    // pending checks: IDENTITY_CHECK for a PEP without DOB that is no RCA; JUDGMENT_PARTY_IDENTITY for a person with news or adverse media.
+    [Theory]
+    [InlineData("Pep", false, false, "Person", "EMPLOYMENT_RELEVANCE,IDENTITY_CHECK")]
+    [InlineData("Pep", true, false, "Person", "EMPLOYMENT_RELEVANCE")]
+    [InlineData("Pep,Rca", false, false, "Person", "EMPLOYMENT_RELEVANCE")]
+    [InlineData("AdverseMedia", false, true, "Person", "REGION_RELEVANCE,JUDGMENT_PARTY_IDENTITY")]
+    [InlineData("AdverseMedia", false, false, "Entity", "REGION_RELEVANCE")]
+    [InlineData("Sanction", false, true, "Person", "JUDGMENT_PARTY_IDENTITY")]
+    [InlineData("Sanction", false, false, "Person", "")]
+    public void pending_checks_table(string types, bool dob, bool news, string recordType, string expected)
+    {
+        var profile = Profile("Politically Exposed Person") with { DatesOfBirth = dob ? [new PartialDate(1980, 5, 20)] : [], RecordType = recordType };
+        var conditions = types.Split(',').Select(t => Condition(Enum.Parse<ListType>(t))).ToList();
+        Assert.Equal(expected, string.Join(",", DispositionPolicy.Recommend(Subject(), profile, conditions, Identity(), news).PendingChecks));
+    }
+
+    // a NOT_HIT controlled condition is no release control; a NOT_HIT Sanction does not raise the review priority.
+
+    [Fact]
+    public void not_hit_pep_beside_a_closed_adverse_media_pair_stays_no_hit()
+    {
+        var pair = AssessmentPolicy.Assess([Condition(ListType.Pep, ConditionStatus.NotHit), Condition(ListType.AdverseMedia)], Identity(IdentityDecision.NoMatch));
+        Assert.Equal((ScreeningAssessment.NoHit, (ReviewPriority?)null), (pair.Result, pair.Priority));
+        Assert.Empty(pair.ReasonCodes);
+    }
 
     [Fact]
     public void not_hit_sanction_does_not_raise_priority()
@@ -180,6 +244,29 @@ public class ScreeningPolicyTests
     }
 
     [Fact]
+    public void unknown_condition_other_than_sanction_or_pep_scores_nothing()
+    {
+        var risk = Score(Condition(ListType.AdverseMedia, ConditionStatus.Unknown, LegalStage.Indicted));
+        Assert.Equal((0, RiskLevel.Low), (risk.Score, risk.Level));
+        Assert.Empty(risk.Contributions);
+    }
+
+    // MediumFrom 15, HighFrom 40: each threshold is reached at its own value.
+    [Theory]
+    [InlineData(14, RiskLevel.Low)]
+    [InlineData(15, RiskLevel.Medium)]
+    [InlineData(16, RiskLevel.Medium)]
+    [InlineData(39, RiskLevel.Medium)]
+    [InlineData(40, RiskLevel.High)]
+    [InlineData(41, RiskLevel.High)]
+    public void risk_level_turns_at_medium_from_and_high_from(int points, RiskLevel expected)
+    {
+        var policy = Policy with { ListWeights = new Dictionary<ListType, int> { [ListType.AdverseMedia] = points }, HighFrom = 40 };
+        var risk = RiskScoring.Assess([Condition(ListType.AdverseMedia)], Identity(), policy)!;
+        Assert.Equal((points, expected), (risk.Score, risk.Level));
+    }
+
+    [Fact]
     public void any_raised_sanction_is_high()
     {
         Assert.Equal(RiskLevel.High, Score(Condition(ListType.Sanction)).Level);                         // 50 < HighFrom 100
@@ -210,6 +297,31 @@ public class ScreeningPolicyTests
         Assert.Contains(DispositionPolicy.FormerPepInfluence, rca.Disposition.PendingChecks);
 
         Assert.DoesNotContain(DispositionPolicy.FormerPepInfluence, Analyze(Profile("Politically Exposed Person")).Disposition.PendingChecks);
+    }
+
+    // Analysis date 2026-11-04: a role ends only when the last day its end date stands for is before it.
+    [Theory]
+    [InlineData(2025, null, null, true)]
+    [InlineData(2026, null, null, false)]
+    [InlineData(2026, 10, null, true)]
+    [InlineData(2026, 11, null, false)]
+    [InlineData(2026, 11, 3, true)]
+    [InlineData(2026, 11, 4, false)]
+    public void a_role_has_ended_only_when_its_end_date_lies_before_the_analysis_date(int year, int? month, int? day, bool former) =>
+        Assert.Equal(former, SourceConditions.IsFormerPep(
+            Profile("Politically Exposed Person", roles: [new ProfileRole("部長", "某部", new PartialDate(2010), new PartialDate(year, month, day))]),
+            ownRoles: true, new DateOnly(2026, 11, 4)));
+
+    [Fact]
+    public void a_pep_with_one_ended_and_one_current_role_is_not_former()
+    {
+        var asOf = new DateOnly(2026, 11, 4);
+        bool Former(params PartialDate?[] ends) => SourceConditions.IsFormerPep(
+            Profile("Politically Exposed Person", roles: ends.Select(to => new ProfileRole("部長", "某部", new PartialDate(2010), to)).ToList()), ownRoles: true, asOf);
+
+        Assert.False(Former(new PartialDate(2014), null));
+        Assert.False(Former(new PartialDate(2014), new PartialDate(2030)));
+        Assert.True(Former(new PartialDate(2014), new PartialDate(2018)));
     }
 
     // RCA statutory scope (認定標準第 6 條).

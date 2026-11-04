@@ -2,8 +2,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
-    <!-- test naming and public test classes -->
-    <NoWarn>$(NoWarn);CA1707;CA1515</NoWarn>
+    <!-- test naming, public test classes, and fixture state shared with derived test classes -->
+    <NoWarn>$(NoWarn);CA1707;CA1515;CA1051</NoWarn>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="xunit.v3" />
@@ -11,6 +11,7 @@
     <PackageReference Include="xunit.runner.visualstudio" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+    <PackageReference Include="Microsoft.Testing.Extensions.CodeCoverage" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Aml.Core\Aml.Core.csproj" />

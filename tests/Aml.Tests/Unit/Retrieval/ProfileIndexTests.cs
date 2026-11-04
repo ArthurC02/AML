@@ -68,7 +68,7 @@ public class ProfileIndexTests
         Assert.Equal([ProfileMerge.OversizedGroup], eleven.Findings);
     }
 
-    // ---- R1 tiers and fusion ----
+    // ---- tiers and fusion ----
 
     [Fact]
     public void A_variant_found_only_by_ngram_is_not_pushed_out_by_ten_bm25_hits_on_a_shared_given_name()
@@ -99,7 +99,7 @@ public class ProfileIndexTests
         Assert.All(few, h => Assert.False(h.Truncated));
     }
 
-    // ---- R2 empty keys ----
+    // ---- empty keys ----
 
     [Fact]
     public void An_empty_query_key_returns_nothing_and_empty_aliases_are_not_indexed()
@@ -110,7 +110,7 @@ public class ProfileIndexTests
         Assert.DoesNotContain(index.Search("陳志成"), h => h.MatchedName is "-" or "—");
     }
 
-    // ---- R3 n-grams ----
+    // ---- n-grams ----
 
     [Theory]
     [InlineData("王偉", "王瑋")]
@@ -123,7 +123,7 @@ public class ProfileIndexTests
         Assert.Equal("DJ:1", Assert.Single(index.Search(query)).ProfileKey);
     }
 
-    // ---- R4 deterministic order ----
+    // ---- deterministic order ----
 
     [Fact]
     public void Output_order_does_not_depend_on_input_row_order()
@@ -156,13 +156,57 @@ public class ProfileIndexTests
     {
         // The romanized alias reaches the query only through its reading key; the exact alias keeps its own tier on top.
         var index = new ProfileIndex([Profile("E", ["陳志明"]), Profile("G", ["陳志民"]), Profile("R", ["Chen Chih-Ming"])]);
+        // 陳志民 is reached by BM25 and n-gram, each at rank 1, and fuses to 2 / (60 + 1); the reading key alone gives 1 / (60 + 1).
         var hits = index.Search("陳志明");
-        Assert.Equal(("DJ:E", ProfileIndex.ExactAlias), (hits[0].ProfileKey, hits[0].Route));
-        Assert.All(hits.Skip(1), h => Assert.NotEqual(ProfileIndex.ExactAlias, h.Route));
-        Assert.Contains(hits, h => h.ProfileKey == "DJ:R" && h.Route == ProfileIndex.Reading);
+        Assert.Equal(
+            [("DJ:E", ProfileIndex.ExactAlias, 1.0), ("DJ:G", ProfileIndex.Bm25, 2.0 / 61), ("DJ:R", ProfileIndex.Reading, 1.0 / 61)],
+            hits.Select(h => (h.ProfileKey, h.Route, h.Score)));
     }
 
-    // ---- R5 labelled Recall@10 ----
+    [Fact]
+    public void Each_profile_is_ranked_by_its_closest_alias()
+    {
+        var hits = new ProfileIndex([Profile("1", ["Lee Xu Zed Qa", "Lee Al Bo"]), Profile("2", ["Lee Mo"])]).Search("Lee Al Bo Cy");
+        Assert.Equal([("DJ:1", "Lee Al Bo", ProfileIndex.Bm25), ("DJ:2", "Lee Mo", ProfileIndex.Bm25)], hits.Select(h => (h.ProfileKey, h.MatchedName, h.Route)));
+    }
+
+    // Latin trigram Dice: 12 / 26 sits on the floor 2 × 0.3 / 1.3, 10 / 26 below it. No token or reading key is shared.
+    [Theory]
+    [InlineData("Vandersmoulij", 12.0 / 26, true)]
+    [InlineData("Vandermoulijx", 10.0 / 26, false)]
+    public void A_latin_alias_on_the_ngram_floor_is_retrieved_and_one_below_is_not(string alias, double dice, bool retrieved)
+    {
+        Assert.Equal(dice, ProfileIndex.NGramScore("Vandersteenko", alias), 12);
+        var hits = new ProfileIndex([Profile("1", [alias])]).Search("Vandersteenko");
+        var expected = retrieved ? new[] { ("DJ:1", ProfileIndex.NGram) } : [];
+        Assert.Equal(expected, hits.Select(h => (h.ProfileKey, h.Route)));
+    }
+
+    // CJK bigram Dice exactly 0.3 (6 / 20) still counts as an n-gram route next to BM25; 0.2 does not.
+    [Theory]
+    [InlineData("歐陽明星大海藍天水", 0.3, 2.0 / 61)]
+    [InlineData("歐陽春星大海藍天水", 0.2, 1.0 / 61)]
+    public void An_ngram_score_exactly_on_the_cjk_floor_counts_as_a_route(string alias, double dice, double fused)
+    {
+        Assert.Equal(dice, ProfileIndex.NGramScore("歐陽明月清風白雲山", alias));
+        var hit = Assert.Single(new ProfileIndex([Profile("1", [alias])]).Search("歐陽明月清風白雲山"));
+        Assert.Equal(fused, hit.Score);
+    }
+
+    [Fact]
+    public void Top_k_returns_k_profiles_and_marks_truncation_only_beyond_k()
+    {
+        var index = new ProfileIndex([Profile("1", ["陳志明"]), Profile("2", ["陳志成"]), Profile("3", ["王志成"])]);
+        var exactlyK = index.Search("陳志強", top: 3);
+        Assert.Equal(["DJ:2", "DJ:1", "DJ:3"], exactlyK.Select(h => h.ProfileKey));
+        Assert.All(exactlyK, h => Assert.False(h.Truncated));
+
+        var cut = index.Search("陳志強", top: 2);
+        Assert.Equal(["DJ:2", "DJ:1"], cut.Select(h => h.ProfileKey));
+        Assert.All(cut, h => Assert.True(h.Truncated));
+    }
+
+    // ---- labelled Recall@10 ----
 
     private static List<SourceProfile> LabelledIndexProfiles()
     {
@@ -191,39 +235,53 @@ public class ProfileIndexTests
         return list;
     }
 
-    public static readonly TheoryData<string, string, string> Labelled = new()
+    // Kind, query, target and the lowest rank the target may take in the top 10.
+    public static readonly TheoryData<string, string, string, int> Labelled = new()
     {
-        { "romanization", "Chen Zhiming", "DJ:T01" },
-        { "romanization", "Chen Jhih-Ming", "DJ:T01" }, // Tongyong
-        { "romanization", "Jiang Jingguo", "DJ:T07" }, // Pinyin vs Wade-Giles: reading-key route
-        { "cross-script", "陳水扁", "DJ:T09" }, // Chinese query, Latin-only Profile: reading-key route
-        { "romanization", "Li Minghui", "DJ:T08" },
-        { "simplified", "陈志明", "DJ:T01" },
-        { "simplified", "蒋经国", "DJ:T07" },
-        { "typo", "歐陽那娜", "DJ:T02" },
-        { "typo", "王偉", "DJ:T03" },
-        { "typo", "Mohammed Al-Rashid", "DJ:T05" },
-        { "reordered", "Chih-Ming Chen", "DJ:T01" },
-        { "reordered", "Na-Na Ou-Yang", "DJ:T02" },
-        { "diacritics", "Nguyen Thi Hong Nhung", "DJ:T06" },
-        { "rare character", "黃明", "DJ:T04" },
-        { "rare character", "黄𥕢明", "DJ:T04" },
+        { "romanization", "Chen Zhiming", "DJ:T01", 1 },
+        { "romanization", "Chen Jhih-Ming", "DJ:T01", 1 }, // Tongyong
+        { "romanization", "Jiang Jingguo", "DJ:T07", 1 }, // Pinyin vs Wade-Giles: reading-key route
+        { "cross-script", "陳水扁", "DJ:T09", 4 }, // Chinese query, Latin-only Profile: reading-key route
+        { "romanization", "Li Minghui", "DJ:T08", 1 },
+        { "simplified", "陈志明", "DJ:T01", 1 },
+        { "simplified", "蒋经国", "DJ:T07", 1 },
+        { "typo", "歐陽那娜", "DJ:T02", 1 },
+        { "typo", "王偉", "DJ:T03", 2 },
+        { "typo", "Mohammed Al-Rashid", "DJ:T05", 4 },
+        { "reordered", "Chih-Ming Chen", "DJ:T01", 1 },
+        { "reordered", "Na-Na Ou-Yang", "DJ:T02", 1 },
+        { "diacritics", "Nguyen Thi Hong Nhung", "DJ:T06", 1 },
+        { "rare character", "黃明", "DJ:T04", 3 },
+        { "rare character", "黄𥕢明", "DJ:T04", 1 },
     };
 
     [Fact]
-    public void Recall_at_10_on_the_labelled_variant_set_is_one()
+    public void Recall_at_10_on_the_labelled_variant_set_is_one_and_each_target_keeps_its_rank()
     {
         var index = new ProfileIndex(LabelledIndexProfiles());
-        var misses = new List<string>();
+        var (misses, ranked) = (new List<string>(), new List<string>());
         foreach (var row in Labelled)
         {
-            var (kind, query, target) = row.Data;
-            if (!index.Search(query, top: 10).Any(h => h.ProfileKey == target)) misses.Add($"{kind}: {query} → {target}");
+            var (kind, query, target, worstRank) = row.Data;
+            var rank = index.Search(query, top: 10).Select(h => h.ProfileKey).ToList().IndexOf(target) + 1;
+            if (rank == 0) misses.Add($"{kind}: {query} → {target}");
+            else if (rank > worstRank) ranked.Add($"{kind}: {query} → {target} at rank {rank}, expected {worstRank} or better");
         }
         var recall = 1 - (double)misses.Count / Labelled.Count;
         TestContext.Current.TestOutputHelper?.WriteLine($"Recall@10 = {recall:F3} over {Labelled.Count} labelled queries");
         foreach (var m in misses) TestContext.Current.TestOutputHelper?.WriteLine("miss " + m);
         Assert.Empty(misses);
         Assert.Equal(1.0, recall);
+        Assert.Empty(ranked);
+    }
+
+    [Fact]
+    public void A_profile_key_given_twice_keeps_its_last_profile_only()
+    {
+        var index = new ProfileIndex([Profile("7", ["王建宏"]), Profile("7", ["李大華"])]);
+
+        Assert.Empty(index.Search("王建宏"));
+        var hit = Assert.Single(index.Search("李大華"));
+        Assert.Equal(("DJ:7", "EXACT_ALIAS"), (hit.ProfileKey, hit.Route));
     }
 }

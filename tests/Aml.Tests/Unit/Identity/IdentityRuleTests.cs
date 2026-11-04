@@ -65,6 +65,15 @@ public class IdentityRuleTests
     }
 
     [Fact]
+    public void Name_similarity_exactly_at_the_threshold_is_similar()
+    {
+        // Five of six letters agree in place with a one-letter common prefix: Jaro-Winkler is exactly 0.90.
+        Assert.Equal(Normalize.NameSimilarityThresholdLatin, Similarity.JaroWinkler("KARINA", "KORINA"));
+        Assert.Equal((Partial, "NOT_IDENTICAL_AFTER_NORMALIZATION（Jaro-Winkler 0.90，Levenshtein 1，SIMILAR）"),
+            Normalize.CompareNames(["KARINA"], ["KORINA"]));
+    }
+
+    [Fact]
     public void Full_dob_conflict_is_row_1_review_never_no_match()
     {
         var r = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DatesOfBirth = [new PartialDate(1981, 5, 20)] });
@@ -120,6 +129,27 @@ public class IdentityRuleTests
     }
 
     [Fact]
+    public void Dob_conflict_code_comes_before_a_document_conflict_code()
+    {
+        var r = IdentityDecisionPolicy.Decide(Subject("陳志明") with { Document = NationalId }, Profile("陳志明") with
+            { DatesOfBirth = [new PartialDate(1981, 5, 20)], Documents = [new("TW_NATIONAL_ID", "A223456788", "TW")] });
+        Assert.Equal((1, IdentityDecision.Review), (r.Stage3Row, r.Decision));
+        Assert.Equal(ReasonCodes.FullDobConflict, r.ReasonCodes[0]);
+    }
+
+    // The Profile role runs 2015–2020; periods are compared by year.
+    [Theory]
+    [InlineData(2020, "SAME_ORGANIZATION_SAME_PERIOD")]
+    [InlineData(2021, "SAME_ORGANIZATION_NO_COMMON_PERIOD")]
+    public void Employment_periods_sharing_one_year_overlap(int from, string detail)
+    {
+        var profile = Profile("陳志明") with
+            { Roles = [new ProfileRole("總經理", "宏遠投資股份有限公司", new PartialDate(2015), new PartialDate(2020))] };
+        var subject = Subject("陳志明") with { Employments = [new Employment("宏遠投資股份有限公司", null, new PartialDate(from), null)] };
+        Assert.Equal(detail, EvidenceBuilder.EmploymentEvidence(subject, profile).Detail);
+    }
+
+    [Fact]
     public void Same_employer_in_a_common_period_is_support_and_with_full_dob_reaches_row_3()
     {
         var profile = Profile("陳志明") with
@@ -138,6 +168,18 @@ public class IdentityRuleTests
         Assert.False(undated.Evidence[EvidenceGroup.Employment].IsSupport);
     }
 
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("個人", false)]
+    [InlineData("自然人", false)]
+    [InlineData("Individual", false)]
+    [InlineData(" natural person ", false)]
+    [InlineData("PERSON", false)]
+    [InlineData("法人", true)]
+    [InlineData("Company", true)]
+    public void Party_type_decides_between_person_and_entity(string? partyType, bool entity) =>
+        Assert.Equal(entity, (Subject("陳志明") with { PartyType = partyType }).IsEntity);
+
     [Fact]
     public void Relative_and_related_company_named_on_both_sides_are_support()
     {
@@ -153,6 +195,11 @@ public class IdentityRuleTests
 
         var otherRelation = IdentityDecisionPolicy.Decide(Subject("陳志明") with { Relatives = [new Relative("許雅婷", "母親")] }, profile);
         Assert.Equal(Uncertain, otherRelation.Evidence[EvidenceGroup.Relationship].Status);
+
+        // The detail names the relative that matched, not the first one listed.
+        var second = IdentityDecisionPolicy.Decide(Subject("陳志明") with
+            { Relatives = [new Relative("王大同", "父親"), new Relative("許雅婷", "配偶")] }, profile);
+        Assert.Equal("SAME_NAMED_SPOUSE", second.Evidence[EvidenceGroup.Relationship].Detail);
     }
 
     [Fact]
@@ -174,8 +221,14 @@ public class IdentityRuleTests
 
         var other = IdentityDecisionPolicy.Decide(subject, Profile("陳志明") with
             { AddressCountries = ["TW"], AddressLines = ["臺北市大安區信義路四段1號"] });
-        Assert.StartsWith("SOFT_DIFFERENCE（Jaccard 0.", other.Evidence[EvidenceGroup.Address].Detail, StringComparison.Ordinal);
-        Assert.NotEqual(ComparisonStatus.Conflict, other.Evidence[EvidenceGroup.Address].Status);
+        Assert.Equal((Uncertain, "SOFT_DIFFERENCE（Jaccard 0.04，DISSIMILAR）"),
+            (other.Evidence[EvidenceGroup.Address].Status, other.Evidence[EvidenceGroup.Address].Detail));
+
+        // Another house number on the same lane: a different structured key, but most of the text is shared.
+        var near = IdentityDecisionPolicy.Decide(subject, Profile("陳志明") with
+            { AddressCountries = ["TW"], AddressLines = ["新北市新莊區中華路35巷10號3樓"] });
+        Assert.Equal((Uncertain, "SOFT_DIFFERENCE（Jaccard 0.72，SIMILAR）"),
+            (near.Evidence[EvidenceGroup.Address].Status, near.Evidence[EvidenceGroup.Address].Detail));
     }
 
     [Fact]
@@ -226,6 +279,17 @@ public class IdentityRuleTests
         Assert.False(age.IsSupport);
         Assert.Equal(6, r.Stage3Row); // nothing else agrees: compatibility adds no support
         Assert.Contains("推算 45 歲", age.Note, StringComparison.Ordinal);
+    }
+
+    // Born 1980-05-20 and stated 48: the subject turns 46 on the 2026 birthday, which brings the difference within two years.
+    [Theory]
+    [InlineData(19, 45, ReasonCodes.AgeDifferenceAtReport)]
+    [InlineData(20, 46, ReasonCodes.AgeCompatibleAtReport)]
+    public void Stated_age_counts_a_birthday_on_the_report_date(int day, int age, string detail)
+    {
+        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明"), News("陳志明（48歲）涉嫌詐欺。", new PartialDate(2026, 5, day)));
+        Assert.Equal(detail, r.Evidence[EvidenceGroup.StatedAge].Detail);
+        Assert.Contains($"推算 {age} 歲", r.Evidence[EvidenceGroup.StatedAge].Note, StringComparison.Ordinal);
     }
 
     [Fact]

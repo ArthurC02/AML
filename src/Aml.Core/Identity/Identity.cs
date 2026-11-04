@@ -143,10 +143,10 @@ public static class EvidenceBuilder
         if (subject.Count == 0)
             return profile.Count > 0 ? new(g, Direction.Neutral, ComparisonStatus.SubjectMissing) : null;
         if (profile.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.ProfileMissing);
-        var same = subject.Any(a => profile.Any(b => Relation(a.Relation) == Relation(b.Relation)
+        var same = subject.FirstOrDefault(a => profile.Any(b => Relation(a.Relation) == Relation(b.Relation)
             && Normalize.CompareNames([a.Name], [b.Name]).Status == ComparisonStatus.Exact));
-        return same
-            ? new(g, Direction.Support, ComparisonStatus.Exact, strength, "SAME_NAMED_" + Relation(subject[0].Relation))
+        return same is not null
+            ? new(g, Direction.Support, ComparisonStatus.Exact, strength, "SAME_NAMED_" + Relation(same.Relation))
             : new(g, Direction.Neutral, ComparisonStatus.Uncertain);
     }
 

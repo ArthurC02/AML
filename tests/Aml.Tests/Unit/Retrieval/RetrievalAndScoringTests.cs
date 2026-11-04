@@ -43,8 +43,7 @@ public class RetrievalAndScoringTests
     public void Bm25_and_ngram_rank_the_closer_name_first_and_top_n_caps_profiles()
     {
         var hits = Index.Search("陳志明先生");
-        Assert.Equal("DJ:2", hits[0].ProfileKey); // shares more characters than 陳志成
-        Assert.Contains(hits, h => h.ProfileKey == "DJ:3");
+        Assert.Equal(["DJ:2", "DJ:3"], hits.Take(2).Select(h => h.ProfileKey)); // 陳志明 shares more characters than 陳志成
         Assert.Single(Index.Search("陳志明先生", top: 1));
         Assert.All(hits, h => Assert.Equal(RetrievalMode.IndexSearch, h.Mode));
     }

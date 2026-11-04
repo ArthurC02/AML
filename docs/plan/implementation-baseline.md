@@ -65,10 +65,9 @@ AML/
         ├── GoldenCases/          # Golden Cases through the analyzer, augmented cases, explanation, metrics (in process)
         ├── Integration/          # services, repositories and the job table on SQLite
         ├── E2E/                  # critical API flows through WebApplicationFactory
+        ├── TestSupport.cs        # TestDatabase, ApiHost, ManualTimeProvider, Wait
         └── TestPyramidTests.cs   # keeps each layer well below the one under it
 ```
-
-Tests follow the test pyramid: many in-process tests of Core rules and the readers, fewer service and repository tests on SQLite, and API tests only for the critical flows (upload and analysis, upload validation, batch, health, Profile import with queued re-analysis, retrieval modes and the export-text wiring). A behaviour is tested at the lowest layer that can show it; an API test covers only what needs the HTTP pipeline or the DI wiring. `TestPyramidTests` counts test methods by namespace (`Aml.Tests.E2E`, `Aml.Tests.Integration`, everything else in process) and fails when integration tests fall below twice the E2E tests or in-process tests below three times the integration tests.
 
 Rules:
 
@@ -89,6 +88,52 @@ Implementation notes:
 - The list database (`list_profile`) and each revision's input files (`case_input`, decoded text) are stored for retrieval and re-analysis ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)). A Profile version is hashed on its export text, so an HTML page and its `.txt` export are one version. `POST /api/lists/profiles` stores a changed Profile as a new version and, in the same transaction, queues a `REANALYZE_CASE` job for every Case whose latest input holds a different version of it; the jobs run through `BatchService` and are tracked as one batch (`GET /api/batches/{batchId}`).
 - Authentication is not wired (identity provider pending).
 - Golden Case metrics are computed by `tests/Aml.Tests/GoldenCases/GoldenMetricsTests` ([results](poc-delivery-plan.md#golden-case-results)).
+
+## Testing
+
+The purpose of the tests is to find defects. A test that only replays a known example confirms that example; it says little about the cases next to it.
+
+### Layers
+
+Tests follow the test pyramid: many in-process tests of Core rules and the readers, fewer service and repository tests on SQLite, and API tests only for the critical flows (upload and analysis, upload validation, refused requests and unknown ids, batch, health, Profile import with queued re-analysis, retrieval modes and the export-text wiring). A behaviour is tested at the lowest layer that can show it; an API test covers only what needs the HTTP pipeline or the DI wiring. `TestPyramidTests` counts test methods by namespace (`Aml.Tests.E2E`, `Aml.Tests.Integration`, everything else in process) and fails when integration tests fall below twice the E2E tests or in-process tests below three times the integration tests. A `[Theory]` counts as one method however many rows it has.
+
+### Test design
+
+Test cases are derived with the ISTQB techniques that fit each rule, and the expected values come from the feature documents, not from running the code:
+
+| Technique | Where it applies |
+|---|---|
+| Decision table | stage-3 identity rows and the hard-conflict gate with its source-quality downgrade; source conditions (list flags × category × official list); the Article 22 disposition rules; the multi-row flag merge |
+| Boundary values | thresholds tested on, just below and just above: minimum role age at a birthday, scattered DOBs, stated-age tolerance, risk levels, n-gram floors and Top N, the analysis date that ends a PEP role |
+| Equivalence partitions | encodings (UTF-8, BOM, CP950 fallback), placeholders and dash variants, full-width digits, party types, flag spellings |
+| State transitions | Case revisions (create, concurrent create, accepted, late, failed, re-analysis) and jobs (pending, running, succeeded, retry with backoff, dead letter, lease lost or expired, re-run) |
+| Error guessing | duplicate files in one upload, a corrupt byte, two workers claiming one job, a duplicated Profile key |
+
+A table is one `[Theory]` with a row per cell. Assertions name exact values: decision and row, reason codes, ranks, statuses and stored rows, never only `NotNull`, `Contains` or a status code when the exact value is known. A test that exposes behaviour contrary to the feature documents is not written to match the code; the behaviour is fixed or the document is changed first.
+
+### Measuring the tests
+
+- **Mutation testing** measures whether the tests find defects. Stryker.NET is a local tool (`dotnet-tools.json`, configuration in `stryker-config.json`, Microsoft.Testing.Platform runner); a surviving mutant is a fault no test detects. Run it on the files a change touches:
+
+  ```bash
+  dotnet tool restore
+  dotnet stryker -p Aml.Core.csproj -m "**/Identity/*.cs"
+  ```
+
+- **Coverage** (`Microsoft.Testing.Extensions.CodeCoverage`) shows which branches never run. It does not show that a wrong result would be noticed, so high coverage with surviving mutants still means missing assertions.
+
+  ```bash
+  dotnet test --coverage --coverage-output-format cobertura
+  ```
+
+### Speed and determinism
+
+The whole suite runs in a few seconds; the unit tests alone (`Aml.Tests.exe -namespace "Aml.Tests.Unit.*"`, about two seconds) are the inner loop while editing Core.
+
+- `TestDatabase` migrates the schema once into a template file and gives every test its own copy, so a test pays for a file copy rather than the migrations.
+- `ApiHost` is one API host per E2E class (`IClassFixture`) on its own database; its job worker polls every 20 ms and only warnings are logged. Each test uses its own trigger and subject ids, so the tests of a class do not depend on each other.
+- Time-dependent behaviour (leases, retry backoff, deadlines) is driven by `ManualTimeProvider`, never by waiting on the clock. Where an API test must wait for the job worker, `Wait.UntilAsync` polls and fails with what it was waiting for.
+- Test classes are the unit of parallel execution, so a large class is split by topic (revisions, jobs, list import) rather than left to run serially.
 
 ## Third-party data
 
@@ -132,6 +177,8 @@ Versions are pinned in `Directory.Packages.props`; this table lists them for rev
 | Tests | xunit.runner.visualstudio | 4.0.1 | runner |
 | Tests | Microsoft.NET.Test.Sdk | 18.11.0 | test host |
 | Tests | Microsoft.AspNetCore.Mvc.Testing | 10.0.14 | `WebApplicationFactory` |
+| Tests | Microsoft.Testing.Extensions.CodeCoverage | 18.12.0 | code coverage under Microsoft.Testing.Platform |
+| Local tool | dotnet-stryker | 5.0.0 | mutation testing (`dotnet-tools.json`) |
 
 Deferred:
 
@@ -159,5 +206,5 @@ Not used: MediatR, AutoMapper, FluentAssertions ([ADR-0015](../adr/0015-no-comme
 | Authorization | Policy-based authorization |
 | Observability | OpenTelemetry |
 | Deployment | Linux container on approved Kubernetes/OpenShift/server platform |
-| Testing | xUnit; test pyramid (in process, then SQLite integration, then critical API flows); Golden Case regression; repository contract tests |
+| Testing | xUnit; test pyramid (in process, then SQLite integration, then critical API flows); ISTQB test design; mutation testing (Stryker.NET) and coverage; Golden Case regression; repository contract tests |
 | Supply chain | Central Package Management, lock files, package source mapping, NuGet Audit, SBOM, SAST/SCA, container scanning |

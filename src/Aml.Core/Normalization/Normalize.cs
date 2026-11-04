@@ -242,7 +242,8 @@ public static partial class Normalize
     /// <summary>A PEP / 黑名單 / 負面新聞 / Is RCA? cell (extraction-and-normalization.md#source-flags).</summary>
     public static Subjects.FlagValue Flag(string? raw) => raw?.Trim() switch
     {
-        null or "" or "-" or "–" or "—" => Subjects.FlagValue.Missing,
+        null or "" => Subjects.FlagValue.Missing,
+        var v when IsDash(v) => Subjects.FlagValue.Missing,
         var v when FlagMissing.Contains(v) => Subjects.FlagValue.Missing,
         var v when FlagYes.Contains(v) => Subjects.FlagValue.Yes,
         var v when FlagNo.Contains(v) => Subjects.FlagValue.No,
@@ -260,6 +261,9 @@ public static partial class Normalize
     /// Text whose sole meaning is "no data". Only the whole value counts: 「未提供（居住國臺灣）」, 無錫市, 無業 and 無國籍 are values.
     /// </summary>
     public static bool IsPlaceholder(string s) => Placeholders.Contains(s.Trim());
+
+    /// <summary>A hyphen, en dash, em dash or full-width hyphen standing alone.</summary>
+    public static bool IsDash(string s) => s.Trim() is "-" or "–" or "—" or "－";
 
     private static readonly HashSet<string> Placeholders = new(StringComparer.OrdinalIgnoreCase)
     {

@@ -9,6 +9,7 @@ Questions that need a bank decision. When one is answered, record the answer her
 - What is the column layout of the candidate table in 案件資訊? Its header has two rows; the reader finds columns by label and expands each parent label over its sub-labels in order (是否符合名單？ → 全不符合, 全符合; Name Property → PEP, 黑名單, 負面新聞), which puts the three flags in the last three columns after Is RCA? (zero-based indexes 9–11). GC-11 and GC-12 show this header with every flag empty; an export with flags set is needed to confirm the expansion.
 - Do bank exports write ROC (民國) dates in any form other than an explicit 民國 prefix? Only 民國 dates are converted; a bare two- or three-digit year (62/6/12) is UNPARSEABLE.
 - Does the Profile export carry dated roles (`職位`), keywords (`關鍵字`) and official-list details (`名單資訊`) as structured fields? The synthetic GC-01 to GC-03 samples assume so.
+- Is a Taiwan address written only in English (No. 1, Shifu Rd., Taipei) consistent with a TW country field? The reader recognises a Taiwan address by its Chinese city names, so such an address under a TW country field is recorded as `FIELD_CONFLICT`.
 - Which source fields are authoritative for classifications and status?
 - How are Profile removal, correction and historical states represented?
 

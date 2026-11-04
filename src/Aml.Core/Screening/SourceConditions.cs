@@ -193,13 +193,18 @@ public static partial class SourceConditions
     /// <summary>
     /// A PEP who has left office (認定標準第 5 條): a Former or Inactive PEP / RCA subcategory or, for the PEP's own Profile
     /// (<paramref name="ownRoles"/>), every recorded role ended; an RCA's own roles say nothing about the PEP's office.
-    /// Still a HIT; lasting influence is a pending check (FORMER_PEP_INFLUENCE) with no fixed cooling-off period.
+    /// A role has ended when the last day its end date can stand for lies before the analysis date (<paramref name="asOf"/>,
+    /// today by default): an end date of 2026 is still current during 2026. Still a HIT; lasting influence is a pending check
+    /// (FORMER_PEP_INFLUENCE) with no fixed cooling-off period.
     /// </summary>
     // ponytail: "every role ended" reads all roles, not only public functions; approved PEP role fields arrive with GC-04.
-    public static bool IsFormerPep(SourceProfile p, bool ownRoles) =>
-        Subcategories(p, ListType.Pep).Concat(Subcategories(p, ListType.Rca))
-            .Any(s => s.Contains("Former", StringComparison.OrdinalIgnoreCase) || s.Contains("Inactive", StringComparison.OrdinalIgnoreCase))
-        || (ownRoles && p.Roles.Count > 0 && p.Roles.All(r => r.To is not null));
+    public static bool IsFormerPep(SourceProfile p, bool ownRoles, DateOnly? asOf = null)
+    {
+        var today = asOf ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        return Subcategories(p, ListType.Pep).Concat(Subcategories(p, ListType.Rca))
+                .Any(s => s.Contains("Former", StringComparison.OrdinalIgnoreCase) || s.Contains("Inactive", StringComparison.OrdinalIgnoreCase))
+            || (ownRoles && p.Roles.Count > 0 && p.Roles.All(r => r.To is { } to && to.LatestDay < today));
+    }
 
     // ponytail: relation words in the subcategory text. 認定標準第 6 條 family: first-degree relatives by blood or marriage,
     // siblings, spouse or cohabiting partner, and the spouse's siblings. A named relation beyond that (cousin, uncle,

@@ -8,8 +8,9 @@ using Aml.Infra.Txt;
 namespace Aml.Tests.GoldenCases;
 
 /// <summary>
-/// PoC metrics over the Golden Cases (docs/plan/poc-delivery-plan.md#metrics). Prints the numbers and fails only on the
-/// safety invariants; no target percentage is committed before representative data exists.
+/// PoC metrics over the Golden Cases (docs/plan/poc-delivery-plan.md#metrics). Prints the numbers, fails on the safety
+/// invariants, and pins Review Rate and Probable-Match Yield on this set; no target percentage is committed before
+/// representative data exists.
 /// </summary>
 public class GoldenMetricsTests
 {
@@ -64,5 +65,9 @@ public class GoldenMetricsTests
         Assert.All(pairs, p => Assert.NotEmpty(p.Explanation.ReasonCodes));
         Assert.Equal(pairs.Count, pairs.Select(p => (p.Gc, p.Hit.Profile.ProfileKey)).Distinct().Count());
         Assert.Equal(SamePerson.Count, stableCases);
+
+        // Review Rate and Probable-Match Yield on this set, as counts so a moved pair shows which way it went.
+        Assert.Equal((4, 6), (pairs.Count(p => p.Hit.PairResult == ScreeningAssessment.Review), pairs.Count));
+        Assert.Equal((2, 2), (probable.Count(p => p.Truth == true), probable.Count));
     }
 }

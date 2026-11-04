@@ -619,6 +619,21 @@ public class AugmentedCaseTests
         var (input, a) = Augment("GC-03", [], removeFiles: ["客戶-背景資料.txt", "名單資料_90000031.txt"],
             addFiles: new Dictionary<string, string> { ["客戶-背景資料.html"] = Customer03Html, ["名單資料_90000031.html"] = Profile03Html });
         Assert.Equal(Gender.Female, input.Subject.Gender); // the selected option, not the first
+        var (export, _) = Augment("GC-03", []);
+        var (s, es) = (input.Subject, export.Subject);
+        Assert.Equal(es.Names, s.Names);
+        Assert.Equal((es.Gender, es.DateOfBirth, es.Document, es.Occupation, es.PartyType), (s.Gender, s.DateOfBirth, s.Document, s.Occupation, s.PartyType));
+        Assert.Equal(es.Nationalities, s.Nationalities);
+        Assert.Equal(es.Findings, s.Findings);
+        var (p, ep) = (input.Profiles["90000031"], export.Profiles["90000031"]);
+        Assert.Equal((ep.ProfileKey, ep.Gender, ep.RecordType, ep.OfficialList), (p.ProfileKey, p.Gender, p.RecordType, p.OfficialList));
+        Assert.Equal(ep.Names, p.Names);
+        Assert.Equal(ep.DatesOfBirth, p.DatesOfBirth);
+        Assert.Equal(ep.Citizenship, p.Citizenship);
+        Assert.Equal(ep.AddressCountries, p.AddressCountries);
+        Assert.Equal(ep.AddressLines, p.AddressLines);
+        Assert.Equal(ep.Categories, p.Categories);
+        Assert.Equal(ep.Findings, p.Findings);
         var hit = Assert.Single(a.Hits);
         Assert.Equal((ListType.OfficialWantedList, LegalStage.Wanted), (Assert.Single(hit.Conditions).Type, hit.Conditions[0].LegalStage));
         Assert.Equal((4, IdentityDecision.ProbableMatch), (hit.Identity.Stage3Row, hit.Identity.Decision));

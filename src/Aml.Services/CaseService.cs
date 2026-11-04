@@ -23,7 +23,10 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock)
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    /// <summary>Creates the Case and its first analysis. Repeating the same trigger and subject returns the existing Case unchanged.</summary>
+    /// <summary>
+    /// Creates the Case and its first analysis. Repeating the same trigger and subject returns the existing Case unchanged;
+    /// a Case left at revision 0 by an interrupted attempt gets its first analysis, and two concurrent creates store one.
+    /// </summary>
     /// <param name="files">The input files, stored with the revision so a later source update can re-analyze them.</param>
     /// <param name="beforeWrite">Runs after the analysis and before the revision is stored (a queued job renews its lease here).</param>
     public async Task<CaseRecord> CreateAsync(string subjectRef, string triggerEventId, CaseInput input, CancellationToken ct,
@@ -33,7 +36,7 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock)
         var created = await store.CreateAsync(
             new CaseRecord(Guid.CreateVersion7().ToString(), subjectRef, triggerEventId, CaseStatus.Open, 0, null, now, now), ct).ConfigureAwait(false);
         if (created.CurrentRevision > 0) return created;
-        return await AnalyzeAsync(created, input, files, beforeWrite, ct).ConfigureAwait(false);
+        return await AnalyzeAsync(created, input, files, beforeWrite, ct, firstOnly: true).ConfigureAwait(false);
     }
 
     /// <summary>New analysis revision for an existing Case (changed inputs or manual re-analysis).</summary>
@@ -80,7 +83,9 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock)
     private static T ParseEnum<T>(string snake) where T : struct, Enum =>
         Enum.Parse<T>(snake.Replace("_", "", StringComparison.Ordinal), ignoreCase: true);
 
-    private async Task<CaseRecord> AnalyzeAsync(CaseRecord c, CaseInput input, IReadOnlyDictionary<string, string>? files, Func<Task>? beforeWrite, CancellationToken ct)
+    /// <param name="firstOnly">Create path: when another create stored revision 1 first, that Case is returned instead of a second revision.</param>
+    private async Task<CaseRecord> AnalyzeAsync(CaseRecord c, CaseInput input, IReadOnlyDictionary<string, string>? files, Func<Task>? beforeWrite,
+        CancellationToken ct, bool firstOnly = false)
     {
         using var activity = AmlTelemetry.Source.StartActivity("AnalyzeCase");
         activity?.SetTag("aml.case_id", c.CaseId);
@@ -121,6 +126,7 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock)
             if (attempt == MaxRevisionAttempts)
                 throw new InvalidOperationException($"Case {c.CaseId}: revision {revision} was taken by another analysis {attempt} times");
             c = await store.GetAsync(c.CaseId, ct).ConfigureAwait(false) ?? throw new InvalidOperationException($"Case {c.CaseId} not found");
+            if (firstOnly && c.CurrentRevision > 0) return c;
         }
     }
 }

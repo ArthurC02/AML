@@ -2,29 +2,22 @@ using Aml.Core.Cases;
 using Aml.Core.Screening;
 using Aml.Infra.Persistence;
 using Aml.Infra.Persistence.Repositories;
-using Microsoft.Data.Sqlite;
 
 namespace Aml.Tests.Integration;
 
 /// <summary>Repository contract: the same suite must pass on SQL Server or Oracle before either replaces SQLite.</summary>
 public sealed class CaseStoreTests : IDisposable
 {
-    private readonly string _file = Path.Combine(Path.GetTempPath(), $"aml-test-{Guid.NewGuid():N}.db");
+    private readonly TestDatabase _test = new();
     private readonly CaseStore _store;
     private static readonly DateTimeOffset T0 = new(2026, 11, 2, 0, 0, 0, TimeSpan.Zero);
 
     public CaseStoreTests()
     {
-        var db = new SqliteDatabase($"Data Source={_file};Pooling=False");
-        db.Upgrade();
-        _store = new CaseStore(db);
+        _store = new CaseStore(_test.Db);
     }
 
-    public void Dispose()
-    {
-        SqliteConnection.ClearAllPools();
-        File.Delete(_file);
-    }
+    public void Dispose() => _test.Dispose();
 
     private static CaseRecord NewCase(string trigger = "evt-1") =>
         new(Guid.CreateVersion7().ToString(), "subject-1", trigger, CaseStatus.Open, 0, null, T0, T0);

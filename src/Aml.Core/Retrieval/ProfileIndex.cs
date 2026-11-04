@@ -44,9 +44,10 @@ public sealed class ProfileIndex
     private readonly Dictionary<string, int> _documentFrequency = new(StringComparer.Ordinal);
     private readonly Dictionary<bool, double> _averageLength = [];
 
+    /// <param name="profiles">A ProfileKey given twice keeps its last Profile only, aliases and term counts included.</param>
     public ProfileIndex(IEnumerable<SourceProfile> profiles)
     {
-        foreach (var p in profiles)
+        foreach (var p in profiles.GroupBy(p => p.ProfileKey, StringComparer.Ordinal).Select(g => g.Last()))
         {
             _profiles[p.ProfileKey] = p;
             foreach (var name in p.Names.Distinct())

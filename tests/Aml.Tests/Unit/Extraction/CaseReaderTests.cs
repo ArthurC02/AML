@@ -90,7 +90,7 @@ public class CaseReaderTests
         var input = Read("GC-11", [(Customer, "國籍 1\nTaiwan", "國籍 1\nNarnia")]);
         Assert.Contains("AMBIGUOUS:國籍 1", input.Subject.Findings);
         Assert.Empty(input.Subject.Nationalities);
-        Assert.NotEqual(ComparisonStatus.Conflict, Nationality(input).Status);
+        Assert.Equal(ComparisonStatus.SubjectMissing, Nationality(input).Status);
 
         var profile = Read("GC-11", [(Profile11, "1\tCitizenship\tTaiwan", "1\tCitizenship\tNarnia")]).Profiles["90000011"];
         Assert.Empty(profile.Citizenship);
@@ -113,6 +113,14 @@ public class CaseReaderTests
         var input = Read("GC-11", [(Case, Gc11Row1, "１" + Gc11Row1[1..])]);
         Assert.Equal(2, input.Rows.Count);
         Assert.DoesNotContain(input.Subject.Findings, f => f.StartsWith("UNPARSEABLE", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Full_width_profile_id_in_a_candidate_row_finds_the_profile()
+    {
+        var input = Read("GC-11", [(Case, Gc11Row1, Gc11Row1.Replace("90000011", "９０００００１１", StringComparison.Ordinal))]);
+        Assert.All(input.Rows, r => Assert.Equal("90000011", r.ProfileId));
+        Assert.Empty(CaseAnalyzer.Analyze(input).NotEvaluatedProfiles);
     }
 
     [Fact]
@@ -172,6 +180,44 @@ public class CaseReaderTests
         Assert.DoesNotContain(TxtCaseReader.Read(GoldenCaseTests.Folder("GC-11")).Subject.Findings,
             f => f.StartsWith("ENCODING_FALLBACK", StringComparison.Ordinal));
 
+    [Fact]
+    public void Utf8_bom_is_dropped_and_every_file_still_reads()
+    {
+        Assert.Equal(("基本資料\n", false), (TxtCaseReader.Decode([.. Encoding.UTF8.Preamble, .. Encoding.UTF8.GetBytes("基本資料\n")], out var fallback), fallback));
+
+        var withBom = Directory.GetFiles(GoldenCaseTests.Folder("GC-11"), "*.txt")
+            .ToDictionary(f => Path.GetFileName(f), f => (byte[])[.. Encoding.UTF8.Preamble, .. File.ReadAllBytes(f)]);
+        var input = TxtCaseReader.ReadFiles(withBom);
+        Assert.Equal(["鐘仁聲", "JONG JENN SHENG"], input.Subject.Names);
+        Assert.Equal("DJ:90000011", input.Profiles["90000011"].ProfileKey);
+        Assert.Equal(2, input.Rows.Count);
+        Assert.DoesNotContain(input.Subject.Findings, f => f.StartsWith("ENCODING_FALLBACK", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("one invalid byte")]
+    [InlineData("UTF-16")]
+    public void Bytes_that_are_not_utf8_fall_back_to_cp950_with_a_finding(string kind)
+    {
+        var text = Text("GC-11", Customer);
+        var bytes = kind == "UTF-16"
+            ? [.. Encoding.Unicode.Preamble, .. Encoding.Unicode.GetBytes(text)]
+            : Encoding.UTF8.GetBytes(text).Append((byte)0xFF).ToArray();
+        var input = Read("GC-11", [], new Dictionary<string, byte[]> { [Customer] = bytes });
+        Assert.Contains("ENCODING_FALLBACK:客戶-背景資料.txt", input.Subject.Findings);
+    }
+
+    // Input inventory.
+
+    [Fact]
+    public void Html_and_txt_of_the_same_export_file_are_rejected()
+    {
+        var files = Directory.GetFiles(GoldenCaseTests.Folder("GC-11")).ToDictionary(f => Path.GetFileName(f), File.ReadAllBytes);
+        files["名單資料_90000011.html"] = Encoding.UTF8.GetBytes("<table><tr><th>Profile_ID</th><td>90000011</td></tr></table>");
+        var e = Assert.Throws<InvalidOperationException>(() => TxtCaseReader.ReadFiles(files));
+        Assert.True(TxtCaseReader.IsInputError(e));
+    }
+
     // HTML pages.
 
     private static string[] Lines(string html, HtmlExport.Kind kind = HtmlExport.Kind.Customer) =>
@@ -212,6 +258,11 @@ public class CaseReaderTests
     }
 
     [Fact]
+    public void Html_colspan_repeats_across_and_rowspan_carries_down() =>
+        Assert.Equal(["R\tA\tA\tB", "R\tx\ty\tz", ""],
+            Lines("<table><tr><td rowspan=\"2\">R</td><td colspan=\"2\">A</td><td>B</td></tr><tr><td>x</td><td>y</td><td>z</td></tr></table>", HtmlExport.Kind.CaseTable));
+
+    [Fact]
     public void Html_blank_field_is_written_blank_not_dash()
     {
         Assert.Equal(["國籍 2", "", ""], Lines("<table><tr><th>國籍 2</th><td></td></tr></table>"));
@@ -235,6 +286,21 @@ public class CaseReaderTests
 
         var shortCountry = Read("GC-11", [(Profile11, "3\tResident of\tTaiwan", "3\tResident of")]).Profiles["90000011"];
         Assert.Contains("UNPARSEABLE:國家資料", shortCountry.Findings);
+    }
+
+    [Fact]
+    public void Unreadable_profile_date_of_birth_is_unparseable_and_the_others_are_kept()
+    {
+        var p = TxtCaseReader.ParseProfile(Text("GC-11", Profile11).Replace("2\tDate of Birth\t1972", "2\tDate of Birth\t19xx", StringComparison.Ordinal));
+        Assert.Equal([new PartialDate(1973)], p.DatesOfBirth);
+        Assert.Equal(["UNPARSEABLE:Date of Birth"], p.Findings);
+    }
+
+    [Fact]
+    public void Profile_names_are_surname_first_as_the_source_lists_them()
+    {
+        var p = TxtCaseReader.ParseProfile(Text("GC-03", "名單資料_90000031.txt"));
+        Assert.Equal(["Nguyễn Thị Hồng Nhung", "Nguyen Thi Hong Nhung"], p.Names);
     }
 
     // File names.
@@ -262,6 +328,15 @@ public class CaseReaderTests
 
     // Customer and related-party layouts.
 
+    [Theory]
+    [InlineData("-", "PLACEHOLDER_DASH")]
+    [InlineData("–", "PLACEHOLDER_DASH")]
+    [InlineData("—", "PLACEHOLDER_DASH")]
+    [InlineData("－", "PLACEHOLDER_DASH")]
+    [InlineData("未提供", "PLACEHOLDER_TEXT")]
+    public void A_dash_of_any_width_is_a_dash_placeholder(string value, string finding) =>
+        Assert.Contains($"{finding}:本地名稱", Read("GC-03", [("客戶-背景資料.txt", "本地名稱\n-\n", $"本地名稱\n{value}\n")]).Subject.Findings);
+
     [Fact]
     public void Customer_value_line_that_is_a_label_means_blank()
     {
@@ -284,6 +359,43 @@ public class CaseReaderTests
         ]);
         Assert.Equal(["TW"], input.Subject.Nationalities);
         Assert.Contains(input.Subject.Addresses, a => a.Raw == "32556桃園市龍潭區 中興里１鄰中興路８８巷１２號");
+    }
+
+    [Theory]                                // a single letter is AMBIGUOUS; a TW tax number has 8 digits
+    [InlineData("1234567", ValueState.Ambiguous, "MALFORMED")]
+    [InlineData("12345678", ValueState.Present, null)]
+    public void Tax_id_shorter_than_eight_characters_is_malformed(string value, ValueState state, string? detail) =>
+        Assert.Equal(new FieldValue(value, state, detail), Read("GC-11", [(Customer, "稅號/統一編號\nF", $"稅號/統一編號\n{value}")]).Subject.TaxId);
+
+    [Theory]                                // the block's country field, else a Taiwan city or county in the text
+    [InlineData("33041台北市信義區市府路1號", null, "TW", false)]
+    [InlineData("33041臺北市信義區市府路1號", null, "TW", false)]
+    [InlineData("Thôn Example, Xã An Hòa", null, null, false)]
+    [InlineData("Thôn Example, Xã An Hòa", "Viet Nam", "VN", false)]
+    [InlineData("Thôn Example, Xã An Hòa", "Taiwan", "TW", true)]
+    [InlineData("33041桃園市桃園區中正路１００號", "Viet Nam", "VN", true)]
+    public void Address_country_comes_from_its_field_else_a_taiwan_city_and_a_contradiction_conflicts(
+        string address, string? field, string? country, bool conflict)
+    {
+        var s = Read("GC-03", [("客戶-聯絡資料.txt", "33041桃園市桃園區中正路１００號\n國家\nTaiwan", field is null ? address : $"{address}\n國家\n{field}")]).Subject;
+        var a = Assert.Single(s.Addresses);
+        Assert.Equal((country, conflict), (a.Country, a.Conflict));
+        Assert.Equal(conflict, s.Findings.Contains("FIELD_CONFLICT:永久地址"));
+    }
+
+    // Legacy review records.
+
+    private const string Gc11Row2 = "2\t钟仁声\t100\tDJ ALT\t90000011\t未符合\t符合\t確認後符合\t不是";
+
+    [Theory]
+    [InlineData("客戶檢核處理紀錄\n")]                       // heading without a table
+    [InlineData("客戶檢核處理紀錄\n日期\t人員\t結果\n")]        // header row only
+    public void Processing_record_heading_without_table_rows_makes_the_boundary_unclear(string section)
+    {
+        var input = Read("GC-11", [(Case, Gc11Row2, Gc11Row2 + "\n\n" + section)]);
+        Assert.Contains("LEGACY_RECORD_BOUNDARY_UNCLEAR", input.Subject.Findings);
+        Assert.DoesNotContain(input.LegacyDecisions, d => d.Field == "客戶檢核處理紀錄");
+        Assert.Equal(2, input.Rows.Count);
     }
 
     // Source hashes, role dates and Profile row numbers.

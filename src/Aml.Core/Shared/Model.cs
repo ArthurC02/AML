@@ -1,4 +1,5 @@
 using System.Globalization;
+using Aml.Core.Normalization;
 
 namespace Aml.Core.Shared;
 
@@ -20,13 +21,14 @@ public readonly record struct PartialDate(int Year, int? Month = null, int? Day 
 
     /// <summary>
     /// Parses 1973, 1972/4, 1990-07, 1992/4/10 and 民國62年6月12日; a trailing time is dropped. A 00 month or day lowers the
-    /// precision. The year must lie between 1800 and the current year and the day within its month; anything else is null,
-    /// so the caller records it as UNPARSEABLE. A two-digit year is never read as a ROC year unless 民國 says so.
+    /// precision. Full-width digits and separators (１９７３／６／１２) read as their half-width forms. The year must lie
+    /// between 1800 and the current year and the day within its month; anything else is null, so the caller records it as
+    /// UNPARSEABLE. A two-digit year is never read as a ROC year unless 民國 says so.
     /// </summary>
     public static PartialDate? Parse(string? s)
     {
         if (string.IsNullOrWhiteSpace(s)) return null;
-        var t = s.Trim().Split([' ', '	', 'T'], 2)[0];
+        var t = Normalize.HalfWidth(s.Trim()).Replace('／', '/').Replace('－', '-').Split([' ', '	', 'T'], 2)[0];
         var roc = t.StartsWith("民國", StringComparison.Ordinal);
         var parts = roc ? t[2..].TrimEnd('日').Split(['年', '月'], StringSplitOptions.RemoveEmptyEntries) : t.Split('/', '-');
         if (parts.Length is 0 or > 3) return null;
@@ -43,6 +45,9 @@ public readonly record struct PartialDate(int Year, int? Month = null, int? Day 
         if (day is null or 0) return new PartialDate(year, month);
         return day <= DateTime.DaysInMonth(year, month!.Value) ? new PartialDate(year, month, day) : null;
     }
+
+    /// <summary>The last day the date can stand for: 1973 is read as up to 1973-12-31, 1973/6 as up to 1973-06-30.</summary>
+    public DateOnly LatestDay => new(Year, Month ?? 12, Day ?? DateTime.DaysInMonth(Year, Month ?? 12));
 
     /// <summary>True when both dates agree at the coarser of the two precisions.</summary>
     public bool AgreesWith(PartialDate other) =>

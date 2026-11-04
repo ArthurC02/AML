@@ -121,8 +121,8 @@ batches.MapGet("/{batchId}", async Task<Results<Ok<BatchStatus>, NotFound>> (str
     await service.GetAsync(batchId, ct) is { } b ? TypedResults.Ok(b) : TypedResults.NotFound())
 .WithSummary("Batch progress: counts per status and each item with its Case, revision, attempts and error code");
 
-batches.MapPost("/{batchId}/rerun", async (string batchId, BatchService service, CancellationToken ct) =>
-    TypedResults.Ok(new { requeued = await service.RerunAsync(batchId, ct) }))
+batches.MapPost("/{batchId}/rerun", async Task<Results<Ok<RerunResponse>, NotFound>> (string batchId, BatchService service, CancellationToken ct) =>
+    await service.GetAsync(batchId, ct) is null ? TypedResults.NotFound() : TypedResults.Ok(new RerunResponse(await service.RerunAsync(batchId, ct))))
 .WithSummary("Operator re-run: dead-lettered items of the batch go back to the queue with a fresh retry budget");
 
 var lists = app.MapGroup("/api/lists").DisableAntiforgery();
@@ -135,8 +135,10 @@ lists.MapPost("/profiles", async Task<Results<Ok<ImportReport>, BadRequest<strin
 .WithSummary("Capture Profiles into the list database; a changed Profile queues re-analysis of the Cases that used it")
 .WithDescription("Upload 名單資料_<id>.txt (or .html). An unchanged file keeps its version; a changed one becomes a new version, the old one is kept, and every Case whose latest input used it gets a queued re-analysis job (track it with GET /api/batches/{batchId}). A file whose name and Profile_ID differ, or one Profile in two formats, is rejected.");
 
-lists.MapGet("/profiles/{profileId}/versions", async (string profileId, ListService service, CancellationToken ct) =>
-    TypedResults.Ok((await service.HistoryAsync(profileId, ct)).Select(v => new { v.ProfileId, v.Version, v.ContentHash, v.CapturedAt })))
+lists.MapGet("/profiles/{profileId}/versions", async Task<Results<Ok<IReadOnlyList<ProfileVersionResponse>>, NotFound>> (string profileId, ListService service, CancellationToken ct) =>
+    await service.HistoryAsync(profileId, ct) is { Count: > 0 } history
+        ? TypedResults.Ok<IReadOnlyList<ProfileVersionResponse>>(history.Select(v => new ProfileVersionResponse(v.ProfileId, v.Version, v.ContentHash, v.CapturedAt)).ToList())
+        : TypedResults.NotFound())
 .WithSummary("Every captured version of one Profile, with its content hash");
 
 lists.MapGet("/candidates", async Task<Results<Ok<IReadOnlyList<RetrievedCandidate>>, BadRequest<string>>> (
@@ -206,5 +208,9 @@ internal sealed record CaseResponse(string CaseId, string SubjectRef, string Tri
     public static CaseResponse From(CaseRecord c) =>
         new(c.CaseId, c.SubjectRef, c.TriggerEventId, c.Status, c.CurrentRevision, c.EffectiveRevision);
 }
+
+internal sealed record RerunResponse(int Requeued);
+
+internal sealed record ProfileVersionResponse(string ProfileId, int Version, string ContentHash, DateTimeOffset CapturedAt);
 
 public partial class Program;

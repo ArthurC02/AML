@@ -107,6 +107,45 @@ public class ScreeningTests
         Assert.Equal(CaseStatus.Open, CaseLifecycle.AfterAnalysis(a, CaseStatus.Open));
     }
 
+    [Fact]
+    public void A_completed_analysis_with_nothing_left_to_review_closes_the_case()
+    {
+        Assert.Equal(CaseStatus.Closed, CaseLifecycle.AfterAnalysis(new CaseAnalysis([], [], []), CaseStatus.Open)); // zero hits
+
+        var pepNo = new ListFlags(FlagValue.No, FlagValue.Missing, FlagValue.Missing);
+        var notApplicable = CaseAnalyzer.Analyze(new CaseInput(Subject(), [new CandidateRow("陳志明", "1", null, false, pepNo)],
+            new Dictionary<string, SourceProfile> { ["1"] = Profile("Politically Exposed Person") }, new Dictionary<string, NewsItem>(), []));
+        Assert.Equal(ScreeningAssessment.NotApplicable, CaseLifecycle.Aggregate(notApplicable));
+        Assert.Equal(CaseStatus.Closed, CaseLifecycle.AfterAnalysis(notApplicable, CaseStatus.InReview));
+
+        var review = CaseAnalyzer.Analyze(new CaseInput(Subject(), [new CandidateRow("陳志明", "1", null, false)],
+            new Dictionary<string, SourceProfile> { ["1"] = Profile("Special Interest Person (SIP)", "Fraud") }, new Dictionary<string, NewsItem>(), []));
+        Assert.Equal(CaseStatus.InReview, CaseLifecycle.AfterAnalysis(review, CaseStatus.Open));
+    }
+
+    private static PairSnapshot Pair(ScreeningAssessment result, IdentityDecision identity, params string[] reasons) => new("DJ:1", result, identity, reasons);
+
+    [Fact]
+    public void Revision_changes_list_each_transition_of_a_pair()
+    {
+        var was = Pair(ScreeningAssessment.Review, IdentityDecision.Review, "A");
+        IReadOnlyList<PairChange> Compare(params PairSnapshot[] now) => RevisionChanges.Compare([was], now);
+
+        Assert.Empty(Compare(Pair(ScreeningAssessment.Review, IdentityDecision.Review, "A")));
+        Assert.Equal([new PairChange("DJ:2", PairChangeKind.Added, null, "NO_HIT")],
+            Compare(was, new PairSnapshot("DJ:2", ScreeningAssessment.NoHit, IdentityDecision.NoMatch, [])));
+        Assert.Equal([new PairChange("DJ:1", PairChangeKind.Removed, "REVIEW", null)], Compare());
+        Assert.Equal([new PairChange("DJ:1", PairChangeKind.ResultChanged, "REVIEW", "NOT_APPLICABLE")],
+            Compare(Pair(ScreeningAssessment.NotApplicable, IdentityDecision.Review, "A")));
+        Assert.Equal([new PairChange("DJ:1", PairChangeKind.IdentityChanged, "REVIEW", "PROBABLE_MATCH")],
+            Compare(Pair(ScreeningAssessment.Review, IdentityDecision.ProbableMatch, "A")));
+        // A result and identity that change together are both listed.
+        Assert.Equal([new PairChange("DJ:1", PairChangeKind.ResultChanged, "REVIEW", "NO_HIT"), new PairChange("DJ:1", PairChangeKind.IdentityChanged, "REVIEW", "NO_MATCH")],
+            Compare(Pair(ScreeningAssessment.NoHit, IdentityDecision.NoMatch, "A")));
+        Assert.Equal([new PairChange("DJ:1", PairChangeKind.ReasonsChanged, "A", "A,B")],
+            Compare(Pair(ScreeningAssessment.Review, IdentityDecision.Review, "A", "B")));
+    }
+
     private static DispositionRecommendation Recommend(string[] subjectNationality, string[] profileCitizenship, IdentityDecision decision,
         params SourceCondition[] conditions)
     {

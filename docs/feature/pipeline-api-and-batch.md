@@ -55,6 +55,8 @@ GET  /api/lists/candidates?mode=
 GET  /api/lists/merges
 ```
 
+An unknown case, revision, batch or Profile id returns 404.
+
 Uploads accept `.txt` and `.html` files (extension in any case) up to 5 MB each. Multipart uploads are read as raw bytes: the case reader decodes export files as strict UTF-8 (BOM dropped), else CP950 (Big5) with an `ENCODING_FALLBACK:<file>` finding, and HTML pages by their own declared encoding. The reader records each file's SHA-256 as its source hash on the case input (`SourceHashes`): of the uploaded bytes for an upload, of the UTF-8 encoding of the text for batch items (files sent as JSON text) and re-analyses; the hashes are not stored with the revision. Each revision stores its input files as decoded text for re-analysis.
 
 - Publication has no endpoint: step 14 publishes automatically when the version and completeness checks of the [case-level result](case-management.md#case-level-result) pass.

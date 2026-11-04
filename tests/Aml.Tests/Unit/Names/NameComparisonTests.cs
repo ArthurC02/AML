@@ -43,6 +43,20 @@ public class NameComparisonTests
         Assert.Equal((Exact, (string?)null), Compare(subject, subject));
     }
 
+    [Theory]                                // Đ has no Unicode decomposition, so it folds explicitly
+    [InlineData("Đặng Văn Đức", "Dang Van Duc")]
+    [InlineData("đặng văn đức", "DANG VAN DUC")]
+    public void Vietnamese_d_with_stroke_folds_to_d_in_comparison_and_retrieval_keys(string subject, string profile)
+    {
+        Assert.Equal((Exact, Normalize.DiacriticVariant), Compare(subject, profile));
+        Assert.Equal("DANGVANDUC", Normalize.NameKey(subject));
+        Assert.Contains("DUCDANGVAN", Normalize.NameKeys(subject));
+    }
+
+    [Fact]                                  // a name with no letters gives an empty key, which matches nothing
+    public void Names_without_letters_are_never_exact() =>
+        Assert.Equal((Partial, Normalize.NotComparableCrossScript), Compare("-", "·"));
+
     [Theory]                                // name order
     [InlineData("CHIH-MING　CHEN", "CHEN CHIH-MING")]
     [InlineData("穆罕默德·阿里", "阿里·穆罕默德")]
@@ -86,12 +100,17 @@ public class NameComparisonTests
         Assert.StartsWith("NOT_IDENTICAL_AFTER_NORMALIZATION", Normalize.CompareNames(["陳志明", "CHEN Chih-Ming"], ["陳志銘"]).Detail, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void Prefix_bonus_needs_jaro_above_threshold()
-    {
-        Assert.Equal(0.5, Similarity.JaroWinkler("ABCDEFGH", "ABXYZWVU"), 6);   // Jaro 0.5, shared prefix AB ignored
-        Assert.Equal(0.961, Similarity.JaroWinkler("MARTHA", "MARHTA"), 3);
-    }
+    [Theory]                                // Winkler's published pairs; the window is half the longer string
+    [InlineData("MARTHA", "MARHTA", 0.961)]
+    [InlineData("DWAYNE", "DUANE", 0.840)]
+    [InlineData("DIXON", "DICKSONX", 0.813)]
+    [InlineData("HANNAH", "HANAHN", 0.942)]     // odd count of out-of-order matches: half a transposition counts
+    [InlineData("ABCDEFGH", "ABXYZWVU", 0.5)]   // Jaro 0.5, shared prefix AB ignored below the boost threshold
+    [InlineData("ABC", "ABC", 1.0)]
+    [InlineData("ABC", "XYZ", 0.0)]
+    [InlineData("", "ABC", 0.0)]
+    public void Jaro_winkler_known_values(string a, string b, double expected) =>
+        Assert.Equal(expected, Similarity.JaroWinkler(a, b), 3);
 
     [Fact]                                  // reading keys
     public void Reading_keys_meet_across_scripts()

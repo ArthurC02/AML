@@ -49,7 +49,55 @@ public class ExtractionRuleTests
     [InlineData("無")]
     [InlineData("N/A")]
     [InlineData("—")]
+    [InlineData("－")]
     public void Text_meaning_only_no_data_is_missing(string text) => Assert.Null(Normalize.NullIfPlaceholder(text));
+
+    [Theory]                                // source-flag table; words in any letter case
+    [InlineData("是", FlagValue.Yes)]
+    [InlineData("Yes", FlagValue.Yes)]
+    [InlineData("yes", FlagValue.Yes)]
+    [InlineData("TRUE", FlagValue.Yes)]
+    [InlineData("true", FlagValue.Yes)]
+    [InlineData("Checked", FlagValue.Yes)]
+    [InlineData("v", FlagValue.Yes)]
+    [InlineData(" ✓ ", FlagValue.Yes)]
+    [InlineData("否", FlagValue.No)]
+    [InlineData("不是", FlagValue.No)]
+    [InlineData("no", FlagValue.No)]
+    [InlineData("False", FlagValue.No)]
+    [InlineData("OFF", FlagValue.No)]
+    [InlineData("0", FlagValue.No)]
+    [InlineData(null, FlagValue.Missing)]
+    [InlineData("", FlagValue.Missing)]
+    [InlineData("–", FlagValue.Missing)]
+    [InlineData("－", FlagValue.Missing)]
+    [InlineData("n/a", FlagValue.Missing)]
+    [InlineData("待確認", FlagValue.Unparseable)]
+    [InlineData("yess", FlagValue.Unparseable)]
+    public void Flag_cells_read_by_the_source_flag_table(string? raw, FlagValue expected) =>
+        Assert.Equal(expected, Normalize.Flag(raw));
+
+    [Theory]                                // two rows of one Profile, merged flag by flag, in either order
+    [InlineData(FlagValue.Yes, FlagValue.Yes, FlagValue.Yes)]
+    [InlineData(FlagValue.Yes, FlagValue.No, FlagValue.Yes)]
+    [InlineData(FlagValue.Yes, FlagValue.Unparseable, FlagValue.Yes)]
+    [InlineData(FlagValue.Yes, FlagValue.Missing, FlagValue.Yes)]
+    [InlineData(FlagValue.Unparseable, FlagValue.Unparseable, FlagValue.Unparseable)]
+    [InlineData(FlagValue.Unparseable, FlagValue.No, FlagValue.Unparseable)]
+    [InlineData(FlagValue.Unparseable, FlagValue.Missing, FlagValue.Unparseable)]
+    [InlineData(FlagValue.No, FlagValue.No, FlagValue.No)]
+    [InlineData(FlagValue.No, FlagValue.Missing, FlagValue.No)]
+    [InlineData(FlagValue.Missing, FlagValue.Missing, FlagValue.Missing)]
+    public void Merged_rows_take_yes_then_unparseable_then_no_then_missing(FlagValue a, FlagValue b, FlagValue expected)
+    {
+        foreach (var (x, y) in new[] { (a, b), (b, a) })
+            Assert.Equal(new ListFlags(expected, expected, expected, expected), ListFlags.Merge([new(x, x, x, x), new(y, y, y, y)]));
+    }
+
+    [Fact]
+    public void Merge_keeps_each_flag_separate() =>
+        Assert.Equal(new ListFlags(FlagValue.Yes, FlagValue.Unparseable, FlagValue.No, FlagValue.Missing),
+            ListFlags.Merge([new(FlagValue.Yes, FlagValue.No, FlagValue.Missing, FlagValue.Missing), new(FlagValue.No, FlagValue.Unparseable, FlagValue.No, FlagValue.Missing)]));
 
     [Theory]
     [InlineData("未提供（居住國臺灣）")]

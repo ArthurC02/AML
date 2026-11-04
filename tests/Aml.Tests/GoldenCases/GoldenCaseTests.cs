@@ -103,7 +103,7 @@ public class GoldenCaseTests
         Assert.Equal(LegalStage.Wanted, c.LegalStage);
 
         var id = hit.Identity;
-        AssertEvidence(id, EvidenceGroup.Name, Exact);
+        Assert.Equal((Exact, (string?)null), (id.Evidence[EvidenceGroup.Name].Status, id.Evidence[EvidenceGroup.Name].Detail)); // same order, no relaxation
         AssertEvidence(id, EvidenceGroup.Gender, Exact);
         AssertEvidence(id, EvidenceGroup.Nationality, Exact);
         AssertEvidence(id, EvidenceGroup.DateOfBirth, Partial);
@@ -140,7 +140,7 @@ public class GoldenCaseTests
         Assert.Equal(LegalStage.Unknown, c.LegalStage);
 
         var id = hit.Identity;
-        AssertEvidence(id, EvidenceGroup.Name, Exact);
+        Assert.Equal((Exact, (string?)null), (id.Evidence[EvidenceGroup.Name].Status, id.Evidence[EvidenceGroup.Name].Detail)); // 鐘仁聲 is an OSN as written
         AssertEvidence(id, EvidenceGroup.Gender, Exact);
         AssertEvidence(id, EvidenceGroup.Nationality, Exact);
         AssertEvidence(id, EvidenceGroup.DateOfBirth, Partial);

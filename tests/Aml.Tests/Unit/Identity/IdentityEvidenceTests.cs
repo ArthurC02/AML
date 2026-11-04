@@ -41,6 +41,8 @@ public class IdentityEvidenceTests
     [InlineData("民國62年6月", "1973-06", DatePrecision.Month)]
     [InlineData("2024/2/29", "2024-02-29", DatePrecision.Day)]
     [InlineData("1800", "1800", DatePrecision.Year)]
+    [InlineData("１９７３／６／１２", "1973-06-12", DatePrecision.Day)]
+    [InlineData("１９７０－０５", "1970-05", DatePrecision.Month)]
     public void Valid_dates_keep_their_precision(string raw, string expected, DatePrecision precision)
     {
         var d = PartialDate.Parse(raw)!.Value;
@@ -72,11 +74,82 @@ public class IdentityEvidenceTests
         var r = IdentityDecisionPolicy.Decide(Subject(new PartialDate(2000, 3, 1)) with { Document = id },
             Profile() with { Roles = [DirectorFrom2010], Documents = [id] });
         Assert.Equal(IdentityDecision.Review, r.Decision);
-        Assert.Contains(ReasonCodes.SourceQualityDowngrade, r.ReasonCodes);
+        Assert.Equal([ReasonCodes.ImpossibleAgeAtReportedEvent, ReasonCodes.SourceQualityDowngrade], r.ReasonCodes);
 
         // Without the document and the Profile DOB, nothing questions the source: the validated rule still closes the pair.
         var plain = IdentityDecisionPolicy.Decide(Subject(new PartialDate(2000, 3, 1)), Profile() with { Roles = [DirectorFrom2010] });
         Assert.Equal(IdentityDecision.NoMatch, plain.Decision);
+        Assert.Equal([ReasonCodes.ImpossibleAgeAtReportedEvent], plain.ReasonCodes);
+    }
+
+    // Born 2000-03-01, director from 2010: the age rule fires. Each row adds exactly one concern to a Profile without a DOB.
+    [Theory]
+    [InlineData("宏遠投資股份有限公司", 1, null, false)]
+    [InlineData("", 1, null, true)]                                  // dated role without its organization
+    [InlineData(" ", 1, null, true)]
+    [InlineData("宏遠投資股份有限公司", null, null, true)]             // role dated to the year only
+    [InlineData("宏遠投資股份有限公司", 1, "UNPARSEABLE:職位", true)]  // a Profile value the reader could not parse
+    public void Each_source_quality_concern_alone_downgrades_a_validated_hard_conflict(string organization, int? month, string? finding, bool downgraded)
+    {
+        var profile = Profile() with
+        {
+            Roles = [new ProfileRole("董事", organization, new PartialDate(2010, month))],
+            Findings = finding is null ? [] : [finding],
+        };
+        var r = IdentityDecisionPolicy.Decide(Subject(new PartialDate(2000, 3, 1)), profile);
+        Assert.Equal(ReasonCodes.ImpossibleAgeAtReportedEvent, r.HardConflict);
+        Assert.Equal(downgraded ? IdentityDecision.Review : IdentityDecision.NoMatch, r.Decision);
+        Assert.Equal(downgraded
+            ? [ReasonCodes.ImpossibleAgeAtReportedEvent, ReasonCodes.SourceQualityDowngrade]
+            : [ReasonCodes.ImpossibleAgeAtReportedEvent], r.ReasonCodes);
+    }
+
+    // In a full decision HIGH support only comes from a full DOB, and that Profile DOB already makes the role impossible
+    // for the Profile itself, so the support condition is checked on its own.
+    [Theory]
+    [InlineData(Strength.Low, false)]
+    [InlineData(Strength.Medium, false)]
+    [InlineData(Strength.High, true)]
+    [InlineData(Strength.Unique, true)]
+    public void High_or_unique_support_is_a_source_quality_concern(Strength strength, bool concern)
+    {
+        var evidence = new Dictionary<EvidenceGroup, Evidence>
+        {
+            [EvidenceGroup.DateOfBirth] = new(EvidenceGroup.DateOfBirth, Direction.Support, Exact, strength),
+        };
+        Assert.Equal(concern, HardConflictGate.SourceQualityConcern(Profile(), evidence));
+    }
+
+    [Fact]
+    public void Month_precision_subject_dob_never_fires_the_age_rule()
+    {
+        var r = IdentityDecisionPolicy.Decide(Subject(new PartialDate(2000, 3)), Profile() with { Roles = [DirectorFrom2010] });
+        Assert.Null(r.HardConflict);
+        Assert.Equal((6, IdentityDecision.Review), (r.Stage3Row, r.Decision));
+    }
+
+    // Born 2000-03-15: 13 the day before the 14th birthday, 14 on it.
+    [Theory]
+    [InlineData(14, true)]
+    [InlineData(15, false)]
+    [InlineData(16, false)]
+    public void Role_starting_before_the_14th_birthday_is_an_impossible_age(int day, bool impossible)
+    {
+        var start = new PartialDate(2014, 3, day);
+        var r = IdentityDecisionPolicy.Decide(Subject(new PartialDate(2000, 3, 15)),
+            Profile() with { Roles = [new ProfileRole("總經理", "宏遠投資股份有限公司", start)] });
+        Assert.Equal(impossible ? 13 : 14, HardConflictGate.MaxAgeAt(new PartialDate(2000, 3, 15), start));
+        if (impossible)
+        {
+            Assert.Equal((ReasonCodes.ImpossibleAgeAtReportedEvent, IdentityDecision.NoMatch), (r.HardConflict, r.Decision));
+            Assert.Equal([ReasonCodes.ImpossibleAgeAtReportedEvent], r.ReasonCodes);
+        }
+        else
+        {
+            Assert.Null(r.HardConflict);
+            Assert.Equal((6, IdentityDecision.Review), (r.Stage3Row, r.Decision));
+            Assert.Equal(ReasonCodes.TemporallyPlausible, r.Evidence[EvidenceGroup.TemporalRole].Detail);
+        }
     }
 
     [Fact]
@@ -84,6 +157,7 @@ public class IdentityEvidenceTests
     {
         var a = CaseAnalyzer.Analyze(TxtCaseReader.Read(GoldenCases.GoldenCaseTests.Folder("GC-01")));
         Assert.All(a.Hits, h => Assert.Equal(IdentityDecision.NoMatch, h.Identity.Decision));
+        Assert.All(a.Hits, h => Assert.DoesNotContain(ReasonCodes.SourceQualityDowngrade, h.Identity.ReasonCodes));
     }
 
     // Coarser Profile DOBs.
@@ -109,8 +183,34 @@ public class IdentityEvidenceTests
         Assert.Equal(6, r.Stage3Row);
 
         var span = IdentityDecisionPolicy.Decide(Subject(new PartialDate(1965, 4, 1)), Profile(new PartialDate(1960), new PartialDate(1965)));
-        Assert.NotEqual(IdentityDecision.ProbableMatch, span.Decision); // two values, but over two years apart
-        Assert.DoesNotContain(FellegiSunter.Score(r.Evidence).Groups, g => g.Group == EvidenceGroup.DateOfBirth);
+        Assert.Equal((6, IdentityDecision.Review), (span.Stage3Row, span.Decision)); // two values, but over two years apart
+        Assert.DoesNotContain(FellegiSunter.Score(span.Evidence).Groups, g => g.Group == EvidenceGroup.DateOfBirth);
+    }
+
+    // Subject born 1980-05-20; name, gender and nationality agree, so a supporting birth year reaches row 4.
+    [Theory]
+    [InlineData(4, new[] { 1980, 1982 })]         // a span of exactly two years is not scattered
+    [InlineData(6, new[] { 1980, 1983 })]
+    [InlineData(6, new[] { 1979, 1980, 1981 })]   // three values are many even within two years
+    public void Profile_dobs_are_scattered_from_three_values_or_a_span_over_two_years(int row, int[] years)
+    {
+        var r = IdentityDecisionPolicy.Decide(Subject(), Profile(years.Select(y => new PartialDate(y)).ToArray()));
+        var dob = r.Evidence[EvidenceGroup.DateOfBirth];
+        Assert.Equal(row, r.Stage3Row);
+        Assert.Equal(row == 4
+            ? (Partial, Strength.Low, true, ReasonCodes.BirthYearMatchFullDateNotComparable)
+            : (Partial, Strength.None, false, Findings.ProfileMultipleDob),
+            (dob.Status, dob.Strength, dob.IsSupport, dob.Detail));
+    }
+
+    [Fact]
+    public void Fellegi_sunter_full_dob_agreement_weighs_m_over_one_in_22000()
+    {
+        var evidence = new Dictionary<EvidenceGroup, Evidence>
+        {
+            [EvidenceGroup.DateOfBirth] = new(EvidenceGroup.DateOfBirth, Direction.Support, Exact, Strength.High),
+        };
+        Assert.Equal(Math.Log2(FellegiSunter.M * 22_000), Assert.Single(FellegiSunter.Score(evidence).Groups).Weight, 6);
     }
 
     [Fact]
@@ -142,7 +242,7 @@ public class IdentityEvidenceTests
         var profile = Profile(new PartialDate(1980)) with { Roles = [new ProfileRole("總經理", "宏遠投資股份有限公司", new PartialDate(2015))] };
         var r = IdentityDecisionPolicy.Decide(Subject() with { Employments = [new Employment("和平商業銀行", null, null, null)] }, profile);
         Assert.Equal((Uncertain, "DIFFERENT_ORGANIZATION"), (r.Evidence[EvidenceGroup.Employment].Status, r.Evidence[EvidenceGroup.Employment].Detail));
-        Assert.NotEqual(4, r.Stage3Row);
+        Assert.Equal((5, IdentityDecision.Review), (r.Stage3Row, r.Decision)); // the birth year still supports
     }
 
     [Fact]
@@ -172,6 +272,18 @@ public class IdentityEvidenceTests
         Assert.Contains(ReasonCodes.GenderConflict, row4.ReasonCodes);
     }
 
+    // Row 4 needs gender EXACT; a gender missing on either side is no conflict, but the pair stays at row 5.
+    [Theory]
+    [InlineData(null, Gender.Male)]
+    [InlineData(Gender.Male, null)]
+    public void Missing_gender_with_dob_support_is_row_5(Gender? subject, Gender? profile)
+    {
+        var r = IdentityDecisionPolicy.Decide(Subject() with { Gender = subject }, Profile(new PartialDate(1980)) with { Gender = profile });
+        Assert.Equal((5, IdentityDecision.Review), (r.Stage3Row, r.Decision));
+        Assert.Equal(ReasonCodes.PartialSupportOnly, r.ReasonCodes[0]);
+        Assert.DoesNotContain(ReasonCodes.GenderConflict, r.ReasonCodes);
+    }
+
     // Stated ages and adult-only titles.
 
     [Fact]
@@ -194,5 +306,16 @@ public class IdentityEvidenceTests
         var director = IdentityDecisionPolicy.Decide(Subject(), Profile() with
             { Roles = [new ProfileRole("director", "Example Ltd", new PartialDate(1997, 1))] });
         Assert.Equal(ReasonCodes.ImpossibleRoleAtReportedEvent, director.HardConflict);
+    }
+
+    // Adulthood was 20 before 2023-01-01 and 18 since.
+    [Theory]
+    [InlineData(2003, 2022, 12, 31, ReasonCodes.ImpossibleRoleAtReportedEvent)] // 19 on the last day adulthood was 20
+    [InlineData(2004, 2023, 1, 1, null)]                                         // 18 on the first day adulthood was 18
+    public void Adult_only_titles_follow_the_adulthood_age_in_force_at_the_role_start(int born, int year, int month, int day, string? expected)
+    {
+        var r = IdentityDecisionPolicy.Decide(Subject(new PartialDate(born, 6, 1)), Profile() with
+            { Roles = [new ProfileRole("董事", "宏遠投資股份有限公司", new PartialDate(year, month, day))] });
+        Assert.Equal(expected, r.HardConflict);
     }
 }

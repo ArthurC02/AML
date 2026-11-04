@@ -77,7 +77,7 @@ Customer, related party and Profile data are kept per person; one person's value
 
 The 疑似符合的名單資料 section of 案件資訊 lists the candidate rows. A case table without this section is an input error.
 
-- Columns are found by header label, not by position. The required columns are 編號, 姓名/名稱, 名單資料編號, 理由 and `Is RCA?`; a missing one is an input error.
+- Columns are found by header label, not by position. The required columns are 編號, 姓名/名稱, 名單資料編號, 理由 and `Is RCA?`; a missing one is an input error. A full-width 名單資料編號 is read as half-width digits, so it still finds its Profile file.
 - The header may span two rows. When the second row holds sub-labels only (the `.txt` export), each parent label with sub-labels is expanded in order: 是否符合名單？ → 全不符合, 全符合 and Name Property → PEP, 黑名單, 負面新聞. When the second row is as wide as the first (an HTML header with rowspan carried down), it is used as is. This expansion is an unconfirmed assumption: the samples show the header but no flag values ([open questions](../plan/open-questions.md#data-and-source)).
 - Sub-labels other than the expected ones produce `UNPARSEABLE:candidate_header`, and every row's PEP, 黑名單 and 負面新聞 flags are `UNPARSEABLE`.
 - Blank lines are skipped. A row with too few cells, or whose 編號 is not a number (full-width digits are read), is left out with `UNPARSEABLE:candidate_row:<line>` (1-based line in 案件資訊). A row with more cells than the header is kept with the same finding, and its three flags and `Is RCA?` are `UNPARSEABLE` because they cannot be placed.
@@ -91,7 +91,7 @@ PEP, blacklist and adverse-news flags and `Is RCA?` are read per candidate row:
 |---|---|
 | 是、✓、✔、☑、V、Y、Yes、TRUE、1、checked、on, or a ticked checkbox | `YES` |
 | 否、不是、X、✗、×、☐、N、No、FALSE、0、unchecked、off | `NO` |
-| blank, -, –, —, N/A, NA | `MISSING` |
+| blank, -, –, —, －, N/A, NA | `MISSING` |
 | anything else, or a flag the [candidate table](#candidate-table) cannot place | `UNPARSEABLE`: re-read the source; if still unreadable the case cannot be published |
 
 Words are matched in any letter case. `NO` is an explicit value, not unknown.
@@ -143,7 +143,7 @@ Only text whose sole meaning is "no data" is missing (`Normalize.IsPlaceholder`,
 |---|---|
 | field absent in the source | `MISSING`, finding `FIELD_ABSENT:<field>` |
 | field present but blank | `MISSING`, finding `FIELD_BLANK:<field>` |
-| field holding a dash | `MISSING`, finding `PLACEHOLDER_DASH:<field>` |
+| field holding a dash (`-`, `–`, `—` or full-width `－`) | `MISSING`, finding `PLACEHOLDER_DASH:<field>` |
 | field holding placeholder text (未提供, 不詳 …) | `MISSING`, finding `PLACEHOLDER_TEXT:<field>` |
 | format not supported | `UNSUPPORTED_ATTACHMENT` finding; not MISSING |
 | parsing failed | `UNPARSEABLE` |
@@ -162,7 +162,7 @@ Never convert a year-only value such as `1991` to `1991-01-01`. Preserve multipl
 
 Dates are read by `PartialDate.Parse`:
 
-- accepted forms: `1973`, `1972/4`, `1990-07`, `1992/4/10`, and `民國62年6月12日` (an explicit 民國 year is converted by adding 1911);
+- accepted forms: `1973`, `1972/4`, `1990-07`, `1992/4/10`, and `民國62年6月12日` (an explicit 民國 year is converted by adding 1911); full-width digits and separators (`１９７３／６／１２`) read as half-width;
 - a trailing time (`2026/9/10 下午 01:00:15`, `…T10:00`) is dropped;
 - a month or day of `00` lowers the precision (`1990/00/00` is YEAR, `1990/07/00` is MONTH); a day with a `00` month is unparseable;
 - the year must lie between 1800 and the current year, the month between 1 and 12, and the day within its month;

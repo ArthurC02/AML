@@ -40,8 +40,16 @@ public sealed record ScreenedSubject(
     IReadOnlyList<Relative>? Relatives = null,
     string? PartyType = null)
 {
-    /// <summary>A legal person or group (客戶類型 法人), compared on entity identifiers, never on DOB or nationality rules.</summary>
-    public bool IsEntity => PartyType is { } t && !t.Contains('個', StringComparison.Ordinal) && !t.Equals("Person", StringComparison.OrdinalIgnoreCase);
+    /// <summary>
+    /// A legal person or group (客戶類型 法人), compared on entity identifiers, never on DOB or nationality rules.
+    /// 個人, 自然人, Person, Individual and Natural Person are natural persons; no party type means a natural person.
+    /// </summary>
+    public bool IsEntity => PartyType is { } t
+        && !PersonWords.Any(w => t.Contains(w, StringComparison.Ordinal))
+        && !PersonLabels.Contains(t.Trim(), StringComparer.OrdinalIgnoreCase);
+
+    private static readonly string[] PersonWords = ["個", "自然人"];
+    private static readonly string[] PersonLabels = ["Person", "Individual", "Natural Person"];
 }
 
 public sealed record SourceCategory(string Category, string? Subcategory);

@@ -28,7 +28,7 @@ A COMPLETED analysis can still produce REVIEW.
 
 - `currentAnalysisRevision`: latest accepted analysis.
 - `effectiveResultRevision`: latest published result; a revision is published automatically when it is complete ([case-level result](#case-level-result)).
-- Technical retry with identical inputs and policies reuses the revision.
+- Technical retry with identical inputs and policies reuses the revision. Repeating a create with the same trigger and subject returns the existing Case; two creates running at the same time store one first revision, and a Case left at revision 0 by an interrupted create gets its first analysis when the create is repeated.
 - Changed customer data, source Profile, scope or policy creates a new revision.
 - A revision is the Case's current revision + 1. When a concurrent analysis took that number, the Case is re-read and the number, status and changes are recomputed, up to three attempts.
 - Each revision is stored together with the input files it was run on, in one transaction ([atomic writes](persistence.md#atomic-writes)).

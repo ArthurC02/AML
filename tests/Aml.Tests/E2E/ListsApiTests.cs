@@ -2,27 +2,12 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Data.Sqlite;
 
 namespace Aml.Tests.E2E;
 
 /// <summary>List database, source refresh and retrieval modes through the API.</summary>
-public sealed class ListsApiTests : IDisposable
+public sealed class ListsApiTests(ApiHost api) : IClassFixture<ApiHost>
 {
-    private readonly string _file = Path.Combine(Path.GetTempPath(), $"aml-lists-{Guid.NewGuid():N}.db");
-    private readonly WebApplicationFactory<Program> _factory;
-
-    public ListsApiTests() =>
-        _factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
-            b.UseSetting("Database:ConnectionString", $"Data Source={_file};Pooling=False"));
-
-    public void Dispose()
-    {
-        _factory.Dispose();
-        SqliteConnection.ClearAllPools();
-        File.Delete(_file);
-    }
 
     private static readonly string Gc11 = GoldenCases.GoldenCaseTests.Folder("GC-11");
     private const string ProfileName = "名單資料_90000011.txt";
@@ -44,7 +29,7 @@ public sealed class ListsApiTests : IDisposable
     public async Task A_changed_profile_gets_a_new_version_and_re_analyzes_the_cases_that_used_it()
     {
         var ct = TestContext.Current.CancellationToken;
-        var http = _factory.CreateClient();
+        var http = api.CreateClient();
         var caseFiles = Directory.GetFiles(Gc11, "*.txt").Select(p => (Path.GetFileName(p), File.ReadAllText(p))).ToArray();
         var create = Files(caseFiles);
         create.Add(new StringContent("subject-11"), "subjectRef");
@@ -69,12 +54,8 @@ public sealed class ListsApiTests : IDisposable
         Assert.Equal(2, refresh.GetProperty("profiles")[0].GetProperty("version").GetInt32());
         Assert.Equal(caseId, refresh.GetProperty("queuedReanalyses")[0].GetProperty("caseId").GetString());
         var batchId = refresh.GetProperty("batchId").GetString();
-        for (var i = 0; i < 100; i++)
-        {
-            var batch = await Json(await http.GetAsync($"/api/batches/{batchId}", ct), ct);
-            if (batch.GetProperty("succeeded").GetInt32() == 1) break;
-            await Task.Delay(100, ct);
-        }
+        await Wait.UntilAsync(async () => await Json(await http.GetAsync($"/api/batches/{batchId}", ct), ct),
+            b => b.GetProperty("succeeded").GetInt32() == 1, "the queued re-analysis to succeed", ct);
         var c = await Json(await http.GetAsync($"/api/cases/{caseId}", ct), ct);
         Assert.Equal(2, c.GetProperty("currentRevision").GetInt32());
         var versions = await Json(await http.GetAsync("/api/lists/profiles/90000011/versions", ct), ct);

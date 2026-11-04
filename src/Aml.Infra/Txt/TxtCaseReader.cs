@@ -174,7 +174,7 @@ public static partial class TxtCaseReader
         fields.Where(f => !f.Present || Normalize.NullIfPlaceholder(f.Raw) is null).Select(f =>
             !f.Present ? $"FIELD_ABSENT:{f.Field}"
             : string.IsNullOrWhiteSpace(f.Raw) ? $"FIELD_BLANK:{f.Field}"
-            : f.Raw!.Trim() == "-" ? $"PLACEHOLDER_DASH:{f.Field}"
+            : Normalize.IsDash(f.Raw!) ? $"PLACEHOLDER_DASH:{f.Field}"
             : $"PLACEHOLDER_TEXT:{f.Field}");
 
     private static PartialDate? Date(string field, string? raw, List<string> findings)
@@ -244,7 +244,7 @@ public static partial class TxtCaseReader
             var rca = wide ? FlagValue.Unparseable : Normalize.Flag(Col("Is RCA?"));
             var flags = wide || !flagsReadable ? new ListFlags(FlagValue.Unparseable, FlagValue.Unparseable, FlagValue.Unparseable, rca)
                 : new ListFlags(Normalize.Flag(Col("PEP")), Normalize.Flag(Col("黑名單")), Normalize.Flag(Col("負面新聞")), rca);
-            rows.Add(new CandidateRow(Col("姓名/名稱")!, Col("名單資料編號")!, Normalize.NullIfPlaceholder(Col("理由")), rca == FlagValue.Yes, flags));
+            rows.Add(new CandidateRow(Col("姓名/名稱")!, Normalize.HalfWidth(Col("名單資料編號")!), Normalize.NullIfPlaceholder(Col("理由")), rca == FlagValue.Yes, flags));
         }
         var (records, recordFindings) = recordStart < 0 ? (new List<string>(), new List<string>()) : ReadProcessingRecord(lines[(recordStart + 1)..]);
         return (subject, rows, records, [.. findings, .. recordFindings]);

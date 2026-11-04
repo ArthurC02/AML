@@ -1,6 +1,8 @@
 using Aml.Core.Cases;
 using Aml.Core.Explanation;
+using Aml.Core.Identity;
 using Aml.Core.Shared;
+using Aml.Core.Subjects;
 using Aml.Infra.Txt;
 using static Aml.Core.Shared.ComparisonStatus;
 
@@ -77,13 +79,13 @@ public class ExplanationTests
                 Assert.Equal("Liberty Times (Chinese - Traditional)", s.Name);
                 Assert.Equal("2026-09-06", s.PublishedOn);
                 Assert.Equal("2026-09-10", s.RetrievedOn);
-                Assert.StartsWith("https://global.factiva.com/", s.Url, StringComparison.Ordinal);
+                Assert.Equal("https://global.factiva.com/redir/default.aspx?P=sa&AN=EXAMPLE000000000012", s.Url);
                 Assert.Equal("PROFILE_RECORD", s.UsedFor);
             },
             s =>
             {
                 Assert.Equal("LIBTOT0020260905EXAMPLE12", s.Id);
-                Assert.StartsWith("自由時報 (繁體)：虛構銷售額", s.Name, StringComparison.Ordinal);
+                Assert.Equal("自由時報 (繁體)：虛構銷售額 美化5公司財報 助詐貸銀行10億 夫妻求刑18年", s.Name);
                 Assert.Equal("2026-09-06", s.PublishedOn);
                 Assert.Equal("LEGAL_STAGE", s.UsedFor);
                 Assert.True(s.AttachedToProfile);
@@ -101,8 +103,23 @@ public class ExplanationTests
         Assert.Null(h.Stage3Row);
         Assert.Empty(h.Sources); // GC-01 cites no source and has no attached news
         Assert.Contains("董事長，宏遠投資股份有限公司（1990-07 起）", Row(h, "職業／雇主").ProfileValue, StringComparison.Ordinal);
-        Assert.Contains("硬衝突 IMPOSSIBLE_AGE_AT_REPORTED_EVENT", h.Summary.KeyEvidenceOrGaps, StringComparison.Ordinal);
+        Assert.Equal("硬衝突 IMPOSSIBLE_AGE_AT_REPORTED_EVENT，足以排除。除姓名、國籍、性別等前提條件外，沒有任何佐證。", h.Summary.KeyEvidenceOrGaps);
         Assert.Contains("NO_MATCH（第一階段硬衝突", h.Summary.Conclusion, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_pending_hard_conflict_is_explained_as_not_closing_the_pair()
+    {
+        // A director at 17 under the pre-2023 adult age of 20: the role rule fires, but it is not validated, so the pair stays REVIEW.
+        var subject = new ScreenedSubject(SubjectRole.Customer, null, ["陳志明"], Gender.Male, new PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
+        var profile = new SourceProfile("DJ:1", Gender.Male, ["陳志明"], [], ["TW"], [],
+            [new SourceCategory("Special Interest Person (SIP)", "Fraud")], [], [new ProfileRole("董事", "某公司", new PartialDate(1998, 1))], [], null, [], []);
+        var input = new CaseInput(subject, [new CandidateRow("陳志明", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
+            new Dictionary<string, NewsItem>(), []);
+        var h = Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input)).Hits);
+
+        Assert.Equal((ReasonCodes.ImpossibleRoleAtReportedEvent, IdentityDecision.Review), (h.HardConflict, h.IdentityDecision));
+        Assert.Equal("硬衝突 IMPOSSIBLE_ROLE_AT_REPORTED_EVENT，規則尚待驗證，不自動排除。除姓名、國籍、性別等前提條件外，沒有任何佐證。", h.Summary.KeyEvidenceOrGaps);
     }
 
     [Fact]

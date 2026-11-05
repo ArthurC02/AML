@@ -1105,9 +1105,6 @@
           "missingCells",
           "uncertainCells",
           "conflictCells",
-          "missingRate",
-          "uncertainRate",
-          "conflictRate",
           "notEvaluatedProfiles",
           "findingCounts"
         ],
@@ -1218,9 +1215,6 @@
           "executionStatus",
           "caseResult",
           "result",
-          "explanation",
-          "lineage",
-          "quality",
           "createdAt"
         ],
         "type": "object",
@@ -1450,8 +1444,7 @@
           "caseResult",
           "hits",
           "notEvaluatedProfiles",
-          "importedDecisions",
-          "changesFromPreviousRevision"
+          "importedDecisions"
         ],
         "type": "object",
         "properties": {
@@ -1503,8 +1496,7 @@
       },
       "CasePage": {
         "required": [
-          "items",
-          "nextPageToken"
+          "items"
         ],
         "type": "object",
         "properties": {
@@ -1531,7 +1523,6 @@
           "triggerEventId",
           "status",
           "currentRevision",
-          "effectiveRevision",
           "createdAt",
           "updatedAt"
         ],
@@ -1598,15 +1589,8 @@
           "triggerEventId",
           "status",
           "currentRevision",
-          "effectiveRevision",
-          "effectiveAt",
           "newerRevisionIncomplete",
-          "result",
           "conclusion",
-          "hits",
-          "omitted",
-          "notEvaluatedProfiles",
-          "revision",
           "revisions"
         ],
         "type": "object",
@@ -1768,10 +1752,7 @@
       "ComparisonRow": {
         "required": [
           "field",
-          "subjectValue",
-          "profileValue",
-          "status",
-          "difference"
+          "status"
         ],
         "type": "object",
         "properties": {
@@ -1854,7 +1835,6 @@
       },
       "DispositionRecommendation": {
         "required": [
-          "recommendation",
           "reasonCodes",
           "pendingChecks"
         ],
@@ -1893,7 +1873,6 @@
       },
       "Document": {
         "required": [
-          "type",
           "number"
         ],
         "type": "object",
@@ -1990,8 +1969,7 @@
         "required": [
           "group",
           "status",
-          "strength",
-          "detail"
+          "strength"
         ],
         "type": "object",
         "properties": {
@@ -2030,9 +2008,6 @@
           "ref",
           "id",
           "name",
-          "url",
-          "publishedOn",
-          "retrievedOn",
           "usedFor",
           "attachedToProfile"
         ],
@@ -2126,7 +2101,6 @@
           "screenedSubject",
           "profileId",
           "profileKey",
-          "profileName",
           "matchedNames",
           "isRca",
           "sourceCategories",
@@ -2137,12 +2111,9 @@
           "support",
           "conflicts",
           "unknownFields",
-          "hardConflict",
-          "stage3Row",
           "wouldChangeIf",
           "identityDecision",
           "pairResult",
-          "reviewPriority",
           "pairReasonCodes",
           "disposition",
           "reasonCodes",
@@ -2330,9 +2301,7 @@
           "hitNumber",
           "profileId",
           "profileKey",
-          "profileName",
           "pairResult",
-          "reviewPriority",
           "identityDecision",
           "link"
         ],
@@ -2394,7 +2363,6 @@
           "conditions",
           "identity",
           "pairResult",
-          "reviewPriority",
           "pairReasonCodes",
           "disposition"
         ],
@@ -2469,17 +2437,8 @@
           "revision",
           "profileId",
           "profileKey",
-          "profileName",
-          "sourceConditions",
           "identityDecision",
-          "hardConflict",
-          "stage3Row",
           "pairResult",
-          "reviewPriority",
-          "reasonCodes",
-          "decisiveEvidence",
-          "evidenceNote",
-          "wouldChangeIf",
           "detail"
         ],
         "type": "object",
@@ -2616,8 +2575,6 @@
       "IdentityResult": {
         "required": [
           "evidence",
-          "hardConflict",
-          "stage3Row",
           "decision",
           "reasonCodes"
         ],
@@ -2695,7 +2652,6 @@
       "ImportReport": {
         "required": [
           "profiles",
-          "batchId",
           "queuedReanalyses",
           "rejected"
         ],
@@ -2750,10 +2706,6 @@
           "idempotencyKey",
           "status",
           "attemptCount",
-          "caseId",
-          "analysisRevision",
-          "errorCode",
-          "completedAt",
           "createdAt"
         ],
         "type": "object",
@@ -2941,8 +2893,7 @@
         "required": [
           "authority",
           "list",
-          "status",
-          "offence"
+          "status"
         ],
         "type": "object",
         "properties": {
@@ -2988,9 +2939,7 @@
         "required": [
           "profileId",
           "profileKey",
-          "kind",
-          "from",
-          "to"
+          "kind"
         ],
         "type": "object",
         "properties": {
@@ -3132,8 +3081,7 @@
       "ProfileRole": {
         "required": [
           "title",
-          "organization",
-          "from"
+          "organization"
         ],
         "type": "object",
         "properties": {
@@ -3178,13 +3126,11 @@
           "contentHash",
           "capturedAt",
           "recordType",
-          "gender",
           "names",
           "citizenship",
           "categories",
           "keywords",
           "roles",
-          "officialList",
           "findings",
           "full"
         ],
@@ -3302,9 +3248,7 @@
       "ProfileUse": {
         "required": [
           "profileId",
-          "origin",
-          "listVersion",
-          "contentHash"
+          "origin"
         ],
         "type": "object",
         "properties": {
@@ -3565,8 +3509,7 @@
           "createdAt",
           "executionStatus",
           "caseResult",
-          "effective",
-          "changes"
+          "effective"
         ],
         "type": "object",
         "properties": {
@@ -3685,8 +3628,7 @@
       },
       "SourceCategory": {
         "required": [
-          "category",
-          "subcategory"
+          "category"
         ],
         "type": "object",
         "properties": {
@@ -3710,7 +3652,6 @@
           "basis",
           "riskCategories",
           "legalStage",
-          "amlRelevance",
           "policyVersion",
           "reasonCodes"
         ],
@@ -3787,7 +3728,6 @@
       "SourceProfile": {
         "required": [
           "profileKey",
-          "gender",
           "names",
           "datesOfBirth",
           "citizenship",
@@ -3796,7 +3736,6 @@
           "keywords",
           "roles",
           "relationships",
-          "officialList",
           "findings",
           "sources"
         ],
@@ -3959,10 +3898,7 @@
       "SourceReference": {
         "required": [
           "id",
-          "name",
-          "url",
-          "publishedOn",
-          "retrievedOn"
+          "name"
         ],
         "type": "object",
         "properties": {

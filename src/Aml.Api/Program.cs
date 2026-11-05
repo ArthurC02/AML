@@ -37,7 +37,13 @@ builder.Services.AddSingleton<Func<string, string>>(c =>
     c.TrimStart().TrimStart('﻿').StartsWith('<') ? HtmlExport.ToExportText(c, HtmlExport.Kind.Profile) : c);
 builder.Services.AddSingleton<ListService>();
 builder.Services.AddHostedService<JobWorker>();
-builder.Services.AddOpenApi();
+// A null field is left out of the views and revision records (CaseJson), so a property whose C# type can be null is never required.
+builder.Services.AddOpenApi(o => o.AddSchemaTransformer((schema, ctx, ct) =>
+{
+    foreach (var property in ctx.JsonTypeInfo.Properties)
+        if (property.IsGetNullable) schema.Required?.Remove(property.Name);
+    return Task.CompletedTask;
+}));
 // Every 4xx and 5xx is application/problem+json; a status without a handler-written problem gets its catalog type here.
 builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx =>
 {

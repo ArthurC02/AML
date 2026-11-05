@@ -37,6 +37,12 @@ public sealed class ContractTests(ApiHost api) : IClassFixture<ApiHost>
             Assert.All(shapes, name => Assert.NotNull(openApi["components"]!["schemas"]![name]));
         }
 
+        // Every response example has each property its schema requires, at every level; oneOf takes the first branch that fits.
+        var examples = operations.SelectMany(o => o.Op["responses"]!.AsObject().Select(r => r.Value!["content"]?["application/json"]))
+            .Where(m => m?["example"] is not null).ToList();
+        Assert.Equal(4, examples.Count);
+        Assert.All(examples, m => Assert.Empty(Missing(openApi, m!["schema"]!, m["example"]!, "$")));
+
         openApi.AsObject().Remove("servers"); // the host the document was served from, not part of the contract
         var snapshots = new Dictionary<string, JsonNode> { ["openapi.json"] = openApi };
         var names = JsonNode.Parse(await client.GetStringAsync("/api/schemas", ct))!["names"]!.AsArray().Select(n => (string)n!);
@@ -62,6 +68,22 @@ public sealed class ContractTests(ApiHost api) : IClassFixture<ApiHost>
             Assert.True(File.Exists(path), $"{file} has no snapshot; run with AML_UPDATE_SNAPSHOTS=1.");
             Assert.Equal((await File.ReadAllTextAsync(path, ct)).ReplaceLineEndings("\n"), actual);
         }
+    }
+
+    // The required properties a value lacks, as JSON paths. ponytail: checks presence only, not types; a validator when the contract needs one.
+    private static List<string> Missing(JsonNode doc, JsonNode schema, JsonNode? value, string path)
+    {
+        if (schema["$ref"] is { } r) schema = doc["components"]!["schemas"]![((string)r!).Split('/')[^1]]!;
+        if (schema["oneOf"] is JsonArray branches)
+            return branches.Where(b => value is null || (string?)b!["type"] != "null")
+                .Select(b => Missing(doc, b!, value, path)).FirstOrDefault(m => m.Count == 0) ?? [$"{path} fits no oneOf branch"];
+        if (value is JsonArray items && schema["items"] is { } item)
+            return [.. items.SelectMany((v, i) => Missing(doc, item, v, $"{path}[{i}]"))];
+        if (value is not JsonObject o) return [];
+        var missing = (schema["required"]?.AsArray() ?? []).Select(n => (string)n!).Where(n => !o.ContainsKey(n)).Select(n => $"{path}.{n}").ToList();
+        foreach (var (name, v) in o)
+            if (schema["properties"]?[name] is { } p) missing.AddRange(Missing(doc, p, v, $"{path}.{name}"));
+        return missing;
     }
 
     // ponytail: snapshots are read from the source tree, so the test runs where the repository is checked out.

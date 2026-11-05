@@ -6,7 +6,7 @@ using Aml.Core.Subjects;
 
 namespace Aml.Services;
 
-public sealed record ProfileImport(string ProfileId, int Version, bool Changed);
+public sealed record ProfileImport(string ProfileId, string ProfileKey, int Version, bool Changed);
 
 /// <summary>One captured Profile version, parsed.</summary>
 public sealed record ProfileView(string ProfileId, string ProfileKey, int Version, int LatestVersion, string ContentHash, DateTimeOffset CapturedAt, SourceProfile Profile);
@@ -69,7 +69,7 @@ public sealed class ListService(
                 return planned.Select(j => new NewJob(j.JobId, BatchService.ReanalyzeCase, batchId,
                     $"REANALYZE:{j.CaseId}:{id}:{version}", JsonSerializer.Serialize(j, CaseJson.Options))).ToList();
             }, ct).ConfigureAwait(false);
-            imported.Add(new ProfileImport(current.ProfileId, current.Version, changed));
+            imported.Add(new ProfileImport(current.ProfileId, KeyPrefix + current.ProfileId, current.Version, changed));
             queued.AddRange(planned.Where(j => jobIds.Contains(j.JobId)));
         }
         return new ImportReport(imported, queued.Count > 0 ? batchId : null, queued, rejected);
@@ -122,9 +122,9 @@ public sealed class ListService(
         if (input is null) return null;
         var all = source == CandidateSource.Previous
             ? input.Keys.Select(ProfileIdOf).OfType<string>().Distinct()
-                .Select(p => new RetrievedCandidate(KeyPrefix + p, "", "PREVIOUS_CASE_INPUT", 1, RetrievalMode.PreviousLink)).ToList()
+                .Select(p => new RetrievedCandidate(p, KeyPrefix + p, "", "PREVIOUS_CASE_INPUT", 1, RetrievalMode.PreviousLink)).ToList()
             : readCase(input).Rows.GroupBy(r => r.ProfileId)
-                .Select(g => new RetrievedCandidate(KeyPrefix + g.Key, g.First().MatchedName, "CASE_TABLE", 1, RetrievalMode.ControlledSet)).ToList();
+                .Select(g => new RetrievedCandidate(g.Key, KeyPrefix + g.Key, g.First().MatchedName, "CASE_TABLE", 1, RetrievalMode.ControlledSet)).ToList();
         return all.Take(top).Select(c => c with { Truncated = all.Count > top }).ToList();
     }
 
@@ -132,10 +132,10 @@ public sealed class ListService(
     public async Task<MergeResult> MergesAsync(CancellationToken ct) =>
         ProfileMerge.Resolve((await lists.LatestAsync(ct).ConfigureAwait(false)).Select(r => parseProfile(r.SourceText)));
 
-    private const string KeyPrefix = "DJ:";
+    private const string KeyPrefix = ProfileKeys.Prefix;
 
-    private static string IdOf(string profileId) =>
-        profileId.StartsWith(KeyPrefix, StringComparison.OrdinalIgnoreCase) ? profileId[KeyPrefix.Length..] : profileId;
+    // Routes accept the prefix in any case (dj:123); responses always write it as DJ:.
+    private static string IdOf(string profileId) => ProfileKeys.IdOf(profileId);
 
     // Built once per list database version; a capture changes the version and the next search rebuilds it.
     private async Task<ProfileIndex> IndexAsync(CancellationToken ct)

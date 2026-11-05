@@ -42,6 +42,7 @@ public sealed class ListsApiTests(ApiHost api) : IClassFixture<ApiHost>
         var original = caseFiles.Single(f => f.Item1 == ProfileName).Item2;
         var first = await Json(await http.PostAsync("/api/profiles/import", Files((ProfileName, original)), ct), ct);
         Assert.Equal(1, first.GetProperty("profiles")[0].GetProperty("version").GetInt32());
+        Assert.Equal(("90000011", "DJ:90000011"), (first.GetProperty("profiles")[0].GetProperty("profileId").GetString(), first.GetProperty("profiles")[0].GetProperty("profileKey").GetString()));
         Assert.Equal(0, first.GetProperty("queuedReanalyses").GetArrayLength());
 
         // Same content again: unchanged.
@@ -68,9 +69,10 @@ public sealed class ListsApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal((2, "DJ:90000011"), (direct.GetProperty("version").GetInt32(), direct.GetProperty("profileKey").GetString()));
         Assert.Equal(1, (await Json(await http.GetAsync("/api/profiles/90000011?version=1", ct), ct)).GetProperty("version").GetInt32());
         var previous = await Json(await http.GetAsync($"/api/cases/{caseId}/candidates?source=previous", ct), ct);
-        Assert.Equal("DJ:90000011", previous[0].GetProperty("profileKey").GetString());
+        Assert.Equal(("DJ:90000011", "90000011"), (previous[0].GetProperty("profileKey").GetString(), previous[0].GetProperty("profileId").GetString()));
         var controlled = await Json(await http.GetAsync($"/api/cases/{caseId}/candidates", ct), ct);
         Assert.Equal(1, controlled.GetArrayLength()); // two candidate rows, one Profile
+        Assert.Equal(("DJ:90000011", "90000011"), (controlled[0].GetProperty("profileKey").GetString(), controlled[0].GetProperty("profileId").GetString()));
 
         var missing = await http.GetAsync("/api/profiles/search", ct);
         Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);

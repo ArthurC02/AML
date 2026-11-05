@@ -11,7 +11,7 @@
           "read"
         ],
         "summary": "Every code the system emits: kind, Chinese name, meaning, the rule that emits it and its document section",
-        "description": "Filter with kind (IDENTITY_REASON, EVIDENCE_DETAIL, DATA_QUALITY, PROBLEM, …). A value with detail attached (SOFT_DIFFERENCE（…）, ENCODING_FALLBACK:<file>) is listed under its key. Next: getCode.",
+        "description": "Filter with kind (IDENTITY_REASON, EVIDENCE_DETAIL, DATA_QUALITY, PROBLEM, …). A value with detail attached (SOFT_DIFFERENCE（…）, ENCODING_FALLBACK:<file>) is listed under its key. To explain one code use getCode instead. Next: getCode.",
         "operationId": "listCodes",
         "parameters": [
           {
@@ -77,7 +77,7 @@
           "read"
         ],
         "summary": "Names of the published JSON Schemas and the schema version",
-        "description": "Use it to find the schema of a record or view and the current schemaVersion. Next: getSchema.",
+        "description": "Use it to find the schema of a record or view and the current schemaVersion; to explain a code value use getCode instead. Next: getSchema.",
         "operationId": "listSchemas",
         "responses": {
           "200": {
@@ -99,7 +99,7 @@
           "read"
         ],
         "summary": "JSON Schema of a stored record: field descriptions, and x-sensitivity (PERSONAL, IDENTIFIER) on personal data",
-        "description": "Use it to validate or interpret a stored record or a view. Next: getCode for the codes a field holds.",
+        "description": "Use it to validate or interpret a stored record or a view; x-sensitivity (personal data) is published only here, for the schemas listSchemas names. Next: getCode for the codes a field holds.",
         "operationId": "getSchema",
         "parameters": [
           {
@@ -208,7 +208,7 @@
           "read"
         ],
         "summary": "Find Cases by subject and/or trigger event, oldest first, one page at a time",
-        "description": "Use it to find the caseId of a subject or trigger event; give subjectRef, triggerEventId or both. Returns one page of Cases and nextPageToken when more follow; pass it back as pageToken. Next: getCaseSummary.",
+        "description": "Use it to find the caseId of a subject or trigger event; give subjectRef, triggerEventId or both. Returns one page of Cases and nextPageToken when more follow; pass it back as pageToken. When the caseId is known, use getCaseSummary instead. Next: getCaseSummary.",
         "operationId": "findCases",
         "parameters": [
           {
@@ -265,7 +265,7 @@
           "write"
         ],
         "summary": "Run a new analysis revision with updated input files; returns the Case summary",
-        "description": "Send the full set of export files again, as multipart, as for createCase. Use it when the bank files of an existing Case changed; a changed list Profile is re-analysed by itself after importProfiles. A revision that is not complete does not replace the effective result. Next: listRevisions.",
+        "description": "Send the full set of export files again, as multipart, as for createCase. Use it when the bank files of an existing Case changed. Do not use it for a changed list Profile: importProfiles queues that re-analysis. A revision that is not complete does not replace the effective result. Next: listRevisions.",
         "operationId": "reanalyzeCase",
         "parameters": [
           {
@@ -481,7 +481,7 @@
           "read"
         ],
         "summary": "Every analysis revision: time, execution status, result, whether it is effective and how many changes it made",
-        "description": "Use it to see the history of a Case and which revision is effective. Next: getRevision.",
+        "description": "Use it to see the history of a Case and which revision is effective; for the current result use getCaseSummary instead. Next: getRevision.",
         "operationId": "listRevisions",
         "parameters": [
           {
@@ -788,7 +788,7 @@
           "read"
         ],
         "summary": "Profiles that describe the same person: shared document key or recorded source link, never name similarity",
-        "description": "Groups list each accepted merge as an edge with its basis; merges refused for a DOB or gender conflict are listed under rejected. Next: getProfile for a Profile of a group.",
+        "description": "Groups list each accepted merge as an edge with its basis; merges refused for a DOB or gender conflict are listed under rejected. Merges never come from name similarity; to look a name up use searchProfiles instead. Next: getProfile for a Profile of a group.",
         "operationId": "listProfileMerges",
         "responses": {
           "200": {
@@ -810,7 +810,7 @@
           "read"
         ],
         "summary": "One Profile as captured (DIRECT_REFERENCE): the latest version, or ?version=; the ID may carry the DJ: prefix",
-        "description": "Returns the Profile as read, with its version, latest version and content hash. Next: listProfileVersions.",
+        "description": "Returns the Profile as read, with its version, latest version and content hash. To find a Profile by name use searchProfiles instead. Next: listProfileVersions.",
         "operationId": "getProfile",
         "parameters": [
           {
@@ -857,7 +857,7 @@
           "read"
         ],
         "summary": "Every captured version of one Profile, with its content hash",
-        "description": "Use it to see when a Profile changed. Next: getProfile with ?version=.",
+        "description": "Use it to see when a Profile changed; for the content of a version use getProfile instead. Next: getProfile with ?version=.",
         "operationId": "listProfileVersions",
         "parameters": [
           {
@@ -2178,6 +2178,7 @@
       "HitLine": {
         "required": [
           "hitNumber",
+          "profileId",
           "profileKey",
           "profileName",
           "pairResult",
@@ -2195,6 +2196,10 @@
             ],
             "description": "hit 編號",
             "format": "int32"
+          },
+          "profileId": {
+            "type": "string",
+            "description": "名單編號（/api/profiles 路由使用）"
           },
           "profileKey": {
             "type": "string",
@@ -2312,6 +2317,7 @@
         "required": [
           "hitNumber",
           "revision",
+          "profileId",
           "profileKey",
           "profileName",
           "sourceConditions",
@@ -2345,6 +2351,10 @@
             ],
             "description": "所屬 revision",
             "format": "int32"
+          },
+          "profileId": {
+            "type": "string",
+            "description": "名單編號（/api/profiles 路由使用）"
           },
           "profileKey": {
             "type": "string",
@@ -2683,12 +2693,19 @@
       },
       "MergedProfile": {
         "required": [
+          "profileIds",
           "profileKeys",
           "edges",
           "findings"
         ],
         "type": "object",
         "properties": {
+          "profileIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "profileKeys": {
             "type": "array",
             "items": {
@@ -2905,12 +2922,16 @@
       "ProfileImport": {
         "required": [
           "profileId",
+          "profileKey",
           "version",
           "changed"
         ],
         "type": "object",
         "properties": {
           "profileId": {
+            "type": "string"
+          },
+          "profileKey": {
             "type": "string"
           },
           "version": {
@@ -3203,6 +3224,7 @@
       },
       "RetrievedCandidate": {
         "required": [
+          "profileId",
           "profileKey",
           "matchedName",
           "route",
@@ -3211,6 +3233,9 @@
         ],
         "type": "object",
         "properties": {
+          "profileId": {
+            "type": "string"
+          },
           "profileKey": {
             "type": "string"
           },
@@ -3234,12 +3259,6 @@
           "truncated": {
             "type": "boolean",
             "default": false
-          },
-          "profileId": {
-            "type": [
-              "null",
-              "string"
-            ]
           }
         }
       },

@@ -6,6 +6,7 @@ using System.Text.Json;
 using Aml.Core.Codes;
 using Aml.Core.Explanation;
 using Aml.Core.Identity;
+using Aml.Core.Retrieval;
 using Aml.Core.Screening;
 using Aml.Core.Shared;
 
@@ -14,6 +15,7 @@ namespace Aml.Core.Cases;
 /// <summary>One hit in a Case summary.</summary>
 public sealed record HitLine(
     [property: Description("hit 編號")] int HitNumber,
+    [property: Description("名單編號（/api/profiles 路由使用）")] string ProfileId,
     [property: Description("名單鍵（DJ:<名單編號>）")] string ProfileKey,
     [property: Description("名單主要姓名")][property: Sensitivity(Sensitivity.Personal)] string? ProfileName,
     [property: Description("此組合的對外結果")] ScreeningAssessment PairResult,
@@ -50,6 +52,7 @@ public sealed record EvidenceLine(
 public sealed record HitSummary(
     [property: Description("hit 編號")] int HitNumber,
     [property: Description("所屬 revision")] int Revision,
+    [property: Description("名單編號（/api/profiles 路由使用）")] string ProfileId,
     [property: Description("名單鍵（DJ:<名單編號>）")] string ProfileKey,
     [property: Description("名單主要姓名")][property: Sensitivity(Sensitivity.Personal)] string? ProfileName,
     [property: Description("成立（HIT）的名單條件類型")] IReadOnlyList<ListType>? SourceConditions,
@@ -104,7 +107,7 @@ public static class CaseViews
 
         var hits = effective.Explanation?.Hits ?? [];
         var lines = hits.OrderBy(h => h.ReviewPriority ?? (ReviewPriority)int.MaxValue).ThenBy(h => h.HitNumber)
-            .Select(h => new HitLine(h.HitNumber, h.ProfileKey, h.ProfileName, h.PairResult, h.ReviewPriority, h.IdentityDecision, HitLink(c.CaseId, h.HitNumber, effective.Revision)))
+            .Select(h => new HitLine(h.HitNumber, ProfileKeys.IdOf(h.ProfileKey), h.ProfileKey, h.ProfileName, h.PairResult, h.ReviewPriority, h.IdentityDecision, HitLink(c.CaseId, h.HitNumber, effective.Revision)))
             .ToList();
         var toReview = hits.Count(h => h.PairResult is ScreeningAssessment.Hit or ScreeningAssessment.Review);
         var conclusion = $"案件結果 {Code(effective.CaseResult)}（revision {effective.Revision}）：{hits.Count} 個 hit，{toReview} 個需複核"
@@ -129,7 +132,7 @@ public static class CaseViews
             ? h.Support.OrderByDescending(e => e.Strength).Take(MaxEvidence).Select(Line).ToList()
             : h.Conflicts.Select(e => (e, Rank: e.Detail is { } d ? codes.IndexOf(CodeCatalog.Key(d)) : -1))
                 .Where(x => x.Rank >= 0).OrderBy(x => x.Rank).Take(MaxEvidence).Select(x => Line(x.e)).ToList();
-        return new(h.HitNumber, revision, h.ProfileKey, h.ProfileName,
+        return new(h.HitNumber, revision, ProfileKeys.IdOf(h.ProfileKey), h.ProfileKey, h.ProfileName,
             NullIfEmpty(h.SourceConditions.Where(s => s.Status == ConditionStatus.Hit).Select(s => s.Type).ToList()),
             h.IdentityDecision, h.HardConflict, h.Stage3Row, h.PairResult, h.ReviewPriority, NullIfEmpty(h.ReasonCodes), NullIfEmpty(decisive),
             decisive.Count == 0 && h.Stage3Row == 6 ? "僅前提條件相符" : null, NullIfEmpty(h.WouldChangeIf),

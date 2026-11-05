@@ -54,7 +54,7 @@ internal static class CasesEndpoints
         })
         .Produces<CaseSummary>()
         .WithSummary("Run a new analysis revision with updated input files; returns the Case summary")
-        .WithDescription("Send the full set of export files again, as multipart, as for createCase. Use it when the bank files of an existing Case changed; a changed list Profile is re-analysed by itself after importProfiles. A revision that is not complete does not replace the effective result. Next: listRevisions.")
+        .WithDescription("Send the full set of export files again, as multipart, as for createCase. Use it when the bank files of an existing Case changed. Do not use it for a changed list Profile: importProfiles queues that re-analysis. A revision that is not complete does not replace the effective result. Next: listRevisions.")
         .WithName("reanalyzeCase")
         .WithTags("write");
 
@@ -77,7 +77,7 @@ internal static class CasesEndpoints
         })
         .Produces<CasePage>()
         .WithSummary("Find Cases by subject and/or trigger event, oldest first, one page at a time")
-        .WithDescription("Use it to find the caseId of a subject or trigger event; give subjectRef, triggerEventId or both. Returns one page of Cases and nextPageToken when more follow; pass it back as pageToken. Next: getCaseSummary.")
+        .WithDescription("Use it to find the caseId of a subject or trigger event; give subjectRef, triggerEventId or both. Returns one page of Cases and nextPageToken when more follow; pass it back as pageToken. When the caseId is known, use getCaseSummary instead. Next: getCaseSummary.")
         .WithName("findCases")
         .WithTags("read");
 
@@ -133,7 +133,7 @@ internal static class CasesEndpoints
             await service.GetRevisionsAsync(caseId, ct) is { } list ? View(list) : TypedResults.NotFound())
         .Produces<IReadOnlyList<RevisionLine>>()
         .WithSummary("Every analysis revision: time, execution status, result, whether it is effective and how many changes it made")
-        .WithDescription("Use it to see the history of a Case and which revision is effective. Next: getRevision.")
+        .WithDescription("Use it to see the history of a Case and which revision is effective; for the current result use getCaseSummary instead. Next: getRevision.")
         .WithName("listRevisions")
         .WithTags("read");
 

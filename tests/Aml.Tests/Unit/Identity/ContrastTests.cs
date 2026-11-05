@@ -29,8 +29,18 @@ public class ContrastTests
     private const string DobConflict = $"DateOfBirth:Conflict→1:{ReasonCodes.FullDobConflict}";
 
     [Fact]
-    public void Row_6_lists_all_four_assumptions() =>
+    public void Row_6_lists_all_four_assumptions()
+    {
         Check(6, [DocAgree, DocConflict, DobAgreeRow4, DobConflict], Subject(), Profile());
+        Assert.Equal(
+            [
+                $"若同類證件相符：身分判斷移至第三階段第 2 列 {ReasonCodes.UniqueIdentifierAgreement}",
+                $"若同類證件不符：身分判斷移至第三階段第 1 列 {ReasonCodes.DocumentIdentityConflict}",
+                $"若完整出生日期相符：身分判斷移至第三階段第 4 列 {ReasonCodes.ConsistentAtAvailablePrecision}",
+                $"若完整出生日期不符：身分判斷移至第三階段第 1 列 {ReasonCodes.FullDobConflict}",
+            ],
+            IdentityDecisionPolicy.Contrast(IdentityDecisionPolicy.Decide(Subject(), Profile())).Select(c => c.Text));
+    }
 
     [Fact]
     public void Row_5_with_a_gender_conflict_stays_on_row_5_when_the_dob_agrees() =>

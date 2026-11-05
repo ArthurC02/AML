@@ -12,10 +12,15 @@ public enum RetrievalMode { DirectReference, ControlledSet, IndexSearch, Previou
 /// becomes evidence (ADR-0001). <paramref name="Truncated"/> marks a result list that holds fewer Profiles than matched,
 /// or more than asked for because exact alias matches are never cut.
 /// </summary>
-public sealed record RetrievedCandidate(string ProfileKey, string MatchedName, string Route, double Score, RetrievalMode Mode, bool Truncated = false)
+public sealed record RetrievedCandidate(string ProfileId, string ProfileKey, string MatchedName, string Route, double Score, RetrievalMode Mode, bool Truncated = false);
+
+/// <summary>Profile key (DJ:&lt;id&gt;) and Profile ID: routes take the ID, responses carry both.</summary>
+public static class ProfileKeys
 {
-    /// <summary>The Profile ID without the DJ: key prefix, as the /api/profiles routes take it.</summary>
-    public string ProfileId => ProfileKey.StartsWith("DJ:", StringComparison.Ordinal) ? ProfileKey[3..] : ProfileKey;
+    public const string Prefix = "DJ:";
+
+    /// <summary>The Profile ID of a key or of an ID with or without the prefix; the prefix is matched in any case (dj:123).</summary>
+    public static string IdOf(string key) => key.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase) ? key[Prefix.Length..] : key;
 }
 
 /// <summary>
@@ -98,7 +103,7 @@ public sealed class ProfileIndex
             .GroupBy(a => a.ProfileKey)
             .Select(g => g.MinBy(a => a.Name, StringComparer.Ordinal)!)
             .OrderBy(a => a.Name, StringComparer.Ordinal).ThenBy(a => a.ProfileKey, StringComparer.Ordinal)
-            .Select(a => new RetrievedCandidate(a.ProfileKey, a.Name, ExactAlias, 1, RetrievalMode.IndexSearch))
+            .Select(a => new RetrievedCandidate(ProfileKeys.IdOf(a.ProfileKey), a.ProfileKey, a.Name, ExactAlias, 1, RetrievalMode.IndexSearch))
             .ToList();
         var exactProfiles = exact.Select(c => c.ProfileKey).ToHashSet(StringComparer.Ordinal);
 
@@ -138,7 +143,7 @@ public sealed class ProfileIndex
 
         var rest = fused
             .OrderByDescending(f => f.Value.Rrf).ThenBy(f => f.Value.Name, StringComparer.Ordinal).ThenBy(f => f.Key, StringComparer.Ordinal)
-            .Select(f => new RetrievedCandidate(f.Key, f.Value.Name, f.Value.Route, f.Value.Rrf, RetrievalMode.IndexSearch));
+            .Select(f => new RetrievedCandidate(ProfileKeys.IdOf(f.Key), f.Key, f.Value.Name, f.Value.Route, f.Value.Rrf, RetrievalMode.IndexSearch));
         var truncated = exact.Count + fused.Count > top;
         return exact.Concat(rest.Take(Math.Max(0, top - exact.Count)))
             .Select(c => truncated ? c with { Truncated = true } : c)
@@ -216,7 +221,7 @@ public sealed class ProfileIndex
 public sealed record MergeEdge(string A, string B, string Basis, string? DocumentKey = null, string? Conflict = null);
 
 /// <summary>A set of Profiles describing the same person. Each keeps its own ID and sources; every merge edge is kept.</summary>
-public sealed record MergedProfile(IReadOnlyList<string> ProfileKeys, IReadOnlyList<MergeEdge> Edges, IReadOnlyList<string> Findings)
+public sealed record MergedProfile(IReadOnlyList<string> ProfileIds, IReadOnlyList<string> ProfileKeys, IReadOnlyList<MergeEdge> Edges, IReadOnlyList<string> Findings)
 {
     public IReadOnlyList<string> Basis => Edges.Select(e => e.Basis).Distinct().Order(StringComparer.Ordinal).ToList();
 }
@@ -295,12 +300,12 @@ public static class ProfileMerge
             foreach (var other in g.Skip(1)) Union(g.First().ProfileKey, other.ProfileKey, SharedDocument, g.Key);
         foreach (var p in list)
             foreach (var r in p.Relationships.Where(r => SameAs.Contains(r.Relation.Trim())))
-                Union(p.ProfileKey, r.ProfileId.StartsWith("DJ:", StringComparison.Ordinal) ? r.ProfileId : "DJ:" + r.ProfileId, SourceLink);
+                Union(p.ProfileKey, r.ProfileId.StartsWith(ProfileKeys.Prefix, StringComparison.Ordinal) ? r.ProfileId : ProfileKeys.Prefix + r.ProfileId, SourceLink);
 
         var groups = members.Values.Where(m => m.Count > 1)
             .Select(m => m.Order(StringComparer.Ordinal).ToList())
             .OrderBy(m => m[0], StringComparer.Ordinal)
-            .Select(m => new MergedProfile(m, edges.Where(e => m.Contains(e.A)).ToList(), m.Count > MaxGroupSize ? [OversizedGroup] : []))
+            .Select(m => new MergedProfile(m.Select(ProfileKeys.IdOf).ToList(), m, edges.Where(e => m.Contains(e.A)).ToList(), m.Count > MaxGroupSize ? [OversizedGroup] : []))
             .ToList();
         return new MergeResult(groups, rejected);
     }

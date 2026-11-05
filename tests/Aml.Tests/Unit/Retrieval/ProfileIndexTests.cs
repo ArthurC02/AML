@@ -54,6 +54,7 @@ public class ProfileIndexTests
 
         var merged = ProfileMerge.Group([Profile("1", ["甲"], docs: [Id], dobs: [new(1970)]), Profile("2", ["乙"], docs: [Id], dobs: [new(1970, 5, 1)])]);
         Assert.Equal(["DJ:1", "DJ:2"], Assert.Single(merged).ProfileKeys);
+        Assert.Equal(["1", "2"], merged[0].ProfileIds);
     }
 
     [Fact]

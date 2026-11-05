@@ -89,6 +89,10 @@
             ],
             "pattern": "^-?(?:0|[1-9]\\d*)$"
           },
+          "profileId": {
+            "description": "名單編號（/api/profiles 路由使用）",
+            "type": "string"
+          },
           "profileKey": {
             "description": "名單鍵（DJ:<名單編號>）",
             "type": "string"
@@ -135,6 +139,7 @@
         },
         "required": [
           "hitNumber",
+          "profileId",
           "profileKey",
           "pairResult",
           "identityDecision",

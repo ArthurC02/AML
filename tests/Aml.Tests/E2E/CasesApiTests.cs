@@ -64,8 +64,11 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal("REVIEW", summary.GetProperty("result").GetString());
         Assert.False(string.IsNullOrEmpty(summary.GetProperty("conclusion").GetString()));
 
-        var hit = await client.GetFromJsonAsync<JsonElement>(summary.GetProperty("hits")[0].GetProperty("link").GetString(), ct);
+        var line = summary.GetProperty("hits")[0];
+        Assert.Equal(("90000031", "DJ:90000031"), (line.GetProperty("profileId").GetString(), line.GetProperty("profileKey").GetString()));
+        var hit = await client.GetFromJsonAsync<JsonElement>(line.GetProperty("link").GetString(), ct);
         Assert.Equal(4, hit.GetProperty("stage3Row").GetInt32());
+        Assert.Equal("90000031", hit.GetProperty("profileId").GetString());
         Assert.False(hit.TryGetProperty("comparison", out _));
         Assert.True(hit.GetProperty("wouldChangeIf").GetArrayLength() > 0);
         var detail = await client.GetFromJsonAsync<JsonElement>(hit.GetProperty("detail").GetString(), ct);

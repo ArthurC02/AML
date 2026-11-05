@@ -40,23 +40,23 @@ internal static class ProfilesEndpoints
 
         profiles.MapGet("/merges", async (ListService service, CancellationToken ct) => TypedResults.Ok(await service.MergesAsync(ct)))
         .WithSummary("Profiles that describe the same person: shared document key or recorded source link, never name similarity")
-        .WithDescription("Groups list each accepted merge as an edge with its basis; merges refused for a DOB or gender conflict are listed under rejected. Next: getProfile for a Profile of a group.")
+        .WithDescription("Groups list each accepted merge as an edge with its basis; merges refused for a DOB or gender conflict are listed under rejected. Merges never come from name similarity; to look a name up use searchProfiles instead. Next: getProfile for a Profile of a group.")
         .WithName("listProfileMerges")
         .WithTags("read");
 
         profiles.MapGet("/{profileId}", async Task<Results<Ok<ProfileView>, NotFound>> (string profileId, int? version, ListService service, CancellationToken ct) =>
             await service.GetProfileAsync(profileId, version, ct) is { } p ? TypedResults.Ok(p) : TypedResults.NotFound())
         .WithSummary("One Profile as captured (DIRECT_REFERENCE): the latest version, or ?version=; the ID may carry the DJ: prefix")
-        .WithDescription("Returns the Profile as read, with its version, latest version and content hash. Next: listProfileVersions.")
+        .WithDescription("Returns the Profile as read, with its version, latest version and content hash. To find a Profile by name use searchProfiles instead. Next: listProfileVersions.")
         .WithName("getProfile")
         .WithTags("read");
 
         profiles.MapGet("/{profileId}/versions", async Task<Results<Ok<IReadOnlyList<ProfileVersionResponse>>, NotFound>> (string profileId, ListService service, CancellationToken ct) =>
             await service.HistoryAsync(profileId, ct) is { Count: > 0 } history
-                ? TypedResults.Ok<IReadOnlyList<ProfileVersionResponse>>(history.Select(v => new ProfileVersionResponse(v.ProfileId, "DJ:" + v.ProfileId, v.Version, v.ContentHash, v.CapturedAt)).ToList())
+                ? TypedResults.Ok<IReadOnlyList<ProfileVersionResponse>>(history.Select(v => new ProfileVersionResponse(v.ProfileId, ProfileKeys.Prefix + v.ProfileId, v.Version, v.ContentHash, v.CapturedAt)).ToList())
                 : TypedResults.NotFound())
         .WithSummary("Every captured version of one Profile, with its content hash")
-        .WithDescription("Use it to see when a Profile changed. Next: getProfile with ?version=.")
+        .WithDescription("Use it to see when a Profile changed; for the content of a version use getProfile instead. Next: getProfile with ?version=.")
         .WithName("listProfileVersions")
         .WithTags("read");
     }

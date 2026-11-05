@@ -30,7 +30,12 @@ public sealed class ListStore(SqliteDatabase db) : IListStore
             {
                 await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.Enqueue"], new
                 {
-                    jobId = job.JobId, jobType = job.JobType, batchId = job.BatchId, idempotencyKey = job.IdempotencyKey, payload = job.Payload, now = at,
+                    jobId = job.JobId,
+                    jobType = job.JobType,
+                    batchId = job.BatchId,
+                    idempotencyKey = job.IdempotencyKey,
+                    payload = job.Payload,
+                    now = at,
                 }, tx, cancellationToken: ct)).ConfigureAwait(false);
                 queued.Add(job.JobId);
             }

@@ -50,13 +50,13 @@ public sealed class SqlCatalog
 
             var result = new Dictionary<string, string>();
             foreach (var module in doc.Root!.Elements(Ns + "module"))
-            foreach (var st in module.Elements(Ns + "statement"))
-            {
-                var id = (string)st.Attribute("id")!;
-                if (!id.StartsWith((string)module.Attribute("name")! + ".", StringComparison.Ordinal))
-                    throw new InvalidOperationException($"{name}: statement '{id}' is not prefixed by its module");
-                result[id] = ((string)st.Element(Ns + "sql")!).Trim();
-            }
+                foreach (var st in module.Elements(Ns + "statement"))
+                {
+                    var id = (string)st.Attribute("id")!;
+                    if (!id.StartsWith((string)module.Attribute("name")! + ".", StringComparison.Ordinal))
+                        throw new InvalidOperationException($"{name}: statement '{id}' is not prefixed by its module");
+                    result[id] = ((string)st.Element(Ns + "sql")!).Trim();
+                }
             return result;
         }
     }

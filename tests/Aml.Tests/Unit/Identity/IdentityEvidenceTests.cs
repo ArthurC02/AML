@@ -300,11 +300,11 @@ public class IdentityEvidenceTests
     {
         // Born 1980-05-20: 16 in 1997, when adulthood was 20.
         var marketing = IdentityDecisionPolicy.Decide(Subject(), Profile() with
-            { Roles = [new ProfileRole("Director of Marketing", "Example Ltd", new PartialDate(1997, 1))] });
+        { Roles = [new ProfileRole("Director of Marketing", "Example Ltd", new PartialDate(1997, 1))] });
         Assert.Null(marketing.HardConflict);
 
         var director = IdentityDecisionPolicy.Decide(Subject(), Profile() with
-            { Roles = [new ProfileRole("director", "Example Ltd", new PartialDate(1997, 1))] });
+        { Roles = [new ProfileRole("director", "Example Ltd", new PartialDate(1997, 1))] });
         Assert.Equal(ReasonCodes.ImpossibleRoleAtReportedEvent, director.HardConflict);
     }
 
@@ -315,7 +315,7 @@ public class IdentityEvidenceTests
     public void Adult_only_titles_follow_the_adulthood_age_in_force_at_the_role_start(int born, int year, int month, int day, string? expected)
     {
         var r = IdentityDecisionPolicy.Decide(Subject(new PartialDate(born, 6, 1)), Profile() with
-            { Roles = [new ProfileRole("董事", "宏遠投資股份有限公司", new PartialDate(year, month, day))] });
+        { Roles = [new ProfileRole("董事", "宏遠投資股份有限公司", new PartialDate(year, month, day))] });
         Assert.Equal(expected, r.HardConflict);
     }
 }

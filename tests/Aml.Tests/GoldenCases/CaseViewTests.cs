@@ -56,14 +56,22 @@ public class CaseViewTests
         var views = JsonSerializer.Serialize(summary, plain)
             + string.Concat(rev.Explanation!.Hits.Select(h => JsonSerializer.Serialize(CaseViews.Hit(c.CaseId, 1, h), plain)));
 
-        // A comparison cell is IDENTIFIER whatever it compares. The views show the Profile's main name, and a one-character
-        // cell (男, 女) is no identifier on its own. ponytail: whole cells only; split joined values (、) to catch a partial leak.
-        var shown = rev.Explanation.Hits.Select(h => h.ProfileName).OfType<string>().ToHashSet(StringComparer.Ordinal);
-        var identifiers = Values(rev, Sensitivity.Identifier).Where(v => v.Length > 1 && !shown.Contains(v)).ToList();
+        // A comparison cell is IDENTIFIER whatever it compares. Each whole cell over one character (男, 女) is checked, and
+        // so is each joined value (、) and a masked number without its label ("PASSPORT ", "參考號碼 "): a part with a
+        // character from U+3400 up (CJK) from 2 characters, any other part from 4 (TW, VN or a 3-digit number is no
+        // identifier on its own). The views show the Profile's main name, so a value inside it proves nothing.
+        var shown = rev.Explanation.Hits.Select(h => h.ProfileName).OfType<string>().ToList();
+        var identifiers = Values(rev, Sensitivity.Identifier)
+            .SelectMany(cell => Parts(cell).Where(v => v.Length >= (v.Any(ch => ch >= '㐀') ? 2 : 4)).Prepend(cell).Where(v => v.Length > 1))
+            .Where(v => !shown.Any(n => n.Contains(v, StringComparison.Ordinal))).Distinct().ToList();
         Assert.NotEmpty(identifiers);
         foreach (var value in identifiers) Assert.DoesNotContain(value, views, StringComparison.Ordinal);
         Assert.True(JsonSerializer.Serialize(summary, CaseJson.Options).Length <= 0.3 * JsonSerializer.Serialize(rev, CaseJson.Options).Length);
     }
+
+    // A cell's joined values; a masked number ("{Type} A12*****89") loses its label.
+    internal static IEnumerable<string> Parts(string cell) =>
+        cell.Split('、').Select(p => p.Contains('*') && p.LastIndexOf(' ') is var at and > 0 ? p[(at + 1)..] : p);
 
     // Every non-empty value of the fields marked with the level, masked or not.
     private static IEnumerable<string> Values(object? o, Sensitivity level)

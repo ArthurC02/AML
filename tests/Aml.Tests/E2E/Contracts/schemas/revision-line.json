@@ -1,5 +1,5 @@
 {
-  "$id": "aml:RevisionLine:v1",
+  "$id": "aml:RevisionLine:v2",
   "type": [
     "object",
     "null"

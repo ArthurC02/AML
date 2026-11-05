@@ -66,10 +66,10 @@ public static class EvidenceBuilder
         return e;
     }
 
-    /// <summary>Comparable only for the same type and issuing country; equal numbers are unique support, different ones a conflict.</summary>
     /// <summary>Detail of a value present on both sides that cannot be compared (other document type or country, occupation category only).</summary>
     public const string NotComparable = EvidenceDetails.NotComparable;
 
+    /// <summary>Comparable only for the same type and issuing country; equal numbers are unique support, different ones a conflict.</summary>
     public static Evidence DocumentEvidence(Document? subject, IReadOnlyList<Document> profile)
     {
         const EvidenceGroup g = EvidenceGroup.Document;

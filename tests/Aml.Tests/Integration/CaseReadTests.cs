@@ -17,7 +17,7 @@ public sealed class CaseReadTests : ServiceTestBase
         await _caseService.ReanalyzeAsync(c.CaseId, input, ct, files);
         Assert.True(await _cases.AcceptAnalysisAsync(Failed(c.CaseId, 3), CaseStatus.InReview, null, ct));
         var second = (await _cases.GetAnalysisAsync(c.CaseId, 2, ct))!;
-        PairChange change = new("DJ:1", PairChangeKind.ResultChanged, "REVIEW", "HIT");
+        PairChange change = new("1", "DJ:1", PairChangeKind.ResultChanged, "REVIEW", "HIT");
         Assert.True(await _cases.AcceptAnalysisAsync(second with { Revision = 4, Explanation = second.Explanation! with { ChangesFromPreviousRevision = [change, change] } },
             CaseStatus.InReview, null, ct));
 

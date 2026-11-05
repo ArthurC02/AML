@@ -7,6 +7,7 @@ using Aml.Core.Normalization;
 using Aml.Core.Screening;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
+using Aml.Core.Retrieval;
 
 namespace Aml.Core.Explanation;
 
@@ -38,6 +39,7 @@ public sealed record ExplanationSummary(
 public sealed record HitExplanation(
     [property: Description("hit 編號，從 1 開始")] int HitNumber,
     [property: Description("受檢對象：客戶或關聯人（關係）與姓名")][property: Sensitivity(Sensitivity.Personal)] string ScreenedSubject,
+    [property: Description("名單編號（/api/profiles 路由使用）")] string ProfileId,
     [property: Description("名單鍵（DJ:<名單編號>）")] string ProfileKey,
     [property: Description("名單主要姓名")][property: Sensitivity(Sensitivity.Personal)] string? ProfileName,
     [property: Description("疑似名單表中命中的姓名")][property: Sensitivity(Sensitivity.Personal)] IReadOnlyList<string> MatchedNames,
@@ -147,7 +149,7 @@ public static class ExplanationBuilder
         var related = (s.Relatives ?? []).Select(r => new RelatedParty("SUBJECT", r.Name, r.Relation, r.IsEntity))
             .Concat(p.Relationships.Select(r => new RelatedParty("PROFILE", r.Name, r.Relation, r.IsEntity, r.ProfileId))).ToList();
 
-        return new HitExplanation(number, subject, p.ProfileKey, p.Names.Count > 0 ? p.Names[0] : null, matched, input.Rows.Any(r => "DJ:" + r.ProfileId == p.ProfileKey && r.IsRca),
+        return new HitExplanation(number, subject, ProfileKeys.IdOf(p.ProfileKey), p.ProfileKey, p.Names.Count > 0 ? p.Names[0] : null, matched, input.Rows.Any(r => "DJ:" + r.ProfileId == p.ProfileKey && r.IsRca),
             categories, h.Conditions, news, rows, related, support, conflicts, unknown, h.Identity.HardConflict, h.Identity.Stage3Row,
             IdentityDecisionPolicy.Contrast(h.Identity), h.Identity.Decision, h.PairResult, h.ReviewPriority, h.PairReasonCodes, h.Disposition, h.Identity.ReasonCodes, findings, sources, summary);
     }

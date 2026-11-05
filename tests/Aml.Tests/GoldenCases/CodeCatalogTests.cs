@@ -1,6 +1,7 @@
 using Aml.Core.Cases;
 using Aml.Core.Subjects;
 using Aml.Core.Codes;
+using Aml.Core.Screening;
 using Aml.Infra.Txt;
 using Aml.Services;
 
@@ -15,6 +16,14 @@ public class CodeCatalogTests
         string[] codes = [BatchService.InvalidInput, BatchService.InvalidPayload, BatchService.Timeout, BatchService.LeaseExpired,
             BatchService.ExceptionCode(new InvalidOperationException())];
         Assert.All(codes, c => Assert.Equal("JOB_ERROR", CodeCatalog.Find(c)?.Kind));
+    }
+
+    [Fact]
+    public void Every_source_condition_value_is_in_the_catalog()
+    {
+        Enum[] values = [.. Enum.GetValues<ListType>().Cast<Enum>(), .. Enum.GetValues<ConditionStatus>().Cast<Enum>(),
+            .. Enum.GetValues<ConditionBasis>().Cast<Enum>(), .. Enum.GetValues<LegalStage>().Cast<Enum>()];
+        Assert.All(values, v => Assert.NotNull(CodeCatalog.Find(System.Text.Json.JsonSerializer.Serialize(v, v.GetType(), CaseJson.Options).Trim('"'))));
     }
 
     internal static void AssertKnown(CaseInput input, CaseAnalysis a)

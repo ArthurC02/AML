@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using Aml.Core.Cases;
 
 namespace Aml.Tests.E2E;
 
@@ -21,6 +22,6 @@ public sealed class CodesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Contains(schemas.GetProperty("names").EnumerateArray(), n => n.GetString() == "case-explanation");
         using var schema = await client.GetAsync("/api/schemas/case-analysis", ct);
         Assert.Equal("application/schema+json", schema.Content.Headers.ContentType?.MediaType);
-        Assert.Equal("aml:CaseAnalysis:v1", (await schema.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("$id").GetString());
+        Assert.Equal($"aml:CaseAnalysis:v{CaseJson.SchemaVersion}", (await schema.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("$id").GetString());
     }
 }

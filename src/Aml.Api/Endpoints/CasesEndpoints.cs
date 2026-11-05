@@ -85,7 +85,7 @@ internal static class CasesEndpoints
             await service.GetSummaryAsync(caseId, ct) is { } s ? View(s) : TypedResults.NotFound())
         .Produces<CaseSummary>()
         .WithSummary("What the Case concluded: result, conclusion and one line per hit from the effective revision, with links to the hits and the full revision")
-        .WithDescription("Start here to learn what a Case concluded. It holds no identifier values and, of personal data, only names. Hits are ordered by review priority; at most 10 are listed and the rest counted in omitted. Next: getHit for why a hit was decided, getRevision for the full record. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.")
+        .WithDescription("Start here to learn what a Case concluded; without a caseId use findCases first. It holds no identifier values and, of personal data, only names. Hits are ordered by review priority; at most 10 are listed and the rest counted in omitted. Next: getHit for why a hit was decided, getRevision for the full record. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.")
         .WithName("getCaseSummary")
         .WithTags("read");
 
@@ -185,14 +185,7 @@ internal static class CasesEndpoints
         }
         if (!ValidItem(item))
             return (null, null, null, Problems.Of(Problems.InvalidRequest, "subjectRef, triggerEventId and .txt, .html or .htm files up to 5 MB each are required.", ItemFix));
-        try
-        {
-            return (item, TxtCaseReader.ReadFiles(item!.Files), item.Files, null);
-        }
-        catch (CaseInputException e)
-        {
-            return (null, null, null, Problems.Input(e));
-        }
+        return (item, TxtCaseReader.ReadFiles(item!.Files), item.Files, null);
     }
 
     // Views and stored records are written as their schemas describe them: nulls left out.

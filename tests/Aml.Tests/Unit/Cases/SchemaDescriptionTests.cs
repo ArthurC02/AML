@@ -36,6 +36,6 @@ public class SchemaDescriptionTests
         var schema = CaseJson.Schema(typeof(CaseAnalysis)).ToJsonString();
         Assert.Contains("\"x-sensitivity\":\"IDENTIFIER\"", schema, StringComparison.Ordinal);
         Assert.Contains("\"x-sensitivity\":\"PERSONAL\"", schema, StringComparison.Ordinal);
-        Assert.Contains("\"$id\":\"aml:CaseAnalysis:v1\"", schema, StringComparison.Ordinal);
+        Assert.Contains($"\"$id\":\"aml:CaseAnalysis:v{CaseJson.SchemaVersion}\"", schema, StringComparison.Ordinal);
     }
 }

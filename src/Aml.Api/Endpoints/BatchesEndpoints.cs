@@ -55,7 +55,7 @@ internal static class BatchesEndpoints
             return b is null ? TypedResults.NotFound() : TypedResults.Ok(b);
         })
         .WithSummary("Batch progress: counts per status and one page of items with their Case, revision, attempts and error code")
-        .WithDescription("view=summary (default) lists the items not yet succeeded; view=full lists every item; status= lists one status. Items come oldest first, pageSize (default 20, at most 100) at a time, with nextPageToken when more follow. Next: getCaseSummary for a succeeded item, rerunBatch for dead-lettered items once the cause is fixed.")
+        .WithDescription("Use it to follow a submitted batch or the re-analyses a Profile import queued; for one Case's result use getCaseSummary instead. view=summary (default) lists the items not yet succeeded; view=full lists every item; status= lists one status. Items come oldest first, pageSize (default 20, at most 100) at a time, with nextPageToken when more follow. Next: getCaseSummary for a succeeded item, rerunBatch for dead-lettered items once the cause is fixed.")
         .WithName("getBatchStatus")
         .WithTags("operations");
 

@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Aml.Core.Identity;
 using Aml.Core.Screening;
+using Aml.Core.Retrieval;
 
 namespace Aml.Core.Cases;
 
@@ -10,6 +11,7 @@ public sealed record PairSnapshot(string ProfileKey, ScreeningAssessment PairRes
 public enum PairChangeKind { Added, Removed, ResultChanged, IdentityChanged, ReasonsChanged }
 
 public sealed record PairChange(
+    [property: Description("名單編號")] string ProfileId,
     [property: Description("名單鍵")] string ProfileKey,
     [property: Description("變更種類")] PairChangeKind Kind,
     [property: Description("變更前")] string? From,
@@ -33,14 +35,14 @@ public static class RevisionChanges
 
         foreach (var (key, now) in after)
         {
-            if (!before.TryGetValue(key, out var was)) { changes.Add(new(key, PairChangeKind.Added, null, Snake(now.PairResult))); continue; }
-            if (was.PairResult != now.PairResult) changes.Add(new(key, PairChangeKind.ResultChanged, Snake(was.PairResult), Snake(now.PairResult)));
-            if (was.IdentityDecision != now.IdentityDecision) changes.Add(new(key, PairChangeKind.IdentityChanged, Snake(was.IdentityDecision), Snake(now.IdentityDecision)));
+            if (!before.TryGetValue(key, out var was)) { changes.Add(new(ProfileKeys.IdOf(key), key, PairChangeKind.Added, null, Snake(now.PairResult))); continue; }
+            if (was.PairResult != now.PairResult) changes.Add(new(ProfileKeys.IdOf(key), key, PairChangeKind.ResultChanged, Snake(was.PairResult), Snake(now.PairResult)));
+            if (was.IdentityDecision != now.IdentityDecision) changes.Add(new(ProfileKeys.IdOf(key), key, PairChangeKind.IdentityChanged, Snake(was.IdentityDecision), Snake(now.IdentityDecision)));
             if (!was.ReasonCodes.SequenceEqual(now.ReasonCodes))
-                changes.Add(new(key, PairChangeKind.ReasonsChanged, string.Join(",", was.ReasonCodes), string.Join(",", now.ReasonCodes)));
+                changes.Add(new(ProfileKeys.IdOf(key), key, PairChangeKind.ReasonsChanged, string.Join(",", was.ReasonCodes), string.Join(",", now.ReasonCodes)));
         }
         foreach (var (key, was) in before)
-            if (!after.ContainsKey(key)) changes.Add(new(key, PairChangeKind.Removed, Snake(was.PairResult), null));
+            if (!after.ContainsKey(key)) changes.Add(new(ProfileKeys.IdOf(key), key, PairChangeKind.Removed, Snake(was.PairResult), null));
         return changes;
     }
 

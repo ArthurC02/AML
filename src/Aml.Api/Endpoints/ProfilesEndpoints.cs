@@ -21,7 +21,7 @@ internal static class ProfilesEndpoints
             return contents is null ? error! : TypedResults.Ok(await service.ImportAsync(contents, ct));
         })
         .WithSummary("Capture Profiles into the list database; a changed Profile queues re-analysis of the Cases that used it")
-        .WithDescription("Upload 名單資料_<id>.txt (or .html). An unchanged file keeps its version; a changed one becomes a new version, the old one is kept, and every Case whose latest input used it gets a queued re-analysis job (track it with GET /api/batches/{batchId}). A file whose name and Profile_ID differ, or one Profile in two formats, is rejected. Next: getBatchStatus with the returned batchId, when it is not null.")
+        .WithDescription("Upload 名單資料_<id>.txt (or .html). An unchanged file keeps its version; a changed one becomes a new version, the old one is kept, and every Case whose latest input used it gets a queued re-analysis job (track it with GET /api/batches/{batchId}). A file whose name and Profile_ID differ, or one Profile in two formats, is rejected. Not for a Case's own files: send those with createCase or reanalyzeCase. Next: getBatchStatus with the returned batchId, when it is not null.")
         .WithName("importProfiles")
         .WithTags("write");
 

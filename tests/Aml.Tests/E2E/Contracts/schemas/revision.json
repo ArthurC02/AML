@@ -1,5 +1,5 @@
 {
-  "$id": "aml:AnalysisRecord:v1",
+  "$id": "aml:AnalysisRecord:v2",
   "type": [
     "object",
     "null"
@@ -1083,6 +1083,10 @@
                 "type": "string",
                 "x-sensitivity": "PERSONAL"
               },
+              "profileId": {
+                "description": "名單編號（/api/profiles 路由使用）",
+                "type": "string"
+              },
               "profileKey": {
                 "description": "名單鍵（DJ:<名單編號>）",
                 "type": "string"
@@ -1532,6 +1536,7 @@
             "required": [
               "hitNumber",
               "screenedSubject",
+              "profileId",
               "profileKey",
               "matchedNames",
               "isRca",
@@ -1584,6 +1589,10 @@
               "null"
             ],
             "properties": {
+              "profileId": {
+                "description": "名單編號",
+                "type": "string"
+              },
               "profileKey": {
                 "description": "名單鍵",
                 "type": "string"
@@ -1614,6 +1623,7 @@
               }
             },
             "required": [
+              "profileId",
               "profileKey",
               "kind"
             ]

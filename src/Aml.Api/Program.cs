@@ -1,6 +1,7 @@
 using Aml.Api.Endpoints;
 using Aml.Api.Workers;
 using Aml.Core.Cases;
+using Aml.Core.Codes;
 using Aml.Core.Ports;
 using Aml.Core.Subjects;
 using Aml.Infra.Html;
@@ -44,8 +45,11 @@ builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx =>
     {
         var code = Problems.CodeOf(ctx.ProblemDetails.Status ?? ctx.HttpContext.Response.StatusCode);
         (ctx.ProblemDetails.Type, ctx.ProblemDetails.Title) = (Problems.Type(code), Problems.Title(code));
+        ctx.ProblemDetails.Detail ??= CodeCatalog.Find(code)?.Description;
     }
 });
+// The case reader reports every unusable input as CaseInputException; this one handler turns it into the problem.
+builder.Services.AddExceptionHandler<CaseInputProblemHandler>();
 
 // Liveness and the database round-trip (System.Ping).
 builder.Services.AddHealthChecks().AddAsyncCheck("database", async ct =>

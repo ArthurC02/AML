@@ -13,7 +13,7 @@ Build a traceable identity adjudication flow for customer and related-party scre
 - structured HTML or controlled source documents (PoC input: the supplied `.txt` exports and HTML pages);
 - multilingual names, partial dates, nationality, document and address evidence;
 - candidate retrieval and Profile-level deduplication;
-- MATCH, NO_MATCH, REVIEW and internal PROBABLE_MATCH;
+- identity decisions NO_MATCH, REVIEW and internal PROBABLE_MATCH (no automatic MATCH);
 - source-condition HIT, NOT_HIT and UNKNOWN;
 - the explanation of every system decision: evidence, comparison table, reason codes and a summary restating recorded facts;
 - batch execution, retry, idempotency and analysis revision;
@@ -35,7 +35,7 @@ Build a traceable identity adjudication flow for customer and related-party scre
 ## Capability exposure policy
 
 - Automatic NO_MATCH: enabled only for validated hard-conflict rules.
-- Automatic MATCH: disabled in Phase 1 unless an approved unique-identifier policy exists.
+- Automatic MATCH: none in Phase 1; a unique-identifier agreement is PROBABLE_MATCH.
 - PROBABLE_MATCH: high-priority review only.
 - PEP and Sanction candidates: human review until dedicated cases are validated.
 - Article 22 recommendations: advisory only; the final selection happens outside the system.
@@ -64,7 +64,7 @@ Rules and algorithms only, no LLM. It has two halves split by personal data.
 
 - **L1 Data Integration**: acquire source data, preserve snapshots, technical formats and indexes.
 - **L2 Business Capability**: extract business fields, adjudicate identity, evaluate source policy and manage Case decisions.
-- **L3 API**: authenticate, validate request, route Manage/Analyze/Explain operations and return contracts.
+- **L3 API**: validate request, route Manage/Analyze/Explain operations and return contracts. Authentication is not built (identity provider pending).
 
 ## L2 modules
 
@@ -85,8 +85,8 @@ AML Screening Application
 | Case and Adjudication Management | create or retrieve Case by trigger idempotency key; accept AnalysisRevision; pin input and policy versions; persist stage outputs; preserve ImportedDecision and SystemDecision; publish an effective result only when completeness and version checks pass | [case management](case-management.md) |
 | Batch and Work Management | create BatchJob and BatchItem; control concurrency, timeout, retry and checkpoint; isolate failures; preserve job lineage to Case and AnalysisRevision; prevent repeated aliases from causing repeated Profile work | [pipeline, API and batch](pipeline-api-and-batch.md) |
 | Extraction and Data Quality | parse supported source formats; preserve raw value, normalized value, precision and evidence location; normalize multilingual names, dates, countries, documents and Taiwan addresses; emit MISSING, UNPARSEABLE, AMBIGUOUS and FIELD_CONFLICT without inventing data | [extraction and normalization](extraction-and-normalization.md) |
-| Candidate and Identity Adjudication | generate CandidateHit records; deduplicate into CandidateProfile by source namespace and Profile ID; group correlated evidence; apply temporal/role consistency and hard-conflict policies; produce MATCH, NO_MATCH, REVIEW or PROBABLE_MATCH | [identity adjudication](identity-adjudication.md) |
-| Source Screening and Risk Assessment | execute SanctionPolicy, PepPolicy, OfficialListPolicy and AdverseInformationPolicy; combine identity and source condition into ScreeningAssessment; evaluate DispositionPolicy (Article 22, advisory); perform AML risk scoring only when an approved policy exists | [sanctions](sanctions-screening.md), [PEP/RCA](pep-rca-screening.md), [watchlist](watchlist-and-adverse-information.md), [disposition recommendation](review-and-disposition.md) |
+| Candidate and Identity Adjudication | generate CandidateHit records; deduplicate into CandidateProfile by Profile key; group correlated evidence; apply temporal/role consistency and hard-conflict policies; produce NO_MATCH, REVIEW or PROBABLE_MATCH | [identity adjudication](identity-adjudication.md) |
+| Source Screening and Risk Assessment | determine list types and source conditions (`SourceConditions`); combine identity and source condition into ScreeningAssessment (`AssessmentPolicy`); evaluate DispositionPolicy (Article 22, advisory); perform AML risk scoring only when an approved policy exists | [sanctions](sanctions-screening.md), [PEP/RCA](pep-rca-screening.md), [watchlist](watchlist-and-adverse-information.md), [disposition recommendation](review-and-disposition.md) |
 | Explanation and Reporting | assemble facts, inferences, decisions and limitations without re-deciding; display evidence, reason codes, version and completeness; provide the explanation and audit view as API responses | [pipeline, API and batch](pipeline-api-and-batch.md#rest-resources) |
 
 ## Write ownership

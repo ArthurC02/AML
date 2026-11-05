@@ -46,13 +46,6 @@ internal static class Uploads
     {
         var (bytes, error) = await ReadBytesAsync(files, ct);
         if (bytes is null) return (null, null, error);
-        try
-        {
-            return (TxtCaseReader.ReadFiles(bytes), bytes.ToDictionary(b => b.Key, b => TxtCaseReader.Decode(b.Value, out _)), null);
-        }
-        catch (CaseInputException e)
-        {
-            return (null, null, Problems.Input(e));
-        }
+        return (TxtCaseReader.ReadFiles(bytes), bytes.ToDictionary(b => b.Key, b => TxtCaseReader.Decode(b.Value, out _)), null);
     }
 }

@@ -29,14 +29,20 @@ public class SchemaTests
 }
 
 /// <summary>
-/// The JSON Schema keywords the exporter emits (type, enum, properties, required, items, additionalProperties), checked
-/// recursively. ponytail: a subset validator; use a full one if the schemas grow $ref, oneOf or formats.
+/// The JSON Schema keywords the exporter emits (type, enum, properties, required, items, additionalProperties and local
+/// $ref), checked recursively. ponytail: a subset validator; use a full one if the schemas grow oneOf or formats.
 /// </summary>
 internal static class SchemaCheck
 {
-    public static List<string> Errors(JsonNode? schema, JsonNode? value, string path)
+    public static List<string> Errors(JsonNode? schema, JsonNode? value, string path, JsonNode? root = null)
     {
         var errors = new List<string>();
+        root ??= schema;
+        if (schema is JsonObject { } r && (string?)r["$ref"] is { } pointer)
+        {
+            schema = pointer.TrimStart('#', '/').Split('/', StringSplitOptions.RemoveEmptyEntries).Aggregate(root, (n, part) => n?[part]);
+            if (schema is not JsonObject) return [$"{path}: unresolved $ref {pointer}"];
+        }
         if (schema is not JsonObject s) return errors;
         if (s["type"] is { } t)
         {
@@ -57,11 +63,11 @@ internal static class SchemaCheck
             {
                 var sub = props?[name] ?? s["additionalProperties"];
                 if (sub is null && props is not null) errors.Add($"{path}.{name}: not in schema");
-                errors.AddRange(Errors(sub, child, $"{path}.{name}"));
+                errors.AddRange(Errors(sub, child, $"{path}.{name}", root));
             }
         }
         if (value is JsonArray items)
-            for (var i = 0; i < items.Count; i++) errors.AddRange(Errors(s["items"], items[i], $"{path}[{i}]"));
+            for (var i = 0; i < items.Count; i++) errors.AddRange(Errors(s["items"], items[i], $"{path}[{i}]", root));
         return errors;
     }
 

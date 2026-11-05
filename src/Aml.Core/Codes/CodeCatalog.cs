@@ -9,7 +9,7 @@ public sealed record CodeEntry(string Code, string Kind, string Name, string Des
 /// </summary>
 public static class CodeCatalog
 {
-    public const string Version = "codes-3";
+    public const string Version = "codes-4";
 
     private const string Identity = "docs/feature/identity-adjudication.md";
     private const string Extraction = "docs/feature/extraction-and-normalization.md";
@@ -50,7 +50,7 @@ public static class CodeCatalog
 
         // Pair result.
         ("PAIR_REASON", "RELEASE_CONTROL_HUMAN_REVIEW", "放行控制：人工複核", "身分 PROBABLE_MATCH 在第一階段一律以 REVIEW 對外，交由人工。", "AssessmentPolicy.Assess", Disposition + "#two-results-read-separately"),
-        ("PAIR_REASON", "SOURCE_CONDITION_UNKNOWN", "名單條件未知", "名單條件無法確定（UNKNOWN），結果維持 REVIEW。", "AssessmentPolicy.Assess", Watchlist + "#reason-codes"),
+        ("PAIR_REASON", "SOURCE_CONDITION_UNKNOWN", "名單條件未知", "名單條件無法確定（UNKNOWN）；身分 NO_MATCH 時為 NO_HIT，Sanction、PEP、RCA 則由放行控制轉 REVIEW。", "AssessmentPolicy.Assess", Watchlist + "#reason-codes"),
 
         // Article 22 disposition recommendation and its pending checks.
         ("DISPOSITION", "ART22_FOREIGN_PEP_PRESUMPTION", "第 22 條①：外國 PEP 推定", "依第 22 條第 1 款推定；身分判斷不變。", "DispositionPolicy.Recommend", Disposition + "#article-22-1-foreign-pep-presumption"),
@@ -167,6 +167,26 @@ public static class CodeCatalog
         ("PROBLEM", "NOT_FOUND", "找不到", "案件、revision、批次、名單或路徑不存在。", "Api", Api + "#errors"),
         ("PROBLEM", "HTTP_ERROR", "HTTP 錯誤", "其他 4xx，例如方法不允許；依 status 處理。", "Api", Api + "#errors"),
         ("PROBLEM", "INTERNAL_ERROR", "系統錯誤", "未預期的錯誤；不需修改請求，稍後重試或通報。", "Api", Api + "#errors"),
+        ("LIST_TYPE", "SANCTION", "制裁", "制裁名單。", "SourceConditions.Determine", Watchlist + "#list-types"),
+        ("LIST_TYPE", "PEP", "重要政治性職務人士", "PEP 名單。", "SourceConditions.Determine", Watchlist + "#list-types"),
+        ("LIST_TYPE", "RCA", "PEP 之家屬或密切關係人", "RCA：PEP 的家屬或密切關係人。", "SourceConditions.Determine", Watchlist + "#list-types"),
+        ("LIST_TYPE", "SIE", "國營或公股事業", "國營或政府投資事業。", "SourceConditions.Determine", Watchlist + "#list-types"),
+        ("LIST_TYPE", "OFFICIAL_WANTED_LIST", "官方通緝名單", "官方通緝名單；通緝不是判決。", "SourceConditions.Determine", Watchlist + "#list-types"),
+        ("LIST_TYPE", "OTHER_OFFICIAL_LIST", "其他官方名單", "其他官方名單；由 OfficialListPolicy 細分。", "SourceConditions.Determine", Watchlist + "#list-types"),
+        ("LIST_TYPE", "ADVERSE_MEDIA", "負面新聞", "負面新聞類名單。", "SourceConditions.Determine", Watchlist + "#list-types"),
+        ("LIST_TYPE", "BANK_INTERNAL_LIST", "銀行內部名單", "銀行自建的內部名單。", "SourceConditions.Determine", Watchlist + "#list-types"),
+        ("CONDITION_STATUS", "HIT", "條件成立／命中", "名單條件成立；作為 pairResult 或 caseResult 時為命中（Phase 1 不產生）。", "SourceConditions.Determine", Watchlist + "#list-type-determination"),
+        ("CONDITION_STATUS", "NOT_HIT", "條件不成立", "名單條件不成立。", "SourceConditions.Determine", Watchlist + "#list-type-determination"),
+        ("CONDITION_STATUS", "UNKNOWN", "未知", "名單類型、條件狀態或法律階段無法確定（listType、status、legalStage 共用此代碼）。", "SourceConditions.Determine", Watchlist + "#list-type-determination"),
+        ("CONDITION_BASIS", "FLAG", "依旗標", "條件由名單旗標決定。", "SourceConditions.Determine", Watchlist + "#list-type-determination"),
+        ("CONDITION_BASIS", "CATEGORY_MAPPING", "依類別對照", "條件由名單類別對照決定。", "SourceConditions.Determine", Watchlist + "#list-type-determination"),
+        ("CONDITION_BASIS", "UNMAPPED", "未對照", "類別沒有對照，條件為 UNKNOWN。", "SourceConditions.Determine", Watchlist + "#list-type-determination"),
+        ("LEGAL_STAGE", "ALLEGED", "涉嫌", "僅有指控或報導。", "SourceConditions.Determine", Watchlist + "#legalprocedural-stage"),
+        ("LEGAL_STAGE", "INDICTED", "起訴", "已起訴，尚未判決。", "SourceConditions.Determine", Watchlist + "#legalprocedural-stage"),
+        ("LEGAL_STAGE", "WANTED", "通緝", "通緝中；不是判決。", "SourceConditions.Determine", Watchlist + "#legalprocedural-stage"),
+        ("LEGAL_STAGE", "CONVICTED", "有罪判決", "已有罪判決。", "SourceConditions.Determine", Watchlist + "#legalprocedural-stage"),
+        ("LEGAL_STAGE", "ACQUITTED", "無罪", "判決無罪。", "SourceConditions.Determine", Watchlist + "#legalprocedural-stage"),
+        ("LEGAL_STAGE", "DISMISSED", "不起訴或駁回", "不起訴、撤回或駁回。", "SourceConditions.Determine", Watchlist + "#legalprocedural-stage"),
         ("JOB_ERROR", "INVALID_INPUT", "輸入不可用", "批次項目的檔案不完整或不是匯出版面；重跑會同樣失敗，同一 triggerEventId 與 subjectRef 再送批次也只會列為重複。修正檔案後以 POST /api/cases 建立。", "BatchService", Api + "#durable-batch-execution"),
         ("JOB_ERROR", "INVALID_PAYLOAD", "工作內容無法讀取", "未知的工作類型、無法解析的 JSON 或缺欄位；立即進入 DEAD_LETTER，重跑會同樣失敗。", "BatchService", Api + "#durable-batch-execution"),
         ("JOB_ERROR", "TIMEOUT", "逾時", "工作超過 Batch:Timeout，不寫入 revision；依重試預算重試。", "BatchService", Api + "#durable-batch-execution"),

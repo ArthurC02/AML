@@ -15,7 +15,7 @@ public sealed record ProfileView(string ProfileId, string ProfileKey, int Versio
 public enum CandidateSource { Table, Previous }
 
 /// <summary>A queued REANALYZE_CASE job: the Case is re-analyzed because the Profile got this version.</summary>
-public sealed record ReanalysisJob(string JobId, string CaseId, string ProfileId, int Version);
+public sealed record ReanalysisJob(string JobId, string CaseId, string ProfileId, string ProfileKey, int Version);
 
 /// <summary>
 /// Captured versions, and the re-analyses a changed Profile queued (tracked as one batch: GET /api/batches/{BatchId}).
@@ -65,7 +65,7 @@ public sealed class ListService(
             List<ReanalysisJob> planned = [];
             var (current, changed, jobIds) = await lists.CaptureAsync(id, hash, content, clock.GetUtcNow(), version =>
             {
-                planned = affected.Select(caseId => new ReanalysisJob(Guid.CreateVersion7().ToString(), caseId, id, version)).ToList();
+                planned = affected.Select(caseId => new ReanalysisJob(Guid.CreateVersion7().ToString(), caseId, id, KeyPrefix + id, version)).ToList();
                 return planned.Select(j => new NewJob(j.JobId, BatchService.ReanalyzeCase, batchId,
                     $"REANALYZE:{j.CaseId}:{id}:{version}", JsonSerializer.Serialize(j, CaseJson.Options))).ToList();
             }, ct).ConfigureAwait(false);

@@ -132,17 +132,17 @@ public class ScreeningTests
         IReadOnlyList<PairChange> Compare(params PairSnapshot[] now) => RevisionChanges.Compare([was], now);
 
         Assert.Empty(Compare(Pair(ScreeningAssessment.Review, IdentityDecision.Review, "A")));
-        Assert.Equal([new PairChange("DJ:2", PairChangeKind.Added, null, "NO_HIT")],
+        Assert.Equal([new PairChange("2", "DJ:2", PairChangeKind.Added, null, "NO_HIT")],
             Compare(was, new PairSnapshot("DJ:2", ScreeningAssessment.NoHit, IdentityDecision.NoMatch, [])));
-        Assert.Equal([new PairChange("DJ:1", PairChangeKind.Removed, "REVIEW", null)], Compare());
-        Assert.Equal([new PairChange("DJ:1", PairChangeKind.ResultChanged, "REVIEW", "NOT_APPLICABLE")],
+        Assert.Equal([new PairChange("1", "DJ:1", PairChangeKind.Removed, "REVIEW", null)], Compare());
+        Assert.Equal([new PairChange("1", "DJ:1", PairChangeKind.ResultChanged, "REVIEW", "NOT_APPLICABLE")],
             Compare(Pair(ScreeningAssessment.NotApplicable, IdentityDecision.Review, "A")));
-        Assert.Equal([new PairChange("DJ:1", PairChangeKind.IdentityChanged, "REVIEW", "PROBABLE_MATCH")],
+        Assert.Equal([new PairChange("1", "DJ:1", PairChangeKind.IdentityChanged, "REVIEW", "PROBABLE_MATCH")],
             Compare(Pair(ScreeningAssessment.Review, IdentityDecision.ProbableMatch, "A")));
         // A result and identity that change together are both listed.
-        Assert.Equal([new PairChange("DJ:1", PairChangeKind.ResultChanged, "REVIEW", "NO_HIT"), new PairChange("DJ:1", PairChangeKind.IdentityChanged, "REVIEW", "NO_MATCH")],
+        Assert.Equal([new PairChange("1", "DJ:1", PairChangeKind.ResultChanged, "REVIEW", "NO_HIT"), new PairChange("1", "DJ:1", PairChangeKind.IdentityChanged, "REVIEW", "NO_MATCH")],
             Compare(Pair(ScreeningAssessment.NoHit, IdentityDecision.NoMatch, "A")));
-        Assert.Equal([new PairChange("DJ:1", PairChangeKind.ReasonsChanged, "A", "A,B")],
+        Assert.Equal([new PairChange("1", "DJ:1", PairChangeKind.ReasonsChanged, "A", "A,B")],
             Compare(Pair(ScreeningAssessment.Review, IdentityDecision.Review, "A", "B")));
     }
 

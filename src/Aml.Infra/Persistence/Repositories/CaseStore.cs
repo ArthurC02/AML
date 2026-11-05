@@ -4,6 +4,7 @@ using Aml.Core.Cases;
 using Aml.Core.Codes;
 using Aml.Core.Explanation;
 using Aml.Core.Ports;
+using Aml.Core.Retrieval;
 using Aml.Core.Screening;
 using Dapper;
 using Microsoft.Data.Sqlite;
@@ -183,7 +184,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
             caseId,
             revision,
             hitNumber = x.Number,
-            profileId = x.Hit.Profile.ProfileKey.Replace("DJ:", "", StringComparison.Ordinal),
+            profileId = ProfileKeys.IdOf(x.Hit.Profile.ProfileKey),
             conditionTypes = string.Join(",", x.Hit.Conditions.Select(k => Enum(k.Type))),
             legalStage = Enum(x.Hit.Conditions.Select(k => k.LegalStage).FirstOrDefault(s => s != LegalStage.Unknown)),
             identityDecision = Enum(x.Hit.Identity.Decision),

@@ -116,7 +116,7 @@ Uploads accept `.txt`, `.html` and `.htm` files (extension in any case) up to 5 
 ```text
 profiles[]          profileId, profileKey, version, changed
 batchId             the batch of queued re-analyses, or null when none was queued
-queuedReanalyses[]  jobId, caseId, profileId, version
+queuedReanalyses[]  jobId, caseId, profileId, profileKey, version
 rejected[]          file names not imported
 ```
 
@@ -135,7 +135,7 @@ rejected[]          file names not imported
 
 The revision record's `explanation` holds, per pair:
 
-- hit reason: hit number, screened subject (`customer` or `related party` with name), Profile ID and main name (`profileName`), list types, Name Property, `Is RCA?`, matched field, similarity type and why the flags or category were used;
+- hit reason: hit number, screened subject (`customer` or `related party` with name), `profileId`, `profileKey` and main name (`profileName`), the names the candidate table matched (`matchedNames`), `isRca` (the table's `Is RCA?`), the list categories (`sourceCategories`), whether news is attached (`attachedNews`), and the source conditions below, which say why the flags or category were used;
 - comparison table in fixed order: Chinese name (with aliases, former and maiden names), English name / romanization / order, nationality, DOB or age, gender, document, address, occupation or employer, other identifiers; each row has subject value, Profile value, comparisonStatus, `difference` (codes, joined with `；`) and `note` (reviewer text, such as how a stated age was reckoned);
 - related parties named by the bank data (`SUBJECT`) and by the Profile (`PROFILE`);
 - evidence, conflicts, unknown fields and reason codes;
@@ -143,7 +143,7 @@ The revision record's `explanation` holds, per pair:
 - source conditions, DispositionRecommendation and the pending verification checks;
 - a five-part summary: internal data, external data, agreements and differences, key evidence or gaps, conclusion.
 
-Per pair the response also carries `reviewPriority` (HIGH for PROBABLE_MATCH or Sanction, NORMAL for stage 3 row 5, LOW otherwise) and `pairReasonCodes` (e.g. `RELEASE_CONTROL_HUMAN_REVIEW`, `SOURCE_CONDITION_UNKNOWN`); per Case, `notEvaluatedProfiles` and `changesFromPreviousRevision`, compared against the last effective revision (`ADDED`, `REMOVED`, `RESULT_CHANGED`, `IDENTITY_CHANGED`, `REASONS_CHANGED`, each with from and to).
+Per pair the response also carries `reviewPriority` (HIGH for PROBABLE_MATCH or Sanction, NORMAL for stage 3 row 5, LOW otherwise) and `pairReasonCodes` (e.g. `RELEASE_CONTROL_HUMAN_REVIEW`, `SOURCE_CONDITION_UNKNOWN`); per Case, `notEvaluatedProfiles` and `changesFromPreviousRevision`, compared against the last effective revision (`ADDED`, `REMOVED`, `RESULT_CHANGED`, `IDENTITY_CHANGED`, `REASONS_CHANGED`, each with `profileId`, `profileKey`, from and to).
 
 The summary only restates recorded facts; it adds none. Sources are listed with `ref` (`S1`, `S2`, …), id, name, URL, retrieval date, where used and whether attached to the Profile; the summary's external-data part cites them as `[S1]`. Nothing is dropped to shorten the response.
 
@@ -169,7 +169,7 @@ Job types:
 | Type | Queued by | Payload | Runs |
 |---|---|---|---|
 | `ANALYZE_CASE` | `POST /api/batches` | subjectRef, triggerEventId, files | Case creation and first analysis, as `POST /api/cases` |
-| `REANALYZE_CASE` | `POST /api/profiles/import`, in the capture transaction | jobId, caseId, profileId, version | re-analysis of the Case's latest input with the current list versions of its Profiles |
+| `REANALYZE_CASE` | `POST /api/profiles/import`, in the capture transaction | jobId, caseId, profileId, profileKey, version | re-analysis of the Case's latest input with the current list versions of its Profiles |
 
 Jobs are claimed optimistically ([job claim](persistence.md#job-claim)). Controls:
 

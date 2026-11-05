@@ -1,5 +1,5 @@
 {
-  "$id": "aml:CaseExplanation:v1",
+  "$id": "aml:CaseExplanation:v2",
   "type": [
     "object",
     "null"
@@ -36,6 +36,10 @@
             "description": "受檢對象：客戶或關聯人（關係）與姓名",
             "type": "string",
             "x-sensitivity": "PERSONAL"
+          },
+          "profileId": {
+            "description": "名單編號（/api/profiles 路由使用）",
+            "type": "string"
           },
           "profileKey": {
             "description": "名單鍵（DJ:<名單編號>）",
@@ -691,6 +695,7 @@
         "required": [
           "hitNumber",
           "screenedSubject",
+          "profileId",
           "profileKey",
           "matchedNames",
           "isRca",
@@ -766,6 +771,10 @@
           "null"
         ],
         "properties": {
+          "profileId": {
+            "description": "名單編號",
+            "type": "string"
+          },
           "profileKey": {
             "description": "名單鍵",
             "type": "string"
@@ -796,6 +805,7 @@
           }
         },
         "required": [
+          "profileId",
           "profileKey",
           "kind"
         ]

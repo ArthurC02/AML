@@ -212,6 +212,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
         Assert.Equal(($"/api/codes/{code}", (int)status), (problem.GetProperty("type").GetString(), problem.GetProperty("status").GetInt32()));
+        Assert.False(string.IsNullOrEmpty(problem.GetProperty("detail").GetString()));
         return problem;
     }
 
@@ -241,6 +242,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
     [InlineData("GET", "/api/profiles/unknown/versions", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("POST", "/api/cases", "no-files", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("POST", "/api/cases", "oversize", HttpStatusCode.BadRequest, "UNSUPPORTED_FILE")]
+    [InlineData("POST", "/api/cases", """{"subjectRef":"s","triggerEventId":"t","files":{"notes.txt":"x"}}""", HttpStatusCode.BadRequest, "INPUT_INCOMPLETE")]
     [InlineData("POST", "/api/batches", "[]", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("POST", "/api/batches", """[{"subjectRef":"s","triggerEventId":"t","files":{}}]""", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("POST", "/api/batches", """[{"subjectRef":"s","triggerEventId":"t","files":{"a.exe":"x"}}]""", HttpStatusCode.BadRequest, "INVALID_REQUEST")]

@@ -34,7 +34,7 @@ A name query returns the Top N Profiles, counted after deduplication; when more 
 
 ## Profile-level deduplication
 
-All hits with the same `sourceNamespace + profileId` become one CandidateProfile. Top K is counted by Profile, not alias rows.
+All hits with the same `profileKey` (`DJ:` + `profileId`) become one CandidateProfile. Top K is counted by Profile, not alias rows.
 
 Merging different Profiles that describe the same person (across Profile IDs or sources) happens when the list database is built, not per Case. A merge needs a shared direct identifier or a recorded source link; name similarity alone never merges. Merged Profiles keep their own IDs and sources so every value stays traceable. Implemented by `ProfileMerge`, served by `GET /api/profiles/merges`:
 
@@ -62,6 +62,7 @@ ADDRESS
 RELATIONSHIP
 EMPLOYMENT
 COMPANY_ASSOCIATION
+STATED_AGE
 TEMPORAL_ROLE
 OTHER_IDENTIFIER
 ```
@@ -171,7 +172,7 @@ Stage 1 of the three-stage policy ([ADR-0002](../adr/0002-three-stage-identity-p
 
 A pending rule still fires and records its reason code; it only cannot close the pair automatically. Impossible age and impossible role need a subject DOB to the day: with a year or month only, the age at the role start is not known and neither rule fires. Impossible role and death before birth are checked in the gate (`HardConflictGate`); a full DOB or document conflict reaches REVIEW through stage 3 row 1. Impossible role uses a controlled title list pending approval: directors and supervisors (董事, 董事長, 副董事長, 常務董事, 獨立董事, 監察人, Director, Supervisor) need full legal capacity, adulthood being 20 before 2023-01-01 and 18 since. The whole title must be on the list, so "Director of Marketing" is not a board director. Death before birth needs every date the death value can stand for to precede every date the DOB can stand for. A rule moves to automatic NO_MATCH when its Golden Case is validated and the policy version is released.
 
-Each rule must name its evidence and policy version. Source-quality concerns can downgrade a potential hard conflict to REVIEW. `HardConflictGate.SourceQualityConcern` (pending approval) turns a validated rule into REVIEW with `SOURCE_QUALITY_DOWNGRADE` when:
+Each rule records its reason code as the pair's `hardConflict`. Source-quality concerns can downgrade a potential hard conflict to REVIEW. `HardConflictGate.SourceQualityConcern` (pending approval) turns a validated rule into REVIEW with `SOURCE_QUALITY_DOWNGRADE` when:
 
 - the Profile has a dated role without its organization, or a role dated to the year only;
 - the Profile's own DOB makes a role just as impossible, so the role date itself is suspect;
@@ -194,7 +195,7 @@ Insufficient or conflicting evidence
     → REVIEW
 ```
 
-Phase 1 does not broadly enable automatic MATCH. PROBABLE_MATCH is internal ([ADR-0003](../adr/0003-internal-probable-match.md)). There is no numeric score ([ADR-0019](../adr/0019-strength-decision-table-before-fellegi-sunter.md)); `FellegiSunter.Score` computes a shadow weight for Gate D calibration only, outside the result and the explanation; agreeing with any one of k Profile DOBs is k times as likely by chance, so the DOB u is multiplied by k.
+Phase 1 has no automatic MATCH: the identity decision is NO_MATCH, REVIEW or PROBABLE_MATCH. PROBABLE_MATCH is internal ([ADR-0003](../adr/0003-internal-probable-match.md)). There is no numeric score ([ADR-0019](../adr/0019-strength-decision-table-before-fellegi-sunter.md)); `FellegiSunter.Score` computes a shadow weight for Gate D calibration only, outside the result and the explanation; agreeing with any one of k Profile DOBs is k times as likely by chance, so the DOB u is multiplied by k.
 
 ### Support strength
 
@@ -298,14 +299,15 @@ Comparison findings are evidence details, not decision reason codes; they explai
 
 ## Explainability
 
-Every decision includes:
+Every decision records its evidence per group, its hard-conflict code or stage 3 row, and its reason codes. The hit explanation restates it as:
 
 - supporting evidence;
 - conflicts;
 - unknown fields;
-- reason codes;
-- match policy version;
-- retrieval scope and limitations.
+- hard conflict and stage 3 row;
+- reason codes.
+
+The revision's lineage records the input file hashes, the list version of each Profile used and the source-condition policy, shadow model, code catalog, schema and app versions. The identity rules have no version of their own; the app version identifies them. Retrieval scope is not recorded.
 
 Every code a decision or explanation emits is in the code catalog, served by `GET /api/codes` with its meaning and the section that defines it.
 

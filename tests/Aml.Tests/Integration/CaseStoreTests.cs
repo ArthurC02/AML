@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Aml.Core.Cases;
 using Aml.Core.Screening;
 using Aml.Infra.Persistence;
@@ -72,5 +73,28 @@ public sealed class CaseStoreTests : IDisposable
         // The late revision is kept as history.
         Assert.NotNull(await _store.GetAnalysisAsync(c.CaseId, 1, ct));
         Assert.Equal(ScreeningAssessment.Review, (await _store.GetAnalysisAsync(c.CaseId, 2, ct))!.CaseResult);
+    }
+
+    [Fact]
+    public async Task Lineage_quality_revisions_and_search_round_trip()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var c = await _store.CreateAsync(NewCase(), ct);
+        var other = await _store.CreateAsync(NewCase("evt-2"), ct);
+        var lineage = new AnalysisLineage([new InputFile("a.txt", "h1")], [new ProfileUse("1", AnalysisLineage.ListDatabase, 2, "h2")],
+            "policy", "model", "codes", CaseJson.SchemaVersion, "app");
+        var quality = new AnalysisQuality(1, 9, 3, 1, 0, 3 / 9.0, 1 / 9.0, 0, 0, new Dictionary<string, int> { ["F"] = 2 });
+        var stored = Analysis(c.CaseId, 1) with { Lineage = lineage, Quality = quality };
+        Assert.True(await _store.AcceptAnalysisAsync(stored, CaseStatus.InReview, null, ct));
+        Assert.True(await _store.AcceptAnalysisAsync(Analysis(c.CaseId, 2) with { ExecutionStatus = ExecutionStatus.Partial }, CaseStatus.InReview, null, ct));
+
+        var loaded = (await _store.GetAnalysisAsync(c.CaseId, 1, ct))!;
+        Assert.Equal(JsonSerializer.Serialize(stored, CaseJson.Options), JsonSerializer.Serialize(loaded, CaseJson.Options));
+        Assert.Equal([(1, true), (2, false)], (await _store.RevisionsAsync(c.CaseId, ct)).Select(r => (r.Revision, r.Effective)));
+
+        Assert.Equal(other.CaseId, Assert.Single(await _store.SearchAsync(null, "evt-2", null, 10, ct)).CaseId);
+        var first = Assert.Single(await _store.SearchAsync("subject-1", null, null, 1, ct));
+        var next = Assert.Single(await _store.SearchAsync("subject-1", null, (first.CreatedAt, first.CaseId), 10, ct));
+        Assert.Equal(new[] { c.CaseId, other.CaseId }.Order(StringComparer.Ordinal), new[] { first.CaseId, next.CaseId });
     }
 }

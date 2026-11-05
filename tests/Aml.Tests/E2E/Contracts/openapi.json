@@ -11,7 +11,7 @@
           "read"
         ],
         "summary": "Every code the system emits: kind, Chinese name, meaning, the rule that emits it and its document section",
-        "description": "Filter with kind (IDENTITY_REASON, EVIDENCE_DETAIL, DATA_QUALITY, PROBLEM, …). A value with detail attached (SOFT_DIFFERENCE（…）, ENCODING_FALLBACK:<file>) is listed under its key. To explain one code use getCode instead. Next: getCode.",
+        "description": "Filter with kind (IDENTITY_REASON, EVIDENCE_DETAIL, DATA_QUALITY, PROBLEM, …). A value with detail attached (SOFT_DIFFERENCE（…）, ENCODING_FALLBACK:<file>) is listed under its key. HIT and UNKNOWN serve several kinds and are listed once, under CONDITION_STATUS. To explain one code use getCode instead. Next: getCode.",
         "operationId": "listCodes",
         "parameters": [
           {
@@ -42,7 +42,7 @@
           "read"
         ],
         "summary": "One code; a value with detail attached is looked up by its key",
-        "description": "Use it to explain a code found in a response: its kind, Chinese name, meaning, the rule that emits it and the document section that defines it. Next: the document section, for the rule in full.",
+        "description": "Use it to explain a code found in a response: its kind, Chinese name, meaning, the rule that emits it and the document section that defines it; to browse every code of a kind use listCodes instead. Next: the document section, for the rule in full.",
         "operationId": "getCode",
         "parameters": [
           {
@@ -99,7 +99,7 @@
           "read"
         ],
         "summary": "JSON Schema of a stored record: field descriptions, and x-sensitivity (PERSONAL, IDENTIFIER) on personal data",
-        "description": "Use it to validate or interpret a stored record or a view; x-sensitivity (personal data) is published only here, for the schemas listSchemas names. Next: getCode for the codes a field holds.",
+        "description": "Use it to validate or interpret a stored record or a view; to explain one code value use getCode instead; x-sensitivity (personal data) is published only here, for the schemas listSchemas names. Next: getCode for the codes a field holds.",
         "operationId": "getSchema",
         "parameters": [
           {
@@ -318,7 +318,7 @@
           "read"
         ],
         "summary": "What the Case concluded: result, conclusion and one line per hit from the effective revision, with links to the hits and the full revision",
-        "description": "Start here to learn what a Case concluded. It holds no identifier values and, of personal data, only names. Hits are ordered by review priority; at most 10 are listed and the rest counted in omitted. Next: getHit for why a hit was decided, getRevision for the full record. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.",
+        "description": "Start here to learn what a Case concluded; without a caseId use findCases first. It holds no identifier values and, of personal data, only names. Hits are ordered by review priority; at most 10 are listed and the rest counted in omitted. Next: getHit for why a hit was decided, getRevision for the full record. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.",
         "operationId": "getCaseSummary",
         "parameters": [
           {
@@ -599,7 +599,7 @@
           "operations"
         ],
         "summary": "Batch progress: counts per status and one page of items with their Case, revision, attempts and error code",
-        "description": "view=summary (default) lists the items not yet succeeded; view=full lists every item; status= lists one status. Items come oldest first, pageSize (default 20, at most 100) at a time, with nextPageToken when more follow. Next: getCaseSummary for a succeeded item, rerunBatch for dead-lettered items once the cause is fixed.",
+        "description": "Use it to follow a submitted batch or the re-analyses a Profile import queued; for one Case's result use getCaseSummary instead. view=summary (default) lists the items not yet succeeded; view=full lists every item; status= lists one status. Items come oldest first, pageSize (default 20, at most 100) at a time, with nextPageToken when more follow. Next: getCaseSummary for a succeeded item, rerunBatch for dead-lettered items once the cause is fixed.",
         "operationId": "getBatchStatus",
         "parameters": [
           {
@@ -702,7 +702,7 @@
           "write"
         ],
         "summary": "Capture Profiles into the list database; a changed Profile queues re-analysis of the Cases that used it",
-        "description": "Upload 名單資料_<id>.txt (or .html). An unchanged file keeps its version; a changed one becomes a new version, the old one is kept, and every Case whose latest input used it gets a queued re-analysis job (track it with GET /api/batches/{batchId}). A file whose name and Profile_ID differ, or one Profile in two formats, is rejected. Next: getBatchStatus with the returned batchId, when it is not null.",
+        "description": "Upload 名單資料_<id>.txt (or .html). An unchanged file keeps its version; a changed one becomes a new version, the old one is kept, and every Case whose latest input used it gets a queued re-analysis job (track it with GET /api/batches/{batchId}). A file whose name and Profile_ID differ, or one Profile in two formats, is rejected. Not for a Case's own files: send those with createCase or reanalyzeCase. Next: getBatchStatus with the returned batchId, when it is not null.",
         "operationId": "importProfiles",
         "requestBody": {
           "content": {
@@ -1979,6 +1979,7 @@
         "required": [
           "hitNumber",
           "screenedSubject",
+          "profileId",
           "profileKey",
           "profileName",
           "matchedNames",
@@ -2018,6 +2019,10 @@
           "screenedSubject": {
             "type": "string",
             "description": "受檢對象：客戶或關聯人（關係）與姓名"
+          },
+          "profileId": {
+            "type": "string",
+            "description": "名單編號（/api/profiles 路由使用）"
           },
           "profileKey": {
             "type": "string",
@@ -2836,6 +2841,7 @@
       },
       "PairChange": {
         "required": [
+          "profileId",
           "profileKey",
           "kind",
           "from",
@@ -2843,6 +2849,10 @@
         ],
         "type": "object",
         "properties": {
+          "profileId": {
+            "type": "string",
+            "description": "名單編號"
+          },
           "profileKey": {
             "type": "string",
             "description": "名單鍵"
@@ -3134,6 +3144,7 @@
           "jobId",
           "caseId",
           "profileId",
+          "profileKey",
           "version"
         ],
         "type": "object",
@@ -3145,6 +3156,9 @@
             "type": "string"
           },
           "profileId": {
+            "type": "string"
+          },
+          "profileKey": {
             "type": "string"
           },
           "version": {

@@ -77,7 +77,7 @@ Rules:
 
 - All decision logic lives in Core as pure code, so Golden Case tests need no database or HTML.
 - Ports live in Core; Infra depends on Core only, never on Services.
-- Case state mutators are `internal` with `InternalsVisibleTo("Aml.Services")`; within Services, `CaseService` remains the only writer by review.
+- Case state has no mutators: `CaseRecord` and `AnalysisRecord` are immutable records, and Case state is written only through the public `ICaseStore` writes (`CreateAsync`, `AcceptAnalysisAsync`). `CaseService` is the only caller of those writes (`BatchService` and `ListService` go through it); review keeps it so, the compiler does not.
 - Api holds no business logic.
 
 Implementation notes:
@@ -207,8 +207,8 @@ Not used: MediatR, AutoMapper, FluentAssertions ([ADR-0015](../adr/0015-no-comme
 | HTML parser | AngleSharp |
 | Validation | Explicit application validation |
 | Batch | DB job table + `BackgroundService` |
-| Identity | OpenID Connect / OAuth 2.0 |
-| Authorization | Policy-based authorization |
+| Identity | OpenID Connect / OAuth 2.0 once the identity provider is known; not built in the PoC |
+| Authorization | Policy-based authorization; not built in the PoC |
 | Observability | OpenTelemetry |
 | Deployment | Linux container on approved Kubernetes/OpenShift/server platform |
 | Testing | xUnit; test pyramid (in process, then SQLite integration, then critical API flows); ISTQB test design; mutation testing (Stryker.NET) and coverage; Golden Case regression; repository contract tests |

@@ -6,7 +6,8 @@ namespace Aml.Api.Endpoints;
 
 /// <summary>
 /// RFC 9457 problem responses. The type is the problem's entry in the code catalog (/api/codes/{code}); every problem has a
-/// detail, and errors[] (what is wrong where) and fix (what to send instead) when the handler knows them.
+/// detail, errors[] (what is wrong where) and fix (what to send instead). A problem no handler wrote names the request
+/// itself in errors[] and carries the fix of its code.
 /// </summary>
 internal static class Problems
 {
@@ -30,6 +31,17 @@ internal static class Problems
     };
 
     public static string Title(string code) => CodeCatalog.All[code].Name;
+
+    /// <summary>The fix of a problem no handler wrote: the framework only knows the status.</summary>
+    public static string Fix(int status) => status switch
+    {
+        StatusCodes.Status400BadRequest => "Send the parameters and body the operation declares in /openapi/v1.json, with values of the declared types.",
+        StatusCodes.Status404NotFound => "Check the route in /openapi/v1.json and the id, taken unchanged from the response that created or listed the resource.",
+        StatusCodes.Status408RequestTimeout => "Send the whole request body without pausing; the server stops waiting for a body that arrives too slowly.",
+        StatusCodes.Status413PayloadTooLarge => "Send fewer or smaller files per request: the request body is over the server's limit (Api:MaxRequestBytes).",
+        >= 500 => "Retry later; if it persists, report the traceId of this response.",
+        _ => "Use the method and content type the operation declares in /openapi/v1.json.",
+    };
 
     public static ProblemHttpResult Of(string code, string detail, string fix, params object[] errors) =>
         TypedResults.Problem(detail, type: Type(code), title: Title(code), statusCode: StatusCodes.Status400BadRequest,

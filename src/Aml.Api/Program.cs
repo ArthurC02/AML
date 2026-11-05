@@ -43,9 +43,12 @@ builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx =>
 {
     if (ctx.ProblemDetails.Type is null || ctx.ProblemDetails.Type.StartsWith("https://", StringComparison.Ordinal))
     {
-        var code = Problems.CodeOf(ctx.ProblemDetails.Status ?? ctx.HttpContext.Response.StatusCode);
+        var status = ctx.ProblemDetails.Status ?? ctx.HttpContext.Response.StatusCode;
+        var code = Problems.CodeOf(status);
         (ctx.ProblemDetails.Type, ctx.ProblemDetails.Title) = (Problems.Type(code), Problems.Title(code));
         ctx.ProblemDetails.Detail ??= CodeCatalog.Find(code)?.Description;
+        ctx.ProblemDetails.Extensions.TryAdd("errors", new[] { new { method = ctx.HttpContext.Request.Method, path = ctx.HttpContext.Request.Path.Value } });
+        ctx.ProblemDetails.Extensions.TryAdd("fix", Problems.Fix(status));
     }
 });
 // The case reader reports every unusable input as CaseInputException; this one handler turns it into the problem.

@@ -213,6 +213,8 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
         Assert.Equal(($"/api/codes/{code}", (int)status), (problem.GetProperty("type").GetString(), problem.GetProperty("status").GetInt32()));
         Assert.False(string.IsNullOrEmpty(problem.GetProperty("detail").GetString()));
+        Assert.Equal(JsonValueKind.Array, problem.GetProperty("errors").ValueKind);
+        Assert.False(string.IsNullOrEmpty(problem.GetProperty("fix").GetString()));
         return problem;
     }
 
@@ -261,6 +263,8 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
     [InlineData("GET", "/api/cases/unknown/revisions/1", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("GET", "/api/cases", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("GET", "/api/cases?subjectRef=s&pageSize=101", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("GET", "/api/cases?subjectRef=s&pageSize=abc", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")] // binding failure
+    [InlineData("DELETE", "/api/cases", "none", HttpStatusCode.MethodNotAllowed, "HTTP_ERROR")]
     [InlineData("GET", "/api/cases?subjectRef=s&pageToken=bm90LWEtdG9rZW4", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     public async Task Unknown_ids_and_invalid_requests_are_refused(string method, string path, string body, HttpStatusCode expected, string code)
     {

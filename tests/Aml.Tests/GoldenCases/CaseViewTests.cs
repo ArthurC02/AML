@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using Aml.Core.Cases;
 using Aml.Core.Explanation;
@@ -50,31 +51,37 @@ public class CaseViewTests
     {
         var (c, rev) = Stored(gc);
         var summary = CaseViews.Summary(c, rev);
-        var views = JsonSerializer.Serialize(summary, CaseJson.Options)
-            + string.Concat(rev.Explanation!.Hits.Select(h => JsonSerializer.Serialize(CaseViews.Hit(c.CaseId, 1, h), CaseJson.Options)));
+        // Not escaped, so a Chinese name or address in a view reads as itself rather than as escape sequences.
+        var plain = new JsonSerializerOptions(CaseJson.Options) { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+        var views = JsonSerializer.Serialize(summary, plain)
+            + string.Concat(rev.Explanation!.Hits.Select(h => JsonSerializer.Serialize(CaseViews.Hit(c.CaseId, 1, h), plain)));
 
-        foreach (var value in IdentifierValues(rev)) Assert.DoesNotContain(value, views, StringComparison.Ordinal);
+        // A comparison cell is IDENTIFIER whatever it compares. The views show the Profile's main name, and a one-character
+        // cell (男, 女) is no identifier on its own. ponytail: whole cells only; split joined values (、) to catch a partial leak.
+        var shown = rev.Explanation.Hits.Select(h => h.ProfileName).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        var identifiers = Values(rev, Sensitivity.Identifier).Where(v => v.Length > 1 && !shown.Contains(v)).ToList();
+        Assert.NotEmpty(identifiers);
+        foreach (var value in identifiers) Assert.DoesNotContain(value, views, StringComparison.Ordinal);
         Assert.True(JsonSerializer.Serialize(summary, CaseJson.Options).Length <= 0.3 * JsonSerializer.Serialize(rev, CaseJson.Options).Length);
     }
 
-    // Values of fields marked IDENTIFIER that hold a digit: numbers and dates, masked or not. ponytail: the digit filter drops
-    // the names an IDENTIFIER comparison cell can also hold, which the summary keeps as the PERSONAL profile name.
-    private static IEnumerable<string> IdentifierValues(object? o)
+    // Every non-empty value of the fields marked with the level, masked or not.
+    private static IEnumerable<string> Values(object? o, Sensitivity level)
     {
         if (o is null or string or ValueType) yield break;
         if (o is System.Collections.IEnumerable items)
         {
             foreach (var item in items)
-                foreach (var v in IdentifierValues(item)) yield return v;
+                foreach (var v in Values(item, level)) yield return v;
             yield break;
         }
         foreach (var p in o.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
             if (p.GetIndexParameters().Length > 0) continue;
             var value = p.GetValue(o);
-            if (p.GetCustomAttribute<SensitivityAttribute>()?.Level == Sensitivity.Identifier && value is string s && s.Any(char.IsAsciiDigit))
+            if (p.GetCustomAttribute<SensitivityAttribute>()?.Level == level && value is string { Length: > 0 } s)
                 yield return s;
-            foreach (var v in IdentifierValues(value)) yield return v;
+            foreach (var v in Values(value, level)) yield return v;
         }
     }
 }

@@ -24,6 +24,7 @@ Questions that need a bank decision. When one is answered, record the answer her
 - Which complete DOB conflicts qualify as hard conflicts?
 - Which unique-identifier combinations permit automatic MATCH?
 - What temporal-role rules are approved?
+- Approve the wording of the [contrastive explanation](../feature/identity-adjudication.md#contrastive-explanation) lines (`wouldChangeIf`, such as `若同類證件相符：身分判斷移至第三階段第 2 列 UNIQUE_IDENTIFIER_AGREEMENT`): they name the stage 3 row, decision and code only, never an external result. Changing the wording touches the text only, not the rule.
 - Is the proposed [stage 3 table](../feature/identity-adjudication.md#stage-3-table) approved? It reproduces GC-01 to GC-03; row 4 (agreement at available precision) may need narrowing once GC-07 exists.
 - Which evidence groups identify organizations and vessels, and when are they in scope?
 - Is the proposed [case-level precedence](../feature/case-management.md#case-level-result) approved as the ResultPublicationPolicy?

@@ -224,6 +224,7 @@ public class CaseReaderTests
     [InlineData(null, "", "案件資訊.txt", CaseInputException.Missing)]
     [InlineData(null, "案件資訊.txt|案件資訊_2.txt", "案件資訊.txt", CaseInputException.Duplicate)]
     [InlineData(null, "案件資訊.txt", null, null)]                                     // category not read yet
+    [InlineData(null, "案件資訊.txt|案件資訊.bak", null, null)]                         // only a .txt is a case file
     [InlineData("客戶", "案件資訊.txt|名單資料_1.txt", "客戶-背景資料.txt", CaseInputException.Missing)]
     [InlineData("客戶", "案件資訊.txt|客戶-背景資料.txt", null, null)]                    // a missing Profile file is not a problem
     [InlineData("帳戶持有人的法定代理人", "案件資訊.txt|客戶-背景資料.txt", "客戶-關聯人背景資料.txt", CaseInputException.Missing)]

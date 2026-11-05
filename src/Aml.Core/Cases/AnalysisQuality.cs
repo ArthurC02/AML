@@ -28,7 +28,7 @@ public sealed record AnalysisQuality(
         int Count(params ComparisonStatus[] s) => cells.Count(c => s.Contains(c.Status));
         double? Rate(int n) => cells.Count == 0 ? null : (double)n / cells.Count;
         var (missing, uncertain, conflict) = (Count(ComparisonStatus.SubjectMissing, ComparisonStatus.ProfileMissing), Count(ComparisonStatus.Uncertain), Count(ComparisonStatus.Conflict));
-        var findings = (hits.Count == 0 ? [subjectFindings.Distinct().ToList()] : hits.Select(h => h.DataQualityFindings))
+        var findings = (hits.Count == 0 ? [subjectFindings.ToList()] : hits.Select(h => h.DataQualityFindings))
             .SelectMany(f => f.Select(CodeCatalog.Key).Distinct())
             .GroupBy(k => k, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
         return new(hits.Count, cells.Count, missing, uncertain, conflict, Rate(missing), Rate(uncertain), Rate(conflict), notEvaluated, findings);

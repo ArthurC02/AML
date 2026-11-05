@@ -88,11 +88,11 @@ The hit views read the effective revision unless `?revision=` names another. The
 
 ## Errors
 
-Every 4xx and 5xx response is an RFC 9457 problem (`application/problem+json`): `type`, `title`, `status` and `detail`, plus `errors[]` (what is wrong where) and `fix` (what to send instead) when the handler knows them. `type` is the problem's entry in the code catalog, `/api/codes/{code}`:
+Every 4xx and 5xx response is an RFC 9457 problem (`application/problem+json`): `type`, `title`, `status`, `detail`, `errors[]` (what is wrong where) and `fix` (what to send instead). `type` is the problem's entry in the code catalog, `/api/codes/{code}`. A problem the framework raises (an unmatched route or unknown id, a parameter of the wrong type, a body that cannot be read, is over the size limit or arrives too slowly, a method the route does not allow, an unhandled exception) has the catalog description as `detail`, the request's `method` and `path` in `errors[]`, and the fix of its code:
 
 | Code | Status | When |
 |---|---|---|
-| `INVALID_REQUEST` | 400 | a parameter or body the endpoint cannot use: no files, a batch item without ids or files, an unknown candidate source or view, a search without a name or filter, a `top` or page size out of range, a page token this API did not issue; `errors[]` lists the batch items by index or names the parameter |
+| `INVALID_REQUEST` | 400 | a parameter or body the endpoint cannot use: no files, a batch item without ids or files, an unknown candidate source or view, a search without a name or filter, a `top` or page size out of range or not a number, a page token this API did not issue; `errors[]` lists the batch items by index or names the parameter, except for a value of the wrong type or a body that is not JSON, which the framework reports as above |
 | `UNSUPPORTED_FILE` | 400 | an upload that is not `.txt`, `.html` or `.htm`, or over 5 MB; `errors[]` names the files |
 | `INPUT_INCOMPLETE` | 400 | a required input file is missing or not unique: exactly one `案件資訊*.txt`, and the subject's own file (`客戶-背景資料.txt` for a customer, `客戶-關聯人背景資料.txt` for a related party) |
 | `INPUT_UNREADABLE` | 400 | a file that is not in the export layout; `errors[]` gives `file`, `table` and `problem` (`MISSING_SECTION`, `MISSING_COLUMN`, `MALFORMED`) |

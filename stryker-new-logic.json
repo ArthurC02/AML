@@ -5,7 +5,7 @@
     "test-projects": ["tests/Aml.Tests/Aml.Tests.csproj"],
     "test-runner": "mtp",
     "coverage-analysis": "off",
-    "mutate": ["**/Identity/Identity.cs"],
+    "mutate": ["**/Identity/Identity.cs", "**/Cases/CaseViews.cs", "**/Cases/AnalysisQuality.cs"],
     "reporters": ["json", "cleartext"],
     "thresholds": { "high": 80, "low": 60, "break": 0 }
   }

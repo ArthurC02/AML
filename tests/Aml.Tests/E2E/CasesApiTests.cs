@@ -226,6 +226,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
     [InlineData("GET", "/api/cases/unknown/candidates", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("GET", "/api/cases/unknown/candidates?source=other", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("GET", "/api/profiles/unknown", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/profiles/unknown?view=detail", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("GET", "/api/profiles/search?name=x&top=0", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("GET", "/api/batches/unknown?view=table", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("GET", "/api/batches/unknown?pageSize=0", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]

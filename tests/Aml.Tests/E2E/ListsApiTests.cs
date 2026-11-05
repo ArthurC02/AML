@@ -67,6 +67,15 @@ public sealed class ListsApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(("DJ:90000011", "90000011", "EXACT_ALIAS"), (search[0].GetProperty("profileKey").GetString(), search[0].GetProperty("profileId").GetString(), search[0].GetProperty("route").GetString()));
         var direct = await Json(await http.GetAsync("/api/profiles/DJ:90000011", ct), ct);
         Assert.Equal((2, "DJ:90000011"), (direct.GetProperty("version").GetInt32(), direct.GetProperty("profileKey").GetString()));
+        // The default view holds no identifier values; the full view is the Profile as read.
+        Assert.Equal("/api/profiles/90000011?version=2&view=full", direct.GetProperty("full").GetString());
+        Assert.Equal(
+            ["profileId", "profileKey", "version", "latestVersion", "contentHash", "capturedAt", "recordType", "gender", "names",
+                "citizenship", "categories", "keywords", "roles", "officialList", "findings", "full"],
+            direct.EnumerateObject().Select(p => p.Name));
+        var full = await Json(await http.GetAsync(direct.GetProperty("full").GetString(), ct), ct);
+        Assert.Equal(direct.GetProperty("names").GetRawText(), full.GetProperty("profile").GetProperty("names").GetRawText());
+        Assert.Equal(1973, full.GetProperty("profile").GetProperty("datesOfBirth")[0].GetProperty("year").GetInt32());
         Assert.Equal(1, (await Json(await http.GetAsync("/api/profiles/90000011?version=1", ct), ct)).GetProperty("version").GetInt32());
         var previous = await Json(await http.GetAsync($"/api/cases/{caseId}/candidates?source=previous", ct), ct);
         Assert.Equal(("DJ:90000011", "90000011"), (previous[0].GetProperty("profileKey").GetString(), previous[0].GetProperty("profileId").GetString()));

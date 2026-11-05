@@ -54,7 +54,7 @@ GET  /api/batches/{batchId}?view=summary|full&status=&pageSize=&pageToken=
 POST /api/batches/{batchId}/rerun
 POST /api/profiles/import
 GET  /api/profiles/search?name=&top=
-GET  /api/profiles/{profileId}?version=
+GET  /api/profiles/{profileId}?view=summary|full&version=
 GET  /api/profiles/{profileId}/versions
 GET  /api/profiles/merges
 GET  /api/codes?kind=
@@ -128,7 +128,7 @@ rejected[]          file names not imported
 ### Retrieval and merges
 
 - `GET /api/profiles/search?name=` (`INDEX_SEARCH`) and `GET /api/cases/{caseId}/candidates` (`source=table`, the default: the Case's own candidate table, `CONTROLLED_SET`; `source=previous`: the Profiles of its latest input, `PREVIOUS_LINK`) return candidates with `profileId`, `profileKey` (`DJ:<id>`), `matchedName`, `route`, `score`, `mode` and `truncated`, at most `top` (1 to 100, default 10). `truncated` is true on every candidate when the result holds fewer Profiles than matched, or more than `top` because exact alias matches are never cut. The `INDEX_SEARCH` index is built once per list database version and rebuilt on the first search after a capture.
-- `GET /api/profiles/{profileId}` (`DIRECT_REFERENCE`) returns one captured Profile: `profileId`, `profileKey`, `version`, `latestVersion`, `contentHash`, `capturedAt` and the Profile as read, at its latest version unless `?version=` names another. Routes take the Profile ID with or without the `DJ:` prefix. `GET …/versions` lists every version with its content hash.
+- `GET /api/profiles/{profileId}` (`DIRECT_REFERENCE`) returns one captured Profile, at its latest version unless `?version=` names another, with `profileId`, `profileKey`, `version`, `latestVersion`, `contentHash` and `capturedAt`. `view=summary` (the default) adds the record type, gender, names, citizenship, categories, keywords, roles, official-list entry and findings, and `full`, the link to the full view; like the Case summaries it holds no field marked `IDENTIFIER` and, of the `PERSONAL` fields, only names, so dates of birth and death, documents, other identifiers, addresses, relationships and sources are left out. `view=full` adds the Profile as read; any other view is `INVALID_REQUEST`. Routes take the Profile ID with or without the `DJ:` prefix. `GET …/versions` lists every version with its content hash.
 - `GET /api/profiles/merges` returns `{ groups, rejected }`. Each group has `profileIds`, `profileKeys`, `edges` (each accepted merge with `a`, `b`, `basis` and `documentKey`), `findings` and `basis`; `rejected` lists the merge edges refused because of a DOB or gender conflict, with `conflict`.
 
 ## Explanation contents

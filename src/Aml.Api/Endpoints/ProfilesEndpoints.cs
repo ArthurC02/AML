@@ -1,6 +1,8 @@
 using Aml.Core.Retrieval;
+using Aml.Core.Subjects;
 using Aml.Services;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.OpenApi;
 using static Aml.Api.Endpoints.Uploads;
 
 namespace Aml.Api.Endpoints;
@@ -44,10 +46,29 @@ internal static class ProfilesEndpoints
         .WithName("listProfileMerges")
         .WithTags("read");
 
-        profiles.MapGet("/{profileId}", async Task<Results<Ok<ProfileView>, NotFound>> (string profileId, int? version, ListService service, CancellationToken ct) =>
-            await service.GetProfileAsync(profileId, version, ct) is { } p ? TypedResults.Ok(p) : TypedResults.NotFound())
-        .WithSummary("One Profile as captured (DIRECT_REFERENCE): the latest version, or ?version=; the ID may carry the DJ: prefix")
-        .WithDescription("Returns the Profile as read, with its version, latest version and content hash. To find a Profile by name use searchProfiles instead. Next: listProfileVersions.")
+        profiles.MapGet("/{profileId}", async Task<Results<Ok<ProfileSummary>, Ok<ProfileView>, NotFound, ProblemHttpResult>> (
+            string profileId, int? version, string? view, ListService service, CancellationToken ct) =>
+        {
+            if (view is not (null or "summary" or "full"))
+                return Problems.Of(Problems.InvalidRequest, $"Unknown view '{view}'.", "Send view=summary or view=full.", new { parameter = "view" });
+            if (await service.GetProfileAsync(profileId, version, ct) is not { } p) return TypedResults.NotFound();
+            return view == "full" ? TypedResults.Ok(p) : TypedResults.Ok(ProfileSummary.Of(p));
+        })
+        .Produces<ProfileSummary>()
+        // The 200 body depends on view: ProfileSummary (summary) or ProfileView (full). ProfileView is registered here, and its
+        // profile refers to the SourceProfile component instead of an inlined copy. ContractTests fails if either reference dangles.
+        .AddOpenApiOperationTransformer(async (op, ctx, ct) =>
+        {
+            var full = (OpenApiSchema)await ctx.GetOrCreateSchemaAsync(typeof(ProfileView), cancellationToken: ct);
+            full.Properties!["profile"] = new OpenApiSchemaReference(nameof(SourceProfile), ctx.Document);
+            ctx.Document!.AddComponent(nameof(ProfileView), full);
+            op.Responses!["200"].Content!["application/json"].Schema = new OpenApiSchema
+            {
+                OneOf = [new OpenApiSchemaReference(nameof(ProfileSummary), ctx.Document), new OpenApiSchemaReference(nameof(ProfileView), ctx.Document)],
+            };
+        })
+        .WithSummary("One captured Profile (DIRECT_REFERENCE): view=summary (default) without identifier values, view=full as read; the latest version, or ?version=; the ID may carry the DJ: prefix")
+        .WithDescription("Use view=summary to see who a Profile is and why it is listed: names, gender, citizenship, categories, roles and the official-list entry, with its version, latest version and content hash. Use view=full only when dates of birth, documents, addresses or sources are needed. To find a Profile by name use searchProfiles instead. Next: listProfileVersions.")
         .WithName("getProfile")
         .WithTags("read");
 

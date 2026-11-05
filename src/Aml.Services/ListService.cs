@@ -1,7 +1,9 @@
+using System.ComponentModel;
 using System.Text.Json;
 using Aml.Core.Cases;
 using Aml.Core.Ports;
 using Aml.Core.Retrieval;
+using Aml.Core.Shared;
 using Aml.Core.Subjects;
 
 namespace Aml.Services;
@@ -10,6 +12,33 @@ public sealed record ProfileImport(string ProfileId, string ProfileKey, int Vers
 
 /// <summary>One captured Profile version, parsed.</summary>
 public sealed record ProfileView(string ProfileId, string ProfileKey, int Version, int LatestVersion, string ContentHash, DateTimeOffset CapturedAt, SourceProfile Profile);
+
+/// <summary>
+/// One captured Profile version without identifier values and, of personal data, only names (ADR-0022): no dates of
+/// birth or death, documents, other identifiers, addresses, relationships or sources. The whole Profile is at the full link.
+/// </summary>
+public sealed record ProfileSummary(
+    [property: Description("名單編號（不含 DJ: 前綴）")] string ProfileId,
+    [property: Description("名單鍵（DJ:<名單編號>）")] string ProfileKey,
+    [property: Description("此版本")] int Version,
+    [property: Description("最新版本")] int LatestVersion,
+    [property: Description("內容 SHA-256")] string ContentHash,
+    [property: Description("擷取時間")] DateTimeOffset CapturedAt,
+    [property: Description("記錄類型：Person 或組織、船舶等")] string RecordType,
+    [property: Description("性別")] Gender? Gender,
+    [property: Description("姓名與別名")][property: Sensitivity(Sensitivity.Personal)] IReadOnlyList<string> Names,
+    [property: Description("國籍（ISO 3166-1 alpha-2）")] IReadOnlyList<string> Citizenship,
+    [property: Description("名單類別")] IReadOnlyList<SourceCategory> Categories,
+    [property: Description("關鍵字")] IReadOnlyList<string> Keywords,
+    [property: Description("職務")] IReadOnlyList<ProfileRole> Roles,
+    [property: Description("官方名單記錄")] OfficialListEntry? OfficialList,
+    [property: Description("資料品質 finding")] IReadOnlyList<string> Findings,
+    [property: Description("完整 Profile 的連結（view=full）")] string Full)
+{
+    public static ProfileSummary Of(ProfileView v) => new(v.ProfileId, v.ProfileKey, v.Version, v.LatestVersion, v.ContentHash, v.CapturedAt,
+        v.Profile.RecordType, v.Profile.Gender, v.Profile.Names, v.Profile.Citizenship, v.Profile.Categories, v.Profile.Keywords,
+        v.Profile.Roles, v.Profile.OfficialList, v.Profile.Findings, $"/api/profiles/{v.ProfileId}?version={v.Version}&view=full");
+}
 
 /// <summary>Where a Case's candidates come from: its own candidate table, or the Profile files of its latest input.</summary>
 public enum CandidateSource { Table, Previous }

@@ -809,8 +809,8 @@
         "tags": [
           "read"
         ],
-        "summary": "One Profile as captured (DIRECT_REFERENCE): the latest version, or ?version=; the ID may carry the DJ: prefix",
-        "description": "Returns the Profile as read, with its version, latest version and content hash. To find a Profile by name use searchProfiles instead. Next: listProfileVersions.",
+        "summary": "One captured Profile (DIRECT_REFERENCE): view=summary (default) without identifier values, view=full as read; the latest version, or ?version=; the ID may carry the DJ: prefix",
+        "description": "Use view=summary to see who a Profile is and why it is listed: names, gender, citizenship, categories, roles and the official-list entry, with its version, latest version and content hash. Use view=full only when dates of birth, documents, addresses or sources are needed. To find a Profile by name use searchProfiles instead. Next: listProfileVersions.",
         "operationId": "getProfile",
         "parameters": [
           {
@@ -832,6 +832,13 @@
               ],
               "format": "int32"
             }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -840,7 +847,14 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ProfileView"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/ProfileSummary"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProfileView"
+                    }
+                  ]
                 }
               }
             }
@@ -3021,6 +3035,136 @@
                 "$ref": "#/components/schemas/PartialDate"
               }
             ]
+          }
+        }
+      },
+      "ProfileSummary": {
+        "required": [
+          "profileId",
+          "profileKey",
+          "version",
+          "latestVersion",
+          "contentHash",
+          "capturedAt",
+          "recordType",
+          "gender",
+          "names",
+          "citizenship",
+          "categories",
+          "keywords",
+          "roles",
+          "officialList",
+          "findings",
+          "full"
+        ],
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string",
+            "description": "名單編號（不含 DJ: 前綴）"
+          },
+          "profileKey": {
+            "type": "string",
+            "description": "名單鍵（DJ:<名單編號>）"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "此版本",
+            "format": "int32"
+          },
+          "latestVersion": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "最新版本",
+            "format": "int32"
+          },
+          "contentHash": {
+            "type": "string",
+            "description": "內容 SHA-256"
+          },
+          "capturedAt": {
+            "type": "string",
+            "description": "擷取時間",
+            "format": "date-time"
+          },
+          "recordType": {
+            "type": "string",
+            "description": "記錄類型：Person 或組織、船舶等"
+          },
+          "gender": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "性別",
+                "$ref": "#/components/schemas/Gender"
+              }
+            ]
+          },
+          "names": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "姓名與別名"
+          },
+          "citizenship": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "國籍（ISO 3166-1 alpha-2）"
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceCategory"
+            },
+            "description": "名單類別"
+          },
+          "keywords": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "關鍵字"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProfileRole"
+            },
+            "description": "職務"
+          },
+          "officialList": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "官方名單記錄",
+                "$ref": "#/components/schemas/OfficialListEntry"
+              }
+            ]
+          },
+          "findings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "資料品質 finding"
+          },
+          "full": {
+            "type": "string",
+            "description": "完整 Profile 的連結（view=full）"
           }
         }
       },

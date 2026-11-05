@@ -29,10 +29,13 @@ public sealed class ContractTests(ApiHost api) : IClassFixture<ApiHost>
             Assert.True(tags.Count == 1 && Tags.Contains(tags[0]), $"{o.Route} has tags [{string.Join(", ", tags)}]");
         });
         Assert.Equal(operations.Count, operations.Select(o => (string?)o.Op["operationId"]).Distinct().Count());
-        // getHit returns a summary or the detail depending on view; both shapes are in the contract.
-        var hit = operations.Single(o => (string?)o.Op["operationId"] == "getHit").Op["responses"]!["200"]!["content"]!["application/json"]!["schema"]!["oneOf"]!.AsArray();
-        Assert.Equal(["#/components/schemas/HitSummary", "#/components/schemas/HitExplanation"], hit.Select(s => (string?)s!["$ref"]));
-        Assert.All(["HitSummary", "HitExplanation"], name => Assert.NotNull(openApi["components"]!["schemas"]![name]));
+        // getHit and getProfile return a summary or the full shape depending on view; both shapes are in the contract.
+        foreach (var (operation, shapes) in new[] { ("getHit", new[] { "HitSummary", "HitExplanation" }), ("getProfile", ["ProfileSummary", "ProfileView"]) })
+        {
+            var oneOf = operations.Single(o => (string?)o.Op["operationId"] == operation).Op["responses"]!["200"]!["content"]!["application/json"]!["schema"]!["oneOf"]!.AsArray();
+            Assert.Equal(shapes.Select(s => $"#/components/schemas/{s}"), oneOf.Select(s => (string?)s!["$ref"]));
+            Assert.All(shapes, name => Assert.NotNull(openApi["components"]!["schemas"]![name]));
+        }
 
         openApi.AsObject().Remove("servers"); // the host the document was served from, not part of the contract
         var snapshots = new Dictionary<string, JsonNode> { ["openapi.json"] = openApi };

@@ -100,7 +100,7 @@ public static partial class SourceConditions
             FromFlag(decided, ListType.AdverseMedia, flags.AdverseNews, null);
         }
         // A mapped category whose flag is MISSING (every one when all flags are MISSING) keeps its category condition.
-        foreach (var t in mapped.Where(t => FlagOf(t, flags) == FlagValue.Missing && !decided.Any(d => Same(d.Type, t))
+        foreach (var t in mapped.Where(t => FlagOf(t, flags) == FlagValue.Missing && !decided.Any(d => d.Type == t)
                      && !(t == ListType.Rca && flags.Rca == FlagValue.No)))
             decided.Add(t == ListType.Unknown
                 ? (t, ConditionStatus.Unknown, ConditionBasis.Unmapped, UnmappedCategory)
@@ -111,7 +111,7 @@ public static partial class SourceConditions
 
         // The category disagrees with the flags: a mapped type the flags did not raise as HIT.
         var conflict = !flags.AllMissing && mapped.Any(t => t is not ListType.Unknown
-            && !decided.Any(d => d.Status == ConditionStatus.Hit && Same(d.Type, t)));
+            && !decided.Any(d => d.Status == ConditionStatus.Hit && d.Type == t));
 
         var risks = RiskCategories(profile);
         return decided.Select(d =>
@@ -128,7 +128,7 @@ public static partial class SourceConditions
         if (v == FlagValue.Missing) return;
         var status = v switch
         {
-            FlagValue.Yes => t == ListType.Unknown ? ConditionStatus.Unknown : ConditionStatus.Hit,
+            FlagValue.Yes => ConditionStatus.Hit, // an undecided (UNKNOWN) type is shaped UNKNOWN
             FlagValue.No => ConditionStatus.NotHit,
             _ => ConditionStatus.Unknown,
         };
@@ -140,12 +140,9 @@ public static partial class SourceConditions
     {
         ListType.Pep => f.Pep,
         ListType.AdverseMedia => f.AdverseNews,
-        ListType.Sanction or ListType.OfficialWantedList or ListType.OtherOfficialList => f.Blacklist,
+        ListType.Sanction or ListType.OtherOfficialList => f.Blacklist,
         _ => FlagValue.Missing,
     };
-
-    private static bool Same(ListType a, ListType b) =>
-        a == b || (a, b) is (ListType.OfficialWantedList, ListType.OtherOfficialList) or (ListType.OtherOfficialList, ListType.OfficialWantedList);
 
     // One condition of a decided type, with the attributes its policy reads.
     private static SourceCondition Shape(ListType t, SourceProfile profile, IReadOnlyList<string> risks, string? news) => t switch
@@ -156,9 +153,8 @@ public static partial class SourceConditions
             LegalStage = LegalStageFromNews(news, profile.Names),
             AmlRelevance = Relevance(risks, news, profile),
         },
-        ListType.OtherOfficialList or ListType.OfficialWantedList when IsActive(profile.OfficialList, "Wanted", "通緝") =>
+        ListType.OtherOfficialList when IsActive(profile.OfficialList, "Wanted", "通緝") =>
             Hit(ListType.OfficialWantedList) with { LegalStage = LegalStage.Wanted },
-        ListType.OfficialWantedList => Hit(ListType.OtherOfficialList),
         ListType.Sanction => Sanction(profile),
         ListType.Pep or ListType.Rca => Hit(t) with
         {
@@ -181,10 +177,12 @@ public static partial class SourceConditions
         return risks;
     }
 
-    /// <summary>Blacklist YES: the type comes from approved source fields (official-list entry, then category), else UNKNOWN.</summary>
+    /// <summary>
+    /// Blacklist YES: the type comes from approved source fields (official-list entry, then category), else UNKNOWN.
+    /// An active wanted list is shaped OFFICIAL_WANTED_LIST from OTHER_OFFICIAL_LIST.
+    /// </summary>
     private static ListType BlacklistType(SourceProfile p, IReadOnlyList<ListType> mapped) =>
         p.OfficialList?.List.Contains("Sanction", StringComparison.OrdinalIgnoreCase) == true || mapped.Contains(ListType.Sanction) ? ListType.Sanction
-        : IsActive(p.OfficialList, "Wanted", "通緝") ? ListType.OfficialWantedList
         : mapped.Contains(ListType.OtherOfficialList) || p.OfficialList is not null ? ListType.OtherOfficialList
         : ListType.Unknown;
 
@@ -211,7 +209,7 @@ public static partial class SourceConditions
     private static IEnumerable<string> Subcategories(SourceProfile p, ListType type)
     {
         var prefix = type == ListType.Pep ? "Politically Exposed" : "Relative or Close Associate";
-        return p.Categories.Where(c => c.Category.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).Select(c => c.Subcategory ?? "");
+        return p.Categories.Where(c => c.Category.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).Select(c => c.Subcategory).OfType<string>();
     }
 
     /// <summary>

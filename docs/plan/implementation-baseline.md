@@ -123,7 +123,10 @@ A table is one `[Theory]` with a row per cell. Assertions name exact values: dec
   ```bash
   dotnet tool restore
   dotnet stryker -p Aml.Core.csproj -m "**/Identity/*.cs"
+  dotnet stryker -f stryker-screening.json
   ```
+
+  `stryker-screening.json` mutates `SourceConditions.cs`; `dotnet stryker -f stryker-screening.json -m "**/Screening/Disposition.cs"` (likewise `Assessment.cs`, `RiskScoring.cs`) runs another Screening file with the same settings. Use `coverage-analysis: perTest` and one file per run. With `off`, or with several files in a run, mutants of static field initializers (the vocabulary arrays and maps) are reported as survivors although a test kills them; a word mutated to `""` matches every text, so any negative test catches it. Check such a survivor by hand before adding a test. The vstest runner does not run these tests (every mutant survives); keep `mtp`.
 
 - **Coverage** (`Microsoft.Testing.Extensions.CodeCoverage`) shows which branches never run. It does not show that a wrong result would be noticed, so high coverage with surviving mutants still means missing assertions.
 

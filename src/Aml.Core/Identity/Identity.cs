@@ -465,8 +465,8 @@ public static class IdentityDecisionPolicy
 
     private static (int, IdentityDecision, string) Stage3(IReadOnlyDictionary<EvidenceGroup, Evidence> e)
     {
-        ComparisonStatus St(EvidenceGroup g) => e.TryGetValue(g, out var v) ? v.Status : ComparisonStatus.ProfileMissing;
-        var supports = e.Values.Where(v => v.IsSupport).ToList();
+        ComparisonStatus St(EvidenceGroup g) => e.GetValueOrDefault(g)?.Status ?? ComparisonStatus.ProfileMissing;
+        var supports = e.Values.Where(v => v.IsSupport).ToArray();
 
         // Employment is never a conflict (a different employer is not evidence against identity), so it has no row 1 code.
         var conflict = new[] { EvidenceGroup.DateOfBirth, EvidenceGroup.Document, EvidenceGroup.StatedAge }
@@ -479,13 +479,13 @@ public static class IdentityDecisionPolicy
 
         // Opposite genders rule out rows 3 and 4; the pair falls to row 5 or 6 with GENDER_CONFLICT.
         var genderConflict = St(EvidenceGroup.Gender) == ComparisonStatus.Conflict;
-        if (!genderConflict && supports.Any(v => v.Strength == Strength.High) && supports.Count >= 2)
+        if (!genderConflict && supports.Any(v => v.Strength == Strength.High) && supports.Length >= 2)
             return (3, IdentityDecision.ProbableMatch, ReasonCodes.StrongSupportCombination);
 
         var prerequisitesAgree = St(EvidenceGroup.Name) == ComparisonStatus.Exact
             && St(EvidenceGroup.Gender) == ComparisonStatus.Exact
             && St(EvidenceGroup.Nationality) == ComparisonStatus.Exact;
-        var dobAgrees = e.TryGetValue(EvidenceGroup.DateOfBirth, out var dob) && dob.IsSupport;
+        var dobAgrees = e.GetValueOrDefault(EvidenceGroup.DateOfBirth)?.IsSupport == true;
         // A document of another type or country is not comparable, which is not unsettled.
         var docOrEmploymentUnsettled = new[] { EvidenceGroup.Document, EvidenceGroup.Employment }
             .Select(g => e.GetValueOrDefault(g))
@@ -493,7 +493,7 @@ public static class IdentityDecisionPolicy
         if (prerequisitesAgree && dobAgrees && !docOrEmploymentUnsettled)
             return (4, IdentityDecision.ProbableMatch, ReasonCodes.ConsistentAtAvailablePrecision);
 
-        return supports.Count > 0
+        return supports.Length > 0
             ? (5, IdentityDecision.Review, ReasonCodes.PartialSupportOnly)
             : (6, IdentityDecision.Review, ReasonCodes.NoNonPrerequisiteSupport);
     }

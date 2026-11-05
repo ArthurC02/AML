@@ -85,19 +85,28 @@ public class IdentityBoundaryTests
         Assert.Equal($"SAME_NAMED_RELATIVE:{relation}", EvidenceBuilder.RelativeEvidence(EvidenceGroup.Relationship,
             [new Relative("許雅婷", label)], [new ProfileRelationship("2", "許雅婷", relation)], Strength.Medium)?.Detail);
 
-    // Born 1980-05-20: 16 in 1997, when adulthood was 20.
+    // Born 1980-05-20: 19 on 1999-06-01, when adulthood was 20.
     [Theory]
-    [InlineData("董事")]
-    [InlineData("董事長")]
-    [InlineData("副董事長")]
-    [InlineData("常務董事")]
-    [InlineData("獨立董事")]
-    [InlineData("監察人")]
-    [InlineData("director")]
-    [InlineData("Supervisor")]
-    public void Every_adult_only_title_makes_a_minor_role_impossible(string title) =>
-        Assert.Equal(ReasonCodes.ImpossibleRoleAtReportedEvent,
-            HardConflictGate.Check(Subject(), Profile() with { Roles = [new ProfileRole(title, "宏遠投資股份有限公司", D(1997, 1))] }));
+    [InlineData("董事", ReasonCodes.ImpossibleRoleAtReportedEvent)]
+    [InlineData("董事長", ReasonCodes.ImpossibleRoleAtReportedEvent)]
+    [InlineData("副董事長", ReasonCodes.ImpossibleRoleAtReportedEvent)]
+    [InlineData("常務董事", ReasonCodes.ImpossibleRoleAtReportedEvent)]
+    [InlineData("獨立董事", ReasonCodes.ImpossibleRoleAtReportedEvent)]
+    [InlineData("監察人", ReasonCodes.ImpossibleRoleAtReportedEvent)]
+    [InlineData(" director ", ReasonCodes.ImpossibleRoleAtReportedEvent)]
+    [InlineData("Supervisor", ReasonCodes.ImpossibleRoleAtReportedEvent)]
+    [InlineData("Director of Marketing", null)]  // the whole title must be listed
+    [InlineData("經理", null)]
+    public void Only_a_listed_adult_title_makes_a_minor_role_impossible(string title, string? code) =>
+        Assert.Equal(code, HardConflictGate.Check(Subject(), Profile() with { Roles = [new ProfileRole(title, "宏遠投資股份有限公司", D(1999, 6, 1))] }));
+
+    // Born 2004-05-20: 18 on 2022-06-01, when adulthood was 20; 19 on 2023-06-01, when it is 18.
+    [Theory]
+    [InlineData(2022, ReasonCodes.ImpossibleRoleAtReportedEvent)]
+    [InlineData(2023, null)]
+    public void Adulthood_is_20_before_2023_and_18_since(int year, string? code) =>
+        Assert.Equal(code, HardConflictGate.Check(Subject(D(2004, 5, 20)),
+            Profile() with { Roles = [new ProfileRole("董事", "宏遠投資股份有限公司", D(year, 6, 1))] }));
 
     [Fact]
     public void Documents_are_comparable_for_the_same_type_and_a_known_equal_country_and_imo_whatever_the_flag()
@@ -225,4 +234,20 @@ public class IdentityBoundaryTests
         var coarse = StatedAgeCheck.Check(Subject(D(1980)), Profile(), news);
         Assert.Equal("報導年齡 45 歲；缺少完整出生日期或報導日期，無法換算", coarse?.Note);
     }
+
+    // Either side's period can end before the other's starts.
+    [Theory]
+    [InlineData(2010, 2012, 2015, null, "SAME_ORGANIZATION_NO_COMMON_PERIOD")]
+    [InlineData(2015, null, 2010, 2012, "SAME_ORGANIZATION_NO_COMMON_PERIOD")]
+    [InlineData(2010, 2015, 2015, null, "SAME_ORGANIZATION_SAME_PERIOD")]  // periods compare by year, so the end year itself overlaps
+    public void An_ended_period_overlaps_only_through_its_end_year(int subjectFrom, int? subjectTo, int profileFrom, int? profileTo, string detail) =>
+        Assert.Equal(detail, EvidenceBuilder.EmploymentEvidence(
+            Subject() with { Employments = [new Employment("宏遠投資股份有限公司", null, D(subjectFrom), subjectTo is { } st ? D(st) : null)] },
+            Profile() with { Roles = [new ProfileRole("經理", "宏遠投資股份有限公司", D(profileFrom), profileTo is { } pt ? D(pt) : null)] }).Detail);
+
+    [Theory]
+    [InlineData("UNPARSEABLE:第 3 列", true)]
+    [InlineData("AMBIGUOUS:Citizenship", false)]
+    public void Only_an_unparseable_finding_is_a_source_quality_concern(string finding, bool concern) =>
+        Assert.Equal(concern, HardConflictGate.SourceQualityConcern(Profile() with { Findings = [finding] }));
 }

@@ -10,4 +10,7 @@
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
     <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="Examples\*.json" LogicalName="%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

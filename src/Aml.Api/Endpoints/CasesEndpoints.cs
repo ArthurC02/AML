@@ -41,6 +41,7 @@ internal static class CasesEndpoints
         .Produces<CaseSummary>()
         .WithSummary("Create a Case from the export files and run the first analysis; 201 when created, 200 when it already existed")
         .WithDescription("Send multipart form fields subjectRef, triggerEventId and files (案件資訊*.txt, 名單資料_<id>.txt, the customer or related-party files and any 新聞資訊_<id>.txt, or the same pages as HTML), or JSON {subjectRef, triggerEventId, files: {name: text}} as one batch item. Repeating the same triggerEventId and subjectRef returns the existing Case with 200. Returns the Case summary. Use it once per alert (trigger event and subject). For new files of an existing Case use reanalyzeCase; for many Cases use submitBatch. Next: getHit through hits[].link, or getRevision through revision. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.")
+        .WithExample(Examples.CaseSummary, "201", "200")
         .WithName("createCase")
         .WithTags("write");
 
@@ -86,6 +87,7 @@ internal static class CasesEndpoints
         .Produces<CaseSummary>()
         .WithSummary("What the Case concluded: result, conclusion and one line per hit from the effective revision, with links to the hits and the full revision")
         .WithDescription("Start here to learn what a Case concluded; without a caseId use findCases first. It holds no identifier values and, of personal data, only names. Hits are ordered by review priority; at most 10 are listed and the rest counted in omitted. Next: getHit for why a hit was decided, getRevision for the full record. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.")
+        .WithExample(Examples.CaseSummary, "200")
         .WithName("getCaseSummary")
         .WithTags("read");
 
@@ -111,6 +113,7 @@ internal static class CasesEndpoints
         })
         .WithSummary("One hit of the effective revision (or ?revision=): view=summary (default) without compared values, view=detail with the full explanation (HitExplanation)")
         .WithDescription("Use view=summary to learn why the hit was decided: decisive evidence, reason codes and wouldChangeIf. Use view=detail only when the compared subject and Profile values are needed. wouldChangeIf names the stage 3 row a comparable document or full DOB would move the identity decision to; it never states an external result. Example: GC-03 hit 1 has sourceConditions [OFFICIAL_WANTED_LIST], identityDecision PROBABLE_MATCH at stage 3 row 4 and pairResult REVIEW. Next: getCode for any code.")
+        .WithExample(Examples.HitSummary, "200")
         .WithName("getHit")
         .WithTags("read");
 

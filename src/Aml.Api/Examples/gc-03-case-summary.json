@@ -1,0 +1,26 @@
+{
+  "caseId": "0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03",
+  "subjectRef": "CUST-REF-0003",
+  "triggerEventId": "ALERT-0003",
+  "status": "IN_REVIEW",
+  "currentRevision": 1,
+  "effectiveRevision": 1,
+  "effectiveAt": "2026-11-04T00:00:00+00:00",
+  "newerRevisionIncomplete": false,
+  "result": "REVIEW",
+  "conclusion": "案件結果 REVIEW（revision 1）：1 個 hit，1 個需複核",
+  "hits": [
+    {
+      "hitNumber": 1,
+      "profileId": "90000031",
+      "profileKey": "DJ:90000031",
+      "profileName": "王大明",
+      "pairResult": "REVIEW",
+      "reviewPriority": "HIGH",
+      "identityDecision": "PROBABLE_MATCH",
+      "link": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/hits/1?revision=1"
+    }
+  ],
+  "revision": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/revisions/1",
+  "revisions": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/revisions"
+}

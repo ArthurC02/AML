@@ -1,0 +1,53 @@
+{
+  "hitNumber": 1,
+  "revision": 1,
+  "profileId": "90000031",
+  "profileKey": "DJ:90000031",
+  "profileName": "王大明",
+  "sourceConditions": [
+    "OFFICIAL_WANTED_LIST"
+  ],
+  "identityDecision": "PROBABLE_MATCH",
+  "stage3Row": 4,
+  "pairResult": "REVIEW",
+  "reviewPriority": "HIGH",
+  "reasonCodes": [
+    "CONSISTENT_AT_AVAILABLE_PRECISION",
+    "NO_BILATERAL_DIRECT_IDENTIFIER"
+  ],
+  "decisiveEvidence": [
+    {
+      "group": "DATE_OF_BIRTH",
+      "status": "PARTIAL",
+      "strength": "LOW",
+      "detail": "BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE"
+    }
+  ],
+  "wouldChangeIf": [
+    {
+      "field": "DOCUMENT",
+      "assumption": "AGREE",
+      "stage3Row": 2,
+      "decision": "PROBABLE_MATCH",
+      "reasonCode": "UNIQUE_IDENTIFIER_AGREEMENT",
+      "text": "若同類證件相符：身分判斷移至第三階段第 2 列 UNIQUE_IDENTIFIER_AGREEMENT"
+    },
+    {
+      "field": "DOCUMENT",
+      "assumption": "CONFLICT",
+      "stage3Row": 1,
+      "decision": "REVIEW",
+      "reasonCode": "DOCUMENT_IDENTITY_CONFLICT",
+      "text": "若同類證件不符：身分判斷移至第三階段第 1 列 DOCUMENT_IDENTITY_CONFLICT"
+    },
+    {
+      "field": "DATE_OF_BIRTH",
+      "assumption": "CONFLICT",
+      "stage3Row": 1,
+      "decision": "REVIEW",
+      "reasonCode": "FULL_DOB_CONFLICT",
+      "text": "若完整出生日期不符：身分判斷移至第三階段第 1 列 FULL_DOB_CONFLICT"
+    }
+  ],
+  "detail": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/hits/1?view=detail&revision=1"
+}

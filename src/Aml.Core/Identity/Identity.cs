@@ -47,7 +47,7 @@ public static class EvidenceBuilder
         Add(EvidenceGroup.Nationality, Direction.Prerequisite,
             Compare(s.Nationalities.Count == 0, p.Citizenship.Count == 0, () => s.Nationalities.Intersect(p.Citizenship).Any()));
 
-        AddDateOfBirth(s, p, Add);
+        e[EvidenceGroup.DateOfBirth] = DateOfBirthEvidence(s, p);
 
         // A reference number never becomes DOCUMENT evidence.
         e[EvidenceGroup.Document] = DocumentEvidence(s.Document, p.Documents ?? []);
@@ -69,20 +69,27 @@ public static class EvidenceBuilder
     /// <summary>Detail of a value present on both sides that cannot be compared (other document type or country, occupation category only).</summary>
     public const string NotComparable = EvidenceDetails.NotComparable;
 
-    /// <summary>Comparable only for the same type and issuing country; equal numbers are unique support, different ones a conflict.</summary>
+    /// <summary>
+    /// Two documents say something about identity only for the same type and a known, equal issuing country; an IMO number
+    /// identifies a vessel whatever its flag. The person, entity and direct-identifier rules all use this one test.
+    /// </summary>
+    public static bool Comparable(Document a, Document b) =>
+        a.Type == b.Type && (a.Type == "IMO_NUMBER" || a.Country is not null && a.Country == b.Country);
+
+    internal static string DocumentNumber(string n) => Normalize.NameKey(Normalize.HalfWidth(n));
+
+    /// <summary>Comparable documents with equal numbers are unique support, different ones a conflict.</summary>
     public static Evidence DocumentEvidence(Document? subject, IReadOnlyList<Document> profile)
     {
         const EvidenceGroup g = EvidenceGroup.Document;
         if (subject is null) return new(g, Direction.Neutral, ComparisonStatus.SubjectMissing);
         if (profile.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.ProfileMissing);
-        var comparable = profile.Where(d => d.Type == subject.Type && d.Country is not null && d.Country == subject.Country).ToList();
+        var comparable = profile.Where(d => Comparable(d, subject)).ToList();
         if (comparable.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, NotComparable);
         return comparable.Any(d => DocumentNumber(d.Number) == DocumentNumber(subject.Number))
             ? new(g, Direction.Support, ComparisonStatus.Exact, Strength.Unique)
             : new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.DocumentIdentityConflict);
     }
-
-    private static string DocumentNumber(string n) => Normalize.NameKey(Normalize.HalfWidth(n));
 
     /// <summary>
     /// A labelled identifier that is not an identity document: the same number on both sides is LOW support (its nature is
@@ -170,11 +177,11 @@ public static class EvidenceBuilder
     // ponytail: relation names seen in DJ exports and bank data; extend as new labels appear.
     private static string Relation(string raw) => raw.Trim().ToUpperInvariant() switch
     {
-        "WIFE" or "HUSBAND" or "SPOUSE" or "配偶" or "妻" or "夫" => "SPOUSE",
-        "FATHER" or "MOTHER" or "PARENT" or "父" or "母" or "父親" or "母親" => "PARENT",
-        "SON" or "DAUGHTER" or "CHILD" or "子" or "女" or "兒子" or "女兒" => "CHILD",
-        "BROTHER" or "SISTER" or "SIBLING" or "兄弟" or "姊妹" => "SIBLING",
-        var other => other,
+        "WIFE" or "HUSBAND" or "配偶" or "妻" or "夫" => "SPOUSE",
+        "FATHER" or "MOTHER" or "父" or "母" or "父親" or "母親" => "PARENT",
+        "SON" or "DAUGHTER" or "子" or "女" or "兒子" or "女兒" => "CHILD",
+        "BROTHER" or "SISTER" or "兄弟" or "姊妹" => "SIBLING",
+        var other => other, // SPOUSE, PARENT, CHILD and SIBLING name themselves
     };
 
     /// <summary>
@@ -200,31 +207,27 @@ public static class EvidenceBuilder
             string.Create(CultureInfo.InvariantCulture, $"{EvidenceDetails.SoftDifference}（Jaccard {jaccard:0.00}，{(jaccard >= AddressCompare.JaccardThreshold ? "SIMILAR" : "DISSIMILAR")}）"));
     }
 
-    private static void AddDateOfBirth(ScreenedSubject s, SourceProfile p, Action<EvidenceGroup, Direction, ComparisonStatus, Strength, string?> add)
+    private static Evidence DateOfBirthEvidence(ScreenedSubject s, SourceProfile p)
     {
-        if (s.DateOfBirth is not { } dob) { add(EvidenceGroup.DateOfBirth, Direction.Neutral, ComparisonStatus.SubjectMissing, Strength.None, null); return; }
+        const EvidenceGroup g = EvidenceGroup.DateOfBirth;
+        if (s.DateOfBirth is not { } dob) return new(g, Direction.Neutral, ComparisonStatus.SubjectMissing);
         var dobs = ProfileDatesOfBirth(p);
-        if (dobs.Count == 0) { add(EvidenceGroup.DateOfBirth, Direction.Neutral, ComparisonStatus.ProfileMissing, Strength.None, null); return; }
+        if (dobs.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.ProfileMissing);
 
         // A Profile with several DOBs is source ambiguity: one agreeing value is support, the others are not conflicts.
         var agreeing = dobs.Where(dob.AgreesWith).OrderByDescending(d => d.Precision).ToList();
         if (agreeing.Count == 0)
         {
             var full = dob.Precision == DatePrecision.Day && dobs.Any(d => d.Precision == DatePrecision.Day);
-            add(EvidenceGroup.DateOfBirth, Direction.Conflict, ComparisonStatus.Conflict, Strength.None,
-                full ? ReasonCodes.FullDobConflict : ReasonCodes.DobConflict);
-            return;
+            return new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, full ? ReasonCodes.FullDobConflict : ReasonCodes.DobConflict);
         }
         var precision = (DatePrecision)Math.Min((int)dob.Precision, (int)agreeing[0].Precision);
         var status = precision == DatePrecision.Day ? ComparisonStatus.Exact : ComparisonStatus.Partial;
         // Agreeing with one of many scattered values is no rare coincidence: recorded, never support, never row 4.
         // ponytail: 3 values or a span over 2 years is a placeholder cut-off pending calibration.
         if (dobs.Count >= 3 || dobs.Max(d => d.Year) - dobs.Min(d => d.Year) > 2)
-        {
-            add(EvidenceGroup.DateOfBirth, Direction.Neutral, status, Strength.None, Findings.ProfileMultipleDob);
-            return;
-        }
-        add(EvidenceGroup.DateOfBirth, Direction.Support, status,
+            return new(g, Direction.Neutral, status, Strength.None, Findings.ProfileMultipleDob);
+        return new(g, Direction.Support, status,
             precision switch { DatePrecision.Day => Strength.High, DatePrecision.Month => Strength.Medium, _ => Strength.Low },
             precision == DatePrecision.Year ? ReasonCodes.BirthYearMatchFullDateNotComparable : null);
     }
@@ -355,21 +358,21 @@ public static class HardConflictGate
         return null;
     }
 
-    /// <summary>True only when every date <paramref name="a"/> can stand for precedes every date <paramref name="b"/> can.</summary>
+    /// <summary>
+    /// True only when every date <paramref name="a"/> can stand for precedes every date <paramref name="b"/> can. A comparison
+    /// with a missing month or day is false (lifted operators), so an unknown part never orders two dates.
+    /// </summary>
     public static bool Before(PartialDate a, PartialDate b) =>
         a.Year != b.Year ? a.Year < b.Year
-        : a.Month is null || b.Month is null ? false
         : a.Month != b.Month ? a.Month < b.Month
-        : a.Day is not null && b.Day is not null && a.Day < b.Day;
+        : a.Day < b.Day;
 
     /// <summary>Oldest the person can have been at a possibly imprecise time point.</summary>
     public static int MaxAgeAt(PartialDate dob, PartialDate at)
     {
+        // The birthday has surely not come only when a known month, or a known day of the same month, is earlier.
         var age = at.Year - dob.Year;
-        if (at.Month is null) return age;
-        if (at.Month < dob.Month) return age - 1;
-        if (at.Month > dob.Month || at.Day is null) return age;
-        return at.Day < dob.Day ? age - 1 : age;
+        return at.Month < dob.Month || (at.Month == dob.Month && at.Day < dob.Day) ? age - 1 : age;
     }
 }
 
@@ -410,15 +413,13 @@ public static class IdentityDecisionPolicy
         var subject = new[] { s.Document, s.TaxId is { State: ValueState.Present, Value: { } tax } ? new Document("REGISTRATION_NUMBER", tax, "TW") : null }
             .OfType<Document>().Where(d => d.Type is "REGISTRATION_NUMBER" or "IMO_NUMBER").ToList();
         var profile = (p.Documents ?? []).Where(d => d.Type is "REGISTRATION_NUMBER" or "IMO_NUMBER").ToList();
-        static string Key(Document d) => d.Type == "IMO_NUMBER" ? "IMO" : $"{d.Type}|{d.Country}";
-        static string Number(Document d) => Normalize.NameKey(Normalize.HalfWidth(d.Number));
-        var comparable = subject.SelectMany(a => profile.Where(b => Key(a) == Key(b)), (a, b) => (a, b)).ToList();
+        var comparable = subject.SelectMany(a => profile.Where(b => EvidenceBuilder.Comparable(a, b)), (a, b) => (a, b)).ToList();
         if (comparable.Count == 0)
         {
             e[g] = new(g, Direction.Neutral, subject.Count == 0 ? ComparisonStatus.SubjectMissing : profile.Count == 0 ? ComparisonStatus.ProfileMissing : ComparisonStatus.Uncertain);
             return new IdentityResult(e, null, null, IdentityDecision.Review, [ReasonCodes.NonPersonSubjectReview]);
         }
-        if (comparable.Any(x => Number(x.a) == Number(x.b)))
+        if (comparable.Any(x => EvidenceBuilder.DocumentNumber(x.a.Number) == EvidenceBuilder.DocumentNumber(x.b.Number)))
         {
             e[g] = new(g, Direction.Support, ComparisonStatus.Exact, Strength.Unique);
             return new IdentityResult(e, null, 2, IdentityDecision.ProbableMatch, [ReasonCodes.EntityIdentifierAgreement]);
@@ -471,8 +472,7 @@ public static class IdentityDecisionPolicy
         var conflict = new[] { EvidenceGroup.DateOfBirth, EvidenceGroup.Document, EvidenceGroup.StatedAge }
             .Select(g => e.GetValueOrDefault(g)).FirstOrDefault(v => v?.Status == ComparisonStatus.Conflict);
         if (conflict is not null)
-            return (1, IdentityDecision.Review, conflict.Detail ?? (conflict.Group == EvidenceGroup.Document
-                ? ReasonCodes.DocumentIdentityConflict : ReasonCodes.DobConflict));
+            return (1, IdentityDecision.Review, conflict.Detail!); // every DOB, document and stated-age conflict carries its code
 
         if (supports.Any(v => v.Strength == Strength.Unique))
             return (2, IdentityDecision.ProbableMatch, ReasonCodes.UniqueIdentifierAgreement);
@@ -501,5 +501,5 @@ public static class IdentityDecisionPolicy
     // Direct identifier: full DOB or a document key present on both sides.
     private static bool NoBilateralDirectIdentifier(ScreenedSubject s, SourceProfile p) =>
         !(s.DateOfBirth?.Precision == DatePrecision.Day && p.DatesOfBirth.Any(d => d.Precision == DatePrecision.Day))
-        && !(s.Document is { } d && (p.Documents ?? []).Any(x => x.Type == d.Type && x.Country is not null && x.Country == d.Country));
+        && !(s.Document is { } d && (p.Documents ?? []).Any(x => EvidenceBuilder.Comparable(x, d)));
 }

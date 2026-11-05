@@ -165,8 +165,10 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
                 return;
             }
 
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(options.Timeout); // the analysis itself is not interruptible; CaseService checks the deadline before writing
+        // The analysis itself is not interruptible; CaseService checks the deadline before writing. The constructor, unlike
+        // CancelAfter, cancels at once for a zero timeout, so an expired deadline never races the timer.
+        using var deadline = new CancellationTokenSource(options.Timeout);
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct, deadline.Token);
         try
         {
             // Checkpoint: Case creation is idempotent on (trigger, subject), so a retry after a crash reuses the stored revision.

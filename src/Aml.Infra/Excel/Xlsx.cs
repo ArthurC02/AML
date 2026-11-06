@@ -14,13 +14,15 @@ public sealed record Sheet(string Name, IReadOnlyList<string> Header, IReadOnlyL
 /// <list type="bullet">
 /// <item>Text is always a text cell formatted as Text (@), never a formula: a value such as <c>=HYPERLINK(…)</c> stays
 /// text (formula injection, OWASP; CWE-1236), and identifiers keep their leading zeros.</item>
-/// <item>Characters XML cannot carry are dropped, and text past Excel's 32,767 characters per cell is cut with a note.</item>
+/// <item>Characters XML cannot carry are dropped, and text past Excel's 32,767 characters per cell is cut with a note.
+/// Literal <c>_xHHHH_</c> text is escaped, so Excel does not read it as a character.</item>
+/// <item>Text cells that look like numbers are not flagged as numbers stored as text.</item>
 /// <item>Times are Excel dates in UTC (yyyy-mm-dd hh:mm:ss).</item>
 /// <item>The same sheets and stamp give the same bytes: fixed part order and zip entry times.</item>
 /// </list>
 /// ponytail: inline strings and no table parts; shared strings or Excel tables when files grow or users ask for them.
 /// </summary>
-public static class Xlsx
+public static partial class Xlsx
 {
     public const string ContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
     public const int MaxCellText = 32_767;
@@ -35,9 +37,13 @@ public static class Xlsx
 
     public static void Write(Stream output, IReadOnlyList<Sheet> sheets, DateTimeOffset stamp)
     {
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var s in sheets)
         {
-            if (s.Name.Length is 0 or > 31 || s.Name.AsSpan().ContainsAny(SheetNameForbidden)) throw new ArgumentException($"Excel refuses the sheet name '{s.Name}'.", nameof(sheets));
+            // Excel's rules: 1 to 31 characters, none of []:*?/\, no leading or trailing apostrophe, not "History", unique ignoring case.
+            if (s.Name.Length is 0 or > 31 || s.Name.AsSpan().ContainsAny(SheetNameForbidden) || s.Name.StartsWith('\'') || s.Name.EndsWith('\'')
+                || s.Name.Equals("History", StringComparison.OrdinalIgnoreCase) || !names.Add(s.Name))
+                throw new ArgumentException($"Excel refuses the sheet name '{s.Name}'.", nameof(sheets));
             if (s.Rows.Count + 1 > MaxRows) throw new ArgumentException($"Sheet '{s.Name}' has more rows than Excel holds.", nameof(sheets));
         }
         // Zip entry times are DOS times (1980-2107), local to no zone; the stamp keeps the bytes reproducible.
@@ -226,6 +232,14 @@ public static class Xlsx
         x.WriteStartElement("autoFilter", Main);
         x.WriteAttributeString("ref", Range(sheet));
         x.WriteEndElement();
+
+        // Ids such as 90000031 are text on purpose; without this Excel flags each one as a number stored as text.
+        x.WriteStartElement("ignoredErrors", Main);
+        x.WriteStartElement("ignoredError", Main);
+        x.WriteAttributeString("sqref", Range(sheet));
+        x.WriteAttributeString("numberStoredAsText", "1");
+        x.WriteEndElement();
+        x.WriteEndElement();
         x.WriteEndElement();
     }
 
@@ -253,7 +267,7 @@ public static class Xlsx
                     x.WriteStartElement("is", Main);
                     x.WriteStartElement("t", Main);
                     x.WriteAttributeString("xml", "space", null, "preserve");
-                    x.WriteString(CellText(value.ToString() ?? ""));
+                    x.WriteString(Escaped(CellText(value.ToString() ?? "")));
                     x.WriteEndElement();
                     x.WriteEndElement();
                     break;
@@ -278,6 +292,15 @@ public static class Xlsx
         if (char.IsHighSurrogate(kept[cut - 1])) cut--; // never split a pair
         return kept.ToString(0, cut) + CutNote;
     }
+
+    /// <summary>
+    /// Excel reads <c>_xHHHH_</c> in cell text as an escaped character (ST_Xstring), so text that holds one literally
+    /// escapes its underscore as <c>_x005F_</c>; the cell then shows the text as given.
+    /// </summary>
+    public static string Escaped(string text) => EscapeLike().Replace(text, "_x005F_$1");
+
+    [System.Text.RegularExpressions.GeneratedRegex("_(x[0-9A-Fa-f]{4}_)")]
+    private static partial System.Text.RegularExpressions.Regex EscapeLike();
 
     // Approximate width in characters: a CJK or other wide character counts two.
     private static double Width(Sheet sheet, int column)

@@ -13,12 +13,12 @@
 - Seven sheets, each one table with a bold, frozen and filterable header row: 說明 (the Case, lineage, quality and a data dictionary of every column), 命中 (one row per hit), 比對, 證據, 來源, 變更 and 代碼 (the catalogued codes the other sheets show). The hit number joins the sheets.
 - `view=summary`, the default, follows the summary views: no `IDENTIFIER` field, no compared value or note and, of personal data, only the Profile's main name. `view=full` adds the screened subject, matched names, the summary's internal and external data, compared values, notes, and source names and URLs.
 - Text is always a text cell formatted as Text (@), never a formula. Characters XML cannot carry are dropped, and text past 32,767 characters is cut with a note pointing to the API.
-- The writer is SpreadsheetML written with the .NET standard library (`System.IO.Compression`, `XmlWriter`), with no new dependency. The same revision gives the same bytes.
+- The writer is SpreadsheetML written with the .NET standard library (`System.IO.Compression`, `XmlWriter`), with no new dependency. The same revision gives the same bytes on the same runtime.
 - The response carries `Cache-Control: no-store`.
 
 ## Consequences
 
 - ADR-0018's Excel row no longer holds: the report it rejected is not revived, but a workbook rendering of the API is offered.
-- A workbook is a copy outside the system: who downloaded which Case is not recorded, and access control stops at the download.
+- A workbook is a copy outside the system: access control stops at the download. Each download is logged with its Case, revision and view; who downloaded it is known only once authentication is wired.
 - The four legacy sheets are not reproduced; the seven sheets follow the stored records, so a new field reaches the workbook only by a change to `CaseWorkbook`.
 - There is no batch workbook; a batch is read one Case at a time.

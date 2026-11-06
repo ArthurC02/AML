@@ -103,7 +103,20 @@ public class WorkbookTests
         Assert.EndsWith("x" + Xlsx.CutNote, cut, StringComparison.Ordinal);
         Assert.Equal("ok", Xlsx.CellText("ok"));
         Assert.Throws<ArgumentException>(() => Xlsx.Write(Stream.Null, [new Sheet("a/b", [], [])], DateTimeOffset.UnixEpoch));
-        Assert.Throws<ArgumentException>(() => Xlsx.Write(Stream.Null, [new Sheet(new string('s', 32), [], [])], DateTimeOffset.UnixEpoch));
+        foreach (var bad in new[] { new string('s', 32), "'a", "a'", "history", "" })
+            Assert.Throws<ArgumentException>(() => Xlsx.Write(Stream.Null, [new Sheet(bad, [], [])], DateTimeOffset.UnixEpoch));
+        Assert.Throws<ArgumentException>(() => Xlsx.Write(Stream.Null, [new Sheet("A", [], []), new Sheet("a", [], [])], DateTimeOffset.UnixEpoch));
+
+        // Excel would show "_x0041_" as "A"; the escaped underscore keeps the text as given.
+        Assert.Equal("_x005F_x0041_ and _x005F_x005F_ but _x12_", Xlsx.Escaped("_x0041_ and _x005F_ but _x12_"));
+        using var escaped = new MemoryStream();
+        Xlsx.Write(escaped, [new Sheet("s", ["_x0041_"], [["a_x0041_"]])], DateTimeOffset.UnixEpoch);
+        Assert.Equal(["_x005F_x0041_", "a_x005F_x0041_"], Read(escaped.ToArray())[0].Rows.Select(r => r[0]));
+
+        // The worksheet's parts in the order CT_Worksheet requires, or Excel repairs the file.
+        var worksheet = XDocument.Load(zip.GetEntry("xl/worksheets/sheet1.xml")!.Open()).Root!;
+        Assert.Equal(["dimension", "sheetViews", "cols", "sheetData", "autoFilter", "ignoredErrors"], worksheet.Elements().Select(e => e.Name.LocalName));
+        Assert.Single(worksheet.Descendants(Main + "ignoredError"), e => (string?)e.Attribute("numberStoredAsText") == "1");
     }
 
     [Fact]

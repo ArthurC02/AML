@@ -101,6 +101,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(Infra.Excel.Xlsx.ContentType, workbook.Content.Headers.ContentType?.MediaType);
         Assert.Equal($"case-{caseId}-revision-1.xlsx", workbook.Content.Headers.ContentDisposition?.FileName);
         Assert.True(workbook.Headers.CacheControl?.NoStore);
+        Assert.Equal(["nosniff"], workbook.Headers.GetValues("X-Content-Type-Options"));
         var sheets = GoldenCases.WorkbookTests.Read(await workbook.Content.ReadAsByteArrayAsync(ct));
         Assert.Equal(7, sheets.Count);
         var fullBook = GoldenCases.WorkbookTests.Read(await client.GetByteArrayAsync($"/api/cases/{caseId}/workbook?view=full", ct));

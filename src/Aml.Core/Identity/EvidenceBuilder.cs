@@ -5,41 +5,49 @@ using Aml.Core.Subjects;
 
 namespace Aml.Core.Identity;
 
-/// <summary>Builds per-group evidence for one screened subject versus one Profile.</summary>
 public static class EvidenceBuilder
 {
     public static IReadOnlyDictionary<EvidenceGroup, Evidence> Build(ScreenedSubject s, SourceProfile p, NewsItem? news = null)
     {
         var e = new Dictionary<EvidenceGroup, Evidence>();
-        void Add(EvidenceGroup g, Direction d, ComparisonStatus status, Strength strength = Strength.None, string? detail = null) =>
-            e[g] = new Evidence(g, d, status, strength, detail);
+        void Add(Evidence? evidence)
+        {
+            if (evidence is not null) e[evidence.Group] = evidence;
+        }
 
-        // Hit prerequisites: recorded, never support.
-        var (nameStatus, nameDetail) = Normalize.CompareNames(s.Names, p.Names);
-        Add(EvidenceGroup.Name, Direction.Prerequisite, nameStatus, detail: nameDetail);
-        var gender = Compare(s.Gender is null, p.Gender is null, () => s.Gender == p.Gender);
-        Add(EvidenceGroup.Gender, Direction.Prerequisite, gender, detail: gender == ComparisonStatus.Conflict ? ReasonCodes.GenderConflict : null);
-        Add(EvidenceGroup.Nationality, Direction.Prerequisite,
-            Compare(s.Nationalities.Count == 0, p.Citizenship.Count == 0, () => s.Nationalities.Intersect(p.Citizenship).Any()));
-
-        e[EvidenceGroup.DateOfBirth] = DateOfBirthEvidence(s, p);
-
-        // A reference number never becomes DOCUMENT evidence.
-        e[EvidenceGroup.Document] = DocumentEvidence(s.Document, p.Documents ?? []);
-        if (OtherIdentifierEvidence(s.ReferenceNumber, p.OtherIdentifiers ?? []) is { } other) e[EvidenceGroup.OtherIdentifier] = other;
-        if (TemporalEvidence(s, p, news) is { } temporal) e[EvidenceGroup.TemporalRole] = temporal;
-
-        e[EvidenceGroup.Employment] = EmploymentEvidence(s, p);
-        if (RelativeEvidence(EvidenceGroup.Relationship, s.Relatives?.Where(r => !r.IsEntity).ToList() ?? [],
-                p.Relationships.Where(r => !r.IsEntity).ToList(), Strength.Medium) is { } rel)
-            e[EvidenceGroup.Relationship] = rel;
-        if (RelativeEvidence(EvidenceGroup.CompanyAssociation, s.Relatives?.Where(r => r.IsEntity).ToList() ?? [],
-                p.Relationships.Where(r => r.IsEntity && !IsEmployer(r.Relation)).ToList(), Strength.Low) is { } company)
-            e[EvidenceGroup.CompanyAssociation] = company;
-        e[EvidenceGroup.Address] = AddressEvidence(s, p);
-        if (StatedAgeCheck.Check(s, p, news) is { } age) e[EvidenceGroup.StatedAge] = age;
+        foreach (var prerequisite in HitPrerequisites(s, p)) Add(prerequisite);
+        Add(DateOfBirthEvidence(s, p));
+        Add(DocumentEvidence(s.Document, p.Documents ?? []));
+        Add(OtherIdentifierEvidence(s.ReferenceNumber, p.OtherIdentifiers ?? []));
+        Add(TemporalEvidence(s, p, news));
+        Add(EmploymentEvidence(s, p));
+        Add(RelativeEvidence(EvidenceGroup.Relationship, SubjectRelatives(s, isEntity: false),
+            p.Relationships.Where(r => !r.IsEntity).ToList(), Strength.Medium));
+        Add(RelativeEvidence(EvidenceGroup.CompanyAssociation, SubjectRelatives(s, isEntity: true),
+            p.Relationships.Where(r => r.IsEntity && !IsEmployer(r.Relation)).ToList(), Strength.Low));
+        Add(AddressEvidence(s, p));
+        Add(StatedAgeCheck.Check(s, p, news));
         return e;
     }
+
+    private static IEnumerable<Evidence> HitPrerequisites(ScreenedSubject s, SourceProfile p)
+    {
+        var (nameStatus, nameDetail) = Normalize.CompareNames(s.Names, p.Names);
+        var gender = Compare(s.Gender is null, p.Gender is null, () => s.Gender == p.Gender);
+        var nationality = Compare(s.Nationalities.Count == 0, p.Citizenship.Count == 0, () => s.Nationalities.Intersect(p.Citizenship).Any());
+        return
+        [
+            Prerequisite(EvidenceGroup.Name, nameStatus, nameDetail),
+            Prerequisite(EvidenceGroup.Gender, gender, gender == ComparisonStatus.Conflict ? ReasonCodes.GenderConflict : null),
+            Prerequisite(EvidenceGroup.Nationality, nationality),
+        ];
+    }
+
+    private static Evidence Prerequisite(EvidenceGroup g, ComparisonStatus status, string? detail = null) =>
+        new(g, Direction.Prerequisite, status, Strength.None, detail);
+
+    private static List<Relative> SubjectRelatives(ScreenedSubject s, bool isEntity) =>
+        s.Relatives?.Where(r => r.IsEntity == isEntity).ToList() ?? [];
 
     /// <summary>Detail of a value present on both sides that cannot be compared (other document type or country, occupation category only).</summary>
     public const string NotComparable = EvidenceDetails.NotComparable;
@@ -95,10 +103,10 @@ public static class EvidenceBuilder
         if (hard is ReasonCodes.ImpossibleAgeAtReportedEvent or ReasonCodes.ImpossibleRoleAtReportedEvent)
             return new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, hard);
         var youngest = events.Min(d => HardConflictGate.MaxAgeAt(dob, d));
+        var note = $"最早事件時最多 {youngest} 歲";
         return youngest >= HardConflictGate.MinimumRoleAge
-            ? new(g, Direction.Neutral, ComparisonStatus.Exact, Strength.None, ReasonCodes.TemporallyPlausible,
-                $"最早事件時最多 {youngest} 歲")
-            : new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, null, $"最早事件時最多 {youngest} 歲");
+            ? new(g, Direction.Neutral, ComparisonStatus.Exact, Strength.None, ReasonCodes.TemporallyPlausible, note)
+            : new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, null, note);
     }
 
     /// <summary>
@@ -108,28 +116,36 @@ public static class EvidenceBuilder
     public static Evidence EmploymentEvidence(ScreenedSubject s, SourceProfile p)
     {
         const EvidenceGroup g = EvidenceGroup.Employment;
-        var profile = p.Roles.Select(r => new Employment(r.Organization, r.Title, r.From, r.To))
-            .Concat(p.Relationships.Where(r => IsEmployer(r.Relation)).Select(r => new Employment(r.Name, null, null, null)))
-            .ToList();
+        var profile = ProfileEmployments(p);
         var subject = s.Employments ?? [];
-        if (subject.Count == 0)
-            // An occupation category alone is not structured evidence: the employer is missing, so nothing is comparable.
-            return s.Occupation is not null && profile.Count > 0
-                ? new(g, Direction.Neutral, ComparisonStatus.SubjectMissing, Strength.None, NotComparable)
-                : new(g, Direction.Neutral, s.Occupation is null ? ComparisonStatus.SubjectMissing : ComparisonStatus.ProfileMissing);
+        if (subject.Count == 0) return EmploymentWithoutSubjectEmployer(hasOccupation: s.Occupation is not null, profileHasEmployment: profile.Count > 0);
         if (profile.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.ProfileMissing);
 
-        var same = subject.SelectMany(a => profile, (a, b) => (a, b))
+        var sameOrganization = subject.SelectMany(a => profile, (a, b) => (a, b))
             .Where(x => Normalize.NameKey(x.a.Organization, true) == Normalize.NameKey(x.b.Organization, true)).ToList();
-        if (same.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, EvidenceDetails.DifferentOrganization);
-        return same.Any(x => Overlap(x.a, x.b))
+        if (sameOrganization.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, EvidenceDetails.DifferentOrganization);
+        return sameOrganization.Any(x => PeriodsOverlapByYear(x.a, x.b))
             ? new(g, Direction.Support, ComparisonStatus.Exact, Strength.Medium, EvidenceDetails.SameOrganizationSamePeriod)
             : new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, EvidenceDetails.SameOrganizationNoCommonPeriod);
     }
 
-    // Both periods need a start; an open end runs to the present. Compared by year, the coarsest common precision.
-    private static bool Overlap(Employment a, Employment b) =>
-        a.From is { } af && b.From is { } bf && Math.Max(af.Year, bf.Year) <= Math.Min(a.To?.Year ?? int.MaxValue, b.To?.Year ?? int.MaxValue);
+    private static List<Employment> ProfileEmployments(SourceProfile p) =>
+        p.Roles.Select(r => new Employment(r.Organization, r.Title, r.From, r.To))
+            .Concat(p.Relationships.Where(r => IsEmployer(r.Relation)).Select(r => new Employment(r.Name, null, null, null)))
+            .ToList();
+
+    private static Evidence EmploymentWithoutSubjectEmployer(bool hasOccupation, bool profileHasEmployment)
+    {
+        const EvidenceGroup g = EvidenceGroup.Employment;
+        return hasOccupation && profileHasEmployment
+            ? new(g, Direction.Neutral, ComparisonStatus.SubjectMissing, Strength.None, NotComparable)
+            : new(g, Direction.Neutral, hasOccupation ? ComparisonStatus.ProfileMissing : ComparisonStatus.SubjectMissing);
+    }
+
+    private static bool PeriodsOverlapByYear(Employment a, Employment b) =>
+        a.From is { } af && b.From is { } bf && Math.Max(af.Year, bf.Year) <= Math.Min(EndYearOrOpen(a), EndYearOrOpen(b));
+
+    private static int EndYearOrOpen(Employment e) => e.To?.Year ?? int.MaxValue;
 
     /// <summary>
     /// A relative or related company named on both sides with the same relation and an EXACT name is support.
@@ -140,23 +156,23 @@ public static class EvidenceBuilder
         if (subject.Count == 0)
             return profile.Count > 0 ? new(g, Direction.Neutral, ComparisonStatus.SubjectMissing) : null;
         if (profile.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.ProfileMissing);
-        var same = subject.FirstOrDefault(a => profile.Any(b => Relation(a.Relation) == Relation(b.Relation)
+        var same = subject.FirstOrDefault(a => profile.Any(b => CanonicalRelation(a.Relation) == CanonicalRelation(b.Relation)
             && Normalize.CompareNames([a.Name], [b.Name]).Status == ComparisonStatus.Exact));
         return same is not null
-            ? new(g, Direction.Support, ComparisonStatus.Exact, strength, $"{EvidenceDetails.SameNamedRelative}:{Relation(same.Relation)}")
+            ? new(g, Direction.Support, ComparisonStatus.Exact, strength, $"{EvidenceDetails.SameNamedRelative}:{CanonicalRelation(same.Relation)}")
             : new(g, Direction.Neutral, ComparisonStatus.Uncertain);
     }
 
     internal static bool IsEmployer(string relation) => relation.Equals("Employer", StringComparison.OrdinalIgnoreCase);
 
     // ponytail: relation names seen in DJ exports and bank data; extend as new labels appear.
-    private static string Relation(string raw) => raw.Trim().ToUpperInvariant() switch
+    private static string CanonicalRelation(string raw) => raw.Trim().ToUpperInvariant() switch
     {
         "WIFE" or "HUSBAND" or "配偶" or "妻" or "夫" => "SPOUSE",
         "FATHER" or "MOTHER" or "父" or "母" or "父親" or "母親" => "PARENT",
         "SON" or "DAUGHTER" or "子" or "女" or "兒子" or "女兒" => "CHILD",
         "BROTHER" or "SISTER" or "兄弟" or "姊妹" => "SIBLING",
-        var other => other, // SPOUSE, PARENT, CHILD and SIBLING name themselves
+        var alreadyCanonicalOrUnseen => alreadyCanonicalOrUnseen,
     };
 
     /// <summary>
@@ -171,15 +187,17 @@ public static class EvidenceBuilder
 
         var subjectText = s.Addresses.Where(a => a.State == ValueState.Present).Select(a => a.Normalized ?? a.Raw).ToList();
         var profileText = p.AddressLines ?? [];
-        if (!s.Addresses.Any(a => a.Country is { } c && p.AddressCountries.Contains(c)) || subjectText.Count == 0 || profileText.Count == 0)
+        var sharesCountry = s.Addresses.Any(a => a.Country is { } c && p.AddressCountries.Contains(c));
+        if (!sharesCountry || subjectText.Count == 0 || profileText.Count == 0)
             return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, EvidenceDetails.SoftDifference);
 
         var keys = subjectText.Select(AddressCompare.TaiwanKey).OfType<string>().ToHashSet();
         if (profileText.Select(AddressCompare.TaiwanKey).Any(k => k is not null && keys.Contains(k)))
             return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, EvidenceDetails.SameAddressNoPeriod);
         var jaccard = subjectText.SelectMany(a => profileText, AddressCompare.Jaccard).Max();
+        var similarity = jaccard >= AddressCompare.JaccardThreshold ? "SIMILAR" : "DISSIMILAR";
         return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None,
-            string.Create(CultureInfo.InvariantCulture, $"{EvidenceDetails.SoftDifference}（Jaccard {jaccard:0.00}，{(jaccard >= AddressCompare.JaccardThreshold ? "SIMILAR" : "DISSIMILAR")}）"));
+            string.Create(CultureInfo.InvariantCulture, $"{EvidenceDetails.SoftDifference}（Jaccard {jaccard:0.00}，{similarity}）"));
     }
 
     private static Evidence DateOfBirthEvidence(ScreenedSubject s, SourceProfile p)
@@ -189,23 +207,36 @@ public static class EvidenceBuilder
         var dobs = ProfileDatesOfBirth(p);
         if (dobs.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.ProfileMissing);
 
-        // A Profile with several DOBs is source ambiguity: one agreeing value is support, the others are not conflicts.
         var agreeing = dobs.Where(dob.AgreesWith).OrderByDescending(d => d.Precision).ToList();
-        if (agreeing.Count == 0)
-        {
-            var full = dob.Precision == DatePrecision.Day && dobs.Any(d => d.Precision == DatePrecision.Day);
-            return new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, full ? ReasonCodes.FullDobConflict : ReasonCodes.DobConflict);
-        }
+        if (agreeing.Count == 0) return DobConflictEvidence(dob, dobs);
         var precision = (DatePrecision)Math.Min((int)dob.Precision, (int)agreeing[0].Precision);
         var status = precision == DatePrecision.Day ? ComparisonStatus.Exact : ComparisonStatus.Partial;
-        // Agreeing with one of many scattered values is no rare coincidence: recorded, never support, never row 4.
-        // ponytail: 3 values or a span over 2 years is a placeholder cut-off pending calibration.
-        if (dobs.Count >= 3 || dobs.Max(d => d.Year) - dobs.Min(d => d.Year) > 2)
+        if (AreScattered(dobs))
             return new(g, Direction.Neutral, status, Strength.None, Findings.ProfileMultipleDob);
-        return new(g, Direction.Support, status,
-            precision switch { DatePrecision.Day => Strength.High, DatePrecision.Month => Strength.Medium, _ => Strength.Low },
+        return new(g, Direction.Support, status, SupportStrength(precision),
             precision == DatePrecision.Year ? ReasonCodes.BirthYearMatchFullDateNotComparable : null);
     }
+
+    private static Evidence DobConflictEvidence(PartialDate dob, IReadOnlyList<PartialDate> profileDobs)
+    {
+        var bothFullDates = dob.Precision == DatePrecision.Day && profileDobs.Any(d => d.Precision == DatePrecision.Day);
+        return new(EvidenceGroup.DateOfBirth, Direction.Conflict, ComparisonStatus.Conflict, Strength.None,
+            bothFullDates ? ReasonCodes.FullDobConflict : ReasonCodes.DobConflict);
+    }
+
+    // ponytail: 3 values or a span over 2 years is a placeholder cut-off pending calibration.
+    private const int ScatteredDobCount = 3;
+    private const int ScatteredDobSpanYears = 2;
+
+    private static bool AreScattered(IReadOnlyList<PartialDate> dobs) =>
+        dobs.Count >= ScatteredDobCount || dobs.Max(d => d.Year) - dobs.Min(d => d.Year) > ScatteredDobSpanYears;
+
+    private static Strength SupportStrength(DatePrecision agreedPrecision) => agreedPrecision switch
+    {
+        DatePrecision.Day => Strength.High,
+        DatePrecision.Month => Strength.Medium,
+        _ => Strength.Low,
+    };
 
     /// <summary>The Profile's distinct DOBs without a coarser value a more precise one already covers (1970 next to 1970-05-01).</summary>
     public static IReadOnlyList<PartialDate> ProfileDatesOfBirth(SourceProfile p) =>

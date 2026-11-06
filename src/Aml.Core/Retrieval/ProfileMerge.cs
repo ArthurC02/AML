@@ -58,7 +58,18 @@ public static class ProfileMerge
             return root;
         }
 
-        // Union by size; refused when any member of one group conflicts with any member of the other.
+        string? FirstCrossGroupConflict(string ra, string rb) =>
+            members[ra].SelectMany(x => members[rb].Select(y => Conflict(byKey[x], byKey[y]) is { } c ? $"{c}({x},{y})" : null))
+                .FirstOrDefault(c => c is not null);
+
+        void AttachSmallerGroup(string ra, string rb)
+        {
+            if (members[ra].Count < members[rb].Count) (ra, rb) = (rb, ra);
+            parent[rb] = ra;
+            members[ra].AddRange(members[rb]);
+            members.Remove(rb);
+        }
+
         void Union(string a, string b, string basis, string? documentKey = null)
         {
             if (a == b || !parent.ContainsKey(b)) return;
@@ -66,23 +77,19 @@ public static class ProfileMerge
             var edge = new MergeEdge(a, b, basis, documentKey);
             if (ra != rb)
             {
-                var conflict = members[ra].SelectMany(x => members[rb].Select(y => Conflict(byKey[x], byKey[y]) is { } c ? $"{c}({x},{y})" : null))
-                    .FirstOrDefault(c => c is not null);
-                if (conflict is not null)
+                if (FirstCrossGroupConflict(ra, rb) is { } conflict)
                 {
                     rejected.Add(edge with { Conflict = conflict });
                     return;
                 }
-                if (members[ra].Count < members[rb].Count) (ra, rb) = (rb, ra);
-                parent[rb] = ra;
-                members[ra].AddRange(members[rb]);
-                members.Remove(rb);
+                AttachSmallerGroup(ra, rb);
             }
             edges.Add(edge);
         }
 
-        foreach (var g in list.SelectMany(p => (p.Documents ?? []).Select(d => (Key: DocumentKey(d), p.ProfileKey)))
-                     .Where(x => x.Key is not null).Distinct().GroupBy(x => x.Key!))
+        var profilesByDocumentKey = list.SelectMany(p => (p.Documents ?? []).Select(d => (Key: DocumentKey(d), p.ProfileKey)))
+            .Where(x => x.Key is not null).Distinct().GroupBy(x => x.Key!);
+        foreach (var g in profilesByDocumentKey)
             foreach (var other in g.Skip(1)) Union(g.First().ProfileKey, other.ProfileKey, SharedDocument, g.Key);
         foreach (var p in list)
             foreach (var r in p.Relationships.Where(r => SameAs.Contains(r.Relation.Trim())))
@@ -105,8 +112,10 @@ public static class ProfileMerge
         var (type, country) = (Normalize.NullIfPlaceholder(d.Type), Normalize.NullIfPlaceholder(d.Country));
         if (type is null || country is null || Normalize.IsPlaceholder(d.Number)) return null;
         var number = EvidenceBuilder.DocumentNumber(d.Number);
-        return number.Length < MinDocumentLength || number.Distinct().Count() == 1 ? null : $"{type}|{country}|{number}";
+        return IsTooShortOrRepeated(number) ? null : $"{type}|{country}|{number}";
     }
+
+    private static bool IsTooShortOrRepeated(string number) => number.Length < MinDocumentLength || number.Distinct().Count() == 1;
 
     private static string? Conflict(SourceProfile x, SourceProfile y) =>
         x.Gender is { } g && y.Gender is { } h && g != h ? ReasonCodes.GenderConflict

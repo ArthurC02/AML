@@ -21,6 +21,12 @@ public static class HardConflictGate
     private static readonly HashSet<string> AdultOnlyTitles = new(StringComparer.OrdinalIgnoreCase)
         { "董事", "董事長", "副董事長", "常務董事", "獨立董事", "監察人", "Director", "Supervisor" };
 
+    private const int AdultAgeChangeYear = 2023;
+    private const int AdultAgeBeforeChange = 20;
+    private const int AdultAgeSinceChange = 18;
+
+    private static int AdultAgeIn(int year) => year < AdultAgeChangeYear ? AdultAgeBeforeChange : AdultAgeSinceChange;
+
     /// <summary>
     /// Source-quality concerns that downgrade a validated hard conflict to REVIEW: a dated role without its organization,
     /// a role dated to the year only, a role the Profile's own DOB makes just as impossible (the role date is suspect),
@@ -28,20 +34,23 @@ public static class HardConflictGate
     /// ponytail: criteria pending business approval; they only ever make the result more cautious.
     /// </summary>
     public static bool SourceQualityConcern(SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence>? evidence = null) =>
-        p.Roles.Any(r => r.From is { } from && (string.IsNullOrWhiteSpace(r.Organization) || from.Precision == DatePrecision.Year
-            || p.DatesOfBirth.Any(d => MaxAgeAt(d, from) < MinimumRoleAge)))
+        p.Roles.Any(r => r.From is { } from && IsSuspectRoleDate(p, r, from))
         || p.Findings.Any(f => f.StartsWith(Findings.Unparseable, StringComparison.Ordinal))
         || (evidence?.Values.Any(e => e.IsSupport && e.Strength >= Strength.High) ?? false);
+
+    private static bool IsSuspectRoleDate(SourceProfile p, ProfileRole role, PartialDate from) =>
+        string.IsNullOrWhiteSpace(role.Organization)
+        || from.Precision == DatePrecision.Year
+        || p.DatesOfBirth.Any(d => MaxAgeAt(d, from) < MinimumRoleAge);
 
     public static string? Check(ScreenedSubject s, SourceProfile p)
     {
         if (s.DateOfBirth is not { } dob) return null;
         if (p.DateOfDeath is { } death && Before(death, dob)) return ReasonCodes.DeathBeforeCustomerBirth;
         if (dob.Precision != DatePrecision.Day) return null;
-        var dated = p.Roles.Where(r => r.From is not null).ToList();
-        if (dated.Any(r => MaxAgeAt(dob, r.From!.Value) < MinimumRoleAge)) return ReasonCodes.ImpossibleAgeAtReportedEvent;
-        if (dated.Any(r => AdultOnlyTitles.Contains(r.Title.Trim())
-                && MaxAgeAt(dob, r.From!.Value) < (r.From!.Value.Year < 2023 ? 20 : 18)))
+        var roleStarts = p.Roles.Where(r => r.From is not null).Select(r => (Role: r, From: r.From!.Value)).ToList();
+        if (roleStarts.Any(x => MaxAgeAt(dob, x.From) < MinimumRoleAge)) return ReasonCodes.ImpossibleAgeAtReportedEvent;
+        if (roleStarts.Any(x => AdultOnlyTitles.Contains(x.Role.Title.Trim()) && MaxAgeAt(dob, x.From) < AdultAgeIn(x.From.Year)))
             return ReasonCodes.ImpossibleRoleAtReportedEvent;
         return null;
     }
@@ -58,15 +67,20 @@ public static class HardConflictGate
     /// <summary>Oldest the person can have been at a possibly imprecise time point.</summary>
     public static int MaxAgeAt(PartialDate dob, PartialDate at)
     {
-        // The birthday has surely not come only when a known month, or a known day of the same month, is earlier.
         var age = at.Year - dob.Year;
-        return at.Month < dob.Month || (at.Month == dob.Month && at.Day < dob.Day) ? age - 1 : age;
+        return BirthdaySurelyStillToCome(dob, at) ? age - 1 : age;
     }
 
-    /// <summary>Youngest the person can have been: the birthday has surely come only when the known parts say so.</summary>
+    /// <summary>Youngest the person can have been at a possibly imprecise time point.</summary>
     public static int MinAgeAt(PartialDate dob, PartialDate at)
     {
         var age = at.Year - dob.Year;
-        return at.Month > dob.Month || (at.Month == dob.Month && at.Day >= dob.Day) ? age : age - 1;
+        return BirthdaySurelyCome(dob, at) ? age : age - 1;
     }
+
+    private static bool BirthdaySurelyStillToCome(PartialDate dob, PartialDate at) =>
+        at.Month < dob.Month || (at.Month == dob.Month && at.Day < dob.Day);
+
+    private static bool BirthdaySurelyCome(PartialDate dob, PartialDate at) =>
+        at.Month > dob.Month || (at.Month == dob.Month && at.Day >= dob.Day);
 }

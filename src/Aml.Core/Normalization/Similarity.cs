@@ -18,12 +18,29 @@ public static class Similarity
         return prev[b.Length];
     }
 
-    /// <summary>Jaro-Winkler: the common-prefix bonus (up to 4, scale 0.1) applies only when Jaro exceeds <see cref="BoostThreshold"/>.</summary>
     public static double JaroWinkler(string x, string y)
     {
         if (x == y) return 1;
         var (a, b) = (CodePoints(x), CodePoints(y));
         if (a.Length == 0 || b.Length == 0) return 0;
+        var jaro = Jaro(a, b);
+        if (jaro <= BoostThreshold) return jaro;
+        return jaro + CommonPrefixLength(a, b) * PrefixScale * (1 - jaro);
+    }
+
+    public const double BoostThreshold = 0.7;
+    private const int MaxPrefixLength = 4;
+    private const double PrefixScale = 0.1;
+
+    private static int CommonPrefixLength(int[] a, int[] b)
+    {
+        var prefix = 0;
+        while (prefix < Math.Min(MaxPrefixLength, Math.Min(a.Length, b.Length)) && a[prefix] == b[prefix]) prefix++;
+        return prefix;
+    }
+
+    private static double Jaro(int[] a, int[] b)
+    {
         var window = Math.Max(0, Math.Max(a.Length, b.Length) / 2 - 1);
         var ma = new bool[a.Length];
         var mb = new bool[b.Length];
@@ -41,15 +58,8 @@ public static class Similarity
             if (a[i] != b[k++]) transpositions++;
         }
         double m = matches;
-        var jaro = (m / a.Length + m / b.Length + (m - transpositions / 2.0) / m) / 3;
-        if (jaro <= BoostThreshold) return jaro;
-        var prefix = 0;
-        while (prefix < Math.Min(4, Math.Min(a.Length, b.Length)) && a[prefix] == b[prefix]) prefix++;
-        return jaro + prefix * 0.1 * (1 - jaro);
+        return (m / a.Length + m / b.Length + (m - transpositions / 2.0) / m) / 3;
     }
-
-    /// <summary>Winkler's boost threshold.</summary>
-    public const double BoostThreshold = 0.7;
 
     private static int[] CodePoints(string s) => s.EnumerateRunes().Select(r => r.Value).ToArray();
 }

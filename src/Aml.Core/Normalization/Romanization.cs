@@ -8,16 +8,21 @@ namespace Aml.Core.Normalization;
 /// </summary>
 public static class Romanization
 {
+    private const int MinSyllables = 2;
+    private const int LongestSyllable = 6;
+
     /// <summary>
     /// Every word segments into syllables, the syllable counts agree and every syllable shares a Pinyin reading,
     /// in source order or with the surname moved.
     /// </summary>
     public static bool SameReading(string a, string b)
     {
-        var x = Read(a);
-        var y = Read(b);
-        if (x is null || y is null || y[0].Length < 2) return false;
-        return x.Any(o => o.Length == y[0].Length && o.Zip(y[0]).All(t => t.First.Overlaps(t.Second)));
+        var x = SyllableReadingsPerWordOrder(a);
+        var y = SyllableReadingsPerWordOrder(b);
+        if (x is null || y is null) return false;
+        var sourceOrder = y[0];
+        if (sourceOrder.Length < MinSyllables) return false;
+        return x.Any(o => o.Length == sourceOrder.Length && o.Zip(sourceOrder).All(t => t.First.Overlaps(t.Second)));
     }
 
     /// <summary>
@@ -28,19 +33,23 @@ public static class Romanization
     public static IReadOnlyList<string> ReadingKeys(string name)
     {
         var n = name.Normalize(NormalizationForm.FormKC);
-        if (n.EnumerateRunes().Any(r => HanziReadings.ContainsKey(r.Value)))
-        {
-            var sets = new List<IReadOnlyCollection<string>>();
-            foreach (var r in n.EnumerateRunes())
-                if (HanziReadings.TryGetValue(r.Value, out var p)) sets.Add(p);
-                else if (r.Value is Normalize.UnknownCharacter or '*' or 0xFFFD || (!Rune.IsWhiteSpace(r) && !Rune.IsPunctuation(r)))
-                    return [];   // unread, unknown or mixed-script character
-            return Product(sets).Take(MaxReadingKeys).ToList();
-        }
-        return Read(name)?.SelectMany(o => Product(o)).Distinct().Take(MaxReadingKeys).ToList() ?? [];
+        if (n.EnumerateRunes().Any(r => HanziReadings.ContainsKey(r.Value))) return HanziReadingKeys(n);
+        return SyllableReadingsPerWordOrder(name)?.SelectMany(o => Product(o)).Distinct().Take(MaxReadingKeys).ToList() ?? [];
     }
 
     public const int MaxReadingKeys = 16;
+
+    private static List<string> HanziReadingKeys(string name)
+    {
+        var sets = new List<IReadOnlyCollection<string>>();
+        foreach (var r in name.EnumerateRunes())
+            if (HanziReadings.TryGetValue(r.Value, out var p)) sets.Add(p);
+            else if (IsUnreadUnknownOrOtherScript(r)) return [];
+        return Product(sets).Take(MaxReadingKeys).ToList();
+    }
+
+    private static bool IsUnreadUnknownOrOtherScript(Rune r) =>
+        Normalize.IsUnrenderable(r) || (!Rune.IsWhiteSpace(r) && !Rune.IsPunctuation(r));
 
     private static IEnumerable<string> Product(IReadOnlyList<IReadOnlyCollection<string>> sets)
     {
@@ -49,23 +58,22 @@ public static class Romanization
         return acc;
     }
 
-    // Per word order (source, surname moved to either end), each syllable's readings; null unless every word segments.
-    private static List<HashSet<string>[]>? Read(string name)
+    private static List<HashSet<string>[]>? SyllableReadingsPerWordOrder(string name)
     {
         var words = Normalize.NameTokens(name).SelectMany(w => w.Split([',', '.'], StringSplitOptions.RemoveEmptyEntries)).ToArray();
         if (words.Length == 0) return null;
         // ponytail: a hyphenated given name (Chih-Ming) marks Taiwanese passport style, so a syllable that is also a
         // Wade-Giles/Tongyong/passport spelling reads only in those systems (Chi-Ming is ji/qi, not chi). Heuristic; a
         // name-level system detector is the upgrade if reviewed cases show misses.
-        var taiwan = words.Any(w => w.Contains('-', StringComparison.Ordinal));
+        var taiwanStyle = words.Any(w => w.Contains('-', StringComparison.Ordinal));
         var syllables = new List<string[]>();
         foreach (var w in words)
-            if (Segment(w) is { } s) syllables.Add(s);
+            if (Syllables(w) is { } s) syllables.Add(s);
             else return null;
-        return Orders(syllables).Select(o => o.SelectMany(x => x).Select(s => Readings(s, taiwan)).ToArray()).ToList();
+        return WordOrders(syllables).Select(o => o.SelectMany(x => x).Select(s => Readings(s, taiwanStyle)).ToArray()).ToList();
     }
 
-    private static IEnumerable<List<string[]>> Orders(List<string[]> w)
+    private static IEnumerable<List<string[]>> WordOrders(List<string[]> w)
     {
         yield return w;
         if (w.Count < 2) yield break;
@@ -73,13 +81,12 @@ public static class Romanization
         yield return [w[^1], .. w[..^1]];
     }
 
-    // Syllables of one word: hyphen-separated parts, each split against the syllable table.
-    private static string[]? Segment(string word)
+    private static string[]? Syllables(string word)
     {
         var acc = new List<string>();
-        foreach (var part in word.Split('-', StringSplitOptions.RemoveEmptyEntries))
+        foreach (var hyphenPart in word.Split('-', StringSplitOptions.RemoveEmptyEntries))
         {
-            var key = Normalize.NameKey(part);
+            var key = Normalize.NameKey(hyphenPart);
             if (key.Length == 0 || !key.All(char.IsAsciiLetter) || !Split(key, 0, acc)) return null;
         }
         return acc.Count == 0 ? null : [.. acc];
@@ -89,7 +96,7 @@ public static class Romanization
     private static bool Split(string s, int i, List<string> acc)
     {
         if (i == s.Length) return true;
-        for (var n = Math.Min(6, s.Length - i); n > 0; n--)
+        for (var n = Math.Min(LongestSyllable, s.Length - i); n > 0; n--)
         {
             var syllable = s.Substring(i, n);
             if (!Pinyin.Contains(syllable) && !Spellings.ContainsKey(syllable)) continue;
@@ -100,23 +107,27 @@ public static class Romanization
         return false;
     }
 
-    // The spelling itself counts only when it is valid Hanyu Pinyin (and, in Taiwanese style, has no other reading).
-    private static HashSet<string> Readings(string syllable, bool taiwan)
+    private static HashSet<string> Readings(string syllable, bool taiwanStyle)
     {
         var r = Spellings.TryGetValue(syllable, out var other) ? new HashSet<string>(other) : [];
-        if (Pinyin.Contains(syllable) && (r.Count == 0 || !taiwan)) r.Add(syllable);
+        var spellingIsItsOwnReading = Pinyin.Contains(syllable) && (r.Count == 0 || !taiwanStyle);
+        if (spellingIsItsOwnReading) r.Add(syllable);
         return r;
     }
 
-    // Data/romanization.txt rows: Hanyu Pinyin, Wade-Giles (passport form), Tongyong.
-    private static readonly string[][] Rows = Normalize.DataLines("romanization.txt").Select(l => l.Split('\t')).ToArray();
-    private static readonly HashSet<string> Pinyin = Rows.Select(r => r[0]).ToHashSet();
+    private const int PinyinColumn = 0;
+    private const int WadeGilesPassportColumn = 1;
+    private const int TongyongColumn = 2;
 
-    // Non-Pinyin spelling → Pinyin readings: the official table plus common passport spellings outside it.
+    private static readonly string[][] Rows = Normalize.DataLines("romanization.txt").Select(l => l.Split('\t')).ToArray();
+    private static readonly HashSet<string> Pinyin = Rows.Select(r => r[PinyinColumn]).ToHashSet();
+
     // ponytail: the passport list is controlled and grows from reviewed cases.
+    private static readonly (string Spelling, string Pinyin)[] PassportSpellings = [("LEE", "LI"), ("JENN", "REN"), ("JONG", "ZHONG"), ("SOONG", "SONG")];
+
     private static readonly Dictionary<string, HashSet<string>> Spellings = Rows
-        .SelectMany(r => new[] { (r[1], r[0]), (r[2], r[0]) })
-        .Concat(new[] { ("LEE", "LI"), ("JENN", "REN"), ("JONG", "ZHONG"), ("SOONG", "SONG") })
+        .SelectMany(r => new[] { (r[WadeGilesPassportColumn], r[PinyinColumn]), (r[TongyongColumn], r[PinyinColumn]) })
+        .Concat(PassportSpellings)
         .GroupBy(x => x.Item1, x => x.Item2).ToDictionary(g => g.Key, g => g.ToHashSet());
 
     // Data/hanzi-pinyin.txt rows: Pinyin, then every character with that reading.

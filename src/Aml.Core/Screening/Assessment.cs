@@ -2,7 +2,7 @@ using Aml.Core.Identity;
 
 namespace Aml.Core.Screening;
 
-/// <summary>Pair and case result. Declaration order is the case-level precedence, lowest first.</summary>
+/// <summary>Declaration order is the case-level precedence, lowest first.</summary>
 public enum ScreeningAssessment { NotApplicable, NoHit, Review, Hit, NotEvaluated }
 
 public enum ReviewPriority { High, Normal, Low }
@@ -15,11 +15,12 @@ public static class AssessmentPolicy
     public const string ReleaseControlHumanReview = "RELEASE_CONTROL_HUMAN_REVIEW";
     public const string SourceConditionUnknown = "SOURCE_CONDITION_UNKNOWN";
 
-    /// <summary>One source condition × identity decision.</summary>
+    private const int PartialSupportOnlyStage3Row = 5;
+
     public static ScreeningAssessment Combine(ConditionStatus status, IdentityDecision identity) => status switch
     {
         ConditionStatus.NotHit => ScreeningAssessment.NotApplicable,
-        // HIT and UNKNOWN alike. Phase 1 has no identity MATCH, so a system HIT never occurs; PROBABLE_MATCH surfaces as REVIEW.
+        // Phase 1 has no identity MATCH, so a system HIT never occurs; PROBABLE_MATCH surfaces as REVIEW.
         _ => identity == IdentityDecision.NoMatch ? ScreeningAssessment.NoHit : ScreeningAssessment.Review,
     };
 
@@ -31,9 +32,7 @@ public static class AssessmentPolicy
             : conditions.Max(c => Combine(c.Status, identity.Decision));
         if (conditions.Any(c => c.Status == ConditionStatus.Unknown)) reasons.Add(SourceConditionUnknown);
 
-        // Release control: PEP, RCA and Sanction candidates always go to human review (until GC-04 / GC-05 are validated).
-        var controlled = conditions.Any(c => c.Type is ListType.Pep or ListType.Rca or ListType.Sanction && c.Status != ConditionStatus.NotHit);
-        if (controlled && result == ScreeningAssessment.NoHit)
+        if (result == ScreeningAssessment.NoHit && conditions.Any(IsUnderReleaseControl))
         {
             result = ScreeningAssessment.Review;
             reasons.Add(ReleaseControlHumanReview);
@@ -42,10 +41,15 @@ public static class AssessmentPolicy
         return new PairAssessment(result, result == ScreeningAssessment.Review ? Priority(identity, conditions) : null, reasons);
     }
 
-    // Stage 3 rows 2–4 (PROBABLE_MATCH) and a raised (HIT or UNKNOWN) Sanction first, row 5 next, rows 1 and 6 and everything else last.
+    // Always human review until GC-04 / GC-05 are validated.
+    private static bool IsUnderReleaseControl(SourceCondition c) =>
+        c.Type is ListType.Pep or ListType.Rca or ListType.Sanction && IsRaised(c);
+
+    private static bool IsRaised(SourceCondition c) => c.Status != ConditionStatus.NotHit;
+
     private static ReviewPriority Priority(IdentityResult identity, IReadOnlyList<SourceCondition> conditions) =>
         identity.Decision == IdentityDecision.ProbableMatch
-            || conditions.Any(c => c.Type == ListType.Sanction && c.Status != ConditionStatus.NotHit) ? ReviewPriority.High
-        : identity.Stage3Row == 5 ? ReviewPriority.Normal
+            || conditions.Any(c => c.Type == ListType.Sanction && IsRaised(c)) ? ReviewPriority.High
+        : identity.Stage3Row == PartialSupportOnlyStage3Row ? ReviewPriority.Normal
         : ReviewPriority.Low;
 }

@@ -1,6 +1,5 @@
 namespace Aml.Core.Codes;
 
-/// <summary>One code: what it is called, what it means, the rule that emits it and the document section that defines it.</summary>
 public sealed record CodeEntry(string Code, string Kind, string Name, string Description, string Rule, string Doc);
 
 /// <summary>
@@ -24,7 +23,6 @@ public static class CodeCatalog
 
     public static readonly IReadOnlyDictionary<string, CodeEntry> All = new (string Kind, string Code, string Name, string Description, string Rule, string Doc)[]
     {
-        // Identity decision (stage 1 and stage 3).
         ("IDENTITY_REASON", "TEMPORALLY_PLAUSIBLE", "時序合理", "受檢對象在報導事件或職務起始時的年齡可能成立；不是身分佐證。", "EvidenceBuilder.TemporalEvidence", Identity + "#temporal-and-role-consistency"),
         ("IDENTITY_REASON", "IMPOSSIBLE_AGE_AT_REPORTED_EVENT", "事件時年齡不可能", "受檢對象在名單記載的事件時不可能已達成年；已由 GC-01 驗證的硬衝突，可排除。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
         ("IDENTITY_REASON", "IMPOSSIBLE_ROLE_AT_REPORTED_EVENT", "事件時職務不可能", "受檢對象在職務起始時未達該職務的法定年齡；規則待驗證，維持 REVIEW。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
@@ -48,11 +46,9 @@ public static class CodeCatalog
         ("IDENTITY_REASON", "ENTITY_IDENTIFIER_AGREEMENT", "實體識別碼相符", "非自然人記錄：雙方登記號碼或 IMO 號碼相同。", "IdentityDecisionPolicy.EntityDecision", Identity + "#reason-code-registry"),
         ("IDENTITY_REASON", "ENTITY_IDENTIFIER_CONFLICT", "實體識別碼不符", "非自然人記錄：同一種識別碼號碼不同。", "IdentityDecisionPolicy.EntityDecision", Identity + "#reason-code-registry"),
 
-        // Pair result.
         ("PAIR_REASON", "RELEASE_CONTROL_HUMAN_REVIEW", "放行控制：人工複核", "Sanction、PEP 或 RCA 條件為 HIT 或 UNKNOWN、原本為 NO_HIT 的組合，第一階段一律轉 REVIEW 交由人工。", "AssessmentPolicy.Assess", Disposition + "#two-results-read-separately"),
         ("PAIR_REASON", "SOURCE_CONDITION_UNKNOWN", "名單條件未知", "名單條件無法確定（UNKNOWN）；身分 NO_MATCH 時為 NO_HIT，Sanction、PEP、RCA 則由放行控制轉 REVIEW。", "AssessmentPolicy.Assess", Watchlist + "#reason-codes"),
 
-        // Article 22 disposition recommendation and its pending checks.
         ("DISPOSITION", "ART22_FOREIGN_PEP_PRESUMPTION", "第 22 條①：外國 PEP 推定", "依第 22 條第 1 款推定；身分判斷不變。", "DispositionPolicy.Recommend", Disposition + "#article-22-1-foreign-pep-presumption"),
         ("DISPOSITION", "ART22_ADVERSE_UNRELATED", "第 22 條②：負面新聞與洗錢無關", "依第 22 條第 2 款，ADVERSE_MEDIA 條件不採計。", "DispositionPolicy.Recommend", Disposition + "#article-22-2-adverse-news-unrelated-to-mltfpf"),
         ("DISPOSITION", "ART22_IDENTITY_NO_MATCH", "第 22 條：身分不符", "預設：身分 NO_MATCH，建議 NOT_ON_LIST。", "DispositionPolicy.Recommend", Disposition + "#default"),
@@ -65,7 +61,6 @@ public static class CodeCatalog
         ("PENDING_CHECK", "JUDGMENT_PARTY_IDENTITY", "判決當事人身分", "需查核判決書當事人是否為受檢對象。", "DispositionPolicy.Recommend", Disposition + "#verification-records"),
         ("PENDING_CHECK", "FORMER_PEP_INFLUENCE", "前 PEP 影響力", "需評估卸任 PEP 是否仍有影響力。", "DispositionPolicy.Recommend", Disposition + "#verification-records"),
 
-        // Source conditions.
         ("CONDITION_REASON", "FLAG_UNPARSEABLE", "旗標無法讀取", "名單旗標值無法讀取，條件為 UNKNOWN。", "SourceConditions.Determine", Watchlist + "#reason-codes"),
         ("CONDITION_REASON", "FLAG_CATEGORY_CONFLICT", "旗標與類別矛盾", "旗標與名單類別矛盾；以旗標為準並記錄。", "SourceConditions.Determine", Watchlist + "#reason-codes"),
         ("CONDITION_REASON", "BLACKLIST_TYPE_UNDECIDED", "黑名單類型未定", "黑名單＝YES，但來源欄位無法決定名單類型。", "SourceConditions.Determine", Watchlist + "#reason-codes"),
@@ -78,7 +73,6 @@ public static class CodeCatalog
         ("PEP_TYPE", "RCA_UNCONFIRMED", "RCA 關係未確認", "RCA 名單，但關係類型未說明。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#rca-relationship-scope"),
         ("PEP_TYPE", "FORMER_PEP", "卸任 PEP", "名單子類別標示 Former／Inactive，或 PEP 本人所有記錄的職務都已結束。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#former-pep"),
 
-        // Risk categories of adverse information.
         ("RISK_CATEGORY", "FINANCIAL_CRIME", "金融犯罪", "名單或新聞的風險類別：金融犯罪。", "SourceConditions", Watchlist + "#risk-categories"),
         ("RISK_CATEGORY", "TAX_CRIME", "稅務犯罪", "名單或新聞的風險類別：稅務犯罪。", "SourceConditions", Watchlist + "#risk-categories"),
         ("RISK_CATEGORY", "TAX_EVASION", "逃漏稅", "名單或新聞的風險類別：逃漏稅。", "SourceConditions", Watchlist + "#risk-categories"),
@@ -116,7 +110,6 @@ public static class CodeCatalog
         ("EVIDENCE_DETAIL", "ROMANIZATION_VARIANT", "拼音系統差異", "羅馬拼音在不同拼音系統下讀音相同。", "Normalize.CompareNames", Identity + "#name-comparison"),
         ("EVIDENCE_DETAIL", "PROFILE_MULTIPLE_DOB", "名單多個出生日期", "相符的出生日期只是名單眾多或分散的值之一；不是佐證。", "EvidenceBuilder.Build", Identity + "#reason-code-registry"),
 
-        // Data quality findings (extraction).
         ("DATA_QUALITY", "HISTORICAL_ADMIN_DIVISION", "舊行政區劃", "地址使用已改制的行政區名稱。", "TxtCaseReader", Extraction + "#taiwan-address-normalization"),
         ("DATA_QUALITY", "POSTAL_CODE_ONLY", "僅有郵遞區號", "地址欄只有郵遞區號。", "TxtCaseReader", Extraction + "#taiwan-address-normalization"),
         ("DATA_QUALITY", "DUPLICATED_ADDRESS_LINE", "地址重複", "同一地址行重複出現。", "TxtCaseReader", Extraction + "#quality-findings"),
@@ -132,12 +125,10 @@ public static class CodeCatalog
         ("DATA_QUALITY", "PLACEHOLDER_TEXT", "欄位為佔位文字", "身分比對用的欄位只有「無」等佔位文字（冒號後為欄位）。", "TxtCaseReader", Extraction + "#missing-values"),
         ("DATA_QUALITY", "MALFORMED", "格式錯誤", "值的格式不正確，視為不明確。", "TxtCaseReader", Extraction + "#quality-findings"),
 
-        // What a source was used for.
         ("SOURCE_USE", "PROFILE_RECORD", "名單記錄來源", "名單本身引用的來源。", "ExplanationBuilder", Api + "#explanation-contents"),
         ("SOURCE_USE", "LEGAL_STAGE", "決定法律階段", "附加新聞決定了 ADVERSE_MEDIA 條件的法律階段。", "ExplanationBuilder", Api + "#explanation-contents"),
         ("SOURCE_USE", "CONTEXT", "背景資料", "附加新聞僅作為背景。", "ExplanationBuilder", Api + "#explanation-contents"),
 
-        // Comparison status of one evidence group or comparison row.
         ("COMPARISON_STATUS", "EXACT", "相符", "雙方值相同。", "EvidenceBuilder", Identity + "#comparison-rules"),
         ("COMPARISON_STATUS", "PARTIAL", "部分相符", "在較粗的精度上相符，或部分相同。", "EvidenceBuilder", Identity + "#comparison-rules"),
         ("COMPARISON_STATUS", "CONFLICT", "衝突", "雙方值互相矛盾。", "EvidenceBuilder", Identity + "#comparison-rules"),
@@ -145,12 +136,10 @@ public static class CodeCatalog
         ("COMPARISON_STATUS", "SUBJECT_MISSING", "受檢對象缺值", "受檢對象沒有此項資料。", "EvidenceBuilder", Identity + "#comparison-rules"),
         ("COMPARISON_STATUS", "PROFILE_MISSING", "名單缺值", "名單沒有此項資料。", "EvidenceBuilder", Identity + "#comparison-rules"),
 
-        // Profile merges.
         ("MERGE", "SHARED_DOCUMENT_KEY", "共同證件鍵", "兩筆名單有相同的可比對證件，合併為一組。", "ProfileMerge", Identity + "#profile-level-deduplication"),
         ("MERGE", "RECORDED_SOURCE_LINK", "來源記錄的連結", "來源明載兩筆名單為同一人，合併為一組。", "ProfileMerge", Identity + "#profile-level-deduplication"),
         ("MERGE", "OVERSIZED_GROUP", "合併群組過大", "合併超過十筆名單；需檢視合併邊。", "ProfileMerge", Identity + "#reason-code-registry"),
 
-        // Retrieval routes.
         ("RETRIEVAL_ROUTE", "EXACT_ALIAS", "別名完全相符", "正規化後的別名與查詢完全相同；永不截斷。", "ProfileIndex.Search", Identity + "#retrieval-modes"),
         ("RETRIEVAL_ROUTE", "BM25", "詞彙檢索", "以 BM25 依詞彙排序。", "ProfileIndex.Search", Identity + "#retrieval-modes"),
         ("RETRIEVAL_ROUTE", "NGRAM", "字元 n-gram", "以字元 n-gram Dice 排序。", "ProfileIndex.Search", Identity + "#retrieval-modes"),

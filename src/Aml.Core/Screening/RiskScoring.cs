@@ -34,20 +34,26 @@ public static class RiskScoring
     public static RiskAssessment? Assess(IReadOnlyList<SourceCondition> conditions, IdentityResult identity, RiskPolicy? policy)
     {
         if (policy is not { Approved: true } || identity.Decision == IdentityDecision.NoMatch) return null;
-        var scored = conditions.Where(c =>
-            (c.Status == ConditionStatus.Hit || (c.Status == ConditionStatus.Unknown && c.Type is ListType.Sanction or ListType.Pep))
-            && !SourceConditions.IsUnrelatedAdverseMedia(c)).ToList();
-        var parts = new List<(string Name, int Points)>();
-        foreach (var c in scored)
-        {
-            if (policy.ListWeights.TryGetValue(c.Type, out var w)) parts.Add(($"list:{c.Type}", w));
-            foreach (var r in c.RiskCategories)
-                if (policy.RiskCategoryWeights.TryGetValue(r, out var rw)) parts.Add((r, rw));
-            if (c.Type == ListType.AdverseMedia && policy.LegalStageWeights.TryGetValue(c.LegalStage, out var lw)) parts.Add(($"stage:{c.LegalStage}", lw));
-        }
+        var scored = conditions.Where(IsScored).ToList();
+        var parts = scored.SelectMany(c => Contributions(c, policy)).ToList();
         var score = parts.Sum(p => p.Points);
-        var level = scored.Any(c => c.Type == ListType.Sanction) || score >= policy.HighFrom ? RiskLevel.High
-            : score >= policy.MediumFrom ? RiskLevel.Medium : RiskLevel.Low;
-        return new RiskAssessment(policy.Version, score, level, parts.Select(p => $"{p.Name}+{p.Points}").ToList());
+        return new RiskAssessment(policy.Version, score, Level(scored, score, policy), parts.Select(p => $"{p.Name}+{p.Points}").ToList());
     }
+
+    private static bool IsScored(SourceCondition c) =>
+        (c.Status == ConditionStatus.Hit || (c.Status == ConditionStatus.Unknown && c.Type is ListType.Sanction or ListType.Pep))
+        && !SourceConditions.IsUnrelatedAdverseMedia(c);
+
+    private static IEnumerable<(string Name, int Points)> Contributions(SourceCondition c, RiskPolicy policy)
+    {
+        if (policy.ListWeights.TryGetValue(c.Type, out var w)) yield return ($"list:{c.Type}", w);
+        foreach (var r in c.RiskCategories)
+            if (policy.RiskCategoryWeights.TryGetValue(r, out var rw)) yield return (r, rw);
+        if (c.Type == ListType.AdverseMedia && policy.LegalStageWeights.TryGetValue(c.LegalStage, out var lw)) yield return ($"stage:{c.LegalStage}", lw);
+    }
+
+    private static RiskLevel Level(IReadOnlyList<SourceCondition> scored, int score, RiskPolicy policy) =>
+        scored.Any(c => c.Type == ListType.Sanction) || score >= policy.HighFrom ? RiskLevel.High
+        : score >= policy.MediumFrom ? RiskLevel.Medium
+        : RiskLevel.Low;
 }

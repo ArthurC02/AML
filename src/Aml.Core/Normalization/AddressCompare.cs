@@ -2,7 +2,6 @@ using System.Text.RegularExpressions;
 
 namespace Aml.Core.Normalization;
 
-/// <summary>Structured Taiwan address key and token Jaccard for unstructured text.</summary>
 public static partial class AddressCompare
 {
     /// <summary>
@@ -21,7 +20,6 @@ public static partial class AddressCompare
     // ponytail: placeholder threshold pending calibration (open question); it labels the detail only, never support.
     public const double JaccardThreshold = 0.5;
 
-    /// <summary>Jaccard over tokens: Latin words, and character bigrams for CJK text.</summary>
     public static double Jaccard(string a, string b)
     {
         var x = Tokens(a);
@@ -36,12 +34,13 @@ public static partial class AddressCompare
         {
             var t = Normalize.NameKey(w.Value);
             if (t.Length == 0) continue;
-            if (t.Any(Normalize.IsCjk) && t.Length > 1)
-                for (var i = 0; i + 1 < t.Length; i++) tokens.Add(t.Substring(i, 2));
+            if (t.Any(Normalize.IsCjk) && t.Length > 1) tokens.UnionWith(CharacterBigrams(t));
             else tokens.Add(t);
         }
         return tokens;
     }
+
+    private static IEnumerable<string> CharacterBigrams(string t) => Enumerable.Range(0, t.Length - 1).Select(i => t.Substring(i, 2));
 
     [GeneratedRegex(@"[\p{L}\p{N}]+")]
     private static partial Regex Word();

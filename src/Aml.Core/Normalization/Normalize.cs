@@ -24,19 +24,28 @@ public static partial class Normalize
     private static string Key(string name, bool fold, bool keepDiacritics)
     {
         var d = name.Normalize(NormalizationForm.FormKC);
-        if (!keepDiacritics) d = d.Replace('đ', 'd').Replace('Đ', 'D').Normalize(NormalizationForm.FormD);
+        if (!keepDiacritics) d = FoldDiacritics(d);
         var sb = new StringBuilder(d.Length);
         foreach (var r in d.EnumerateRunes())
         {
-            if (r.Value is '?' or '*' or 0xFFFD) sb.Append(UnknownCharacter);
-            else if (Rune.IsLetterOrDigit(r) || Rune.GetUnicodeCategory(r) == UnicodeCategory.PrivateUse
-                     || (keepDiacritics && Rune.GetUnicodeCategory(r) == UnicodeCategory.NonSpacingMark))
+            if (IsUnrenderable(r)) sb.Append(UnknownCharacter);
+            else if (IsKeyCharacter(r, keepDiacritics))
                 sb.Append(fold && CjkVariants.TryGetValue(r.Value, out var v) ? new Rune(v) : Rune.ToUpperInvariant(r));
         }
         return sb.ToString();
     }
 
-    /// <summary>Name words after NFKC: split on any space (incl. U+3000) and the middle dots · ‧ ・ ･.</summary>
+    // đ has no canonical decomposition.
+    private static string FoldDiacritics(string s) => s.Replace('đ', 'd').Replace('Đ', 'D').Normalize(NormalizationForm.FormD);
+
+    internal static bool IsUnrenderable(Rune r) => r.Value is UnknownCharacter or '*' or ReplacementCharacter;
+
+    private const int ReplacementCharacter = 0xFFFD;
+
+    private static bool IsKeyCharacter(Rune r, bool keepDiacritics) =>
+        Rune.IsLetterOrDigit(r) || Rune.GetUnicodeCategory(r) == UnicodeCategory.PrivateUse
+        || (keepDiacritics && Rune.GetUnicodeCategory(r) == UnicodeCategory.NonSpacingMark);
+
     internal static string[] NameTokens(string name) =>
         NameSeparator().Split(name.Normalize(NormalizationForm.FormKC)).Where(t => t.Length > 0).ToArray();
 
@@ -55,8 +64,7 @@ public static partial class Normalize
         yield return Key(tokens[^1] + " " + string.Join(' ', tokens[..^1]), fold, keepDiacritics);
     }
 
-    // Relaxations an EXACT name may need, fewest first; each one used is disclosed.
-    private static readonly (bool Order, bool Strip, bool Fold)[] Relaxations =
+    private static readonly (bool Order, bool Strip, bool Fold)[] RelaxationsFewestFirst =
         [(false, false, false), (true, false, false), (false, true, false), (false, false, true),
          (true, true, false), (true, false, true), (false, true, true), (true, true, true)];
 
@@ -73,28 +81,40 @@ public static partial class Normalize
         var p = profile.ToList();
         if (s.Count == 0) return (ComparisonStatus.SubjectMissing, null);
         if (p.Count == 0) return (ComparisonStatus.ProfileMissing, null);
+        if (IsExact(s, p, out var relaxations)) return (ComparisonStatus.Exact, relaxations);
+        if (s.Any(a => p.Any(b => Romanization.SameReading(a, b)))) return (ComparisonStatus.Partial, Findings.RomanizationVariant);
+        return (ComparisonStatus.Partial, SimilarityDetail(s, p));
+    }
+
+    private static bool IsExact(List<string> s, List<string> p, out string? relaxationsUsed)
+    {
         IEnumerable<string> Comparable(List<string> names, (bool Order, bool Strip, bool Fold) x) =>
             names.SelectMany(n => Keys(n, x.Fold, !x.Strip, x.Order)).Where(k => k.Length > 0 && !k.Contains(UnknownCharacter, StringComparison.Ordinal));
-        foreach (var x in Relaxations)
+        foreach (var x in RelaxationsFewestFirst)
             if (Comparable(s, x).Intersect(Comparable(p, x)).Any())
             {
                 string?[] found = [x.Fold ? Findings.VariantCharacters : null, x.Strip ? DiacriticVariant : null, x.Order ? NameOrderVariant : null];
-                return (ComparisonStatus.Exact, found.Any(f => f is not null) ? string.Join("；", found.OfType<string>()) : null);
+                relaxationsUsed = found.Any(f => f is not null) ? string.Join("；", found.OfType<string>()) : null;
+                return true;
             }
-        if (s.Any(a => p.Any(b => Romanization.SameReading(a, b)))) return (ComparisonStatus.Partial, Findings.RomanizationVariant);
+        relaxationsUsed = null;
+        return false;
+    }
 
+    private static string SimilarityDetail(List<string> s, List<string> p)
+    {
         var pairs = (from a in s.SelectMany(n => NameKeys(n, true))
                      from b in p.SelectMany(n => NameKeys(n, true))
                      let script = SharedScript(a, b)
                      where script is not null
                      select (a, b, Cjk: script == Script.Cjk)).ToList();
-        if (pairs.Count == 0) return (ComparisonStatus.Partial, NotComparableCrossScript);
+        if (pairs.Count == 0) return NotComparableCrossScript;
         var best = pairs.MaxBy(x => Similarity.JaroWinkler(x.a, x.b));
         var jw = Similarity.JaroWinkler(best.a, best.b);
         var lev = pairs.Min(x => Similarity.Levenshtein(x.a, x.b));
         var threshold = best.Cjk ? NameSimilarityThresholdCjk : NameSimilarityThresholdLatin;
-        return (ComparisonStatus.Partial, string.Create(CultureInfo.InvariantCulture,
-            $"{EvidenceDetails.NotIdenticalAfterNormalization}（Jaro-Winkler {jw:0.00}，Levenshtein {lev}，{(jw >= threshold ? "SIMILAR" : "DISSIMILAR")}）"));
+        return string.Create(CultureInfo.InvariantCulture,
+            $"{EvidenceDetails.NotIdenticalAfterNormalization}（Jaro-Winkler {jw:0.00}，Levenshtein {lev}，{(jw >= threshold ? "SIMILAR" : "DISSIMILAR")}）");
     }
 
     // ponytail: placeholder thresholds, one per script, pending calibration from labelled cases (open question); they only
@@ -105,12 +125,16 @@ public static partial class Normalize
     [Flags]
     private enum Script { None = 0, Latin = 1, Cjk = 2, Other = 4 }
 
-    // CJK when both keys hold CJK letters, else Latin, else another shared script; null when the keys share none.
     private static Script? SharedScript(string a, string b)
     {
         var both = Scripts(a) & Scripts(b);
         return both.HasFlag(Script.Cjk) ? Script.Cjk : both.HasFlag(Script.Latin) ? Script.Latin : both.HasFlag(Script.Other) ? Script.Other : null;
     }
+
+    private const int LatinExtendedBEnd = 0x024F;
+    private const int LatinExtendedAdditionalStart = 0x1E00;
+    private const int LatinExtendedAdditionalEnd = 0x1EFF;
+    private const int CjkRadicalsSupplementStart = 0x2E80;
 
     private static Script Scripts(string key)
     {
@@ -118,67 +142,68 @@ public static partial class Normalize
         foreach (var r in key.EnumerateRunes())
             s |= Rune.GetUnicodeCategory(r) == UnicodeCategory.PrivateUse ? Script.Cjk
                 : !Rune.IsLetter(r) ? Script.None
-                : r.Value <= 0x024F || r.Value is >= 0x1E00 and <= 0x1EFF ? Script.Latin
-                : r.Value >= 0x2E80 ? Script.Cjk
+                : r.Value <= LatinExtendedBEnd || r.Value is >= LatinExtendedAdditionalStart and <= LatinExtendedAdditionalEnd ? Script.Latin
+                : r.Value >= CjkRadicalsSupplementStart ? Script.Cjk
                 : Script.Other;
         return s;
     }
 
-    // Simplified → traditional: OpenCC one-to-one characters (Data/hans-hant.txt; one-to-many ones are not in the file)
-    // plus the controlled list below, which wins.
+    private const string DistinctSurnamesNeverFolded = "涂塗云雲余餘后後";
+
     // ponytail: the controlled list holds same-reading variants seen in name data (鍾/鐘) and simplified forms that OpenCC
     // maps one-to-many; it needs business approval and grows from reviewed cases.
-    // Characters that are distinct surnames (涂/塗, 云/雲, 余/餘, 后/後) are never folded.
+    private static readonly Dictionary<char, char> ControlledVariants = new()
+    {
+        ['鍾'] = '鐘',
+        ['钟'] = '鐘',
+        ['声'] = '聲',
+        ['陈'] = '陳',
+        ['张'] = '張',
+        ['刘'] = '劉',
+        ['杨'] = '楊',
+        ['黄'] = '黃',
+        ['吴'] = '吳',
+        ['赵'] = '趙',
+        ['郑'] = '鄭',
+        ['许'] = '許',
+        ['邓'] = '鄧',
+        ['冯'] = '馮',
+        ['韩'] = '韓',
+        ['萧'] = '蕭',
+        ['叶'] = '葉',
+        ['苏'] = '蘇',
+        ['卢'] = '盧',
+        ['罗'] = '羅',
+        ['谢'] = '謝',
+        ['钱'] = '錢',
+        ['孙'] = '孫',
+        ['马'] = '馬',
+        ['龙'] = '龍',
+        ['东'] = '東',
+        ['国'] = '國',
+        ['华'] = '華',
+        ['伟'] = '偉',
+        ['丽'] = '麗',
+        ['庄'] = '莊',
+        ['荣'] = '榮',
+        ['宁'] = '寧',
+        ['台'] = '臺',
+        ['阳'] = '陽',
+        ['贵'] = '貴',
+        ['宝'] = '寶',
+        ['凤'] = '鳳',
+        ['兰'] = '蘭',
+        ['颖'] = '穎',
+    };
+
+    // Simplified → traditional: OpenCC one-to-one characters (Data/hans-hant.txt), overridden by the controlled list.
     private static readonly Dictionary<int, int> CjkVariants = BuildVariants();
 
     private static Dictionary<int, int> BuildVariants()
     {
         var map = DataLines("hans-hant.txt").Select(l => l.EnumerateRunes().ToArray()).ToDictionary(r => r[0].Value, r => r[1].Value);
-        foreach (var (k, v) in new Dictionary<char, char>
-        {
-            ['鍾'] = '鐘',
-            ['钟'] = '鐘',
-            ['声'] = '聲',
-            ['陈'] = '陳',
-            ['张'] = '張',
-            ['刘'] = '劉',
-            ['杨'] = '楊',
-            ['黄'] = '黃',
-            ['吴'] = '吳',
-            ['赵'] = '趙',
-            ['郑'] = '鄭',
-            ['许'] = '許',
-            ['邓'] = '鄧',
-            ['冯'] = '馮',
-            ['韩'] = '韓',
-            ['萧'] = '蕭',
-            ['叶'] = '葉',
-            ['苏'] = '蘇',
-            ['卢'] = '盧',
-            ['罗'] = '羅',
-            ['谢'] = '謝',
-            ['钱'] = '錢',
-            ['孙'] = '孫',
-            ['马'] = '馬',
-            ['龙'] = '龍',
-            ['东'] = '東',
-            ['国'] = '國',
-            ['华'] = '華',
-            ['伟'] = '偉',
-            ['丽'] = '麗',
-            ['庄'] = '莊',
-            ['荣'] = '榮',
-            ['宁'] = '寧',
-            ['台'] = '臺',
-            ['阳'] = '陽',
-            ['贵'] = '貴',
-            ['宝'] = '寶',
-            ['凤'] = '鳳',
-            ['兰'] = '蘭',
-            ['颖'] = '穎',
-        })
-            map[k] = v;
-        foreach (var c in "涂塗云雲余餘后後")
+        foreach (var (k, v) in ControlledVariants) map[k] = v;
+        foreach (var c in DistinctSurnamesNeverFolded)
             foreach (var k in map.Where(x => x.Key == c || x.Value == c).Select(x => x.Key).ToList()) map.Remove(k);
         return map;
     }
@@ -202,11 +227,12 @@ public static partial class Normalize
         _ => null,
     };
 
-    /// <summary>The sentences of a text, split at 。！？；and line ends.</summary>
     public static string[] Sentences(string text) => text.Split('。', '！', '？', '\n', '；');
 
-    /// <summary>A Chinese character of the Basic Multilingual Plane (CJK Extension A and Unified Ideographs, 㐀–鿿).</summary>
-    public static bool IsCjk(char c) => c is >= '㐀' and <= '鿿';
+    public static bool IsCjk(char c) => c is >= CjkExtensionAStart and <= CjkUnifiedIdeographsEnd;
+
+    private const char CjkExtensionAStart = '㐀';
+    private const char CjkUnifiedIdeographsEnd = '鿿';
 
     public static string HalfWidth(string s)
     {
@@ -221,12 +247,17 @@ public static partial class Normalize
     /// </summary>
     public static (string Normalized, string? Finding) TaiwanAddress(string raw)
     {
-        var s = AddressNumeral().Replace(HalfWidth(raw.Trim()), m => ChineseNumber(m.Value)?.ToString(CultureInfo.InvariantCulture) ?? m.Value);
+        var s = WithArabicAddressNumerals(HalfWidth(raw.Trim()));
         var m = OldCounty().Match(s);
         if (!m.Success) return (s, null);
-        return (s[..m.Index] + MergedCounties[m.Groups["county"].Value.Replace('台', '臺')] + m.Groups["town"].Value + "區" + s[(m.Index + m.Length)..],
-            Findings.HistoricalAdminDivision);
+        return (s[..m.Index] + CurrentCityAndDistrict(m) + s[(m.Index + m.Length)..], Findings.HistoricalAdminDivision);
     }
+
+    private static string WithArabicAddressNumerals(string s) =>
+        AddressNumeral().Replace(s, m => ChineseNumber(m.Value)?.ToString(CultureInfo.InvariantCulture) ?? m.Value);
+
+    private static string CurrentCityAndDistrict(Match oldCounty) =>
+        MergedCounties[oldCounty.Groups["county"].Value.Replace('台', '臺')] + oldCounty.Groups["town"].Value + "區";
 
     /// <summary>Version of the administrative-division mapping, recorded with HISTORICAL_ADMIN_DIVISION.</summary>
     public const string AdminDivisionTable = "tw-admin-2014-12-25";
@@ -306,7 +337,6 @@ public static partial class Normalize
     /// </summary>
     public static bool IsPlaceholder(string s) => Placeholders.Contains(s.Trim());
 
-    /// <summary>A hyphen, en dash, em dash or full-width hyphen standing alone.</summary>
     public static bool IsDash(string s) => s.Trim() is "-" or "–" or "—" or "－";
 
     private static readonly HashSet<string> Placeholders = new(StringComparer.OrdinalIgnoreCase)

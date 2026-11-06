@@ -37,6 +37,10 @@ public static partial class SourceConditions
     public const string SanctionMeasureNotConfirmed = "SANCTION_MEASURE_NOT_CONFIRMED";
     public const string UnmappedCategory = "UNMAPPED_CATEGORY";
 
+    private const string PepCategory = "Politically Exposed";
+    private const string RcaCategory = "Relative or Close Associate";
+    private const string SipCategory = "Special Interest Person";
+
     private static readonly Dictionary<string, string> SipRiskCategories = new(StringComparer.OrdinalIgnoreCase)
     {
         ["Financial Crime"] = "FINANCIAL_CRIME",
@@ -79,64 +83,78 @@ public static partial class SourceConditions
     public const string RcaUnconfirmed = "RCA_UNCONFIRMED";
     public const string FormerPep = "FORMER_PEP";
 
+    private readonly record struct Decision(ListType Type, ConditionStatus Status, ConditionBasis Basis, string? Code);
+
     /// <summary>
-    /// A flag with a value (NO counts) decides its own list types; a mapped category whose flag is MISSING keeps its category
-    /// condition. A flag that contradicts the category wins and the conflict is recorded, except that 黑名單 = NO never clears
-    /// a Sanction category: that condition is UNKNOWN for review, and Is RCA? = NO never clears an RCA category the same way.
-    /// Is RCA? = YES always adds RCA.
+    /// A flag with a value (NO counts) decides its own list types and wins over a contradicting category, recording the
+    /// conflict; a mapped category whose flag is MISSING keeps its category condition.
     /// </summary>
     public static IReadOnlyList<SourceCondition> Determine(SourceProfile profile, bool isRca, string? news, ListFlags? flags = null)
     {
         flags ??= ListFlags.None;
         var mapped = profile.Categories.Select(MapCategory).Distinct().ToList();
-        var decided = new List<(ListType Type, ConditionStatus Status, ConditionBasis Basis, string? Code)>();
-        if (!flags.AllMissing)
-        {
-            var blacklist = BlacklistType(profile, mapped);
-            FromFlag(decided, ListType.Pep, flags.Pep, null);
-            if (mapped.Contains(ListType.Sanction) && flags.Blacklist == FlagValue.No)
-                decided.Add((ListType.Sanction, ConditionStatus.Unknown, ConditionBasis.Flag, FlagCategoryConflict));
-            else
-                FromFlag(decided, blacklist, flags.Blacklist, blacklist == ListType.Unknown ? BlacklistTypeUndecided : null);
-            FromFlag(decided, ListType.AdverseMedia, flags.AdverseNews, null);
-        }
-        foreach (var t in mapped.Where(t => FlagOf(t, flags) == FlagValue.Missing && !decided.Any(d => d.Type == t)
-                     && !(t == ListType.Rca && flags.Rca == FlagValue.No)))
-            decided.Add(t == ListType.Unknown
-                ? (t, ConditionStatus.Unknown, ConditionBasis.Unmapped, UnmappedCategory)
-                : (t, ConditionStatus.Hit, ConditionBasis.CategoryMapping, null));
-        if (mapped.Contains(ListType.Rca) && flags.Rca == FlagValue.No)
-            decided.Add((ListType.Rca, ConditionStatus.Unknown, ConditionBasis.Flag, FlagCategoryConflict));
-        if (isRca && !decided.Any(d => d.Type == ListType.Rca)) decided.Add((ListType.Rca, ConditionStatus.Hit, ConditionBasis.Flag, FlagIsRca));
-
-        // The category disagrees with the flags: a mapped type the flags did not raise as HIT.
-        var conflict = !flags.AllMissing && mapped.Any(t => t is not ListType.Unknown
-            && !decided.Any(d => d.Status == ConditionStatus.Hit && d.Type == t));
-
-        var risks = RiskCategories(profile);
-        return decided.Select(d =>
-        {
-            var c = Shape(d.Type, profile, risks, news);
-            if (d.Status != ConditionStatus.Hit) c = c with { Status = d.Status };
-            var codes = c.ReasonCodes.Concat(new[] { d.Code, conflict ? FlagCategoryConflict : null }.OfType<string>()).Distinct().ToList();
-            return c with { Basis = d.Basis, ReasonCodes = codes };
-        }).ToList();
+        var decided = new List<Decision>();
+        if (!flags.AllMissing) DecideFromFlags(decided, profile, mapped, flags);
+        DecideFromUnflaggedCategories(decided, mapped, flags);
+        DecideRca(decided, mapped, flags, isRca);
+        var conflict = !flags.AllMissing && FlagsContradictCategories(decided, mapped);
+        var risks = AdverseMediaRiskCategories(profile);
+        return decided.Select(d => Condition(d, profile, risks, news, conflict)).ToList();
     }
 
-    private static void FromFlag(List<(ListType, ConditionStatus, ConditionBasis, string?)> decided, ListType t, FlagValue v, string? code)
+    // 黑名單 = NO never clears a Sanction category: that condition is UNKNOWN for review.
+    private static void DecideFromFlags(List<Decision> decided, SourceProfile profile, List<ListType> mapped, ListFlags flags)
+    {
+        var blacklist = BlacklistType(profile, mapped);
+        FromFlag(decided, ListType.Pep, flags.Pep, null);
+        if (mapped.Contains(ListType.Sanction) && flags.Blacklist == FlagValue.No)
+            decided.Add(new(ListType.Sanction, ConditionStatus.Unknown, ConditionBasis.Flag, FlagCategoryConflict));
+        else
+            FromFlag(decided, blacklist, flags.Blacklist, blacklist == ListType.Unknown ? BlacklistTypeUndecided : null);
+        FromFlag(decided, ListType.AdverseMedia, flags.AdverseNews, null);
+    }
+
+    private static void DecideFromUnflaggedCategories(List<Decision> decided, List<ListType> mapped, ListFlags flags)
+    {
+        foreach (var t in mapped.Where(t => FlagFor(t, flags) == FlagValue.Missing && !decided.Any(d => d.Type == t)
+                     && !(t == ListType.Rca && flags.Rca == FlagValue.No)))
+            decided.Add(t == ListType.Unknown
+                ? new(t, ConditionStatus.Unknown, ConditionBasis.Unmapped, UnmappedCategory)
+                : new(t, ConditionStatus.Hit, ConditionBasis.CategoryMapping, null));
+    }
+
+    // Is RCA? = NO never clears an RCA category: that condition is UNKNOWN for review. Is RCA? = YES always adds RCA.
+    private static void DecideRca(List<Decision> decided, List<ListType> mapped, ListFlags flags, bool isRca)
+    {
+        if (mapped.Contains(ListType.Rca) && flags.Rca == FlagValue.No)
+            decided.Add(new(ListType.Rca, ConditionStatus.Unknown, ConditionBasis.Flag, FlagCategoryConflict));
+        if (isRca && !decided.Any(d => d.Type == ListType.Rca)) decided.Add(new(ListType.Rca, ConditionStatus.Hit, ConditionBasis.Flag, FlagIsRca));
+    }
+
+    private static bool FlagsContradictCategories(List<Decision> decided, List<ListType> mapped) =>
+        mapped.Any(t => t is not ListType.Unknown && !decided.Any(d => d.Status == ConditionStatus.Hit && d.Type == t));
+
+    private static SourceCondition Condition(Decision d, SourceProfile profile, IReadOnlyList<string> risks, string? news, bool conflict)
+    {
+        var c = Shape(d.Type, profile, risks, news);
+        if (d.Status != ConditionStatus.Hit) c = c with { Status = d.Status };
+        var codes = c.ReasonCodes.Concat(new[] { d.Code, conflict ? FlagCategoryConflict : null }.OfType<string>()).Distinct().ToList();
+        return c with { Basis = d.Basis, ReasonCodes = codes };
+    }
+
+    private static void FromFlag(List<Decision> decided, ListType t, FlagValue v, string? codeWhenYes)
     {
         if (v == FlagValue.Missing) return;
         var status = v switch
         {
-            FlagValue.Yes => ConditionStatus.Hit, // an undecided (UNKNOWN) type is shaped UNKNOWN
+            FlagValue.Yes => ConditionStatus.Hit,
             FlagValue.No => ConditionStatus.NotHit,
             _ => ConditionStatus.Unknown,
         };
-        decided.Add((t, status, ConditionBasis.Flag, v == FlagValue.Unparseable ? FlagUnparseable : v == FlagValue.Yes ? code : null));
+        decided.Add(new(t, status, ConditionBasis.Flag, v == FlagValue.Unparseable ? FlagUnparseable : v == FlagValue.Yes ? codeWhenYes : null));
     }
 
-    // The flag that speaks for a mapped type. RCA, SIE and unmapped types have none of the three (Is RCA? = NO is handled apart).
-    private static FlagValue FlagOf(ListType t, ListFlags f) => t switch
+    private static FlagValue FlagFor(ListType t, ListFlags f) => t switch
     {
         ListType.Pep => f.Pep,
         ListType.AdverseMedia => f.AdverseNews,
@@ -144,7 +162,6 @@ public static partial class SourceConditions
         _ => FlagValue.Missing,
     };
 
-    // One condition of a decided type, with the attributes its policy reads.
     private static SourceCondition Shape(ListType t, SourceProfile profile, IReadOnlyList<string> risks, string? news) => t switch
     {
         ListType.AdverseMedia => Hit(t) with
@@ -153,7 +170,7 @@ public static partial class SourceConditions
             LegalStage = LegalStageFromNews(news, profile.Names),
             AmlRelevance = Relevance(risks, news, profile),
         },
-        ListType.OtherOfficialList when IsActive(profile.OfficialList, "Wanted", "通緝") =>
+        ListType.OtherOfficialList when IsActiveWantedList(profile.OfficialList) =>
             Hit(ListType.OfficialWantedList) with { LegalStage = LegalStage.Wanted },
         ListType.Sanction => Sanction(profile),
         ListType.Pep or ListType.Rca => Hit(t) with
@@ -165,22 +182,19 @@ public static partial class SourceConditions
         _ => Hit(t),
     };
 
-    // SIP crime subcategories, then keywords; only an ADVERSE_MEDIA condition carries them.
-    private static List<string> RiskCategories(SourceProfile profile)
+    private static List<string> AdverseMediaRiskCategories(SourceProfile profile) =>
+        SipCrimeRisks(profile).Concat(KeywordRisks(profile)).Distinct().ToList();
+
+    private static IEnumerable<string> SipCrimeRisks(SourceProfile profile)
     {
-        var risks = new List<string>();
         foreach (var c in profile.Categories)
-            if (MapCategory(c) == ListType.AdverseMedia && c.Subcategory is { } sub && SipRiskCategories.TryGetValue(sub, out var r) && !risks.Contains(r))
-                risks.Add(r);
-        foreach (var k in profile.Keywords)
-            if (KeywordRiskCategories.TryGetValue(k, out var r) && !risks.Contains(r)) risks.Add(r);
-        return risks;
+            if (MapCategory(c) == ListType.AdverseMedia && c.Subcategory is { } sub && SipRiskCategories.TryGetValue(sub, out var r))
+                yield return r;
     }
 
-    /// <summary>
-    /// Blacklist YES: the type comes from approved source fields (official-list entry, then category), else UNKNOWN.
-    /// An active wanted list is shaped OFFICIAL_WANTED_LIST from OTHER_OFFICIAL_LIST.
-    /// </summary>
+    private static IEnumerable<string> KeywordRisks(SourceProfile profile) =>
+        profile.Keywords.Select(k => KeywordRiskCategories.GetValueOrDefault(k)).OfType<string>();
+
     private static ListType BlacklistType(SourceProfile p, IReadOnlyList<ListType> mapped) =>
         p.OfficialList?.List.Contains("Sanction", StringComparison.OrdinalIgnoreCase) == true || mapped.Contains(ListType.Sanction) ? ListType.Sanction
         : mapped.Contains(ListType.OtherOfficialList) || p.OfficialList is not null ? ListType.OtherOfficialList
@@ -190,11 +204,12 @@ public static partial class SourceConditions
         new(t, ConditionStatus.Hit, ConditionBasis.CategoryMapping, [], LegalStage.Unknown, null, PolicyVersion, []);
 
     /// <summary>A generic Active Profile is not an active sanction measure: HIT needs an active, named measure.</summary>
-    // An active official-list entry confirms the measure only when it is not a wanted list (that is OFFICIAL_WANTED_LIST).
     private static SourceCondition Sanction(SourceProfile p) =>
-        p.OfficialList is { } e && e.Status.Equals("Active", StringComparison.OrdinalIgnoreCase) && !IsActive(e, "Wanted", "通緝")
+        p.OfficialList is { } e && ConfirmsSanctionMeasure(e)
             ? Hit(ListType.Sanction) with { Program = e.List, Jurisdiction = e.Authority }
             : Hit(ListType.Sanction) with { Status = ConditionStatus.Unknown, ReasonCodes = [SanctionMeasureNotConfirmed] };
+
+    private static bool ConfirmsSanctionMeasure(OfficialListEntry e) => IsActive(e) && !IsActiveWantedList(e);
 
     // ponytail: PEP subtypes read from the category's subcategory text; the approved source fields arrive with GC-04.
     private static string? PepType(SourceProfile p, ListType type)
@@ -208,25 +223,30 @@ public static partial class SourceConditions
 
     private static IEnumerable<string> Subcategories(SourceProfile p, ListType type)
     {
-        var prefix = type == ListType.Pep ? "Politically Exposed" : "Relative or Close Associate";
+        var prefix = type == ListType.Pep ? PepCategory : RcaCategory;
         return p.Categories.Where(c => c.Category.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)).Select(c => c.Subcategory).OfType<string>();
     }
 
+    private static IEnumerable<string> PepAndRcaSubcategories(SourceProfile p) =>
+        Subcategories(p, ListType.Pep).Concat(Subcategories(p, ListType.Rca));
+
     /// <summary>
-    /// A PEP who has left office (認定標準第 5 條): a Former or Inactive PEP / RCA subcategory or, for the PEP's own Profile
-    /// (<paramref name="ownRoles"/>), every recorded role ended; an RCA's own roles say nothing about the PEP's office.
-    /// A role has ended when the last day its end date can stand for lies before the analysis date (<paramref name="asOf"/>,
-    /// today by default): an end date of 2026 is still current during 2026. Still a HIT; lasting influence is a pending check
-    /// (FORMER_PEP_INFLUENCE) with no fixed cooling-off period.
+    /// A PEP who has left office (認定標準第 5 條): a Former or Inactive subcategory or, for the PEP's own Profile, every
+    /// role ended; an RCA's own roles say nothing about the PEP's office. Still a HIT; lasting influence is the
+    /// FORMER_PEP_INFLUENCE pending check, with no fixed cooling-off period.
     /// </summary>
     // ponytail: "every role ended" reads all roles, not only public functions; approved PEP role fields arrive with GC-04.
     public static bool IsFormerPep(SourceProfile p, bool ownRoles, DateOnly? asOf = null)
     {
         var today = asOf ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        return Subcategories(p, ListType.Pep).Concat(Subcategories(p, ListType.Rca))
-                .Any(s => s.Contains("Former", StringComparison.OrdinalIgnoreCase) || s.Contains("Inactive", StringComparison.OrdinalIgnoreCase))
-            || (ownRoles && p.Roles.Count > 0 && p.Roles.All(r => r.To is { } to && to.LatestDay < today));
+        return HasFormerSubcategory(p) || (ownRoles && AllRolesEndedBefore(p, today));
     }
+
+    private static bool HasFormerSubcategory(SourceProfile p) =>
+        PepAndRcaSubcategories(p).Any(s => s.Contains("Former", StringComparison.OrdinalIgnoreCase) || s.Contains("Inactive", StringComparison.OrdinalIgnoreCase));
+
+    private static bool AllRolesEndedBefore(SourceProfile p, DateOnly today) =>
+        p.Roles.Count > 0 && p.Roles.All(r => r.To is { } to && to.LatestDay < today);
 
     // ponytail: relation words in the subcategory text. 認定標準第 6 條 family: first-degree relatives by blood or marriage,
     // siblings, spouse or cohabiting partner, and the spouse's siblings. A named relation beyond that (cousin, uncle,
@@ -236,8 +256,7 @@ public static partial class SourceConditions
         "叔", "伯父", "伯母", "姑", "舅", "姨", "姪", "甥", "祖父", "祖母", "孫"];
 
     private static bool OutsideStatutoryScope(SourceProfile p) =>
-        Subcategories(p, ListType.Pep).Concat(Subcategories(p, ListType.Rca))
-            .Any(s => OutsideScopeRelations.Any(w => s.Contains(w, StringComparison.OrdinalIgnoreCase)));
+        PepAndRcaSubcategories(p).Any(s => OutsideScopeRelations.Any(w => s.Contains(w, StringComparison.OrdinalIgnoreCase)));
 
     // ponytail: controlled conduct lists. Only UNRELATED is extracted, and only when the source states both a conduct that
     // is no predicate offence and a jurisdiction; RELATED is left to the reviewer, as GC-02 and GC-11 keep UNCERTAIN.
@@ -252,8 +271,7 @@ public static partial class SourceConditions
         "theft", "firearm", "sexual assault", "securities",
     ];
 
-    // Drunk driving or an accident that kills, gravely injures or is followed by flight (刑法 185-3 II, 185-4) carries a
-    // minimum sentence of six months or more: a predicate offence whatever the conduct word.
+    // 刑法 185-3 II, 185-4: these consequences carry six months or more, so they are predicate offences whatever the conduct.
     private static readonly string[] SeriousConsequence = ["致死", "致人於死", "致重傷", "逃逸", "hit-and-run", "death"];
 
     private static readonly string[] NonPredicateConduct =
@@ -262,25 +280,22 @@ public static partial class SourceConditions
         "drunk driving", "defamation", "traffic accident",
     ];
 
-    /// <summary>
-    /// ② input. Any SIP crime category or risk keyword is a predicate offence, so it never becomes UNRELATED; without news
-    /// there is no stated conduct. The non-predicate conduct must be in a sentence naming the Profile person; a predicate
-    /// offence or a serious consequence anywhere in the news blocks UNRELATED.
-    /// </summary>
+    /// <summary>Article 22 ② input: UNRELATED needs a jurisdiction and non-predicate conduct by the named Profile person.</summary>
     private static AmlRelevance Relevance(IReadOnlyList<string> risks, string? news, SourceProfile p)
     {
-        if (news is null || risks.Count > 0) return AmlRelevance.Uncertain;
-        var jurisdiction = (p.AllegationCountries ?? []).Count > 0 || Dateline().IsMatch(news);
-        var predicate = PredicateConduct.Concat(SeriousConsequence).Any(w => news.Contains(w, StringComparison.OrdinalIgnoreCase));
-        var other = Normalize.Sentences(news).Where(s => Names(s, p.Names))
+        var hasPredicateRiskCategory = risks.Count > 0;
+        if (news is null || hasPredicateRiskCategory) return AmlRelevance.Uncertain;
+        var statesJurisdiction = (p.AllegationCountries ?? []).Count > 0 || Dateline().IsMatch(news);
+        var mentionsPredicateOffence = PredicateConduct.Concat(SeriousConsequence).Any(w => news.Contains(w, StringComparison.OrdinalIgnoreCase));
+        var personNamedInNonPredicateConduct = Normalize.Sentences(news).Where(s => MentionsAnyName(s, p.Names))
             .Any(s => NonPredicateConduct.Any(w => s.Contains(w, StringComparison.OrdinalIgnoreCase)));
-        return jurisdiction && other && !predicate ? AmlRelevance.Unrelated : AmlRelevance.Uncertain;
+        return statesJurisdiction && personNamedInNonPredicateConduct && !mentionsPredicateOffence ? AmlRelevance.Unrelated : AmlRelevance.Uncertain;
     }
 
     /// <summary>An ADVERSE_MEDIA condition about conduct unrelated to money laundering (Article 22 ②): it is set aside.</summary>
     internal static bool IsUnrelatedAdverseMedia(SourceCondition c) => c.Type == ListType.AdverseMedia && c.AmlRelevance == AmlRelevance.Unrelated;
 
-    private static bool Names(string sentence, IReadOnlyList<string> names) =>
+    private static bool MentionsAnyName(string sentence, IReadOnlyList<string> names) =>
         names.Any(n => n.Length > 1 && sentence.Contains(n, StringComparison.OrdinalIgnoreCase));
 
     // "〔記者丙／台北報導〕", "（中央社台北6日電）": the report states where it happened.
@@ -290,27 +305,32 @@ public static partial class SourceConditions
     private static ListType MapCategory(SourceCategory c)
     {
         var cat = c.Category;
-        if (cat.StartsWith("Special Interest Person", StringComparison.OrdinalIgnoreCase))
-            return c.Subcategory switch
-            {
-                null => ListType.Unknown,
-                var s when s.Contains("Official List", StringComparison.OrdinalIgnoreCase) || s.Contains("Exclusion List", StringComparison.OrdinalIgnoreCase) => ListType.OtherOfficialList,
-                var s when SipRiskCategories.ContainsKey(s) => ListType.AdverseMedia,
-                _ => ListType.Unknown,
-            };
-        if (cat.StartsWith("Politically Exposed", StringComparison.OrdinalIgnoreCase)) return ListType.Pep;
-        if (cat.StartsWith("Relative or Close Associate", StringComparison.OrdinalIgnoreCase)) return ListType.Rca;
+        if (cat.StartsWith(SipCategory, StringComparison.OrdinalIgnoreCase)) return SipListType(c.Subcategory);
+        if (cat.StartsWith(PepCategory, StringComparison.OrdinalIgnoreCase)) return ListType.Pep;
+        if (cat.StartsWith(RcaCategory, StringComparison.OrdinalIgnoreCase)) return ListType.Rca;
         if (cat.StartsWith("Sanction", StringComparison.OrdinalIgnoreCase)) return ListType.Sanction;
         if (cat.StartsWith("State Owned", StringComparison.OrdinalIgnoreCase) || cat.StartsWith("State Invested", StringComparison.OrdinalIgnoreCase)) return ListType.Sie;
         if (cat.StartsWith("Adverse Media", StringComparison.OrdinalIgnoreCase)) return ListType.AdverseMedia;
-        if (cat.Contains("Official List", StringComparison.OrdinalIgnoreCase) || cat.Contains("Exclusion List", StringComparison.OrdinalIgnoreCase)) return ListType.OtherOfficialList;
+        if (NamesOfficialList(cat)) return ListType.OtherOfficialList;
         return ListType.Unknown;
     }
 
-    private static bool IsActive(OfficialListEntry? e, string english, string chinese) =>
-        e is not null
-        && e.Status.Equals("Active", StringComparison.OrdinalIgnoreCase)
-        && (e.List.Contains(english, StringComparison.OrdinalIgnoreCase) || e.List.Contains(chinese, StringComparison.Ordinal));
+    private static ListType SipListType(string? subcategory) => subcategory switch
+    {
+        null => ListType.Unknown,
+        var s when NamesOfficialList(s) => ListType.OtherOfficialList,
+        var s when SipRiskCategories.ContainsKey(s) => ListType.AdverseMedia,
+        _ => ListType.Unknown,
+    };
+
+    private static bool NamesOfficialList(string s) =>
+        s.Contains("Official List", StringComparison.OrdinalIgnoreCase) || s.Contains("Exclusion List", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsActive(OfficialListEntry e) => e.Status.Equals("Active", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsActiveWantedList(OfficialListEntry? e) =>
+        e is not null && IsActive(e)
+        && (e.List.Contains("Wanted", StringComparison.OrdinalIgnoreCase) || e.List.Contains("通緝", StringComparison.Ordinal));
 
     // ponytail: keyword heuristic on attached news. Replace with approved legal-stage extraction when judgment wording
     // appears in a Golden Case.
@@ -328,27 +348,29 @@ public static partial class SourceConditions
         var stage = LegalStage.Unknown;
         foreach (var sentence in Normalize.Sentences(news))
         {
-            var own = Names(sentence, names);
+            var own = MentionsAnyName(sentence, names);
             var attributable = own || !OtherParty.Any(m => sentence.Contains(m, StringComparison.Ordinal));
             foreach (var clause in sentence.Split('，', ','))
-            {
-                var found = new List<(int End, LegalStage Stage)>();
-                if (attributable)
-                {
-                    Find(found, clause, Dismissal(), LegalStage.Dismissed);
-                    Find(found, clause, Indictment(), LegalStage.Indicted);
-                }
-                if (own)
-                {
-                    Find(found, clause, Conviction(), LegalStage.Convicted);
-                    Find(found, clause, Acquittal(), LegalStage.Acquitted);
-                }
-                if (found.Count > 0) stage = found.MaxBy(f => f.End).Stage;
-            }
+                if (LastStageIn(clause, attributable, own) is { } found) stage = found;
         }
-        if (stage == LegalStage.Unknown && (news.Contains("偵辦", StringComparison.Ordinal) || news.Contains("調查", StringComparison.Ordinal)))
-            return LegalStage.Alleged;
-        return stage;
+        var underInvestigation = news.Contains("偵辦", StringComparison.Ordinal) || news.Contains("調查", StringComparison.Ordinal);
+        return stage == LegalStage.Unknown && underInvestigation ? LegalStage.Alleged : stage;
+    }
+
+    private static LegalStage? LastStageIn(string clause, bool attributable, bool own)
+    {
+        var found = new List<(int End, LegalStage Stage)>();
+        if (attributable)
+        {
+            Find(found, clause, Dismissal(), LegalStage.Dismissed);
+            Find(found, clause, Indictment(), LegalStage.Indicted);
+        }
+        if (own)
+        {
+            Find(found, clause, Conviction(), LegalStage.Convicted);
+            Find(found, clause, Acquittal(), LegalStage.Acquitted);
+        }
+        return found.Count > 0 ? found.MaxBy(f => f.End).Stage : null;
     }
 
     private static void Find(List<(int, LegalStage)> found, string clause, Regex pattern, LegalStage stage)

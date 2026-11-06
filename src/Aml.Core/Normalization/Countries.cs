@@ -264,10 +264,8 @@ internal static class Countries
         ZW|ZWE|Zimbabwe
         """;
 
-    // Names that are not the ISO short name but name one country only. 韓國 and Korea are left out on purpose (two Koreas).
-    private static readonly Dictionary<string, string> Aliases = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, string> TaiwanAliases = new()
     {
-        // Taiwan
         ["Taiwan"] = "TW",
         ["台灣"] = "TW",
         ["臺灣"] = "TW",
@@ -279,7 +277,10 @@ internal static class Countries
         ["Republic of China"] = "TW",
         ["Republic of China (Taiwan)"] = "TW",
         ["Chinese Taipei"] = "TW",
-        // English common names
+    };
+
+    private static readonly Dictionary<string, string> EnglishCommonNames = new()
+    {
         ["Vietnam"] = "VN",
         ["United States"] = "US",
         ["United Kingdom"] = "GB",
@@ -311,7 +312,10 @@ internal static class Countries
         ["People's Republic of China"] = "CN",
         ["Hong Kong SAR"] = "HK",
         ["Macao SAR"] = "MO",
-        // Chinese common names
+    };
+
+    private static readonly Dictionary<string, string> ChineseCommonNames = new()
+    {
         ["越南"] = "VN",
         ["中國"] = "CN",
         ["中國大陸"] = "CN",
@@ -343,6 +347,9 @@ internal static class Countries
         ["俄羅斯"] = "RU",
     };
 
+    // Names that are not the ISO short name but name one country only. 韓國 and Korea are left out on purpose (two Koreas).
+    private static readonly KeyValuePair<string, string>[] Aliases = [.. TaiwanAliases, .. EnglishCommonNames, .. ChineseCommonNames];
+
     private static readonly HashSet<string> Codes = [];
     private static readonly Dictionary<string, string> Names = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, string> Alpha3 = [];
@@ -365,7 +372,6 @@ internal static class Countries
         return Codes.Contains(s) ? s : Alpha3.TryGetValue(s, out var a) ? a : Names.GetValueOrDefault(s);
     }
 
-    // NFKC (full-width letters and brackets), trimmed, inner whitespace collapsed.
     private static string Key(string raw) =>
         string.Join(' ', raw.Normalize(NormalizationForm.FormKC).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 }

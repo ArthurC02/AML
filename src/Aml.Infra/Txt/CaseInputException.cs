@@ -1,6 +1,5 @@
 namespace Aml.Infra.Txt;
 
-/// <summary>Input files the case reader cannot use: which file (and table), what is wrong, and the reader's message.</summary>
 public sealed class CaseInputException : Exception
 {
     public const string Missing = "MISSING";
@@ -21,6 +20,5 @@ public sealed class CaseInputException : Exception
     public string File { get; }
     public string? Table { get; }
 
-    /// <summary>MISSING, DUPLICATE, MISSING_SECTION, MISSING_COLUMN or MALFORMED.</summary>
     public string Problem { get; }
 }

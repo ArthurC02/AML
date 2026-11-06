@@ -7,7 +7,7 @@ using static Aml.Api.Endpoints.Uploads;
 
 namespace Aml.Api.Endpoints;
 
-/// <summary>The list database: Profile import, search, versions and merges. Routes take the Profile ID; responses add the profileKey (DJ:&lt;id&gt;).</summary>
+/// <summary>Routes take the Profile ID; responses add the profileKey (DJ:&lt;id&gt;).</summary>
 internal static class ProfilesEndpoints
 {
     public const int DefaultTop = 10;
@@ -54,8 +54,7 @@ internal static class ProfilesEndpoints
             return view == "summary" ? TypedResults.Ok(ProfileSummary.Of(p)) : TypedResults.Ok(p);
         })
         .Produces<ProfileSummary>()
-        // The 200 body depends on view: ProfileView (full) or ProfileSummary (summary). ProfileView is registered here, and its
-        // profile refers to the SourceProfile component instead of an inlined copy. ContractTests fails if either reference dangles.
+        // ProfileView is registered here so its profile refers to the SourceProfile component; ContractTests fails if a reference dangles.
         .AddOpenApiOperationTransformer(async (op, ctx, ct) =>
         {
             var full = (OpenApiSchema)await ctx.GetOrCreateSchemaAsync(typeof(ProfileView), cancellationToken: ct);

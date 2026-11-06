@@ -46,11 +46,15 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
         }
         catch (SqliteException e) when (e.SqliteExtendedErrorCode == SqliteDatabase.ConstraintUnique)
         {
-            // Idempotent create: the same trigger and subject already have a Case.
-            var row = await c.QuerySingleAsync<CaseRow>(new CommandDefinition(db.Sql["Case.GetByTrigger"],
-                new { triggerEventId = record.TriggerEventId, subjectRef = record.SubjectRef }, cancellationToken: ct)).ConfigureAwait(false);
-            return Map(row);
+            return await ExistingCaseOfSameTriggerAndSubjectAsync(c, record, ct).ConfigureAwait(false);
         }
+    }
+
+    private async Task<CaseRecord> ExistingCaseOfSameTriggerAndSubjectAsync(SqliteConnection c, CaseRecord record, CancellationToken ct)
+    {
+        var row = await c.QuerySingleAsync<CaseRow>(new CommandDefinition(db.Sql["Case.GetByTrigger"],
+            new { triggerEventId = record.TriggerEventId, subjectRef = record.SubjectRef }, cancellationToken: ct)).ConfigureAwait(false);
+        return Map(row);
     }
 
     public async Task<CaseRecord?> GetAsync(string caseId, CancellationToken ct)
@@ -91,13 +95,12 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
             await c.ExecuteAsync(new CommandDefinition(db.Sql["Case.InsertInput"],
                 new { caseId = analysis.CaseId, revision = analysis.Revision, filesJson = JsonSerializer.Serialize(files), now }, tx, cancellationToken: ct)).ConfigureAwait(false);
 
-        // Only a COMPLETED revision becomes the effective (published) result; otherwise the previous one stays.
-        var effective = analysis.ExecutionStatus == ExecutionStatus.Completed ? analysis.Revision : (int?)null;
+        var effectiveOnlyIfCompleted = analysis.ExecutionStatus == ExecutionStatus.Completed ? analysis.Revision : (int?)null;
         var moved = await c.ExecuteAsync(new CommandDefinition(db.Sql["Case.AcceptAnalysis"], new
         {
             caseId = analysis.CaseId,
             revision = analysis.Revision,
-            effectiveRevision = effective,
+            effectiveRevision = effectiveOnlyIfCompleted,
             caseStatus = Code(status),
             now,
         }, tx, cancellationToken: ct)).ConfigureAwait(false);
@@ -112,16 +115,21 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
         var args = new { caseId, revision };
         var row = await c.QuerySingleOrDefaultAsync<AnalysisRow>(new CommandDefinition(db.Sql["Case.GetAnalysis"], args, cancellationToken: ct)).ConfigureAwait(false);
         if (row is null) return null;
-        var l = await c.QuerySingleOrDefaultAsync<LineageRow>(new CommandDefinition(db.Sql["Case.GetLineage"], args, cancellationToken: ct)).ConfigureAwait(false);
-        var q = await c.QuerySingleOrDefaultAsync<QualityRow>(new CommandDefinition(db.Sql["Case.GetQuality"], args, cancellationToken: ct)).ConfigureAwait(false);
-        double? Rate(long n) => q!.ComparisonCells == 0 ? null : (double)n / q.ComparisonCells;
+        var lineage = await c.QuerySingleOrDefaultAsync<LineageRow>(new CommandDefinition(db.Sql["Case.GetLineage"], args, cancellationToken: ct)).ConfigureAwait(false);
+        var quality = await c.QuerySingleOrDefaultAsync<QualityRow>(new CommandDefinition(db.Sql["Case.GetQuality"], args, cancellationToken: ct)).ConfigureAwait(false);
         return new AnalysisRecord(row.CaseId, (int)row.Revision, ParseCode<ExecutionStatus>(row.ExecutionStatus), ParseCode<ScreeningAssessment>(row.CaseResult),
             Read<CaseAnalysis>(row.ResultJson), row.ExplanationJson is null ? null : Read<CaseExplanation>(row.ExplanationJson),
-            l is null ? null : new AnalysisLineage(Read<List<InputFile>>(l.InputFilesJson), Read<List<ProfileUse>>(l.ProfilesJson),
-                l.SourcePolicyVersion, l.CodeCatalogVersion, (int)l.SchemaVersion, l.AppVersion),
-            q is null ? null : new AnalysisQuality((int)q.Hits, (int)q.ComparisonCells, (int)q.MissingCells, (int)q.UncertainCells, (int)q.ConflictCells,
-                Rate(q.MissingCells), Rate(q.UncertainCells), Rate(q.ConflictCells), (int)q.NotEvaluated, Read<Dictionary<string, int>>(q.FindingsJson)),
+            lineage is null ? null : new AnalysisLineage(Read<List<InputFile>>(lineage.InputFilesJson), Read<List<ProfileUse>>(lineage.ProfilesJson),
+                lineage.SourcePolicyVersion, lineage.CodeCatalogVersion, (int)lineage.SchemaVersion, lineage.AppVersion),
+            quality is null ? null : ToQuality(quality),
             ParseTime(row.CreatedAt));
+    }
+
+    private static AnalysisQuality ToQuality(QualityRow quality)
+    {
+        double? Rate(long cells) => quality.ComparisonCells == 0 ? null : (double)cells / quality.ComparisonCells;
+        return new AnalysisQuality((int)quality.Hits, (int)quality.ComparisonCells, (int)quality.MissingCells, (int)quality.UncertainCells, (int)quality.ConflictCells,
+            Rate(quality.MissingCells), Rate(quality.UncertainCells), Rate(quality.ConflictCells), (int)quality.NotEvaluated, Read<Dictionary<string, int>>(quality.FindingsJson));
     }
 
     public async Task<IReadOnlyList<RevisionLine>> RevisionsAsync(string caseId, CancellationToken ct)

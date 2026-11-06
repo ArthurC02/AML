@@ -4,10 +4,6 @@ using System.Xml.Schema;
 
 namespace Aml.Infra.Persistence;
 
-/// <summary>
-/// Loads the embedded Sql.&lt;provider&gt;.xml, validates it against Sql.xsd and the extra startup rules
-/// (id prefix equals module; every provider file defines the same ids). Any failure throws at startup.
-/// </summary>
 public sealed class SqlCatalog
 {
     private static readonly XNamespace Ns = "urn:aml:sql:v1";

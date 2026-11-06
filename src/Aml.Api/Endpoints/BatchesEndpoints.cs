@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Aml.Api.Endpoints;
 
-/// <summary>Batch submission, progress and re-run.</summary>
 internal static class BatchesEndpoints
 {
     public static void MapBatches(this IEndpointRouteBuilder app)
@@ -14,11 +13,11 @@ internal static class BatchesEndpoints
 
         batches.MapPost("/", async Task<Results<Accepted<BatchSubmitted>, ProblemHttpResult>> (BatchItemRequest[] items, BatchService service, CancellationToken ct) =>
         {
-            const string fix = "Give every item subjectRef, triggerEventId and files: file name → text of a .txt, .html or .htm file up to 5 MB.";
+            var fix = $"Give every item subjectRef, triggerEventId and files: file name → text of a .txt, .html or .htm file up to {Uploads.MaxSizeText}.";
             if (items.Length == 0) return Problems.Of(Problems.InvalidRequest, "No items", fix);
             var invalid = items.Select((item, index) => (Index: index, Valid: Uploads.ValidItem(item))).Where(x => !x.Valid).Select(x => new { item = x.Index }).ToArray();
             if (invalid.Length > 0)
-                return Problems.Of(Problems.InvalidRequest, "Every item needs subjectRef, triggerEventId and .txt, .html or .htm files up to 5 MB each", fix, invalid);
+                return Problems.Of(Problems.InvalidRequest, $"Every item needs subjectRef, triggerEventId and .txt, .html or .htm files up to {Uploads.MaxSizeText} each", fix, invalid);
             var submitted = await service.SubmitAsync(items, ct);
             return TypedResults.Accepted($"/api/batches/{submitted.BatchId}", submitted);
         })
@@ -32,7 +31,6 @@ internal static class BatchesEndpoints
         {
             if (view is not (null or "summary" or "full"))
                 return Problems.Of(Problems.InvalidRequest, $"Unknown view '{view}'.", "Send view=summary (items not yet succeeded) or view=full (every item).", new { parameter = "view" });
-            // The status as the API writes it (DEAD_LETTER); the enum name is accepted too.
             JobStatus? only = null;
             if (status is not null)
             {

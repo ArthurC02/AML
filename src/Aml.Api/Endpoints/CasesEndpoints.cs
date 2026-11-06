@@ -11,7 +11,6 @@ using static Aml.Api.Endpoints.Uploads;
 
 namespace Aml.Api.Endpoints;
 
-/// <summary>Case creation, re-analysis and the stored results.</summary>
 internal static class CasesEndpoints
 {
     public static void MapCases(this IEndpointRouteBuilder app)
@@ -83,15 +82,7 @@ internal static class CasesEndpoints
             return await service.GetDetailAsync(caseId, ct) is { } d ? View(d) : TypedResults.NotFound();
         })
         .Produces<CaseDetail>()
-        // The 200 body depends on view: CaseDetail (full) or CaseSummary (summary, a component through createCase).
-        .AddOpenApiOperationTransformer((op, ctx, ct) =>
-        {
-            op.Responses!["200"].Content!["application/json"].Schema = new OpenApiSchema
-            {
-                OneOf = [new OpenApiSchemaReference(nameof(CaseDetail), ctx.Document), new OpenApiSchemaReference(nameof(CaseSummary), ctx.Document)],
-            };
-            return Task.CompletedTask;
-        })
+        .WithOkOneOfByView(nameof(CaseDetail), nameof(CaseSummary))
         .WithSummary("One Case: view=full (default) with the full record of its effective revision, view=summary with the result, a conclusion and one line per hit")
         .WithDescription("view=full returns the Case and the full record of its effective revision: result, explanation, lineage and data quality, with identifier values. view=summary holds no identifier values and, of personal data, only names; hits are ordered by review priority, at most 10 are listed and the rest counted in omitted. Example (view=summary): GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.")
         .WithViewExample(Examples.CaseSummary, "summary")
@@ -107,17 +98,7 @@ internal static class CasesEndpoints
             return view == "summary" ? View(CaseViews.Hit(caseId, rev, h)) : View(h);
         })
         .Produces<HitSummary>()
-        // The 200 body depends on view: HitExplanation (detail) or HitSummary (summary). Both are referenced, not registered:
-        // HitExplanation is a component through getRevision's AnalysisRecord (registering it here inlines its nested types).
-        // ContractTests fails if either reference dangles.
-        .AddOpenApiOperationTransformer((op, ctx, ct) =>
-        {
-            op.Responses!["200"].Content!["application/json"].Schema = new OpenApiSchema
-            {
-                OneOf = [new OpenApiSchemaReference(nameof(HitExplanation), ctx.Document), new OpenApiSchemaReference(nameof(HitSummary), ctx.Document)],
-            };
-            return Task.CompletedTask;
-        })
+        .WithOkOneOfByView(nameof(HitExplanation), nameof(HitSummary))
         .WithSummary("One hit of the effective revision (or ?revision=): view=detail (default) with the full explanation, view=summary without compared values")
         .WithDescription("view=detail returns the hit explanation with the compared subject and Profile values. view=summary gives the decisive evidence, reason codes and wouldChangeIf without values. wouldChangeIf names the stage 3 row a comparable document or full DOB would move the identity decision to; it never states an external result. Codes are explained at /api/codes/{code}. Example (view=summary): GC-03 hit 1 has sourceConditions [OFFICIAL_WANTED_LIST], identityDecision PROBABLE_MATCH at stage 3 row 4 and pairResult REVIEW.")
         .WithViewExample(Examples.HitSummary, "summary")
@@ -155,11 +136,21 @@ internal static class CasesEndpoints
         .WithTags(Tags.Cases);
     }
 
+    // Each schema is referenced, not registered: registering one here inlines its nested types. ContractTests fails if a reference dangles.
+    private static RouteHandlerBuilder WithOkOneOfByView(this RouteHandlerBuilder builder, string defaultViewSchema, string summaryViewSchema) =>
+        builder.AddOpenApiOperationTransformer((op, ctx, ct) =>
+        {
+            op.Responses!["200"].Content!["application/json"].Schema = new OpenApiSchema
+            {
+                OneOf = [new OpenApiSchemaReference(defaultViewSchema, ctx.Document), new OpenApiSchemaReference(summaryViewSchema, ctx.Document)],
+            };
+            return Task.CompletedTask;
+        });
+
     private static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
 
-    private const string ItemFix = "Send subjectRef, triggerEventId and files: .txt, .html or .htm files up to 5 MB each.";
+    private static readonly string ItemFix = $"Send subjectRef, triggerEventId and files: .txt, .html or .htm files up to {MaxSizeText} each.";
 
-    // Multipart: the file bytes decide the encoding, as for any upload.
     private static async Task<(BatchItemRequest? Item, CaseInput? Input, IReadOnlyDictionary<string, string>? Contents, ProblemHttpResult? Error)> ReadFormAsync(HttpRequest request, CancellationToken ct)
     {
         IFormCollection form;
@@ -178,7 +169,7 @@ internal static class CasesEndpoints
         return (new BatchItemRequest(subjectRef, triggerEventId, contents ?? []), input, contents, error);
     }
 
-    // JSON: one batch item; the files are text, hashed as their UTF-8 encoding.
+    // The JSON files are text, hashed as their UTF-8 encoding.
     private static async Task<(BatchItemRequest? Item, CaseInput? Input, IReadOnlyDictionary<string, string>? Contents, ProblemHttpResult? Error)> ReadJsonAsync(HttpRequest request, CancellationToken ct)
     {
         if (!request.HasJsonContentType())
@@ -193,13 +184,12 @@ internal static class CasesEndpoints
             return (null, null, null, Problems.Of(Problems.InvalidRequest, "The body is not a JSON object with subjectRef, triggerEventId and files.", ItemFix));
         }
         if (!ValidItem(item))
-            return (null, null, null, Problems.Of(Problems.InvalidRequest, "subjectRef, triggerEventId and .txt, .html or .htm files up to 5 MB each are required.", ItemFix));
+            return (null, null, null, Problems.Of(Problems.InvalidRequest, $"subjectRef, triggerEventId and .txt, .html or .htm files up to {MaxSizeText} each are required.", ItemFix));
         return (item, TxtCaseReader.ReadFiles(item!.Files), item.Files, null);
     }
 
-    // Views and stored records are written as their schemas describe them: nulls left out.
     private static JsonHttpResult<T> View<T>(T value, int status = StatusCodes.Status200OK) => TypedResults.Json(value, CaseJson.Options, statusCode: status);
 }
 
-/// <summary>The multipart form of POST /api/cases (OpenAPI description only).</summary>
+/// <summary>OpenAPI description only.</summary>
 internal sealed record CaseUploadForm(string SubjectRef, string TriggerEventId, IFormFileCollection Files);

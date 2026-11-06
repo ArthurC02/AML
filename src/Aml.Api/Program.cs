@@ -16,9 +16,11 @@ using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Trace;
 
-var builder = WebApplication.CreateBuilder(args);
 // A batch carries many files as JSON text (CJK escapes to 6 bytes a character), so the body limit is above Kestrel's 30 MB default.
-builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = builder.Configuration.GetValue<long?>("Api:MaxRequestBytes") ?? 100L * 1024 * 1024);
+const long DefaultMaxRequestBytes = 100L * 1024 * 1024;
+
+var builder = WebApplication.CreateBuilder(args);
+builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = builder.Configuration.GetValue<long?>("Api:MaxRequestBytes") ?? DefaultMaxRequestBytes);
 
 var db = new SqliteDatabase(builder.Configuration["Database:ConnectionString"] ?? "Data Source=aml.db");
 db.Upgrade();
@@ -32,7 +34,6 @@ builder.Services.AddSingleton<Func<IReadOnlyDictionary<string, string>, CaseInpu
 builder.Services.AddSingleton<BatchService>();
 builder.Services.AddSingleton<IListStore, ListStore>();
 builder.Services.AddSingleton<Func<string, SourceProfile>>(TxtCaseReader.ParseProfile);
-// The Profile content hash is taken on the export text, so an HTML page and its .txt export are one version.
 builder.Services.AddSingleton<Func<string, string>>(TxtCaseReader.ProfileExportText);
 builder.Services.AddSingleton<ListService>();
 builder.Services.AddHostedService<JobWorker>();
@@ -45,10 +46,10 @@ builder.Services.AddOpenApi(o => o.AddSchemaTransformer((schema, ctx, ct) =>
     if (ctx.JsonTypeInfo.Type.IsEnum) schema.Default = null;
     return Task.CompletedTask;
 }));
-// Every 4xx and 5xx is application/problem+json; a status without a handler-written problem gets its catalog type here.
 builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx =>
 {
-    if (ctx.ProblemDetails.Type is null || ctx.ProblemDetails.Type.StartsWith("https://", StringComparison.Ordinal))
+    var writtenByFramework = ctx.ProblemDetails.Type is null || ctx.ProblemDetails.Type.StartsWith("https://", StringComparison.Ordinal);
+    if (writtenByFramework)
     {
         var status = ctx.ProblemDetails.Status ?? ctx.HttpContext.Response.StatusCode;
         var code = Problems.CodeOf(status);
@@ -58,10 +59,8 @@ builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx =>
         ctx.ProblemDetails.Extensions.TryAdd("fix", Problems.Fix(status));
     }
 });
-// The case reader reports every unusable input as CaseInputException; this one handler turns it into the problem.
 builder.Services.AddExceptionHandler<CaseInputProblemHandler>();
 
-// Liveness and the database round-trip (System.Ping).
 builder.Services.AddHealthChecks().AddAsyncCheck("database", async ct =>
 {
     await using var c = await db.OpenAsync(ct);
@@ -71,7 +70,6 @@ builder.Services.AddHealthChecks().AddAsyncCheck("database", async ct =>
     return HealthCheckResult.Healthy();
 });
 
-// Traces, metrics and logs; exported over OTLP only when OTEL_EXPORTER_OTLP_ENDPOINT is set.
 var otel = builder.Services.AddOpenTelemetry()
     .ConfigureResource(r => r.AddService("aml-api"))
     .WithTracing(t => t.AddAspNetCoreInstrumentation().AddSource(AmlTelemetry.Name))

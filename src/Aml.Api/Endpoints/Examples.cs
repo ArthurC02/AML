@@ -3,10 +3,7 @@ using Microsoft.OpenApi;
 
 namespace Aml.Api.Endpoints;
 
-/// <summary>
-/// OpenAPI response examples: the GC-03 Case and hit summaries (Examples/*.json, embedded), kept equal to what the API
-/// returns for GC-03 by ApiExampleTests. The full views hold identifier values and so have no example.
-/// </summary>
+/// <summary>GC-03 summaries (Examples/*.json), kept equal to the API's output by ApiExampleTests; full views hold identifiers, so have none.</summary>
 internal static class Examples
 {
     public const string CaseSummary = "gc-03-case-summary.json";
@@ -19,7 +16,6 @@ internal static class Examples
             return Task.CompletedTask;
         });
 
-    /// <summary>The example of a non-default view, named by that view (the default view has no example).</summary>
     public static RouteHandlerBuilder WithViewExample(this RouteHandlerBuilder builder, string file, string view) =>
         builder.AddOpenApiOperationTransformer((op, ctx, ct) =>
         {

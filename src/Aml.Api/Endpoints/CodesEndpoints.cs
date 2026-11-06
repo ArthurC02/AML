@@ -4,7 +4,6 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Aml.Api.Endpoints;
 
-/// <summary>Reference data: the code catalog and the JSON Schemas of the stored records.</summary>
 internal static class CodesEndpoints
 {
     public static void MapCodes(this IEndpointRouteBuilder app)

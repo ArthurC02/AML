@@ -1,29 +1,41 @@
+using System.Text;
 using Aml.Core.Subjects;
 using Aml.Infra.Txt;
+using Aml.Services;
 using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Aml.Api.Endpoints;
 
-/// <summary>Upload reading shared by the endpoints: accepted extensions, size limit and decoding.</summary>
 internal static class Uploads
 {
-    public const int MaxBytes = 5 * 1024 * 1024;
+    private const int BytesPerMegabyte = 1024 * 1024;
+
+    public const int MaxBytes = 5 * BytesPerMegabyte;
+
+    public static readonly string MaxSizeText = $"{MaxBytes / BytesPerMegabyte} MB";
 
     public static bool Accepted(string name) => Path.GetExtension(name).ToLowerInvariant() is ".txt" or ".html" or ".htm";
 
-    /// <summary>An item with both ids and accepted files of at most 5 MB each (a UTF-8 byte count is never below the character count, so the cheap length check runs first).</summary>
-    public static bool ValidItem(Aml.Services.BatchItemRequest? i) =>
-        i is not null && !string.IsNullOrWhiteSpace(i.SubjectRef) && !string.IsNullOrWhiteSpace(i.TriggerEventId) && i.Files is { Count: > 0 }
-        && i.Files.All(f => Accepted(f.Key) && Path.GetFileName(f.Key) == f.Key && f.Key.IndexOfAny(Path.GetInvalidFileNameChars()) < 0 && f.Value is not null && f.Value.Length <= MaxBytes && System.Text.Encoding.UTF8.GetByteCount(f.Value) <= MaxBytes);
+    public static bool ValidItem(BatchItemRequest? item) =>
+        item is not null
+        && !string.IsNullOrWhiteSpace(item.SubjectRef)
+        && !string.IsNullOrWhiteSpace(item.TriggerEventId)
+        && item.Files is { Count: > 0 }
+        && item.Files.All(f => Accepted(f.Key) && IsPlainFileName(f.Key) && f.Value is not null && WithinMaxBytes(f.Value));
 
-    // Reads uploaded files in memory as raw bytes (file names reduced to their last segment).
+    private static bool IsPlainFileName(string name) =>
+        Path.GetFileName(name) == name && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
+
+    // A UTF-8 byte count is never below the character count, so the cheap length check runs first.
+    private static bool WithinMaxBytes(string text) => text.Length <= MaxBytes && Encoding.UTF8.GetByteCount(text) <= MaxBytes;
+
     public static async Task<(Dictionary<string, byte[]>? Bytes, ProblemHttpResult? Error)> ReadBytesAsync(IFormFileCollection files, CancellationToken ct)
     {
         if (files.Count == 0)
             return (null, Problems.Of(Problems.InvalidRequest, "No files uploaded", "Send the export files as multipart form field 'files'."));
         if (files.Where(f => !Accepted(f.FileName) || f.Length > MaxBytes).Select(f => new { file = f.FileName, size = f.Length }).ToArray() is { Length: > 0 } refused)
-            return (null, Problems.Of(Problems.UnsupportedFile, "Only .txt, .html or .htm files up to 5 MB are accepted",
-                "Send only .txt, .html or .htm files of at most 5 MB each.", refused));
+            return (null, Problems.Of(Problems.UnsupportedFile, $"Only .txt, .html or .htm files up to {MaxSizeText} are accepted",
+                $"Send only .txt, .html or .htm files of at most {MaxSizeText} each.", refused));
         var bytes = new Dictionary<string, byte[]>();
         foreach (var f in files)
         {
@@ -34,18 +46,19 @@ internal static class Uploads
         return (bytes, null);
     }
 
-    // Uploaded files as text: strict UTF-8, else CP950 (Big5), the same decoding the case reader applies.
     public static async Task<(Dictionary<string, string>? Contents, ProblemHttpResult? Error)> ReadFilesAsync(IFormFileCollection files, CancellationToken ct)
     {
         var (bytes, error) = await ReadBytesAsync(files, ct);
-        return (bytes?.ToDictionary(b => b.Key, b => TxtCaseReader.Decode(b.Value, out _)), error);
+        return (bytes is null ? null : DecodeAll(bytes), error);
     }
 
-    // Reads the upload and parses its raw bytes through TxtCaseReader.ReadFiles; the decoded contents are kept with the revision.
     public static async Task<(CaseInput? Input, Dictionary<string, string>? Contents, ProblemHttpResult? Error)> ReadUploadAsync(IFormFileCollection files, CancellationToken ct)
     {
         var (bytes, error) = await ReadBytesAsync(files, ct);
         if (bytes is null) return (null, null, error);
-        return (TxtCaseReader.ReadFiles(bytes), bytes.ToDictionary(b => b.Key, b => TxtCaseReader.Decode(b.Value, out _)), null);
+        return (TxtCaseReader.ReadFiles(bytes), DecodeAll(bytes), null);
     }
+
+    private static Dictionary<string, string> DecodeAll(Dictionary<string, byte[]> bytes) =>
+        bytes.ToDictionary(b => b.Key, b => TxtCaseReader.Decode(b.Value, out _));
 }

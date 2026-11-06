@@ -10,13 +10,9 @@ namespace Aml.Services;
 
 public sealed record ProfileImport(string ProfileId, string ProfileKey, int Version, bool Changed);
 
-/// <summary>One captured Profile version, parsed.</summary>
 public sealed record ProfileView(string ProfileId, string ProfileKey, int Version, int LatestVersion, string ContentHash, DateTimeOffset CapturedAt, SourceProfile Profile);
 
-/// <summary>
-/// One captured Profile version without identifier values and, of personal data, only names (ADR-0024): no dates of
-/// birth or death, documents, other identifiers, addresses, relationships or sources. The whole Profile is at the full link.
-/// </summary>
+/// <summary>No identifier values and, of personal data, only names (ADR-0024); the whole Profile is at the full link.</summary>
 public sealed record ProfileSummary(
     [property: Description("名單編號（不含 DJ: 前綴）")] string ProfileId,
     [property: Description("名單鍵（DJ:<名單編號>）")] string ProfileKey,
@@ -43,20 +39,14 @@ public sealed record ProfileSummary(
 /// <summary>Where a Case's candidates come from: its own candidate table, or the Profile files of its latest input.</summary>
 public enum CandidateSource { Table, Previous }
 
-/// <summary>A queued REANALYZE_CASE job: the Case is re-analyzed because the Profile got this version.</summary>
 public sealed record ReanalysisJob(string JobId, string CaseId, string ProfileId, string ProfileKey, int Version);
 
-/// <summary>
-/// Captured versions, and the re-analyses a changed Profile queued (tracked as one batch: GET /api/batches/{BatchId}).
-/// </summary>
 public sealed record ImportReport(IReadOnlyList<ProfileImport> Profiles, string? BatchId, IReadOnlyList<ReanalysisJob> QueuedReanalyses, IReadOnlyList<string> Rejected);
 
 /// <summary>
-/// List database and retrieval (operating architecture steps 3 and 5). Holds list data only: customer data stays in the
-/// Cases. A Profile whose content changes gets a new version, and every Case whose latest input used it gets a
-/// REANALYZE_CASE job, queued in the same transaction; history is never overwritten.
+/// List database and retrieval (operating architecture steps 3 and 5); customer data stays in the Cases. A changed Profile's
+/// new version and the REANALYZE_CASE jobs of the Cases that used it are written in one transaction; history is never overwritten.
 /// </summary>
-/// <param name="exportText">Turns a Profile file (export or HTML page) into the export text; the content hash is taken on it.</param>
 public sealed class ListService(
     IListStore lists, ICaseStore caseStore, CaseService cases,
     Func<string, SourceProfile> parseProfile, Func<IReadOnlyDictionary<string, string>, CaseInput> readCase, TimeProvider clock,
@@ -69,22 +59,12 @@ public sealed class ListService(
     public async Task<ImportReport> ImportAsync(IReadOnlyDictionary<string, string> files, CancellationToken ct)
     {
         var imported = new List<ProfileImport>();
-        var rejected = new List<string>();
-        var accepted = new List<(string Id, string Content)>();
-        // Rejected: a name that is not a Profile file, the same Profile twice in one import (e.g. .txt and .html),
-        // or content whose Profile_ID is not the one in the file name.
-        foreach (var group in files.GroupBy(f => ProfileFiles.IdOf(f.Key)))
-            if (group.Key is null || group.Count() > 1 || !Describes(group.Key, group.First().Value)) rejected.AddRange(group.Select(f => f.Key));
-            else accepted.Add((group.Key, group.First().Value));
+        var (accepted, rejected) = SplitImportable(files);
         if (accepted.Count == 0) return new ImportReport(imported, null, [], rejected);
 
         // ponytail: Cases created between this read and the capture are not queued; they carry their own Profile files.
         var inputs = await caseStore.LatestInputsAsync(ct).ConfigureAwait(false);
-        // Each Case file of an imported Profile is hashed once, not once per imported Profile (a hash may first convert HTML).
-        var ids = accepted.Select(a => a.Id).ToHashSet(StringComparer.Ordinal);
-        var used = inputs.SelectMany(i => i.Files.Select(f => (i.CaseId, ProfileId: ProfileFiles.IdOf(f.Key), f.Value)))
-            .Where(f => f.ProfileId is not null && ids.Contains(f.ProfileId))
-            .ToLookup(f => f.ProfileId!, f => (f.CaseId, Hash: Hash(f.Value)), StringComparer.Ordinal);
+        var used = HashCaseFilesOnceByProfile(inputs, accepted.Select(a => a.Id).ToHashSet(StringComparer.Ordinal));
         var batchId = Guid.CreateVersion7().ToString();
         var queued = new List<ReanalysisJob>();
         foreach (var (id, content) in accepted)
@@ -104,10 +84,25 @@ public sealed class ListService(
         return new ImportReport(imported, queued.Count > 0 ? batchId : null, queued, rejected);
     }
 
-    /// <summary>
-    /// REANALYZE_CASE: re-analyzes the Case on its latest input with every Profile replaced, by Profile ID, with the current
-    /// list version. When the input already matches the list database the Case is returned unchanged (no new revision).
-    /// </summary>
+    private (List<(string Id, string Content)> Accepted, List<string> Rejected) SplitImportable(IReadOnlyDictionary<string, string> files)
+    {
+        var accepted = new List<(string Id, string Content)>();
+        var rejected = new List<string>();
+        foreach (var group in files.GroupBy(f => ProfileFiles.IdOf(f.Key)))
+            if (IsOneFileDescribingItsProfile(group)) accepted.Add((group.Key!, group.First().Value));
+            else rejected.AddRange(group.Select(f => f.Key));
+        return (accepted, rejected);
+    }
+
+    private bool IsOneFileDescribingItsProfile(IGrouping<string?, KeyValuePair<string, string>> filesOfOneProfile) =>
+        filesOfOneProfile.Key is { } profileId && filesOfOneProfile.Count() == 1 && Describes(profileId, filesOfOneProfile.First().Value);
+
+    private ILookup<string, (string CaseId, string Hash)> HashCaseFilesOnceByProfile(
+        IEnumerable<(string CaseId, IReadOnlyDictionary<string, string> Files)> inputs, HashSet<string> profileIds) =>
+        inputs.SelectMany(i => i.Files.Select(f => (i.CaseId, ProfileId: ProfileFiles.IdOf(f.Key), f.Value)))
+            .Where(f => f.ProfileId is not null && profileIds.Contains(f.ProfileId))
+            .ToLookup(f => f.ProfileId!, f => (f.CaseId, Hash: Hash(f.Value)), StringComparer.Ordinal);
+
     public async Task<CaseRecord> ReanalyzeWithLatestProfilesAsync(string caseId, CancellationToken ct, Func<Task>? beforeWrite = null)
     {
         var input = await caseStore.LatestInputAsync(caseId, ct).ConfigureAwait(false)
@@ -115,25 +110,26 @@ public sealed class ListService(
         var updated = new Dictionary<string, string>(input);
         foreach (var id in input.Keys.Select(ProfileFiles.IdOf).OfType<string>().Distinct())
             if (await lists.GetAsync(id, ct).ConfigureAwait(false) is { } latest && FilesOf(input, id).Any(f => Hash(f.Value) != latest.ContentHash))
-            {
-                // Whatever name or format the Case used for this Profile, the list version takes its place.
-                foreach (var f in FilesOf(input, id)) updated.Remove(f.Key);
-                updated[$"名單資料_{id}.txt"] = latest.SourceText;
-            }
-        if (updated.Count == input.Count && updated.All(f => input.TryGetValue(f.Key, out var v) && v == f.Value))
+                ReplaceEveryFileOfProfileWithListVersion(updated, input, id, latest.SourceText);
+        var inputAlreadyMatchesListDatabase = updated.Count == input.Count && updated.All(f => input.TryGetValue(f.Key, out var v) && v == f.Value);
+        if (inputAlreadyMatchesListDatabase)
             return await caseStore.GetAsync(caseId, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException($"Case {caseId} not found");
         return await cases.ReanalyzeAsync(caseId, readCase(updated), ct, updated, beforeWrite).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"Case {caseId} not found");
     }
 
+    private static void ReplaceEveryFileOfProfileWithListVersion(Dictionary<string, string> updated, IReadOnlyDictionary<string, string> input, string profileId, string listVersion)
+    {
+        foreach (var f in FilesOf(input, profileId)) updated.Remove(f.Key);
+        updated[$"名單資料_{profileId}.txt"] = listVersion;
+    }
+
     public async Task<IReadOnlyList<ListProfileRecord>> HistoryAsync(string profileId, CancellationToken ct) =>
         await lists.HistoryAsync(ProfileKeys.IdOf(profileId), ct).ConfigureAwait(false);
 
-    /// <summary>Profiles in the list database by name (INDEX_SEARCH).</summary>
     public async Task<IReadOnlyList<RetrievedCandidate>> SearchAsync(string name, int top, CancellationToken ct) =>
-        (await IndexAsync(ct).ConfigureAwait(false)).Search(name, top);
+        (await IndexForCurrentListVersionAsync(ct).ConfigureAwait(false)).Search(name, top);
 
-    /// <summary>One version of a Profile (the latest when null), by ID with or without the DJ: prefix; null when it does not exist.</summary>
     public async Task<ProfileView?> GetProfileAsync(string profileId, int? version, CancellationToken ct)
     {
         var history = await lists.HistoryAsync(ProfileKeys.IdOf(profileId), ct).ConfigureAwait(false);
@@ -141,10 +137,6 @@ public sealed class ListService(
         return r is null ? null : new ProfileView(r.ProfileId, ProfileKeys.KeyOf(r.ProfileId), r.Version, history[^1].Version, r.ContentHash, r.CapturedAt, parseProfile(r.SourceText));
     }
 
-    /// <summary>
-    /// A Case's candidates: its own candidate table (CONTROLLED_SET) or the Profiles its latest input held (PREVIOUS_LINK).
-    /// Null when the Case has no stored input.
-    /// </summary>
     public async Task<IReadOnlyList<RetrievedCandidate>?> CaseCandidatesAsync(string caseId, CandidateSource source, int top, CancellationToken ct)
     {
         var input = await caseStore.LatestInputAsync(caseId, ct).ConfigureAwait(false);
@@ -157,12 +149,10 @@ public sealed class ListService(
         return all.Take(top).Select(c => c with { Truncated = all.Count > top }).ToList();
     }
 
-    /// <summary>Profiles in the list database that describe the same person (shared document key or recorded source link).</summary>
     public async Task<MergeResult> MergesAsync(CancellationToken ct) =>
         ProfileMerge.Resolve((await lists.LatestAsync(ct).ConfigureAwait(false)).Select(r => parseProfile(r.SourceText)));
 
-    // Built once per list database version; a capture changes the version and the next search rebuilds it.
-    private async Task<ProfileIndex> IndexAsync(CancellationToken ct)
+    private async Task<ProfileIndex> IndexForCurrentListVersionAsync(CancellationToken ct)
     {
         var version = await lists.VersionAsync(ct).ConfigureAwait(false);
         if (_index is { } cached && cached.Version == version) return cached.Index;

@@ -8,11 +8,6 @@ namespace Aml.Infra.Html;
 
 /// <summary>
 /// Turns a supplied HTML page into the .txt export layout of the same file, so one field mapping serves both formats.
-/// Tables and form controls are interpreted before any text is produced: a checked box reads 是 and an unchecked one 否,
-/// a select reads its selected option, an input its value; colspan and rowspan repeat the cell. A cell keeps its text and
-/// its control values in document order; &lt;br&gt; and block elements break lines. Hidden elements (hidden attribute,
-/// inline display:none or visibility:hidden), template, script, buttons and hidden inputs are not read. A blank field is
-/// written blank, never as "-".
 /// ponytail: assumes the pages use the export's own labels (no HTML sample yet); add a label map per template version
 /// when the samples arrive (open question: stable HTML schemas). Hiding by stylesheet class is not seen.
 /// </summary>
@@ -72,7 +67,7 @@ public static partial class HtmlExport
                         Pair(Value(dt), dt.NextElementSibling is { LocalName: "dd" } dd ? Value(dd) : "", kind, lines);
                     break;
                 case IElement e:
-                    lines.AddRange(Text(e).Split('\n').Select(Clean).Where(l => l.Length > 0));
+                    lines.AddRange(VisibleText(e).Split('\n').Select(Clean).Where(l => l.Length > 0));
                     break;
                 case IText t when Clean(t.Text) is { Length: > 0 } text:
                     lines.Add(text);
@@ -84,13 +79,14 @@ public static partial class HtmlExport
     private static void Table(IHtmlTableElement table, Kind kind, List<string> lines, string? heading)
     {
         var grid = Grid(table);
-        // A two-column table is a label/value form, except a headed Profile table (e.g. 國家資料), which is a section.
-        if ((heading is null || kind != Kind.Profile) && grid.All(r => r.Count == 2))
+        var isProfileSection = heading is not null && kind == Kind.Profile;
+        var isLabelValueForm = !isProfileSection && grid.All(r => r.Count == 2);
+        if (isLabelValueForm)
         {
             foreach (var r in grid) Pair(r[0], r[1], kind, lines);
             return;
         }
-        if (heading is not null && kind == Kind.Profile) lines.Add(heading.TrimEnd(':', '：') + ":");
+        if (isProfileSection) lines.Add(heading!.TrimEnd(':', '：') + ":");
         lines.AddRange(grid.Select(r => string.Join('\t', r)));
     }
 
@@ -105,7 +101,6 @@ public static partial class HtmlExport
         }
     }
 
-    /// <summary>Rows of cell values with colspan repeated across and rowspan carried down.</summary>
     private static List<List<string>> Grid(IHtmlTableElement table)
     {
         var grid = new List<List<string>>();
@@ -114,7 +109,7 @@ public static partial class HtmlExport
         {
             var cells = new List<string>();
             var col = 0;
-            void Carry()
+            void CarryRowSpansDown()
             {
                 while (carried.TryGetValue(col, out var c))
                 {
@@ -125,7 +120,7 @@ public static partial class HtmlExport
             }
             foreach (var cell in row.Cells)
             {
-                Carry();
+                CarryRowSpansDown();
                 var value = Value(cell);
                 for (var i = 0; i < Math.Max(1, cell.ColumnSpan); i++)
                 {
@@ -134,30 +129,27 @@ public static partial class HtmlExport
                     col++;
                 }
             }
-            Carry();
+            CarryRowSpansDown();
             grid.Add(cells);
         }
         return grid;
     }
 
-    /// <summary>The value a reader sees in a cell, form controls included, on one line.</summary>
-    private static string Value(IElement cell) => Clean(Text(cell));
+    private static string Value(IElement cell) => Clean(VisibleText(cell));
 
-    /// <summary>The visible text of an element with form-control values in place; &lt;br&gt; and block boundaries are line breaks.</summary>
-    private static string Text(IElement element)
+    private static string VisibleText(IElement element)
     {
         var sb = new StringBuilder();
         Append(element, sb, false);
         return sb.ToString();
     }
 
-    // choiceLabel: inside the label of a checkbox or radio, whose control already gives the value.
-    private static void Append(INode node, StringBuilder sb, bool choiceLabel)
+    private static void Append(INode node, StringBuilder sb, bool insideChoiceControlLabel)
     {
         switch (node)
         {
             case IText t:
-                if (!choiceLabel) sb.Append(t.Text);
+                if (!insideChoiceControlLabel) sb.Append(t.Text);
                 return;
             case IElement e when Hidden(e):
                 return;
@@ -185,7 +177,7 @@ public static partial class HtmlExport
             case IElement e:
                 var block = BlockElements.Contains(e.LocalName);
                 if (block) sb.Append('\n');
-                foreach (var child in e.ChildNodes) Append(child, sb, choiceLabel);
+                foreach (var child in e.ChildNodes) Append(child, sb, insideChoiceControlLabel);
                 if (block) sb.Append('\n');
                 return;
         }
@@ -202,7 +194,6 @@ public static partial class HtmlExport
         "table", "td", "th", "tr", "ul",
     ];
 
-    /// <summary>Not shown to a reader: hidden attribute or inline style, non-content elements, buttons and hidden inputs.</summary>
     private static bool Hidden(IElement e) =>
         e.LocalName is "script" or "style" or "head" or "template" or "noscript" or "button"
         || e.HasAttribute("hidden")

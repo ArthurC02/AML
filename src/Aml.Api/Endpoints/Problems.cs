@@ -5,11 +5,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 
 namespace Aml.Api.Endpoints;
 
-/// <summary>
-/// RFC 9457 problem responses. The type is the problem's entry in the code catalog (/api/codes/{code}); every problem has a
-/// detail, errors[] (what is wrong where) and fix (what to send instead). A problem no handler wrote names the request
-/// itself in errors[] and carries the fix of its code.
-/// </summary>
+/// <summary>RFC 9457 problem responses; every problem has a detail, errors[] (what is wrong where) and fix (what to send instead).</summary>
 internal static class Problems
 {
     public const string InvalidRequest = "INVALID_REQUEST";
@@ -22,7 +18,6 @@ internal static class Problems
 
     public static string Type(string code) => $"/api/codes/{code}";
 
-    /// <summary>The problem code of a status that no handler described (unmatched route, binding failure, unhandled exception).</summary>
     public static string CodeOf(int status) => status switch
     {
         StatusCodes.Status400BadRequest => InvalidRequest,
@@ -33,7 +28,6 @@ internal static class Problems
 
     public static string Title(string code) => CodeCatalog.All[code].Name;
 
-    /// <summary>The fix of a problem no handler wrote: the framework only knows the status.</summary>
     public static string Fix(int status) => status switch
     {
         StatusCodes.Status400BadRequest => "Send the parameters and body the operation declares in /openapi/v1.json, with values of the declared types.",
@@ -48,12 +42,10 @@ internal static class Problems
         TypedResults.Problem(detail, type: Type(code), title: Title(code), statusCode: StatusCodes.Status400BadRequest,
             extensions: new Dictionary<string, object?> { ["errors"] = errors, ["fix"] = fix });
 
-    /// <summary>top of a candidate list; null when it is usable.</summary>
     public static ProblemHttpResult? Top(int? top) => top is < 1 or > ProfilesEndpoints.MaxTop
         ? Of(InvalidRequest, $"top must be 1 to {ProfilesEndpoints.MaxTop}.", $"Send a top from 1 to {ProfilesEndpoints.MaxTop}, or leave it out for {ProfilesEndpoints.DefaultTop}.", new { parameter = "top" })
         : null;
 
-    /// <summary>pageSize and pageToken of a keyset-paged list; null when both are usable.</summary>
     public static ProblemHttpResult? Paging(int? pageSize, string? pageToken, out int size, out (DateTimeOffset, string)? after)
     {
         size = pageSize ?? PageToken.DefaultSize;
@@ -67,7 +59,6 @@ internal static class Problems
         return null;
     }
 
-    /// <summary>A required file missing or sent twice is INPUT_INCOMPLETE; a file not in the export layout is INPUT_UNREADABLE.</summary>
     public static ProblemHttpResult Input(CaseInputException e) => e.Problem switch
     {
         CaseInputException.Missing => Of(InputIncomplete, e.Message,

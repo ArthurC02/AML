@@ -171,7 +171,7 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
     {
         try
         {
-            return read(item.Files);
+            return read(item.Files) ?? throw new InvalidDataException("The reader returned no input");
         }
 #pragma warning disable CA1031 // any reader failure means the files are unusable; retrying the same files cannot help
         catch (Exception)

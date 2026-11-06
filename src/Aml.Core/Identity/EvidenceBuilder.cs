@@ -211,6 +211,7 @@ public static class EvidenceBuilder
         if (agreeing.Count == 0) return DobConflictEvidence(dob, dobs);
         var precision = (DatePrecision)Math.Min((int)dob.Precision, (int)agreeing[0].Precision);
         var status = precision == DatePrecision.Day ? ComparisonStatus.Exact : ComparisonStatus.Partial;
+        // Scattered DOBs are source ambiguity: agreeing with one of them is never support (never stage 3 row 4).
         if (AreScattered(dobs))
             return new(g, Direction.Neutral, status, Strength.None, Findings.ProfileMultipleDob);
         return new(g, Direction.Support, status, SupportStrength(precision),

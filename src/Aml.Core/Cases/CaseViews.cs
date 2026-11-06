@@ -134,7 +134,7 @@ public static class CaseViews
             $"/api/cases/{caseId}/hits/{h.HitNumber}?view=detail&revision={revision}");
     }
 
-    // A hard conflict or a non-Person rule leaves no stage 3 row; a rule with no evidence of its own (death before birth) yields none.
+    // A hard conflict, or a non-Person record without comparable entity identifiers, leaves no stage 3 row; a rule with no evidence of its own (death before birth) yields none.
     private static List<EvidenceLine> DecisiveEvidence(HitExplanation h) =>
         IsDecidedBySupport(h.Stage3Row) ? StrongestSupport(h) : ConflictsInReasonCodeOrder(h);
 

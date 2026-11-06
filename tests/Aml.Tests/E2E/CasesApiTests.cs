@@ -99,7 +99,11 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         using var workbook = await client.GetAsync($"/api/cases/{caseId}/workbook?revision=1", ct);
         Assert.Equal(HttpStatusCode.OK, workbook.StatusCode);
         Assert.Equal(Infra.Excel.Xlsx.ContentType, workbook.Content.Headers.ContentType?.MediaType);
-        Assert.Equal($"case-{caseId}-revision-1.xlsx", workbook.Content.Headers.ContentDisposition?.FileName);
+        Assert.Equal(("attachment", $"case-{caseId}-revision-1.xlsx"), (workbook.Content.Headers.ContentDisposition?.DispositionType, workbook.Content.Headers.ContentDisposition?.FileName));
+        Assert.NotNull(workbook.Content.Headers.ContentLength);
+        Assert.Empty(workbook.Content.Headers.ContentEncoding);
+        Assert.Equal((null, null), (workbook.Headers.ETag, workbook.Content.Headers.LastModified));
+        Assert.Empty(workbook.Headers.AcceptRanges);
         Assert.True(workbook.Headers.CacheControl?.NoStore);
         Assert.Equal(["nosniff"], workbook.Headers.GetValues("X-Content-Type-Options"));
         var sheets = GoldenCases.WorkbookTests.Read(await workbook.Content.ReadAsByteArrayAsync(ct));

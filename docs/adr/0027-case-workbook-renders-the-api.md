@@ -19,6 +19,6 @@
 ## Consequences
 
 - ADR-0018's Excel row no longer holds: the report it rejected is not revived, but a workbook rendering of the API is offered.
-- A workbook is a copy outside the system: access control stops at the download. Each download is logged with its Case, revision and view; who downloaded it is known only once authentication is wired.
+- A workbook is a copy outside the system: access control stops at the download. Each workbook issued is logged with its Case, revision and view; who downloaded it is known only once authentication is wired.
 - The four legacy sheets are not reproduced; the seven sheets follow the stored records, so a new field reaches the workbook only by a change to `CaseWorkbook`.
 - There is no batch workbook; a batch is read one Case at a time.

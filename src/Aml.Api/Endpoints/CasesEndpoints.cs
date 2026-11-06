@@ -150,7 +150,7 @@ internal static partial class CasesEndpoints
             response.Headers.CacheControl = "no-store";
             response.Headers.XContentTypeOptions = "nosniff";
             // A workbook is a copy outside the system: record which Case, revision and view left, never its content.
-            WorkbookSent(workbookLog, caseId, rev, view ?? "summary");
+            WorkbookIssued(workbookLog, caseId, rev, view ?? "summary");
             return TypedResults.File(bytes.ToArray(), Xlsx.ContentType, $"case-{caseId}-revision-{rev}.xlsx");
         })
         .AddOpenApiOperationTransformer((op, _, _) =>
@@ -182,8 +182,8 @@ internal static partial class CasesEndpoints
             return Task.CompletedTask;
         });
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Case workbook sent: case {CaseId}, revision {Revision}, view {View}")]
-    private static partial void WorkbookSent(ILogger logger, string caseId, int revision, string view);
+    [LoggerMessage(Level = LogLevel.Information, Message = "Case workbook issued: case {CaseId}, revision {Revision}, view {View}")]
+    private static partial void WorkbookIssued(ILogger logger, string caseId, int revision, string view);
 
     private static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
 

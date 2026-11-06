@@ -10,6 +10,25 @@ public class NameComparisonTests
     private static (ComparisonStatus Status, string? Detail) Compare(string subject, string profile) =>
         NameComparison.CompareNames([subject], [profile]);
 
+    // NameKey skips normalization for names made only of ASCII and CJK Unified Ideographs; that holds only if no such
+    // character changes under NFKC or NFD, and none composes with another, since none is a combining mark.
+    [Fact]
+    public void Ascii_and_cjk_unified_ideographs_are_unchanged_by_every_normalization_the_key_uses()
+    {
+        var invariant = Enumerable.Range(0, 0x80).Concat(Enumerable.Range(0x4E00, 0x9FFF - 0x4E00 + 1)).Select(c => ((char)c).ToString()).ToList();
+        Assert.All(invariant, s => Assert.Equal((s, s), (s.Normalize(System.Text.NormalizationForm.FormKC), s.Normalize(System.Text.NormalizationForm.FormD))));
+        Assert.DoesNotContain(invariant, s => char.GetUnicodeCategory(s[0]) is System.Globalization.UnicodeCategory.NonSpacingMark or System.Globalization.UnicodeCategory.SpacingCombiningMark);
+        Assert.Equal("陳志明WANG", NameComparison.NameKey("陳志明 Wang"));
+    }
+
+    // Name words split on char.IsWhiteSpace, which replaced a regex \s split: the two must agree on every UTF-16 code unit.
+    [Fact]
+    public void Name_words_split_on_the_same_white_space_as_regex()
+    {
+        var whiteSpace = new System.Text.RegularExpressions.Regex("^\\s$");
+        Assert.All(Enumerable.Range(0, 0x10000), c => Assert.Equal(whiteSpace.IsMatch(((char)c).ToString()), char.IsWhiteSpace((char)c)));
+    }
+
     [Theory]                                // supplementary-plane and private-use characters stay in the key
     [InlineData("黃𥕢明", "黃明")]
     [InlineData("陳𡔙明", "陳𠀀明")]

@@ -1,12 +1,11 @@
 using System.Buffers;
 using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
 using Aml.Core.Shared;
 
 namespace Aml.Core.Normalization;
 
-public static partial class NameComparison
+public static class NameComparison
 {
     public const string DiacriticVariant = "DIACRITIC_VARIANT";
     public const string NameOrderVariant = "NAME_ORDER_VARIANT";
@@ -24,10 +23,26 @@ public static partial class NameComparison
 
     private const int MaxStackallocChars = 512;
 
+    /// <summary>
+    /// NFKC, skipped for a name made only of ASCII and CJK Unified Ideographs (U+4E00 to U+9FFF): none of those decompose or
+    /// compose under any normalization form, so the name is already normalized, and Normalize would still copy it.
+    /// </summary>
+    internal static string Nfkc(string s) => IsNormalizationInvariant(s) ? s : s.Normalize(NormalizationForm.FormKC);
+
+    private const char CjkUnifiedStart = '一';
+    private const char CjkUnifiedEnd = '鿿';
+
+    private static bool IsNormalizationInvariant(string s)
+    {
+        foreach (var c in s)
+            if (!char.IsAscii(c) && c is < CjkUnifiedStart or > CjkUnifiedEnd) return false;
+        return true;
+    }
+
     private static string Key(string name, bool fold, bool keepDiacritics)
     {
-        var d = name.Normalize(NormalizationForm.FormKC);
-        if (!keepDiacritics) d = FoldDiacritics(d);
+        var d = Nfkc(name);
+        if (!keepDiacritics && !IsNormalizationInvariant(d)) d = FoldDiacritics(d);
         // Each rune (one or two chars) becomes at most one rune of at most two chars: twice the length always fits.
         var capacity = d.Length * 2;
         char[]? rented = null;
@@ -60,11 +75,26 @@ public static partial class NameComparison
         Rune.IsLetterOrDigit(r) || Rune.GetUnicodeCategory(r) == UnicodeCategory.PrivateUse
         || (keepDiacritics && Rune.GetUnicodeCategory(r) == UnicodeCategory.NonSpacingMark);
 
-    internal static string[] NameTokens(string name) =>
-        NameSeparator().Split(name.Normalize(NormalizationForm.FormKC)).Where(t => t.Length > 0).ToArray();
+    /// <summary>The name's words: runs of characters between white space (as char.IsWhiteSpace, the same set as regex \s) and middle dots.</summary>
+    internal static string[] NameTokens(string name)
+    {
+        var n = Nfkc(name);
+        var tokens = new List<string>();
+        var start = -1;
+        for (var i = 0; i <= n.Length; i++)
+        {
+            var separator = i == n.Length || IsNameSeparator(n[i]);
+            if (!separator && start < 0) start = i;
+            else if (separator && start >= 0)
+            {
+                tokens.Add(n[start..i]);
+                start = -1;
+            }
+        }
+        return [.. tokens];
+    }
 
-    [GeneratedRegex("[\\s·‧・･]+")]
-    private static partial Regex NameSeparator();
+    private static bool IsNameSeparator(char c) => char.IsWhiteSpace(c) || c is '·' or '‧' or '・' or '･';
 
     /// <summary>Keys for a name in source order and with the surname moved to either end (given-first vs surname-first).</summary>
     public static IEnumerable<string> NameKeys(string name, bool foldVariants = false) => Keys(name, foldVariants, false, reorder: true);

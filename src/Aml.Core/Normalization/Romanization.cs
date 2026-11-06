@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Text;
 
 namespace Aml.Core.Normalization;
@@ -22,7 +23,7 @@ public static class Romanization
         if (x is null || y is null) return false;
         var sourceOrder = y[0];
         if (sourceOrder.Length < MinSyllables) return false;
-        return x.Any(o => o.Length == sourceOrder.Length && o.Zip(sourceOrder).All(t => t.First.Overlaps(t.Second)));
+        return x.Any(o => o.Length == sourceOrder.Length && o.Zip(sourceOrder).All(t => t.First.Set.Overlaps(t.Second.Set)));
     }
 
     /// <summary>
@@ -32,16 +33,25 @@ public static class Romanization
     /// </summary>
     public static IReadOnlyList<string> ReadingKeys(string name)
     {
-        var n = name.Normalize(NormalizationForm.FormKC);
-        if (n.EnumerateRunes().Any(r => HanziReadings.ContainsKey(r.Value))) return HanziReadingKeys(n);
-        return SyllableReadingsPerWordOrder(name)?.SelectMany(o => Product(o)).Distinct().Take(MaxReadingKeys).ToList() ?? [];
+        var n = NameComparison.Nfkc(name);
+        if (HasHanzi(n)) return HanziReadingKeys(n);
+        return SyllableReadingsPerWordOrder(name)?.SelectMany(o => Product(Array.ConvertAll(o, r => r.InOrder))).Distinct().Take(MaxReadingKeys).ToList() ?? [];
     }
 
     public const int MaxReadingKeys = 16;
 
+    // An ASCII name holds no Chinese character, so the common romanized name skips the per-character lookup.
+    private static bool HasHanzi(string name)
+    {
+        if (Ascii.IsValid(name)) return false;
+        foreach (var r in name.EnumerateRunes())
+            if (HanziReadings.ContainsKey(r.Value)) return true;
+        return false;
+    }
+
     private static List<string> HanziReadingKeys(string name)
     {
-        var sets = new List<IReadOnlyCollection<string>>();
+        var sets = new List<string[]>();
         foreach (var r in name.EnumerateRunes())
             if (HanziReadings.TryGetValue(r.Value, out var p)) sets.Add(p);
             else if (IsUnreadUnknownOrOtherScript(r)) return [];
@@ -52,23 +62,22 @@ public static class Romanization
         NameComparison.IsUnrenderable(r) || (!Rune.IsWhiteSpace(r) && !Rune.IsPunctuation(r));
 
     // Every pick of one reading per set, the last set varying fastest, each key concatenated once.
-    private static IEnumerable<string> Product(IReadOnlyList<IReadOnlyCollection<string>> sets)
+    private static IEnumerable<string> Product(IReadOnlyList<string[]> options)
     {
-        var options = sets.Select(s => s.ToArray()).ToArray();
         if (options.Any(o => o.Length == 0)) yield break;
-        var pick = new int[options.Length];
-        var parts = new string[options.Length];
+        var pick = new int[options.Count];
+        var parts = new string[options.Count];
         while (true)
         {
-            for (var i = 0; i < options.Length; i++) parts[i] = options[i][pick[i]];
+            for (var i = 0; i < options.Count; i++) parts[i] = options[i][pick[i]];
             yield return string.Concat(parts);
-            var last = options.Length - 1;
+            var last = options.Count - 1;
             while (last >= 0 && ++pick[last] == options[last].Length) pick[last--] = 0;
             if (last < 0) yield break;
         }
     }
 
-    private static List<HashSet<string>[]>? SyllableReadingsPerWordOrder(string name)
+    private static List<SyllableReadings[]>? SyllableReadingsPerWordOrder(string name)
     {
         var words = NameComparison.NameTokens(name).SelectMany(w => w.Split([',', '.'], StringSplitOptions.RemoveEmptyEntries)).ToArray();
         if (words.Length == 0) return null;
@@ -76,19 +85,20 @@ public static class Romanization
         // Wade-Giles/Tongyong/passport spelling reads only in those systems (Chi-Ming is ji/qi, not chi). Heuristic; a
         // name-level system detector is the upgrade if reviewed cases show misses.
         var taiwanStyle = words.Any(w => w.Contains('-', StringComparison.Ordinal));
-        var readingsPerWord = new List<HashSet<string>[]>();
+        var readingsPerWord = new List<SyllableReadings[]>();
         foreach (var w in words)
-            if (Syllables(w) is { } s) readingsPerWord.Add(Array.ConvertAll(s, x => Readings(x, taiwanStyle)));
+            if (Syllables(w) is { } s) readingsPerWord.Add(Array.ConvertAll(s, x => taiwanStyle ? ReadingsOf[x].TaiwanStyle : ReadingsOf[x].Pinyin));
             else return null;
         return WordOrders(readingsPerWord).Select(o => o.SelectMany(x => x).ToArray()).ToList();
     }
 
+    // Source order, surname moved last, surname moved first; with two words the last two are the same order, given once.
     private static IEnumerable<List<T[]>> WordOrders<T>(List<T[]> w)
     {
         yield return w;
         if (w.Count < 2) yield break;
         yield return [.. w[1..], w[0]];
-        yield return [w[^1], .. w[..^1]];
+        if (w.Count > 2) yield return [w[^1], .. w[..^1]];
     }
 
     private static string[]? Syllables(string word)
@@ -117,7 +127,12 @@ public static class Romanization
         return false;
     }
 
-    // Returns the shared Spellings set itself when nothing is added to it; callers only read the sets.
+    /// <summary>A syllable's Pinyin readings: the set for <see cref="SameReading"/>, and the same readings in the set's order for keys.</summary>
+    private sealed record SyllableReadings(HashSet<string> Set, string[] InOrder)
+    {
+        public static SyllableReadings Of(HashSet<string> set) => new(set, [.. set]);
+    }
+
     private static HashSet<string> Readings(string syllable, bool taiwanStyle)
     {
         var isPinyin = Pinyin.Contains(syllable);
@@ -143,10 +158,16 @@ public static class Romanization
     private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> PinyinBySpan = Pinyin.GetAlternateLookup<ReadOnlySpan<char>>();
     private static readonly Dictionary<string, HashSet<string>>.AlternateLookup<ReadOnlySpan<char>> SpellingsBySpan = Spellings.GetAlternateLookup<ReadOnlySpan<char>>();
 
-    // Data/hanzi-pinyin.txt rows: Pinyin, then every character with that reading.
-    private static readonly Dictionary<int, List<string>> HanziReadings = BuildHanzi();
+    // A syllable's readings depend only on the syllable and the name's style, so every syllable's are worked out once,
+    // shared read-only by every name, instead of per name.
+    private static readonly FrozenDictionary<string, (SyllableReadings Pinyin, SyllableReadings TaiwanStyle)> ReadingsOf =
+        Pinyin.Concat(Spellings.Keys).Distinct(StringComparer.Ordinal)
+            .ToFrozenDictionary(s => s, s => (SyllableReadings.Of(Readings(s, false)), SyllableReadings.Of(Readings(s, true))), StringComparer.Ordinal);
 
-    private static Dictionary<int, List<string>> BuildHanzi()
+    // Data/hanzi-pinyin.txt rows: Pinyin, then every character with that reading.
+    private static readonly Dictionary<int, string[]> HanziReadings = BuildHanzi();
+
+    private static Dictionary<int, string[]> BuildHanzi()
     {
         var map = new Dictionary<int, List<string>>();
         foreach (var l in EmbeddedTables.Lines("hanzi-pinyin.txt"))
@@ -155,6 +176,6 @@ public static class Romanization
             foreach (var r in l[(tab + 1)..].EnumerateRunes())
                 (map.TryGetValue(r.Value, out var list) ? list : map[r.Value] = []).Add(l[..tab]);
         }
-        return map;
+        return map.ToDictionary(e => e.Key, e => e.Value.ToArray());
     }
 }

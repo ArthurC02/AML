@@ -18,10 +18,18 @@ internal static class NameTerms
     /// <summary>Normalized words; a Chinese word becomes one term per character.</summary>
     public static string[] Tokens(string name)
     {
-        var words = name.Split([' ', '-', ',', '.', '·'], StringSplitOptions.RemoveEmptyEntries)
-            .Select(Key).Where(w => w.Length > 0).ToList();
-        return words.SelectMany(w => IsCjk(w) ? CodePoints(w) : [w]).ToArray();
+        var tokens = new List<string>();
+        foreach (var word in name.Split(WordSeparators, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var key = Key(word);
+            if (key.Length == 0) continue;
+            if (!IsCjk(key)) tokens.Add(key);
+            else foreach (var r in key.EnumerateRunes()) tokens.Add(r.ToString());
+        }
+        return [.. tokens];
     }
+
+    private static readonly char[] WordSeparators = [' ', '-', ',', '.', '·'];
 
     /// <summary>
     /// Code point n-grams of the key between start and end marks, plus single characters for a short Chinese name. Each gram
@@ -47,8 +55,6 @@ internal static class NameTerms
     }
 
     public static HashSet<string> ReadingKeys(string name) => Romanization.ReadingKeys(name).ToHashSet(StringComparer.Ordinal);
-
-    private static string[] CodePoints(string key) => key.EnumerateRunes().Select(r => r.ToString()).ToArray();
 
     public static bool IsCjk(string key) => key.EnumerateRunes().Any(IsCjk);
 

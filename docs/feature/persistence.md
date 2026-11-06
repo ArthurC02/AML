@@ -32,7 +32,7 @@ The schema is one DbUp script, `0001_schema.sql`. The PoC database is disposable
 
 The JSON in `case_analysis` is the full record; the fact tables are an index of it for calibration and monitoring queries, written in the same transaction, so they never disagree with it.
 
-Configuration: `"Database": { "ConnectionString": "..." }`. SQLite-specific settings stay in `SqliteDatabase`: foreign keys and busy timeout (5 s) on every connection, and write-ahead logging (`journal_mode = WAL`), set once after the upgrade and kept in the database file, so readers do not wait for the writer.
+Configuration: `"Database": { "ConnectionString": "..." }`. SQLite-specific settings stay in `SqliteDatabase`: foreign keys, busy timeout (5 s) and in-memory temporary storage (`temp_store = MEMORY`) on every connection, and write-ahead logging (`journal_mode = WAL`), set once after the upgrade and kept in the database file, so readers do not wait for the writer.
 
 ## Writing rules
 
@@ -82,7 +82,9 @@ Every write goes through `SqliteDatabase.WriteAsync`. Each write runs as its own
 - Durability is unchanged: `synchronous` keeps its default (`FULL`), so a write whose call returned survives a power loss.
 - A write must not call `WriteAsync` again; reads use their own connections.
 
-Measured on golden cases with a scratch database, before → after: submitting 500 jobs took 1.36 s → 0.15 s, and running them went from about 50 jobs/s at any worker count to about 90 jobs/s with 4 workers and about 230 jobs/s with 16. The analysis itself is about 0.6 ms of CPU per case, so throughput is set by the single writer: per job about 1.8 ms of statements plus the batch commits. More workers make larger batches, so each job pays less of a commit: about 320 jobs/s with 32 workers (the default) and about 350 with 64.
+Measured on golden cases with a scratch database, before → after: submitting 500 jobs took 1.36 s → 0.15 s, and running them went from about 50 jobs/s at any worker count to about 90 jobs/s with 4 workers and about 230 jobs/s with 16. The analysis itself is about 0.6 ms of CPU per case, so throughput is set by the single writer: its statements plus the batch commits. More workers make larger batches, so each job pays less of a commit: about 390 jobs/s with 32 workers (the default) and about 470 with 64.
+
+Every write runs inside a savepoint, which keeps a sub-journal of the pages it changes. By default SQLite holds that sub-journal in memory up to 64 KiB, then spills it to a temporary file. `temp_store = MEMORY` keeps it in memory for the whole write. That cut storing one analysis (`AcceptAnalysisAsync`) from about 2.4 ms to 1.3 ms without the commit. The sub-journal only undoes a statement or a savepoint and holds nothing durable. It is freed when the write's savepoint is released, so memory peaks at the largest single write. A re-run or lease reclaim of very many jobs is the largest, since every row it updates carries its payload.
 
 In the job table the payload, which holds the case files, is the last column. SQLite reads a row's columns in order, so the claim and status queries never read the payload; updates of a job still rewrite the whole row. The claim index follows the claim order and holds `next_attempt_at`, so a claim neither sorts the queue nor reads the rows of jobs still waiting out a retry delay. Together these cut a claim from about 5.4 ms to about 2.7 ms with one worker, which is one commit.
 

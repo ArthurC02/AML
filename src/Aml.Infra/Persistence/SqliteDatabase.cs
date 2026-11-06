@@ -31,7 +31,9 @@ public sealed class SqliteDatabase
     {
         var c = new SqliteConnection(_connectionString);
         await c.OpenAsync(ct).ConfigureAwait(false);
-        await c.ExecuteAsync("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;").ConfigureAwait(false);
+        // temp_store = MEMORY: a write's savepoint keeps a sub-journal of the pages it changes; past 64 KiB SQLite otherwise
+        // spills it to a temporary file. It holds no durable data and is freed when the write's savepoint is released.
+        await c.ExecuteAsync("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000; PRAGMA temp_store = MEMORY;").ConfigureAwait(false);
         return c;
     }
 

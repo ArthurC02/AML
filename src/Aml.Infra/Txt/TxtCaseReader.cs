@@ -22,7 +22,6 @@ public static partial class TxtCaseReader
     private const string ContactFile = "客戶-聯絡資料.txt";
     private const string CustomerCategory = "客戶";
     private const string GoldenCaseLabelFile = "expected.yaml";
-    private const string TempFolderPrefix = "aml-input-";
     private const int Big5CodePage = 950;
     private const char ByteOrderMark = '\uFEFF';
     private const int MarkupSniffChars = 256;
@@ -30,19 +29,8 @@ public static partial class TxtCaseReader
     public static CaseInput ReadFiles(IReadOnlyDictionary<string, string> files) =>
         ReadFiles(files.ToDictionary(f => f.Key, f => Encoding.UTF8.GetBytes(f.Value)));
 
-    public static CaseInput ReadFiles(IReadOnlyDictionary<string, byte[]> files)
-    {
-        var folder = Directory.CreateTempSubdirectory(TempFolderPrefix);
-        try
-        {
-            foreach (var (name, content) in files) File.WriteAllBytes(Path.Combine(folder.FullName, Path.GetFileName(name)), content);
-            return Read(folder.FullName);
-        }
-        finally
-        {
-            folder.Delete(recursive: true);
-        }
-    }
+    public static CaseInput ReadFiles(IReadOnlyDictionary<string, byte[]> files) =>
+        ReadSources(files.Select(f => (Path.GetFileName(f.Key), f.Value)));
 
     /// <summary>A missing Profile file is not a problem here: that candidate is NOT_EVALUATED.</summary>
     public static (string File, string Problem)? RequiredFileProblem(IReadOnlyCollection<string> names, string? subjectCategory)
@@ -56,9 +44,9 @@ public static partial class TxtCaseReader
 
     private static string SubjectFileOf(string subjectCategory) => subjectCategory == CustomerCategory ? CustomerFile : RelatedPartyFile;
 
-    private static void Require(string folder, string? subjectCategory)
+    private static void Require(Dictionary<string, string?> export, string? subjectCategory)
     {
-        if (RequiredFileProblem(Directory.GetFiles(folder).Select(Path.GetFileName).OfType<string>().ToList(), subjectCategory) is var (file, problem))
+        if (RequiredFileProblem(export.Keys, subjectCategory) is var (file, problem))
             throw new CaseInputException(file, null, problem, $"{file}: {problem}");
     }
 
@@ -74,38 +62,48 @@ public static partial class TxtCaseReader
         }
     }
 
-    /// <summary>Reads a case folder through a private copy; the source folder is never written.</summary>
-    public static CaseInput Read(string folder)
+    /// <summary>Reads a case folder; the source folder is never written.</summary>
+    public static CaseInput Read(string folder) =>
+        ReadSources(Directory.GetFiles(folder).Select(f => (Path.GetFileName(f), File.ReadAllBytes(f))));
+
+    // Files are read in name order ignoring case, the order a Windows folder lists them in, and two names that differ only
+    // by case are one file there, so here they are a duplicate on every platform.
+    private static CaseInput ReadSources(IEnumerable<(string Name, byte[] Content)> sources)
     {
-        var files = Directory.GetFiles(folder);
-        var hashes = files.ToDictionary(f => Path.GetFileName(f), f => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(f))));
-        var copy = Directory.CreateTempSubdirectory(TempFolderPrefix);
-        try
+        var ordered = sources.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, _) in ordered)
+            if (!seen.Add(name)) throw new CaseInputException(name, null, CaseInputException.Duplicate, $"Two input files named {name}");
+        var findings = new List<string>();
+        var export = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, content) in ordered) AddAsExport(name, content, export, findings);
+        return ReadExport(export, findings) with { SourceHashes = ordered.ToDictionary(s => s.Name, s => Convert.ToHexString(SHA256.HashData(s.Content))) };
+    }
+
+    // The export maps each file's export name to its text; an attachment that is not an export file maps to null and is never read.
+    private static void AddAsExport(string name, byte[] content, Dictionary<string, string?> export, List<string> findings)
+    {
+        var known = KnownFile().IsMatch(ExportName(name));
+        var target = known ? ExportName(name) : name;
+        if (export.ContainsKey(target))
+            throw new CaseInputException(target, null, CaseInputException.Duplicate, $"Two input files read as {target}");
+        if (!known) export[target] = null;
+        else if (IsHtmlName(name) || LooksLikeMarkup(content))
+            export[target] = ReadOrMalformed(name, () => HtmlExport.ToExportText(content, HtmlExport.KindOf(Path.GetFileNameWithoutExtension(target)))).TrimStart(ByteOrderMark);
+        else
         {
-            var findings = new List<string>();
-            foreach (var file in files) CopyAsExport(file, copy.FullName, findings);
-            return ReadExport(copy.FullName, findings) with { SourceHashes = hashes };
-        }
-        finally
-        {
-            copy.Delete(recursive: true);
+            export[target] = Decode(content, out var fallback);
+            if (fallback) findings.Add($"{EncodingFallback}:{name}");
         }
     }
 
-    private static void CopyAsExport(string source, string folder, List<string> findings)
+    // Reads lines as File.ReadAllLines does: split on \r\n, \r or \n, with no empty line after a final line break.
+    private static string[] Lines(string text)
     {
-        var known = KnownFile().IsMatch(ExportName(source));
-        var target = Path.Combine(folder, known ? ExportName(source) : Path.GetFileName(source));
-        if (File.Exists(target))
-            throw new CaseInputException(Path.GetFileName(target), null, CaseInputException.Duplicate, $"Two input files read as {Path.GetFileName(target)}");
-        if (!known) File.Copy(source, target);
-        else if (IsHtmlName(source) || LooksLikeMarkup(source))
-            File.WriteAllText(target, ReadOrMalformed(Path.GetFileName(source), () => HtmlExport.ToExportText(File.ReadAllBytes(source), HtmlExport.KindOf(Path.GetFileNameWithoutExtension(target)))));
-        else
-        {
-            File.WriteAllText(target, Decode(File.ReadAllBytes(source), out var fallback));
-            if (fallback) findings.Add($"{EncodingFallback}:{Path.GetFileName(source)}");
-        }
+        var lines = new List<string>();
+        using var reader = new StringReader(text);
+        while (reader.ReadLine() is { } line) lines.Add(line);
+        return [.. lines];
     }
 
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
@@ -131,33 +129,35 @@ public static partial class TxtCaseReader
             ? Path.GetFileNameWithoutExtension(path) + ".txt"
             : Path.GetFileName(path);
 
-    private static CaseInput ReadExport(string folder, IEnumerable<string> fileFindings)
+    private static CaseInput ReadExport(Dictionary<string, string?> export, IEnumerable<string> fileFindings)
     {
-        Require(folder, null);
-        var caseFile = Directory.GetFiles(folder, CaseInfoPrefix + "*.txt").Single();
-        var (subjectRow, rows, records, caseFindings) = ReadOrMalformed(Path.GetFileName(caseFile), () => ReadCaseTable(File.ReadAllLines(caseFile)));
-        Require(folder, subjectRow.Category);
+        Require(export, null);
+        var caseFile = export.Keys.Single(IsCaseInfoFile);
+        var (subjectRow, rows, records, caseFindings) = ReadOrMalformed(caseFile, () => ReadCaseTable(Lines(export[caseFile]!)));
+        Require(export, subjectRow.Category);
 
-        var subject = ReadSubject(folder, subjectRow);
-        var caseLevelFindingsShownOnEveryHit = caseFindings.Concat(fileFindings).Concat(UnsupportedAttachments(folder));
+        var subject = ReadSubject(export, subjectRow);
+        var caseLevelFindingsShownOnEveryHit = caseFindings.Concat(fileFindings).Concat(UnsupportedAttachments(export));
         subject = subject with { Findings = [.. subject.Findings, .. caseLevelFindingsShownOnEveryHit] };
 
         var profileIds = rows.Select(r => r.ProfileId).Distinct().ToList();
-        var profiles = ReadPerProfileFilesPresent(folder, profileIds, "名單資料", (_, path) => ReadProfile(path));
-        var news = ReadPerProfileFilesPresent(folder, profileIds, "新聞資訊", ReadNews);
+        var profiles = ReadPerProfileFilesPresent(export, profileIds, "名單資料", (_, text) => ParseProfile(text));
+        var news = ReadPerProfileFilesPresent(export, profileIds, "新聞資訊", ReadNews);
         return new CaseInput(subject, rows, profiles, news, ImportedDecisions(subjectRow, rows, records));
     }
 
-    private static ScreenedSubject ReadSubject(string folder, SubjectRow subjectRow) =>
-        subjectRow.Category == CustomerCategory
-            ? ReadOrMalformed(CustomerFile, () => ReadCustomer(folder))
-            : ReadOrMalformed(RelatedPartyFile, () => ReadRelatedParty(Path.Combine(folder, RelatedPartyFile), subjectRow.Category, subjectRow.ReferenceNumber));
+    private static bool IsCaseInfoFile(string name) => name.StartsWith(CaseInfoPrefix, StringComparison.Ordinal) && name.EndsWith(".txt", StringComparison.Ordinal);
 
-    private static Dictionary<string, T> ReadPerProfileFilesPresent<T>(string folder, IEnumerable<string> profileIds, string filePrefix, Func<string, string, T> read) =>
+    private static ScreenedSubject ReadSubject(Dictionary<string, string?> export, SubjectRow subjectRow) =>
+        subjectRow.Category == CustomerCategory
+            ? ReadOrMalformed(CustomerFile, () => ReadCustomer(export))
+            : ReadOrMalformed(RelatedPartyFile, () => ReadRelatedParty(export[RelatedPartyFile]!, subjectRow.Category, subjectRow.ReferenceNumber));
+
+    private static Dictionary<string, T> ReadPerProfileFilesPresent<T>(Dictionary<string, string?> export, IEnumerable<string> profileIds, string filePrefix, Func<string, string, T> read) =>
         profileIds
-            .Select(id => (id, path: Path.Combine(folder, $"{filePrefix}_{id}.txt")))
-            .Where(x => File.Exists(x.path))
-            .ToDictionary(x => x.id, x => ReadOrMalformed(Path.GetFileName(x.path), () => read(x.id, x.path)));
+            .Select(id => (id, name: $"{filePrefix}_{id}.txt"))
+            .Where(x => export.ContainsKey(x.name))
+            .ToDictionary(x => x.id, x => ReadOrMalformed(x.name, () => read(x.id, export[x.name]!)));
 
     private static List<ImportedDecision> ImportedDecisions(SubjectRow subjectRow, List<CandidateRow> rows, List<string> records)
     {
@@ -184,23 +184,20 @@ public static partial class TxtCaseReader
     [GeneratedRegex("^(案件資訊.*|名單資料_\\d+|新聞資訊_\\d+|客戶-背景資料|客戶-聯絡資料|客戶-關聯人背景資料)\\.txt$")]
     private static partial Regex KnownFile();
 
-    private static IEnumerable<string> UnsupportedAttachments(string folder)
+    private static IEnumerable<string> UnsupportedAttachments(Dictionary<string, string?> export) =>
+        export.Where(f => f.Key != GoldenCaseLabelFile && (f.Value is null || LooksLikeMarkup(f.Value)))
+            .Select(f => $"{UnsupportedAttachment}:{f.Key}").Order(StringComparer.OrdinalIgnoreCase);
+
+    // Sniffs the head as a StreamReader decodes it: UTF-8 unless a byte order mark says otherwise.
+    private static bool LooksLikeMarkup(byte[] content)
     {
-        foreach (var path in Directory.GetFiles(folder))
-        {
-            var name = Path.GetFileName(path);
-            if (name == GoldenCaseLabelFile) continue;
-            if (!KnownFile().IsMatch(name) || LooksLikeMarkup(path)) yield return $"{UnsupportedAttachment}:{name}";
-        }
+        using var reader = new StreamReader(new MemoryStream(content));
+        var head = new char[MarkupSniffChars];
+        return LooksLikeMarkup(new string(head, 0, reader.Read(head, 0, head.Length)));
     }
 
-    private static bool LooksLikeMarkup(string path)
-    {
-        using var reader = new StreamReader(path);
-        var head = new char[MarkupSniffChars];
-        var n = reader.Read(head, 0, head.Length);
-        return new string(head, 0, n).TrimStart(ByteOrderMark, ' ', '\r', '\n', '\t').StartsWith('<');
-    }
+    private static bool LooksLikeMarkup(string text) =>
+        text.AsSpan(0, Math.Min(text.Length, MarkupSniffChars)).TrimStart([ByteOrderMark, ' ', '\r', '\n', '\t']).StartsWith('<');
 
     private static readonly string[] CustomerFields = ["本地名稱", "客戶名稱", "性別", "出生日期", "國籍 1", "證件號碼"];
     private static readonly string[] RelatedPartyFields = ["姓名/名稱", "性別", "出生日期", "國籍", "證件號碼"];
@@ -328,9 +325,9 @@ public static partial class TxtCaseReader
     private const int MinTaxIdLength = 8;
 
     // Customer files: label line followed by value line; a blank value shows as the next label.
-    private static ScreenedSubject ReadCustomer(string folder)
+    private static ScreenedSubject ReadCustomer(Dictionary<string, string?> export)
     {
-        var background = File.ReadAllLines(Path.Combine(folder, CustomerFile)).Select(l => l.Trim()).ToArray();
+        var background = Lines(export[CustomerFile]!).Select(l => l.Trim()).ToArray();
         string? RawValue(string label)
         {
             var at = Array.IndexOf(background, label);
@@ -351,8 +348,7 @@ public static partial class TxtCaseReader
             var t => new FieldValue(t, ValueState.Present),
         };
 
-        var contactPath = Path.Combine(folder, ContactFile);
-        var addresses = File.Exists(contactPath) ? ReadOrMalformed(ContactFile, () => ReadContactAddresses(contactPath, findings)) : [];
+        var addresses = export.TryGetValue(ContactFile, out var contact) ? ReadOrMalformed(ContactFile, () => ReadContactAddresses(contact!, findings)) : [];
 
         var dob = Date("出生日期", Value("出生日期"), findings);
 
@@ -367,9 +363,9 @@ public static partial class TxtCaseReader
     private static bool IsCountryHeading(string line) => line.EndsWith(CountryHeadingSuffix, StringComparison.Ordinal);
 
     // Contact file: a "<role>(國家)" heading, then "地址" and the address, then the block's own "國家" label and value.
-    private static List<Address> ReadContactAddresses(string path, List<string> findings)
+    private static List<Address> ReadContactAddresses(string text, List<string> findings)
     {
-        var contact = File.ReadAllLines(path).Select(l => l.Trim()).ToArray();
+        var contact = Lines(text).Select(l => l.Trim()).ToArray();
         var addresses = new List<Address>();
         for (var i = 0; i + 2 < contact.Length; i++)
             if (IsCountryHeading(contact[i]) && contact[i + 1] == "地址" && SourceValues.NullIfPlaceholder(contact[i + 2]) is { } raw)
@@ -393,9 +389,9 @@ public static partial class TxtCaseReader
         return findings;
     }
 
-    private static ScreenedSubject ReadRelatedParty(string path, string relationship, string? referenceNumber)
+    private static ScreenedSubject ReadRelatedParty(string text, string relationship, string? referenceNumber)
     {
-        var fields = ReadKeyValueLines(path);
+        var fields = ReadKeyValueLines(text);
         string? Value(string key) => SourceValues.NullIfPlaceholder(fields.FirstOrDefault(f => f.Key == key).Value);
 
         var findings = MissingFieldFindings(RelatedPartyFields
@@ -420,10 +416,10 @@ public static partial class TxtCaseReader
     }
 
     // Related-party file: "key ：" (or "key :") lines, the value on the following line(s) joined with a space; an empty value is followed directly by the next key.
-    private static List<(string Key, string? Value)> ReadKeyValueLines(string path)
+    private static List<(string Key, string? Value)> ReadKeyValueLines(string text)
     {
         var fields = new List<(string Key, string? Value)>();
-        foreach (var line in File.ReadAllLines(path))
+        foreach (var line in Lines(text))
         {
             var trimmed = line.Trim();
             if (trimmed.EndsWith('：') || trimmed.EndsWith(':')) fields.Add((trimmed[..^1].Trim(), null));
@@ -493,8 +489,6 @@ public static partial class TxtCaseReader
 
     [GeneratedRegex("\\(\\d+\\)$")]
     private static partial Regex TrailingCode();
-
-    public static SourceProfile ReadProfile(string path) => ParseProfile(File.ReadAllText(path));
 
     /// <summary>The text a Profile file's content hash is taken on: an HTML page converted, an export as it is.</summary>
     public static string ProfileExportText(string content) =>
@@ -700,9 +694,9 @@ public static partial class TxtCaseReader
     private static partial Regex SourceUrl();
 
     // News export: id line, section, title, reporter, length, "2026 年 9 月 6 日" (or "2026年9月6日"), publisher, …, "文件 <id>".
-    private static NewsItem ReadNews(string profileId, string path)
+    private static NewsItem ReadNews(string profileId, string text)
     {
-        var lines = File.ReadAllLines(path).Select(l => l.Trim()).ToArray();
+        var lines = Lines(text).Select(l => l.Trim()).ToArray();
         var dateIndex = Array.FindIndex(lines, l => NewsDate().IsMatch(l));
         PartialDate? published = null;
         if (dateIndex >= 0)

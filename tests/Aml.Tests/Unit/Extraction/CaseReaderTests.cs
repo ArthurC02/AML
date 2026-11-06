@@ -241,6 +241,20 @@ public class CaseReaderTests
         Assert.Equal(("名單資料_90000011.txt", CaseInputException.Duplicate), (e.File, e.Problem));
     }
 
+    [Fact]
+    public void File_names_that_differ_only_by_case_are_rejected_on_every_platform()
+    {
+        var files = Directory.GetFiles(GoldenCaseTests.Folder("GC-11")).ToDictionary(f => Path.GetFileName(f), File.ReadAllBytes);
+        files["note.pdf"] = [1];
+        files["NOTE.PDF"] = [2];
+        var e = Assert.Throws<CaseInputException>(() => TxtCaseReader.ReadFiles(files));
+        Assert.Equal(CaseInputException.Duplicate, e.Problem);
+
+        files.Remove("NOTE.PDF");
+        files["other/note.pdf"] = [2]; // only the file name counts, so one upload cannot hide another
+        Assert.Equal(CaseInputException.Duplicate, Assert.Throws<CaseInputException>(() => TxtCaseReader.ReadFiles(files)).Problem);
+    }
+
     // HTML pages.
 
     private static string[] Lines(string html, HtmlExport.Kind kind = HtmlExport.Kind.Customer) =>

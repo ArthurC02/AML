@@ -46,7 +46,7 @@ An HTML source is processed in this order:
 
 Do not flatten the entire HTML to text before interpreting table and control relationships. Checkbox states, dropdown selections, input values, links and merged headers are all read.
 
-In the PoC, `Infra/Html/HtmlExport` covers steps 3 and 4 by converting each page (`.html`/`.htm` in any letter case, or a `.txt` holding page source, under the export file names) into the export layout in a private copy, which the `.txt` reader then maps and normalizes (steps 5 to 8):
+In the PoC, `Infra/Html/HtmlExport` covers steps 3 and 4 by converting each page (`.html`/`.htm` in any letter case, or a `.txt` holding page source, under the export file names) into the export layout in memory, which the `.txt` reader then maps and normalizes (steps 5 to 8):
 
 - a cell keeps its text and its control values in document order: a checkbox reads 是 or 否, a checked radio its label (else its value), a select its selected options, an input or textarea its value; the label text of a checkbox or radio is not repeated;
 - `<br>` and block elements (`p`, `div`, `li`, table cells …) break lines;

@@ -51,11 +51,21 @@ public static class Romanization
     private static bool IsUnreadUnknownOrOtherScript(Rune r) =>
         NameComparison.IsUnrenderable(r) || (!Rune.IsWhiteSpace(r) && !Rune.IsPunctuation(r));
 
+    // Every pick of one reading per set, the last set varying fastest, each key concatenated once.
     private static IEnumerable<string> Product(IReadOnlyList<IReadOnlyCollection<string>> sets)
     {
-        IEnumerable<string> acc = [""];
-        foreach (var set in sets) acc = acc.SelectMany(_ => set, (k, s) => k + s);
-        return acc;
+        var options = sets.Select(s => s.ToArray()).ToArray();
+        if (options.Any(o => o.Length == 0)) yield break;
+        var pick = new int[options.Length];
+        var parts = new string[options.Length];
+        while (true)
+        {
+            for (var i = 0; i < options.Length; i++) parts[i] = options[i][pick[i]];
+            yield return string.Concat(parts);
+            var last = options.Length - 1;
+            while (last >= 0 && ++pick[last] == options[last].Length) pick[last--] = 0;
+            if (last < 0) yield break;
+        }
     }
 
     private static List<HashSet<string>[]>? SyllableReadingsPerWordOrder(string name)
@@ -66,14 +76,14 @@ public static class Romanization
         // Wade-Giles/Tongyong/passport spelling reads only in those systems (Chi-Ming is ji/qi, not chi). Heuristic; a
         // name-level system detector is the upgrade if reviewed cases show misses.
         var taiwanStyle = words.Any(w => w.Contains('-', StringComparison.Ordinal));
-        var syllables = new List<string[]>();
+        var readingsPerWord = new List<HashSet<string>[]>();
         foreach (var w in words)
-            if (Syllables(w) is { } s) syllables.Add(s);
+            if (Syllables(w) is { } s) readingsPerWord.Add(Array.ConvertAll(s, x => Readings(x, taiwanStyle)));
             else return null;
-        return WordOrders(syllables).Select(o => o.SelectMany(x => x).Select(s => Readings(s, taiwanStyle)).ToArray()).ToList();
+        return WordOrders(readingsPerWord).Select(o => o.SelectMany(x => x).ToArray()).ToList();
     }
 
-    private static IEnumerable<List<string[]>> WordOrders(List<string[]> w)
+    private static IEnumerable<List<T[]>> WordOrders<T>(List<T[]> w)
     {
         yield return w;
         if (w.Count < 2) yield break;
@@ -98,8 +108,8 @@ public static class Romanization
         if (i == s.Length) return true;
         for (var n = Math.Min(LongestSyllable, s.Length - i); n > 0; n--)
         {
-            var syllable = s.Substring(i, n);
-            if (!Pinyin.Contains(syllable) && !Spellings.ContainsKey(syllable)) continue;
+            var candidate = s.AsSpan(i, n);
+            if (!PinyinBySpan.TryGetValue(candidate, out var syllable) && !SpellingsBySpan.TryGetValue(candidate, out syllable, out _)) continue;
             acc.Add(syllable);
             if (Split(s, i + n, acc)) return true;
             acc.RemoveAt(acc.Count - 1);
@@ -107,12 +117,12 @@ public static class Romanization
         return false;
     }
 
+    // Returns the shared Spellings set itself when nothing is added to it; callers only read the sets.
     private static HashSet<string> Readings(string syllable, bool taiwanStyle)
     {
-        var r = Spellings.TryGetValue(syllable, out var other) ? new HashSet<string>(other) : [];
-        var spellingIsItsOwnReading = Pinyin.Contains(syllable) && (r.Count == 0 || !taiwanStyle);
-        if (spellingIsItsOwnReading) r.Add(syllable);
-        return r;
+        var isPinyin = Pinyin.Contains(syllable);
+        if (!Spellings.TryGetValue(syllable, out var other)) return isPinyin ? [syllable] : [];
+        return isPinyin && !taiwanStyle ? [.. other, syllable] : other;
     }
 
     private const int PinyinColumn = 0;
@@ -129,6 +139,9 @@ public static class Romanization
         .SelectMany(r => new[] { (r[WadeGilesPassportColumn], r[PinyinColumn]), (r[TongyongColumn], r[PinyinColumn]) })
         .Concat(PassportSpellings)
         .GroupBy(x => x.Item1, x => x.Item2).ToDictionary(g => g.Key, g => g.ToHashSet());
+
+    private static readonly HashSet<string>.AlternateLookup<ReadOnlySpan<char>> PinyinBySpan = Pinyin.GetAlternateLookup<ReadOnlySpan<char>>();
+    private static readonly Dictionary<string, HashSet<string>>.AlternateLookup<ReadOnlySpan<char>> SpellingsBySpan = Spellings.GetAlternateLookup<ReadOnlySpan<char>>();
 
     // Data/hanzi-pinyin.txt rows: Pinyin, then every character with that reading.
     private static readonly Dictionary<int, List<string>> HanziReadings = BuildHanzi();

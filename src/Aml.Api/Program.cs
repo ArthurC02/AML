@@ -10,6 +10,7 @@ using Aml.Infra.Persistence;
 using Aml.Infra.Persistence.Repositories;
 using Aml.Infra.Txt;
 using Aml.Services;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
@@ -21,6 +22,12 @@ const long DefaultMaxRequestBytes = 100L * 1024 * 1024;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = builder.Configuration.GetValue<long?>("Api:MaxRequestBytes") ?? DefaultMaxRequestBytes);
+var workbookConcurrency = builder.Configuration.GetValue<int?>("Api:WorkbookConcurrency") ?? 16;
+var workbookQueue = builder.Configuration.GetValue<int?>("Api:WorkbookQueue") ?? 64;
+// Checked at the start, before the database is touched, not on the first workbook request: a limit that cannot work
+// would turn every one into a 500.
+if (workbookConcurrency < 1 || workbookQueue < 0)
+    throw new InvalidOperationException("Api:WorkbookConcurrency must be at least 1 and Api:WorkbookQueue at least 0.");
 
 var db = new SqliteDatabase(builder.Configuration["Database:ConnectionString"] ?? "Data Source=aml.db");
 db.Upgrade();
@@ -60,6 +67,23 @@ builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = ctx =>
     }
 });
 builder.Services.AddExceptionHandler<CaseInputProblemHandler>();
+// Workbooks are built a few at a time and the rest wait in a short queue; past it the answer is 429. Per instance, not per user:
+// a per-user limit needs authentication.
+builder.Services.AddRateLimiter(o =>
+{
+    o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    o.OnRejected = (ctx, _) =>
+    {
+        ctx.HttpContext.Response.Headers.RetryAfter = "1";
+        return ValueTask.CompletedTask;
+    };
+    o.AddConcurrencyLimiter(CasesEndpoints.WorkbookLimit, l =>
+    {
+        l.PermitLimit = workbookConcurrency;
+        l.QueueLimit = workbookQueue;
+        l.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
+    });
+});
 
 builder.Services.AddHealthChecks().AddAsyncCheck("database", async ct =>
 {
@@ -84,6 +108,7 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 var app = builder.Build();
 app.UseExceptionHandler(new ExceptionHandlerOptions { StatusCodeSelector = e => e is BadHttpRequestException b ? b.StatusCode : StatusCodes.Status500InternalServerError });
 app.UseStatusCodePages();
+app.UseRateLimiter(); // after UseStatusCodePages, so a 429 gets a problem body
 app.MapHealthChecks("/health");
 app.MapOpenApi();
 app.UseSwaggerUI(o => o.SwaggerEndpoint("/openapi/v1.json", "AML PoC"));

@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Aml.Tests.E2E;
 
@@ -95,7 +97,17 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(revision.GetRawText(), full.GetProperty("effective").GetRawText());
         Assert.Equal(full.GetRawText(), (await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}?view=full", ct)).GetRawText());
 
-        // The workbook renders the effective revision, or ?revision=, and is never cached.
+        // The workbook renders the effective revision, or ?revision=, and is never cached. Each one is counted by view.
+        var counted = new System.Collections.Concurrent.ConcurrentBag<(string Instrument, object? View)>();
+        using var meters = new System.Diagnostics.Metrics.MeterListener();
+        meters.InstrumentPublished = (i, l) => { if (i.Meter.Name == Services.AmlTelemetry.Name && i.Name.StartsWith("aml.workbook", StringComparison.Ordinal)) l.EnableMeasurementEvents(i); };
+        void Seen<T>(System.Diagnostics.Metrics.Instrument i, T _, ReadOnlySpan<KeyValuePair<string, object?>> tags, object? __)
+        {
+            foreach (var t in tags) if (t.Key == "view") counted.Add((i.Name, t.Value));
+        }
+        meters.SetMeasurementEventCallback<long>(Seen);
+        meters.SetMeasurementEventCallback<double>(Seen);
+        meters.Start();
         using var workbook = await client.GetAsync($"/api/cases/{caseId}/workbook?revision=1", ct);
         Assert.Equal(HttpStatusCode.OK, workbook.StatusCode);
         Assert.Equal(Infra.Excel.Xlsx.ContentType, workbook.Content.Headers.ContentType?.MediaType);
@@ -115,6 +127,9 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Contains(sheets[0].Rows, row => row[1] == "結論" && row[2]!.Contains("生效 revision 為 2", StringComparison.Ordinal));
         using var noRevision = await client.GetAsync($"/api/cases/{caseId}/workbook?revision=9", ct);
         Assert.Equal(HttpStatusCode.NotFound, noRevision.StatusCode);
+        // One measurement per workbook issued and none for the 404. Only the endpoint records them, and tests of one class run in turn.
+        foreach (var instrument in new[] { "aml.workbooks", "aml.workbook.duration", "aml.workbook.size" })
+            Assert.Equal(["full", "summary"], counted.Where(m => m.Instrument == instrument).Select(m => m.View as string).Order());
 
         var found = await client.GetFromJsonAsync<JsonElement>("/api/cases?subjectRef=subject-GC-03", ct);
         Assert.Contains(found.GetProperty("items").EnumerateArray(), i => i.GetProperty("caseId").GetString() == caseId);
@@ -146,6 +161,74 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         var content = openApi.GetProperty("paths").GetProperty("/api/cases").GetProperty("post").GetProperty("requestBody").GetProperty("content");
         Assert.True(content.TryGetProperty("multipart/form-data", out _));
         Assert.True(content.TryGetProperty("application/json", out _));
+    }
+
+    [Fact]
+    public async Task Workbooks_past_the_concurrency_limit_are_refused_with_429_and_other_endpoints_are_not()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // One permit and no queue; the Case store holds the first request until the test opens it.
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var open = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var limited = api.WithWebHostBuilder(b => b
+            .UseSetting("Api:WorkbookConcurrency", "1").UseSetting("Api:WorkbookQueue", "0")
+            .ConfigureTestServices(s => s.AddSingleton<Core.Ports.ICaseStore>(sp =>
+            {
+                var proxy = System.Reflection.DispatchProxy.Create<Core.Ports.ICaseStore, Gated>();
+                var gate = (Gated)(object)proxy;
+                (gate.Inner, gate.Entered, gate.Open) = (ActivatorUtilities.CreateInstance<Infra.Persistence.Repositories.CaseStore>(sp), entered, open);
+                return proxy;
+            })));
+        using var client = limited.CreateClient();
+
+        var held = client.GetAsync("/api/cases/unknown/workbook", ct);
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(30), ct);
+            using var refused = await client.GetAsync("/api/cases/unknown/workbook", ct);
+            Assert.Equal(HttpStatusCode.TooManyRequests, refused.StatusCode);
+            Assert.Equal(["1"], refused.Headers.GetValues("Retry-After"));
+            var problem = await refused.Content.ReadFromJsonAsync<JsonElement>(ct);
+            Assert.Equal(("/api/codes/HTTP_ERROR", 429), (problem.GetProperty("type").GetString(), problem.GetProperty("status").GetInt32()));
+            Assert.Contains("Retry-After", problem.GetProperty("fix").GetString(), StringComparison.Ordinal);
+            using var other = await client.GetAsync("/api/codes/HTTP_ERROR", ct);
+            Assert.Equal(HttpStatusCode.OK, other.StatusCode);
+        }
+        finally
+        {
+            open.TrySetResult(); // a failed assertion must not leave the held request hanging the host's disposal
+        }
+        using var first = await held;
+        Assert.Equal(HttpStatusCode.NotFound, first.StatusCode);
+        using var again = await client.GetAsync("/api/cases/unknown/workbook", ct);
+        Assert.Equal(HttpStatusCode.NotFound, again.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("0", "64")]
+    [InlineData("16", "-1")]
+    public void A_workbook_limit_that_cannot_work_stops_the_start(string concurrency, string queue)
+    {
+        using var broken = api.WithWebHostBuilder(b => b.UseSetting("Api:WorkbookConcurrency", concurrency).UseSetting("Api:WorkbookQueue", queue));
+        Assert.Contains("Api:WorkbookConcurrency", Assert.Throws<InvalidOperationException>(() => broken.CreateClient()).Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>A Case store whose GetAsync says it was entered, then waits until <see cref="Open"/> is set.</summary>
+    public class Gated : System.Reflection.DispatchProxy
+    {
+        internal Core.Ports.ICaseStore Inner { get; set; } = null!;
+        internal TaskCompletionSource Entered { get; set; } = null!;
+        internal TaskCompletionSource Open { get; set; } = null!;
+
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args) =>
+            targetMethod!.Name == nameof(Core.Ports.ICaseStore.GetAsync) ? HeldAsync(targetMethod, args) : targetMethod.Invoke(Inner, args);
+
+        private async Task<Core.Cases.CaseRecord?> HeldAsync(System.Reflection.MethodInfo targetMethod, object?[]? args)
+        {
+            Entered.TrySetResult();
+            await Open.Task;
+            return await (Task<Core.Cases.CaseRecord?>)targetMethod.Invoke(Inner, args)!;
+        }
     }
 
     private static StringContent Charset(StringContent content, string charset)

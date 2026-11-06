@@ -51,6 +51,7 @@ Questions that need a bank decision. When one is answered, record the answer her
 - When is a new event merged into an open Case versus creating another Case?
 - What are batch volume, latency and retry expectations?
 - What is the result-publication and case-reopen policy?
+- Mass download of personal data in case workbooks: a workbook leaves the system as a file, and one account pulling many `view=full` workbooks is how personal data leaks in bulk. Today the endpoint has an instance-wide concurrency limit, a log entry and the `aml.workbooks` counter per view, but no per-user limit and no record of who downloaded. Once authentication is wired: limit each user, with a much smaller allowance for `view=full`; record the user in the log; alert on unusual counts; and decide whether `view=full` needs its own permission ([case workbook](../feature/pipeline-api-and-batch.md#case-workbook)). Deferred by the business owner on 2026-11-07.
 
 ## Technology governance
 

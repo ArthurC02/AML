@@ -2,6 +2,7 @@ using Aml.Core.Cases;
 using Aml.Core.Explanation;
 using Aml.Services;
 using Microsoft.AspNetCore.Http.HttpResults;
+using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.OpenApi;
 using Aml.Core.Retrieval;
@@ -14,6 +15,9 @@ namespace Aml.Api.Endpoints;
 
 internal static partial class CasesEndpoints
 {
+    /// <summary>The rate-limiting policy of the workbook endpoint: a concurrency limit with a queue.</summary>
+    public const string WorkbookLimit = "workbook";
+
     public static void MapCases(this IEndpointRouteBuilder app)
     {
         var cases = app.MapGroup("/api/cases").DisableAntiforgery(); // token-based API, no cookies
@@ -142,17 +146,29 @@ internal static partial class CasesEndpoints
         {
             if (view is not (null or "summary" or "full"))
                 return Problems.Of(Problems.InvalidRequest, $"Unknown view '{view}'.", "Send view=summary or view=full.", new { parameter = "view" });
+            var shown = view ?? "summary";
+            using var activity = AmlTelemetry.Source.StartActivity("BuildCaseWorkbook");
+            activity?.SetTag("aml.view", shown);
+            // Measured from the reads on; time waiting for a permit is in aspnetcore.rate_limiting.request.time_in_queue.
+            var started = Stopwatch.GetTimestamp();
             if (await service.GetAsync(caseId, ct) is not { } c || (revision ?? c.EffectiveRevision) is not { } rev
                 || await service.GetAnalysisAsync(caseId, rev, ct) is not { } a)
                 return TypedResults.NotFound();
+            activity?.SetTag("aml.case_id", c.CaseId); // only an id that exists, never a probed one
             using var bytes = new MemoryStream();
             CaseWorkbook.Write(bytes, c, a, withIdentifierValues: view == "full");
             response.Headers.CacheControl = "no-store";
             response.Headers.XContentTypeOptions = "nosniff";
             // A workbook is a copy outside the system: record which Case, revision and view left, never its content.
-            WorkbookIssued(workbookLog, caseId, rev, view ?? "summary");
+            WorkbookIssued(workbookLog, caseId, rev, shown);
+            KeyValuePair<string, object?> tag = new("view", shown);
+            AmlTelemetry.Workbooks.Add(1, tag);
+            AmlTelemetry.WorkbookDuration.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds, tag);
+            AmlTelemetry.WorkbookSize.Record(bytes.Length, tag);
+            activity?.SetTag("aml.revision", rev);
             return TypedResults.File(bytes.ToArray(), Xlsx.ContentType, $"case-{caseId}-revision-{rev}.xlsx");
         })
+        .RequireRateLimiting(WorkbookLimit)
         .AddOpenApiOperationTransformer((op, _, _) =>
         {
             op.Responses!["200"] = new OpenApiResponse
@@ -166,7 +182,7 @@ internal static partial class CasesEndpoints
             return Task.CompletedTask;
         })
         .WithSummary("One revision (the effective one, or ?revision=) as an Excel workbook of seven sheets: 說明, 命中, 比對, 證據, 來源, 變更 and 代碼")
-        .WithDescription("Each sheet is one table with a frozen, filterable header; the hit number joins them. The workbook restates the stored revision and adds nothing. view=summary (default) holds no identifier values, compared values or source titles and, of personal data, only the Profile's main name; view=full adds them, as GET /api/cases/{caseId}/revisions/{revision}. Text is never a formula. The response is not cached (Cache-Control: no-store).")
+        .WithDescription("Each sheet is one table with a frozen, filterable header; the hit number joins them. The workbook restates the stored revision and adds nothing. view=summary (default) holds no identifier values, compared values or source titles and, of personal data, only the Profile's main name; view=full adds them, as GET /api/cases/{caseId}/revisions/{revision}. Text is never a formula. The response is not cached (Cache-Control: no-store). Workbooks are built a few at a time (Api:WorkbookConcurrency, default 16, with Api:WorkbookQueue, default 64, waiting); past that the answer is 429 with Retry-After.")
         .WithName("getCaseWorkbook")
         .WithTags(Tags.Cases);
     }

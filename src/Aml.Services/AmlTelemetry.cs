@@ -18,4 +18,13 @@ public static class AmlTelemetry
     public static readonly Counter<long> JobAttempts = Meter.CreateCounter<long>("aml.job.attempts");
 
     public static readonly Histogram<double> AnalysisDuration = Meter.CreateHistogram<double>("aml.analysis.duration", "ms");
+
+    /// <summary>Case workbooks issued, tagged with view (summary, full).</summary>
+    public static readonly Counter<long> Workbooks = Meter.CreateCounter<long>("aml.workbooks");
+
+    /// <summary>Time to build one Case workbook, reads included, tagged with view.</summary>
+    public static readonly Histogram<double> WorkbookDuration = Meter.CreateHistogram<double>("aml.workbook.duration", "ms");
+
+    /// <summary>Size of one Case workbook, tagged with view.</summary>
+    public static readonly Histogram<long> WorkbookSize = Meter.CreateHistogram<long>("aml.workbook.size", "By");
 }

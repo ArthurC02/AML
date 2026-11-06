@@ -33,6 +33,7 @@ internal static class Problems
         StatusCodes.Status400BadRequest => "Send the parameters and body the operation declares in /openapi/v1.json, with values of the declared types.",
         StatusCodes.Status404NotFound => "Check the route in /openapi/v1.json and the id, taken unchanged from the response that created or listed the resource.",
         StatusCodes.Status408RequestTimeout => "Send the whole request body without pausing; the server stops waiting for a body that arrives too slowly.",
+        StatusCodes.Status429TooManyRequests => "Retry after the seconds in Retry-After: the server builds only a few workbooks at a time (Api:WorkbookConcurrency, Api:WorkbookQueue).",
         StatusCodes.Status413PayloadTooLarge => "Send fewer or smaller files per request: the request body is over the server's limit (Api:MaxRequestBytes).",
         >= 500 => "Retry later; if it persists, report the traceId of this response.",
         _ => "Use the method and content type the operation declares in /openapi/v1.json.",

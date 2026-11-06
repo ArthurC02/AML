@@ -1,5 +1,3 @@
-using System.Collections.Frozen;
-
 namespace Aml.Core.Retrieval;
 
 /// <summary>
@@ -12,33 +10,52 @@ internal sealed class Bm25Scorer
     private const double K1 = 1.2;
     private const double B = 0.3;
 
-    private readonly FrozenDictionary<string, int[]> _postingsByToken;
+    private readonly TermPostings _tokens;
     private readonly int _documents;
     private readonly double _averageLengthLatin;
     private readonly double _averageLengthCjk;
 
-    /// <param name="postingsByToken">The aliases holding each token, each alias once; read, never changed.</param>
-    public Bm25Scorer(FrozenDictionary<string, int[]> postingsByToken, int documents, double averageLengthLatin, double averageLengthCjk)
+    public Bm25Scorer(TermPostings tokens, int documents, double averageLengthLatin, double averageLengthCjk)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(documents);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(averageLengthLatin);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(averageLengthCjk);
-        (_postingsByToken, _documents, _averageLengthLatin, _averageLengthCjk) = (postingsByToken, documents, averageLengthLatin, averageLengthCjk);
+        (_tokens, _documents, _averageLengthLatin, _averageLengthCjk) = (tokens, documents, averageLengthLatin, averageLengthCjk);
     }
 
-    public double Score(string[] distinctQueryTokens, string[] tokens, bool cjk)
+    /// <summary>
+    /// A scorer for one query: each distinct query token's inverse document frequency, worked out once, not once per alias.
+    /// A token no alias holds is left out; it would score 0 on every alias.
+    /// </summary>
+    public Query For(IEnumerable<string> distinctQueryTokens)
     {
-        var averageLength = cjk ? _averageLengthCjk : _averageLengthLatin;
-        var score = 0.0;
-        foreach (var t in distinctQueryTokens)
+        var ids = _tokens.KnownIds(distinctQueryTokens);
+        var idf = Array.ConvertAll(ids, id =>
         {
-            var tf = 0;
-            foreach (var x in tokens) if (x == t) tf++;
-            if (tf == 0) continue;
-            var df = _postingsByToken.TryGetValue(t, out var posted) ? posted.Length : 0;
-            var idf = Math.Log(1 + (_documents - df + 0.5) / (df + 0.5));
-            score += idf * tf * (K1 + 1) / (tf + K1 * (1 - B + B * tokens.Length / averageLength));
+            var df = _tokens.DocumentFrequency(id);
+            return Math.Log(1 + (_documents - df + 0.5) / (df + 0.5));
+        });
+        return new Query(this, ids, idf);
+    }
+
+    internal sealed class Query(Bm25Scorer scorer, int[] ids, double[] idf)
+    {
+        /// <summary>The numbers of the query tokens the index holds, in query order.</summary>
+        public IReadOnlyList<int> TokenIds => ids;
+
+        /// <param name="tokenIds">The alias's tokens as numbers, repeats kept: a repeat is term frequency.</param>
+        public double Score(ReadOnlySpan<int> tokenIds, bool cjk)
+        {
+            var averageLength = cjk ? scorer._averageLengthCjk : scorer._averageLengthLatin;
+            var score = 0.0;
+            for (var q = 0; q < ids.Length; q++)
+            {
+                var tf = 0;
+                foreach (var x in tokenIds) if (x == ids[q]) tf++;
+                if (tf == 0) continue;
+                score += idf[q] * tf * (K1 + 1) / (tf + K1 * (1 - B + B * tokenIds.Length / averageLength));
+            }
+            return score;
         }
-        return score;
     }
 }

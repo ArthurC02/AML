@@ -41,67 +41,49 @@ public sealed class ProfileIndex
     // Fusion order: on equal rank the earlier route names the match.
     private static readonly string[] RouteNames = [Bm25, NGram, Reading];
 
-    // Grams and reading keys are a handful of distinct strings each: an array is smaller than a set and as fast to scan.
-    private sealed record Alias(string ProfileKey, string Name, string Key, string[] Tokens, string[] Grams, bool Cjk, string[] ReadingKeys);
+    private sealed record AliasTerms(string ProfileKey, string Name, string Key, bool Cjk, string[] Tokens, string[] Grams, string[] ReadingKeys);
+
+    // An alias's terms as numbers from the route's postings: tokens in name order with repeats (term frequency), grams and
+    // reading keys distinct (sets).
+    private sealed record Alias(string ProfileKey, string Name, string Key, bool Cjk, int[] TokenIds, int[] GramIds, int[] ReadingIds);
 
     // Built once and never changed: concurrent searches share it without locks. Aliases are addressed by position.
     private readonly Alias[] _aliases;
     private readonly AliasProfiles _aliasProfiles;
     private readonly Bm25Scorer _bm25;
+    private readonly FrozenDictionary<string, int[]> _aliasPositionsByKey;
     // Every route scores 0 on an alias that shares no term with the query, so scoring only the posted aliases loses nothing.
     // ponytail: a very common term (a frequent surname, the "^ch" gram) still reaches a large share of the list; add top-k
     // pruning (WAND / MaxScore) or a stop-term cut-off when list-scale latency demands it.
-    private readonly FrozenDictionary<string, int[]> _aliasPositionsByKey;
-    private readonly FrozenDictionary<string, int[]> _aliasPositionsByToken;
-    private readonly FrozenDictionary<string, int[]> _aliasPositionsByGram;
-    private readonly FrozenDictionary<string, int[]> _aliasPositionsByReading;
+    private readonly TermPostings _tokens;
+    private readonly TermPostings _grams;
+    private readonly TermPostings _readings;
 
     /// <param name="profiles">A ProfileKey given twice keeps its last Profile only, aliases and term counts included.</param>
     public ProfileIndex(IEnumerable<SourceProfile> profiles)
     {
-        _aliases = profiles.GroupBy(p => p.ProfileKey, StringComparer.Ordinal).Select(g => g.Last())
+        var terms = profiles.GroupBy(p => p.ProfileKey, StringComparer.Ordinal).Select(g => g.Last())
             .SelectMany(p => p.Names.Distinct().Select(name => (p.ProfileKey, Name: name)))
             .AsParallel().AsOrdered()
-            .Select(x => ToAlias(x.ProfileKey, x.Name))
-            .OfType<Alias>()
+            .Select(x => TermsOf(x.ProfileKey, x.Name))
+            .OfType<AliasTerms>()
             .ToArray();
-        ShareEqualTerms(_aliases);
+        _tokens = new TermPostings([.. terms.Select(t => t.Tokens)], out var tokenIds);
+        _grams = new TermPostings([.. terms.Select(t => t.Grams)], out var gramIds);
+        _readings = new TermPostings([.. terms.Select(t => t.ReadingKeys)], out var readingIds);
+        _aliases = [.. terms.Select((t, i) => new Alias(t.ProfileKey, t.Name, t.Key, t.Cjk, tokenIds[i], gramIds[i], readingIds[i]))];
         var (profileOf, profileCount) = ProfileNumbers(_aliases);
         _aliasProfiles = new AliasProfiles(profileOf, profileCount, NameOrder(_aliases));
         _aliasPositionsByKey = Postings(_aliases, a => [a.Key]);
-        _aliasPositionsByToken = Postings(_aliases, a => a.Tokens.Distinct());
-        _aliasPositionsByGram = Postings(_aliases, a => a.Grams);
-        _aliasPositionsByReading = Postings(_aliases, a => a.ReadingKeys);
-        _bm25 = new Bm25Scorer(_aliasPositionsByToken, _aliases.Length, AverageTokenCount(cjk: false), AverageTokenCount(cjk: true));
+        _bm25 = new Bm25Scorer(_tokens, _aliases.Length, AverageTokenCount(cjk: false), AverageTokenCount(cjk: true));
     }
 
-    private static Alias? ToAlias(string profileKey, string name)
+    private static AliasTerms? TermsOf(string profileKey, string name)
     {
         var key = NameTerms.Key(name);
         var punctuationOnly = key.Length == 0;
         return punctuationOnly ? null
-            : new Alias(profileKey, name, key, NameTerms.Tokens(name), [.. NameTerms.Grams(key)], NameTerms.IsCjk(key), [.. NameTerms.ReadingKeys(name)]);
-    }
-
-    /// <summary>
-    /// Points every equal token, gram and reading key at one string, so a common gram such as "^CH" is kept once, not once per
-    /// alias. A pool local to this index, not string.Intern: the intern pool is never freed, and the list is rebuilt per version.
-    /// </summary>
-    private static void ShareEqualTerms(Alias[] aliases)
-    {
-        var pool = new HashSet<string>(StringComparer.Ordinal);
-        void Share(string[] terms)
-        {
-            for (var i = 0; i < terms.Length; i++)
-                if (!pool.TryGetValue(terms[i], out var shared)) pool.Add(terms[i]);
-                else terms[i] = shared;
-        }
-        foreach (var a in aliases)
-        {
-            Share(a.Tokens);
-            Share(a.Grams);
-            Share(a.ReadingKeys);
-        }
+            : new AliasTerms(profileKey, name, key, NameTerms.IsCjk(key), NameTerms.Tokens(name), [.. NameTerms.Grams(key)], [.. NameTerms.ReadingKeys(name)]);
     }
 
     private static (int[] ProfileOf, int Count) ProfileNumbers(Alias[] aliases)
@@ -121,7 +103,7 @@ public sealed class ProfileIndex
     }
 
     private double AverageTokenCount(bool cjk) =>
-        _aliases.Where(a => a.Cjk == cjk).Select(a => (double)a.Tokens.Length).DefaultIfEmpty(1).Average();
+        _aliases.Where(a => a.Cjk == cjk).Select(a => (double)a.TokenIds.Length).DefaultIfEmpty(1).Average();
 
     private static FrozenDictionary<string, int[]> Postings(Alias[] aliases, Func<Alias, IEnumerable<string>> terms)
     {
@@ -167,7 +149,7 @@ public sealed class ProfileIndex
     /// <summary>The <paramref name="take"/> best Profiles by reciprocal rank fusion of the routes, and how many Profiles any route ranked.</summary>
     private (List<RetrievedCandidate> Top, int FusedCount) TopFusedProfiles(string name, HashSet<int> exactProfiles, int take)
     {
-        var query = new Query(name);
+        using var query = new Query(this, name);
         using var reached = new PooledArray<int>(_aliases.Length);
         var reachedCount = CollectReached(query, exactProfiles, reached);
         var parallel = reachedCount >= MinAliasesForParallelScoring;
@@ -179,9 +161,9 @@ public sealed class ProfileIndex
         ForEachIndex(reachedCount, parallel, i =>
         {
             var a = _aliases[reached[i]];
-            bm25[i] = _bm25.Score(query.Tokens, a.Tokens, a.Cjk);
-            nGram[i] = TermOverlap.Dice(query.Grams, a.Grams);
-            reading[i] = TermOverlap.SharedCount(query.ReadingKeys, a.ReadingKeys);
+            bm25[i] = query.Bm25.Score(a.TokenIds, a.Cjk);
+            nGram[i] = TermOverlap.Dice(query.GramCount, a.GramIds.Length, TermOverlap.SharedCount(query.IsGram.Span, a.GramIds));
+            reading[i] = TermOverlap.SharedCount(query.IsReading.Span, a.ReadingIds);
         });
 
         using var bm25Ranked = new PooledArray<int>(_aliasProfiles.ProfileCount);
@@ -198,21 +180,47 @@ public sealed class ProfileIndex
         return (fusion.Best(take).Select(Candidate).ToList(), fusion.Count);
     }
 
-    /// <summary>A query's terms per route, computed once per search.</summary>
-    private sealed class Query
+    /// <summary>
+    /// A query's terms per route as the index's term numbers, worked out once per search, with a pooled flag per term number
+    /// for the overlap routes. Terms no alias holds are left out of the numbers (they match nothing), but still count in
+    /// <see cref="GramCount"/>, the query's side of the Dice ratio.
+    /// </summary>
+    private sealed class Query : IDisposable
     {
-        public string[] Tokens { get; }
-        public HashSet<string> Grams { get; }
-        public HashSet<string> ReadingKeys { get; }
+        public Bm25Scorer.Query Bm25 { get; }
+        public IReadOnlyList<int> TokenIds => Bm25.TokenIds;
+        public int[] GramIds { get; }
+        public int GramCount { get; }
+        public int[] ReadingIds { get; }
+        public PooledArray<bool> IsGram { get; }
+        public PooledArray<bool> IsReading { get; }
         public double NGramFloor { get; }
 
-        public Query(string name)
+        public Query(ProfileIndex index, string name)
         {
             var key = NameTerms.Key(name);
-            Tokens = NameTerms.Tokens(name).Distinct().ToArray();
-            Grams = NameTerms.Grams(key);
-            ReadingKeys = NameTerms.ReadingKeys(name);
+            var tokens = NameTerms.Tokens(name).Distinct().ToArray();
+            var grams = NameTerms.Grams(key);
+            Bm25 = index._bm25.For(tokens);
+            GramIds = index._grams.KnownIds(grams);
+            GramCount = grams.Count;
+            ReadingIds = index._readings.KnownIds(NameTerms.ReadingKeys(name));
+            IsGram = Flags(index._grams.TermCount, GramIds);
+            IsReading = Flags(index._readings.TermCount, ReadingIds);
             NGramFloor = NameTerms.IsCjk(key) ? NGramFloorCjk : NGramFloorLatin;
+        }
+
+        private static PooledArray<bool> Flags(int termCount, int[] ids)
+        {
+            var flags = new PooledArray<bool>(termCount, clear: true);
+            foreach (var id in ids) flags[id] = true;
+            return flags;
+        }
+
+        public void Dispose()
+        {
+            IsGram.Dispose();
+            IsReading.Dispose();
         }
     }
 
@@ -227,21 +235,20 @@ public sealed class ProfileIndex
     {
         using var seen = new PooledArray<bool>(_aliases.Length, clear: true);
         var count = 0;
-        Collect(_aliasPositionsByToken, query.Tokens, seen.Span, reached.Span, ref count);
-        Collect(_aliasPositionsByGram, query.Grams, seen.Span, reached.Span, ref count);
-        Collect(_aliasPositionsByReading, query.ReadingKeys, seen.Span, reached.Span, ref count);
+        Collect(_tokens, query.TokenIds, seen.Span, reached.Span, ref count);
+        Collect(_grams, query.GramIds, seen.Span, reached.Span, ref count);
+        Collect(_readings, query.ReadingIds, seen.Span, reached.Span, ref count);
         return count;
 
-        void Collect(FrozenDictionary<string, int[]> postings, IEnumerable<string> terms, Span<bool> seenAt, Span<int> reachedAt, ref int count)
+        void Collect(TermPostings postings, IReadOnlyList<int> ids, Span<bool> seenAt, Span<int> reachedAt, ref int count)
         {
-            foreach (var t in terms)
-                if (postings.TryGetValue(t, out var positions))
-                    foreach (var at in positions)
-                        if (!seenAt[at] && !exactProfiles.Contains(_aliasProfiles.ProfileOf(at)))
-                        {
-                            seenAt[at] = true;
-                            reachedAt[count++] = at;
-                        }
+            foreach (var id in ids)
+                foreach (var at in postings.AliasesWith(id))
+                    if (!seenAt[at] && !exactProfiles.Contains(_aliasProfiles.ProfileOf(at)))
+                    {
+                        seenAt[at] = true;
+                        reachedAt[count++] = at;
+                    }
         }
     }
 
@@ -263,6 +270,10 @@ public sealed class ProfileIndex
     }
 
     /// <summary>Character n-gram Dice coefficient between two names: the score of the NGRAM route.</summary>
-    public static double NGramScore(string a, string b) =>
-        TermOverlap.Dice(NameTerms.Grams(NameTerms.Key(a)), [.. NameTerms.Grams(NameTerms.Key(b))]);
+    public static double NGramScore(string a, string b)
+    {
+        var x = NameTerms.Grams(NameTerms.Key(a));
+        var y = NameTerms.Grams(NameTerms.Key(b));
+        return TermOverlap.Dice(x.Count, y.Count, y.Count(x.Contains));
+    }
 }

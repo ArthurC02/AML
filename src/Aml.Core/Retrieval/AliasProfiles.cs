@@ -54,7 +54,7 @@ internal sealed class AliasProfiles
         }
         var order = winner[..count];
         for (var w = 0; w < order.Length; w++) order[w] = best[order[w]];
-        order.Sort(new ByScoreThenName(this, scores, reached));
+        SortByScoreThenName(order, scoreSpan, reachedSpan);
         for (var w = 0; w < order.Length; w++) ranked[w] = reachedSpan[order[w]];
         return count;
     }
@@ -62,14 +62,29 @@ internal sealed class AliasProfiles
     private bool Before(ReadOnlySpan<double> scores, ReadOnlySpan<int> reached, int i, int j) =>
         scores[i] > scores[j] || (scores[i] == scores[j] && NamedBefore(reached[i], reached[j]));
 
-    // Orders positions of the reached aliases best first; a comparer, since a sort's lambda cannot hold spans.
-    private readonly struct ByScoreThenName(AliasProfiles table, PooledArray<double> scores, PooledArray<int> reached) : IComparer<int>
+    /// <summary>
+    /// Orders positions of reached aliases by score, highest first, then name order: two primitive key sorts (by score,
+    /// then by name order within each run of equal scores) instead of one sort through a comparer. Name order is distinct
+    /// per alias, so the order is total and the same as <see cref="Before"/>.
+    /// </summary>
+    private void SortByScoreThenName(Span<int> order, ReadOnlySpan<double> scores, ReadOnlySpan<int> reached)
     {
-        public int Compare(int i, int j)
+        using var keyBuffer = new PooledArray<double>(order.Length);
+        using var nameBuffer = new PooledArray<int>(order.Length);
+        var byScore = keyBuffer.Span;
+        for (var w = 0; w < order.Length; w++) byScore[w] = -scores[order[w]];
+        byScore.Sort(order);
+        var byName = nameBuffer.Span;
+        for (var start = 0; start < order.Length;)
         {
-            ReadOnlySpan<double> s = scores.Span;
-            ReadOnlySpan<int> r = reached.Span;
-            return table.Before(s, r, i, j) ? -1 : table.Before(s, r, j, i) ? 1 : 0;
+            var end = start + 1;
+            while (end < order.Length && byScore[end] == byScore[start]) end++;
+            if (end - start > 1)
+            {
+                for (var w = start; w < end; w++) byName[w] = _nameOrder[reached[order[w]]];
+                byName[start..end].Sort(order[start..end]);
+            }
+            start = end;
         }
     }
 }

@@ -21,7 +21,7 @@ public class ProfileIndexTests
     {
         var exported = typeof(ProfileIndex).Assembly.GetExportedTypes().Where(t => t.Namespace == typeof(ProfileIndex).Namespace).Select(t => t.Name).ToHashSet();
         Assert.Superset(new HashSet<string> { nameof(ProfileIndex), nameof(RetrievedCandidate), nameof(RetrievalMode) }, exported);
-        Assert.Empty(exported.Intersect(["NameTerms", "Bm25Scorer", "TermOverlap", "AliasProfiles", "ReciprocalRankFusion", "FusedProfile", "PooledArray`1"]));
+        Assert.Empty(exported.Intersect(["NameTerms", "Bm25Scorer", "TermOverlap", "AliasProfiles", "ReciprocalRankFusion", "FusedProfile", "PooledArray`1", "TermPostings"]));
         Assert.DoesNotContain("CaseExport", typeof(Aml.Infra.Txt.TxtCaseReader).Assembly.GetExportedTypes().Select(t => t.Name));
     }
 

@@ -1,17 +1,20 @@
 namespace Aml.Core.Retrieval;
 
-/// <summary>Set overlap between a query's distinct terms and an alias's distinct terms.</summary>
+/// <summary>Set overlap between a query's distinct terms and an alias's distinct terms, as term numbers.</summary>
 internal static class TermOverlap
 {
-    /// <summary>Dice coefficient: twice the shared terms over both sizes; 0 when both are empty.</summary>
-    public static double Dice(HashSet<string> query, string[] alias) =>
-        query.Count + alias.Length == 0 ? 0 : 2.0 * SharedCount(query, alias) / (query.Count + alias.Length);
+    /// <summary>Dice coefficient: twice the shared terms over both set sizes; 0 when both are empty.</summary>
+    public static double Dice(int queryCount, int aliasCount, int shared) =>
+        queryCount + aliasCount == 0 ? 0 : 2.0 * shared / (queryCount + aliasCount);
 
-    // Both sides hold distinct terms, so counting the alias's terms found in the query is the size of the intersection.
-    public static int SharedCount(HashSet<string> query, string[] alias)
+    /// <summary>
+    /// How many of the alias's distinct terms the query holds, with the query as one flag per term number: one load per
+    /// alias term, no hashing and no branchy merge.
+    /// </summary>
+    public static int SharedCount(ReadOnlySpan<bool> isQueryTerm, ReadOnlySpan<int> aliasTerms)
     {
         var shared = 0;
-        foreach (var x in alias) if (query.Contains(x)) shared++;
+        foreach (var id in aliasTerms) if (isQueryTerm[id]) shared++;
         return shared;
     }
 }

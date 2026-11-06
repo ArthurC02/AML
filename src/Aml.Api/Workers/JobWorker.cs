@@ -8,20 +8,29 @@ internal sealed partial class JobWorker(BatchService batches, ILogger<JobWorker>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         batches.Warn = message => JobWarning(log, message);
-        while (!stoppingToken.IsCancellationRequested)
+        try
         {
-            var started = 0;
-            try
+            while (!stoppingToken.IsCancellationRequested)
             {
-                started = await batches.FillAsync(stoppingToken).ConfigureAwait(false);
-            }
+                var started = 0;
+                try
+                {
+                    started = await batches.FillAsync(stoppingToken).ConfigureAwait(false);
+                }
 #pragma warning disable CA1031 // a database hiccup must not stop the worker; the next round retries
-            catch (Exception e) when (!stoppingToken.IsCancellationRequested)
+                catch (Exception e) when (!stoppingToken.IsCancellationRequested)
 #pragma warning restore CA1031
-            {
-                RoundFailed(log, e);
+                {
+                    RoundFailed(log, e);
+                }
+                if (started == 0) await Task.Delay(batches.Options.PollInterval, stoppingToken).ConfigureAwait(false);
             }
-            if (started == 0) await Task.Delay(batches.Options.PollInterval, stoppingToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            // Stopping: running jobs record their outcome or go back to the queue before the database closes. The host's
+            // shutdown timeout bounds the wait.
+            await batches.DrainAsync(CancellationToken.None).ConfigureAwait(false);
         }
     }
 

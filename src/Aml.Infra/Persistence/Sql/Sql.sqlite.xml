@@ -240,7 +240,7 @@
         UPDATE job
         SET status = 'SUCCEEDED', case_id = @caseId, analysis_revision = @revision, completed_at = @now,
             lease_owner = NULL, lease_expiry = NULL, error_code = NULL
-        WHERE job_id = @jobId AND lease_owner = @leaseOwner
+        WHERE job_id = @jobId AND lease_owner = @leaseOwner AND status = 'RUNNING'
       ]]></sql>
     </statement>
 
@@ -250,7 +250,16 @@
         UPDATE job
         SET status = @status, next_attempt_at = @nextAttemptAt, error_code = @errorCode, completed_at = @completedAt,
             lease_owner = NULL, lease_expiry = NULL
-        WHERE job_id = @jobId AND lease_owner = @leaseOwner
+        WHERE job_id = @jobId AND lease_owner = @leaseOwner AND status = 'RUNNING'
+      ]]></sql>
+    </statement>
+
+    <statement id="Batch.Release" kind="Update">
+      <description>The host is stopping: back to PENDING at once, and the interrupted attempt does not count.</description>
+      <sql><![CDATA[
+        UPDATE job
+        SET status = 'PENDING', attempt_count = attempt_count - 1, next_attempt_at = @now, lease_owner = NULL, lease_expiry = NULL
+        WHERE job_id = @jobId AND lease_owner = @leaseOwner AND status = 'RUNNING'
       ]]></sql>
     </statement>
 

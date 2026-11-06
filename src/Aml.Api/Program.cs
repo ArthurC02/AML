@@ -106,6 +106,19 @@ builder.Services.ConfigureHttpJsonOptions(o =>
 });
 
 var app = builder.Build();
+// API answers hold personal data: no cache keeps them, and no browser reads them as another type. Set as the response starts,
+// since the exception handler clears headers set before it.
+app.Use((context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/api"))
+        context.Response.OnStarting(() =>
+        {
+            context.Response.Headers.CacheControl = "no-store";
+            context.Response.Headers.XContentTypeOptions = "nosniff";
+            return Task.CompletedTask;
+        });
+    return next(context);
+});
 app.UseExceptionHandler(new ExceptionHandlerOptions { StatusCodeSelector = e => e is BadHttpRequestException b ? b.StatusCode : StatusCodes.Status500InternalServerError });
 app.UseStatusCodePages();
 app.UseRateLimiter(); // after UseStatusCodePages, so a 429 gets a problem body

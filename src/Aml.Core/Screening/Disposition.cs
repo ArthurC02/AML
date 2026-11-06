@@ -40,9 +40,9 @@ public static class DispositionPolicy
     private enum Nationality { Taiwan, Foreign, Unknown }
 
     public static DispositionRecommendation Recommend(ScreenedSubject s, SourceProfile p, IReadOnlyList<SourceCondition> conditions,
-        IdentityResult identity, bool hasNews)
+        IdentityResult identity, bool hasNews, DateOnly? asOf = null)
     {
-        var pending = PendingChecks(p, conditions, hasNews);
+        var pending = PendingChecks(p, conditions, hasNews, asOf ?? DateOnly.FromDateTime(DateTime.UtcNow));
         var reasons = new List<string>();
 
         // Article 22 ②
@@ -91,13 +91,13 @@ public static class DispositionPolicy
             : Nationality.Foreign;
     }
 
-    private static List<string> PendingChecks(SourceProfile p, IReadOnlyList<SourceCondition> conditions, bool hasNews)
+    private static List<string> PendingChecks(SourceProfile p, IReadOnlyList<SourceCondition> conditions, bool hasNews, DateOnly today)
     {
         bool RaisedOrUnmapped(ListType t) => conditions.Any(c => c.Status != ConditionStatus.NotHit && (c.Type == t || c.Type == ListType.Unknown));
         bool Raised(ListType t) => conditions.Any(c => c.Type == t && c.Status != ConditionStatus.NotHit);
         // 認定標準第 5、8 條: a former PEP's influence, also through family and associates, is assessed with no fixed period.
-        var formerPepInfluence = (Raised(ListType.Pep) && SourceConditions.IsFormerPep(p, ownRoles: true))
-            || (Raised(ListType.Rca) && SourceConditions.IsFormerPep(p, ownRoles: false));
+        var formerPepInfluence = (Raised(ListType.Pep) && SourceConditions.IsFormerPep(p, ownRoles: true, today))
+            || (Raised(ListType.Rca) && SourceConditions.IsFormerPep(p, ownRoles: false, today));
         var pepHitWithoutBirthDate = conditions.Any(c => c.Type == ListType.Pep && c.Status == ConditionStatus.Hit)
             && conditions.All(c => c.Type != ListType.Rca) && p.DatesOfBirth.Count == 0;
         var isPerson = p.RecordType.Equals("Person", StringComparison.OrdinalIgnoreCase);

@@ -36,12 +36,19 @@ internal static class Uploads
         if (files.Where(f => !Accepted(f.FileName) || f.Length > MaxBytes).Select(f => new { file = f.FileName, size = f.Length }).ToArray() is { Length: > 0 } refused)
             return (null, Problems.Of(Problems.UnsupportedFile, $"Only .txt, .html or .htm files up to {MaxSizeText} are accepted",
                 $"Send only .txt, .html or .htm files of at most {MaxSizeText} each.", refused));
-        var bytes = new Dictionary<string, byte[]>();
-        foreach (var f in files)
+        // The file name without any folder a client sent (either separator, on any OS); two files reading as one name are
+        // refused, not one dropped.
+        var names = files.Select(f => f.FileName[(f.FileName.LastIndexOfAny(['/', '\\']) + 1)..]).ToList();
+        if (names.Where(n => !IsPlainFileName(n)).Concat(names.GroupBy(n => n, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1).Select(g => g.Key))
+            .Select(n => new { file = n }).ToArray() is { Length: > 0 } unusable)
+            return (null, Problems.Of(Problems.UnsupportedFile, "Each file needs a plain name of its own",
+                "Send each file once, under a plain file name with no folder or reserved characters.", unusable));
+        var bytes = new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (f, name) in files.Zip(names))
         {
             using var buffer = new MemoryStream();
             await f.CopyToAsync(buffer, ct);
-            bytes[Path.GetFileName(f.FileName)] = buffer.ToArray();
+            bytes[name] = buffer.ToArray();
         }
         return (bytes, null);
     }

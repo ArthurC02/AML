@@ -212,7 +212,9 @@ internal static partial class CasesEndpoints
         {
             form = await request.ReadFormAsync(ct);
         }
-        catch (Exception e) when (e is InvalidDataException or IOException)
+        // A body over the size limit or too slow is a BadHttpRequestException, itself an IOException: the exception handler
+        // answers it with its own status (413, 408), not as a malformed form.
+        catch (Exception e) when (e is InvalidDataException or IOException and not BadHttpRequestException)
         {
             return (null, null, null, Problems.Of(Problems.InvalidRequest, "The body is not a readable multipart form.", ItemFix));
         }

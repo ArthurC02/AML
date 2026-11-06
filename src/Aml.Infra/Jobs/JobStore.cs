@@ -69,7 +69,7 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
                     new { jobId, leaseOwner, leaseExpiry = FormatTime(leaseExpiry) }, tx, cancellationToken: ct)).ConfigureAwait(false);
                 if (won != 1) continue;
                 var row = await c.QuerySingleAsync<ClaimedRow>(new CommandDefinition(db.Sql["Batch.GetClaimed"], new { jobId }, tx, cancellationToken: ct)).ConfigureAwait(false);
-                claimed.Add(new ClaimedJob(row.JobId, row.JobType, (int)row.AttemptCount, row.Payload));
+                claimed.Add(new ClaimedJob(row.JobId, row.JobType, (int)row.AttemptCount, row.Payload, leaseOwner));
             }
             return claimed;
         }, ct);
@@ -79,6 +79,9 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
 
     public Task<bool> CompleteAsync(string jobId, string leaseOwner, string caseId, int revision, DateTimeOffset now, CancellationToken ct) =>
         ChangesOneAsync("Batch.Complete", new { jobId, leaseOwner, caseId, revision, now = FormatTime(now) }, ct);
+
+    public Task<bool> ReleaseAsync(string jobId, string leaseOwner, DateTimeOffset now, CancellationToken ct) =>
+        ChangesOneAsync("Batch.Release", new { jobId, leaseOwner, now = FormatTime(now) }, ct);
 
     public Task<bool> FailAsync(string jobId, string leaseOwner, bool deadLetter, string errorCode, DateTimeOffset nextAttemptAt, DateTimeOffset now, CancellationToken ct) =>
         ChangesOneAsync("Batch.Fail", new

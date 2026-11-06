@@ -8,8 +8,10 @@ namespace Aml.Tests.E2E;
 /// <summary>The body limit is Kestrel's, so this class runs the API on a real Kestrel server (the in-memory test server has no limit).</summary>
 public sealed class RequestLimitTests
 {
-    [Fact]
-    public async Task A_body_over_the_limit_is_a_413_problem_with_its_fix()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)] // the multipart reader's limit error is an IOException too, not a malformed form
+    public async Task A_body_over_the_limit_is_a_413_problem_with_its_fix(bool multipart)
     {
         var ct = TestContext.Current.CancellationToken;
         await using var host = new ApiHost();
@@ -18,8 +20,16 @@ public sealed class RequestLimitTests
         api.StartServer();
         using var client = api.CreateClient();
 
-        using var response = await client.PostAsJsonAsync("/api/cases",
-            new { subjectRef = "S1", triggerEventId = "T1", files = new Dictionary<string, string> { ["案件資訊.txt"] = new('x', 4096) } }, ct);
+        using var form = new MultipartFormDataContent
+        {
+            { new StringContent("S1"), "subjectRef" },
+            { new StringContent("T1"), "triggerEventId" },
+            { new StringContent(new string('x', 4096)), "files", "案件資訊.txt" },
+        };
+        using var response = multipart
+            ? await client.PostAsync("/api/cases", form, ct)
+            : await client.PostAsJsonAsync("/api/cases",
+                new { subjectRef = "S1", triggerEventId = "T1", files = new Dictionary<string, string> { ["案件資訊.txt"] = new('x', 4096) } }, ct);
 
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);

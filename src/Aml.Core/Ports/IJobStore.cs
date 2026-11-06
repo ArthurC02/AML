@@ -2,7 +2,8 @@ namespace Aml.Core.Ports;
 
 public enum JobStatus { Pending, Running, Succeeded, DeadLetter }
 
-public sealed record ClaimedJob(string JobId, string JobType, int AttemptCount, string Payload);
+/// <summary>A job claimed under <paramref name="LeaseOwner"/>, the owner every later change of the job must give.</summary>
+public sealed record ClaimedJob(string JobId, string JobType, int AttemptCount, string Payload, string LeaseOwner);
 
 /// <summary>A job to queue; the idempotency key is unique across the job table.</summary>
 public sealed record NewJob(string JobId, string JobType, string BatchId, string IdempotencyKey, string Payload);
@@ -10,7 +11,11 @@ public sealed record NewJob(string JobId, string JobType, string BatchId, string
 public sealed record JobItem(string JobId, string IdempotencyKey, JobStatus Status, int AttemptCount,
     string? CaseId, int? AnalysisRevision, string? ErrorCode, DateTimeOffset? CompletedAt, DateTimeOffset CreatedAt);
 
-/// <summary>Durable job table (ADR-0011). Every state change after the claim requires the caller to own the lease.</summary>
+/// <summary>
+/// Durable job table (ADR-0011). Every state change after the claim requires the caller to own the lease of a RUNNING job. A
+/// caller gives a new lease owner to every claim, so a lease that expired and was claimed again, even by the same process, shuts
+/// out the earlier attempt.
+/// </summary>
 public interface IJobStore
 {
     /// <summary>False when the idempotency key is already queued (in this or an earlier batch).</summary>
@@ -30,6 +35,9 @@ public interface IJobStore
 
     /// <summary>Back to PENDING at <paramref name="nextAttemptAt"/>, or DEAD_LETTER. False when the caller no longer owns the lease.</summary>
     Task<bool> FailAsync(string jobId, string leaseOwner, bool deadLetter, string errorCode, DateTimeOffset nextAttemptAt, DateTimeOffset now, CancellationToken ct);
+
+    /// <summary>Back to PENDING now, giving the interrupted attempt back (host stopping). False when the caller no longer owns the lease.</summary>
+    Task<bool> ReleaseAsync(string jobId, string leaseOwner, DateTimeOffset now, CancellationToken ct);
 
     /// <summary>Returns RUNNING jobs with an expired lease to the queue, or dead-letters them when the retry budget is spent.</summary>
     Task<int> ReclaimExpiredAsync(int maxAttempts, DateTimeOffset now, CancellationToken ct);

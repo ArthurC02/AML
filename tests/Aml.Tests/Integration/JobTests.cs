@@ -149,8 +149,72 @@ public sealed class JobTests : ServiceTestBase
         Assert.False(await _jobs.RenewLeaseAsync("j1", "b", T0.AddMinutes(5), ct));
         Assert.False(await _jobs.CompleteAsync("j1", "b", "c", 1, T0, ct));
         Assert.False(await _jobs.FailAsync("j1", "b", true, "X", T0, T0, ct));
+        Assert.False(await _jobs.ReleaseAsync("j1", "b", T0, ct));
         Assert.True(await _jobs.RenewLeaseAsync("j1", "a", T0.AddMinutes(5), ct));
         Assert.Equal(0, await _jobs.ReclaimExpiredAsync(3, T0.AddMinutes(2), ct)); // renewed past the original expiry
+    }
+
+    [Fact]
+    public async Task A_finished_job_takes_no_further_outcome()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _jobs.EnqueueAsync("j1", "T", "b1", "k1", "{}", T0, ct);
+        await _jobs.ClaimAsync("a", 1, T0, T0.AddMinutes(1), ct);
+        Assert.True(await _jobs.CompleteAsync("j1", "a", "c", 1, T0, ct));
+        Assert.False(await _jobs.FailAsync("j1", "a", true, "X", T0, T0, ct));
+        Assert.False(await _jobs.ReleaseAsync("j1", "a", T0, ct));
+        Assert.Equal((JobStatus.Succeeded, "c"), Assert.Single(await _jobs.ListItemsAsync("b1", ct)) is var i ? (i.Status, i.CaseId) : default);
+    }
+
+    [Fact]
+    public async Task Each_claim_has_its_own_lease_owner_so_a_stale_attempt_in_the_same_process_is_shut_out()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await using (var conn = await _db.OpenAsync(ct))
+            await conn.ExecuteAsync("""
+                CREATE TABLE claim_owner (job_id TEXT, owner TEXT);
+                CREATE TRIGGER record_claim AFTER UPDATE OF status ON job WHEN NEW.status = 'RUNNING'
+                BEGIN INSERT INTO claim_owner VALUES (NEW.job_id, NEW.lease_owner); END;
+                """);
+        using var batch = Batch();
+        await _jobs.EnqueueAsync("j1", "T", "b1", "k1", "{}", T0, ct);
+        await _jobs.EnqueueAsync("j2", "T", "b1", "k2", "{}", T0, ct);
+        await batch.RunOnceAsync(ct); // both dead-letter (unreadable payload), each claimed once
+        await _jobs.RerunAsync("b1", T0, ct);
+        await batch.RunOnceAsync(ct); // claimed again, back at attempt 1, by the same process
+
+        await using var check = await _db.OpenAsync(ct);
+        var owners = (await check.QueryAsync<(string JobId, string Owner)>("SELECT job_id, owner FROM claim_owner ORDER BY rowid")).ToList();
+        Assert.Equal(["j1", "j2", "j1", "j2"], owners.Select(o => o.JobId));
+        Assert.Equal(2, owners.Select(o => o.Owner).Distinct().Count()); // one owner per claim round, not per process
+    }
+
+    [Fact]
+    public async Task A_job_interrupted_by_a_stopping_host_goes_back_to_the_queue_without_spending_an_attempt()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        Aml.Core.Subjects.CaseInput ReadThenStop(IReadOnlyDictionary<string, string> files)
+        {
+            var input = TxtCaseReader.ReadFiles(files);
+            stopping.Cancel(); // the host stops while the job runs
+            return input;
+        }
+        using var batch = new BatchService(_jobs, _caseService, ReadThenStop, new BatchOptions(), TimeProvider.System, _listService);
+        var b = await batch.SubmitAsync([new BatchItemRequest("subject-14", "event-14", CaseFiles())], ct);
+
+        Assert.Equal(1, await batch.RunOnceAsync(stopping.Token));
+        await batch.DrainAsync(ct);
+
+        var item = Assert.Single(await _jobs.ListItemsAsync(b.BatchId, ct));
+        Assert.Equal((JobStatus.Pending, 0), (item.Status, item.AttemptCount));
+        await using (var conn = await _db.OpenAsync(ct))
+        {
+            Assert.Equal(0, await conn.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM case_analysis"));
+            Assert.Equal(1, await conn.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM job WHERE lease_owner IS NULL AND lease_expiry IS NULL"));
+        }
+        Assert.Equal(1, await batch.RunOnceAsync(ct)); // due at once, not after a lease or a backoff
+        Assert.Equal((JobStatus.Succeeded, 1), Assert.Single(await _jobs.ListItemsAsync(b.BatchId, ct)) is var done ? (done.Status, done.AttemptCount) : default);
     }
 
     [Fact]
@@ -204,6 +268,7 @@ public sealed class JobTests : ServiceTestBase
             inner.CompleteAsync(jobId, leaseOwner, caseId, revision, now, ct);
         public Task<bool> FailAsync(string jobId, string leaseOwner, bool deadLetter, string errorCode, DateTimeOffset nextAttemptAt, DateTimeOffset now, CancellationToken ct) =>
             inner.FailAsync(jobId, leaseOwner, deadLetter, errorCode, nextAttemptAt, now, ct);
+        public Task<bool> ReleaseAsync(string jobId, string leaseOwner, DateTimeOffset now, CancellationToken ct) => inner.ReleaseAsync(jobId, leaseOwner, now, ct);
         public Task<int> ReclaimExpiredAsync(int maxAttempts, DateTimeOffset now, CancellationToken ct) => inner.ReclaimExpiredAsync(maxAttempts, now, ct);
         public Task<IReadOnlyList<JobItem>> ListItemsAsync(string batchId, CancellationToken ct,
             IReadOnlyCollection<JobStatus>? statuses = null, (DateTimeOffset At, string Id)? after = null, int limit = int.MaxValue) =>

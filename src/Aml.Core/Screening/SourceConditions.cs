@@ -89,8 +89,10 @@ public static partial class SourceConditions
     /// A flag with a value (NO counts) decides its own list types and wins over a contradicting category, recording the
     /// conflict; a mapped category whose flag is MISSING keeps its category condition.
     /// </summary>
-    public static IReadOnlyList<SourceCondition> Determine(SourceProfile profile, bool isRca, string? news, ListFlags? flags = null)
+    /// <param name="asOf">The analysis date, for whether a PEP's roles have all ended; today (UTC) when not given.</param>
+    public static IReadOnlyList<SourceCondition> Determine(SourceProfile profile, bool isRca, string? news, ListFlags? flags = null, DateOnly? asOf = null)
     {
+        var today = asOf ?? DateOnly.FromDateTime(DateTime.UtcNow);
         flags ??= ListFlags.None;
         var mapped = profile.Categories.Select(MapCategory).Distinct().ToList();
         var decided = new List<Decision>();
@@ -99,7 +101,7 @@ public static partial class SourceConditions
         DecideRca(decided, mapped, flags, isRca);
         var conflict = !flags.AllMissing && FlagsContradictCategories(decided, mapped);
         var risks = AdverseMediaRiskCategories(profile);
-        return decided.Select(d => Condition(d, profile, risks, news, conflict)).ToList();
+        return decided.Select(d => Condition(d, profile, risks, news, conflict, today)).ToList();
     }
 
     // 黑名單 = NO never clears a Sanction category: that condition is UNKNOWN for review.
@@ -134,9 +136,9 @@ public static partial class SourceConditions
     private static bool FlagsContradictCategories(List<Decision> decided, List<ListType> mapped) =>
         mapped.Any(t => t is not ListType.Unknown && !decided.Any(d => d.Status == ConditionStatus.Hit && d.Type == t));
 
-    private static SourceCondition Condition(Decision d, SourceProfile profile, IReadOnlyList<string> risks, string? news, bool conflict)
+    private static SourceCondition Condition(Decision d, SourceProfile profile, IReadOnlyList<string> risks, string? news, bool conflict, DateOnly today)
     {
-        var c = Shape(d.Type, profile, risks, news);
+        var c = Shape(d.Type, profile, risks, news, today);
         if (d.Status != ConditionStatus.Hit) c = c with { Status = d.Status };
         var codes = c.ReasonCodes.Concat(new[] { d.Code, conflict ? FlagCategoryConflict : null }.OfType<string>()).Distinct().ToList();
         return c with { Basis = d.Basis, ReasonCodes = codes };
@@ -162,7 +164,7 @@ public static partial class SourceConditions
         _ => FlagValue.Missing,
     };
 
-    private static SourceCondition Shape(ListType t, SourceProfile profile, IReadOnlyList<string> risks, string? news) => t switch
+    private static SourceCondition Shape(ListType t, SourceProfile profile, IReadOnlyList<string> risks, string? news, DateOnly today) => t switch
     {
         ListType.AdverseMedia => Hit(t) with
         {
@@ -175,7 +177,7 @@ public static partial class SourceConditions
         ListType.Sanction => Sanction(profile),
         ListType.Pep or ListType.Rca => Hit(t) with
         {
-            PepType = PepType(profile, t),
+            PepType = PepType(profile, t, today),
             ReasonCodes = OutsideStatutoryScope(profile) ? [RcaOutsideStatutoryScope] : [],
         },
         ListType.Unknown => new SourceCondition(t, ConditionStatus.Unknown, ConditionBasis.Unmapped, [], LegalStage.Unknown, null, PolicyVersion, []),
@@ -212,13 +214,13 @@ public static partial class SourceConditions
     private static bool ConfirmsSanctionMeasure(OfficialListEntry e) => IsActive(e) && !IsActiveWantedList(e);
 
     // ponytail: PEP subtypes read from the category's subcategory text; the approved source fields arrive with GC-04.
-    private static string? PepType(SourceProfile p, ListType type)
+    private static string? PepType(SourceProfile p, ListType type, DateOnly today)
     {
         bool Says(params string[] words) => Subcategories(p, type).Any(s => words.Any(w => s.Contains(w, StringComparison.OrdinalIgnoreCase)));
         if (!OutsideStatutoryScope(p) && Says("Family", "Relative", "Spouse", "Child", "Parent", "Sibling")) return PepFamily;
         if (Says("Associate")) return PepCloseAssociate;
         if (type == ListType.Rca) return RcaUnconfirmed;
-        return IsFormerPep(p, ownRoles: true) ? FormerPep : null;
+        return IsFormerPep(p, ownRoles: true, today) ? FormerPep : null;
     }
 
     private static IEnumerable<string> Subcategories(SourceProfile p, ListType type)
@@ -236,11 +238,8 @@ public static partial class SourceConditions
     /// FORMER_PEP_INFLUENCE pending check, with no fixed cooling-off period.
     /// </summary>
     // ponytail: "every role ended" reads all roles, not only public functions; approved PEP role fields arrive with GC-04.
-    public static bool IsFormerPep(SourceProfile p, bool ownRoles, DateOnly? asOf = null)
-    {
-        var today = asOf ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        return HasFormerSubcategory(p) || (ownRoles && AllRolesEndedBefore(p, today));
-    }
+    public static bool IsFormerPep(SourceProfile p, bool ownRoles, DateOnly asOf) =>
+        HasFormerSubcategory(p) || (ownRoles && AllRolesEndedBefore(p, asOf));
 
     private static bool HasFormerSubcategory(SourceProfile p) =>
         PepAndRcaSubcategories(p).Any(s => s.Contains("Former", StringComparison.OrdinalIgnoreCase) || s.Contains("Inactive", StringComparison.OrdinalIgnoreCase));

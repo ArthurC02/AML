@@ -99,7 +99,8 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
         using var activity = AmlTelemetry.Source.StartActivity("AnalyzeCase");
         activity?.SetTag("aml.case_id", current.CaseId);
         var started = Stopwatch.GetTimestamp();
-        var analysis = CaseAnalyzer.Analyze(input);
+        // The service's clock, not the machine's: a re-analysis on a given day reads the same, and tests can fix the day.
+        var analysis = CaseAnalyzer.Analyze(input, asOf: DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime));
         var execution = CaseLifecycle.Execution(analysis);
         var lineage = AnalysisLineage.Of(input, await ProfileUsesAsync(input, files, ct).ConfigureAwait(false));
 

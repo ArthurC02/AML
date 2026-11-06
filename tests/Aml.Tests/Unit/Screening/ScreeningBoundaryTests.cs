@@ -142,11 +142,11 @@ public class ScreeningBoundaryTests
 
     [Fact]
     public void A_former_subcategory_outside_pep_and_rca_categories_makes_no_former_pep() =>
-        Assert.False(SourceConditions.IsFormerPep(Profile(new SourceCategory("Special Interest Person (SIP)", "Former Employee Fraud")), ownRoles: false));
+        Assert.False(SourceConditions.IsFormerPep(Profile(new SourceCategory("Special Interest Person (SIP)", "Former Employee Fraud")), ownRoles: false, new DateOnly(2026, 11, 4)));
 
     [Fact]
     public void One_former_subcategory_among_several_makes_a_former_pep() =>
-        Assert.True(SourceConditions.IsFormerPep(Profile(Pep, new SourceCategory("Relative or Close Associate (RCA)", "Former PEP")), ownRoles: false));
+        Assert.True(SourceConditions.IsFormerPep(Profile(Pep, new SourceCategory("Relative or Close Associate (RCA)", "Former PEP")), ownRoles: false, new DateOnly(2026, 11, 4)));
 
     [Fact]
     public void One_relation_outside_the_statutory_scope_among_several_is_flagged() =>

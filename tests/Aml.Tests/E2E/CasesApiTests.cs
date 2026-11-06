@@ -295,6 +295,10 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         using var refused = await client.PostAsync("/api/cases", exe, ct);
         var problem = await Problem(refused, HttpStatusCode.BadRequest, "UNSUPPORTED_FILE", ct);
         Assert.Equal("evil.exe", problem.GetProperty("errors")[0].GetProperty("file").GetString());
+        using var codes = await client.GetAsync("/api/codes", ct);
+        Assert.Equal((HttpStatusCode.OK, true), (codes.StatusCode, codes.Headers.CacheControl?.NoStore));
+        using var health = await client.GetAsync("/health", ct);
+        Assert.False(health.Headers.Contains("X-Content-Type-Options")); // only /api
         Assert.False(string.IsNullOrEmpty(problem.GetProperty("fix").GetString()));
 
         using var incomplete = new MultipartFormDataContent
@@ -314,6 +318,18 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         using var duplicated = await client.PostAsync("/api/cases", twice, ct);
         var duplicate = await Problem(duplicated, HttpStatusCode.BadRequest, "INPUT_INCOMPLETE", ct);
         Assert.Equal("DUPLICATE", duplicate.GetProperty("errors")[0].GetProperty("problem").GetString());
+
+        // Two files reading as one name, by folder or by letter case: refused, not one of them dropped.
+        foreach (var (first, second) in new[] { ("a/名單資料_1.txt", "b/名單資料_1.txt"), (@"C:\a\名單資料_1.txt", "名單資料_1.txt"), ("Notes.txt", "notes.TXT") })
+        {
+            using var same = new MultipartFormDataContent
+            {
+                { new StringContent("s"), "subjectRef" }, { new StringContent("t"), "triggerEventId" },
+                { new StringContent("x"), "files", first }, { new StringContent("y"), "files", second },
+            };
+            using var collided = await client.PostAsync("/api/cases", same, ct);
+            await Problem(collided, HttpStatusCode.BadRequest, "UNSUPPORTED_FILE", ct);
+        }
     }
 
     /// <summary>An RFC 9457 problem: the status, application/problem+json and the type of its catalog entry.</summary>
@@ -321,6 +337,8 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
     {
         Assert.Equal(status, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        Assert.True(response.Headers.CacheControl?.NoStore); // every API answer, errors too
+        Assert.Equal(["nosniff"], response.Headers.GetValues("X-Content-Type-Options"));
         var problem = await response.Content.ReadFromJsonAsync<JsonElement>(ct);
         Assert.Equal(($"/api/codes/{code}", (int)status), (problem.GetProperty("type").GetString(), problem.GetProperty("status").GetInt32()));
         Assert.False(string.IsNullOrEmpty(problem.GetProperty("detail").GetString()));

@@ -104,10 +104,11 @@ UPDATE job SET status = 'RUNNING', lease_owner = @leaseOwner, lease_expiry = @le
 WHERE job_id = @jobId AND status = 'PENDING'
 ```
 
-One affected row means the worker owns the job. The lease owner is checked on every later write:
+One affected row means the worker owns the job. The worker gives a new `lease_owner` to every claim round (machine name and a GUID), so an attempt whose lease expired and that the same process claims again is shut out like any other worker. Every later write requires `status = 'RUNNING'` and that lease owner:
 
 - `Batch.RenewLease` extends `lease_expiry` just before the job writes its analysis revision; zero rows (the lease expired and was reclaimed) stops the job before it writes;
-- `Batch.Complete` and `Batch.Fail` update only the row whose `lease_owner` matches; zero rows means the lease was reclaimed, and the worker logs a warning and leaves the job's state alone.
+- `Batch.Complete` and `Batch.Fail` change only that row; zero rows means the lease was reclaimed or the job already finished, and the worker logs a warning and leaves the job's state alone;
+- `Batch.Release`, when the host stops during a job, puts it back to `PENDING`, due at once, and takes back the interrupted attempt (`attempt_count - 1`).
 
 Ceiling: many concurrent workers cause wasted attempts; upgrade to `UPDLOCK, READPAST` (SQL Server) or `FOR UPDATE SKIP LOCKED` (Oracle) when measured.
 

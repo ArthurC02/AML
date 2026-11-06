@@ -68,7 +68,7 @@ GET  /api/schemas/{name}
 
 Every operation in the OpenAPI document (`/openapi/v1.json`) has a unique `operationId` (`createCase`, `getCase`, `getHit`, …), one tag for its business area (`Cases`, `Batches`, `Profiles` or `Reference data`) and a description of what it does and the business rules that apply ([ADR-0024](../adr/0024-business-api.md)). The response examples are the GC-03 Case and hit summaries (`src/Aml.Api/Examples`), with a made-up Case id, subject reference, trigger event id and Profile name: the example of `createCase` and the `view=summary` example of `getCase` and `getHit`. The full views have no example, since they hold identifier values. A Golden Case test fails when GC-03's summaries no longer match the examples. The document and the published schemas are kept as contract snapshots; a test fails on any difference.
 
-`POST /api/cases` takes multipart form fields (`subjectRef`, `triggerEventId`, `files`) or a JSON body shaped as one batch item (`{subjectRef, triggerEventId, files: {name: text}}`). It returns `201` with `Location` when this call created the Case, and `200` when a Case for the trigger and subject already existed: created earlier, left at revision 0 and resumed now, or created by a concurrent request. A request body over `Api:MaxRequestBytes` (100 MB) is refused with `413` (`HTTP_ERROR`).
+`POST /api/cases` takes multipart form fields (`subjectRef`, `triggerEventId`, `files`) or a JSON body shaped as one batch item (`{subjectRef, triggerEventId, files: {name: text}}`). It returns `201` with `Location` when this call created the Case, and `200` when a Case for the trigger and subject already existed: created earlier, left at revision 0 and resumed now, or created by a concurrent request. A request body over `Api:MaxRequestBytes` (100 MB) is refused with `413` (`HTTP_ERROR`), multipart or JSON. Every `/api` response, errors included, is sent with `Cache-Control: no-store` and `X-Content-Type-Options: nosniff`: answers hold personal data.
 
 ## Views
 
@@ -125,7 +125,7 @@ Every 4xx and 5xx response is an RFC 9457 problem (`application/problem+json`): 
 | Code | Status | When |
 |---|---|---|
 | `INVALID_REQUEST` | 400 | a parameter or body the endpoint cannot use: no files, a batch item without ids or files, an unknown candidate source or view, a search without a name or filter, a `top` or page size out of range or not a number, a page token this API did not issue; `errors[]` lists the batch items by index or names the parameter, except for a value of the wrong type or a body that is not JSON, which the framework reports as above |
-| `UNSUPPORTED_FILE` | 400 | an upload that is not `.txt`, `.html` or `.htm`, or over 5 MB; `errors[]` names the files |
+| `UNSUPPORTED_FILE` | 400 | an upload that is not `.txt`, `.html` or `.htm`, or over 5 MB, or two uploaded files that read as one name (the folder a client sends is dropped and letter case is ignored), or a name with reserved characters; `errors[]` names the files |
 | `INPUT_INCOMPLETE` | 400 | a required input file is missing or not unique: exactly one `案件資訊*.txt`, and the subject's own file (`客戶-背景資料.txt` for a customer, `客戶-關聯人背景資料.txt` for a related party) |
 | `INPUT_UNREADABLE` | 400 | a file that is not in the export layout; `errors[]` gives `file`, `table` and `problem` (`MISSING_SECTION`, `MISSING_COLUMN`, `MALFORMED`) |
 | `NOT_FOUND` | 404 | an unknown case, revision, hit, batch, Profile, code or schema, or no such route |
@@ -208,8 +208,8 @@ Jobs are claimed optimistically ([job claim](persistence.md#job-claim)). Control
 | Control | How |
 |---|---|
 | bounded workers | `JobWorker` keeps at most `Batch:MaxWorkers` (32) jobs running; a finished job's slot is refilled at once, and an empty queue is polled every `Batch:PollInterval` (2 s) |
-| timeout and cancellation | `Batch:Timeout` (2 min) per job; the analysis itself is not interrupted, but a job past its deadline does not write its revision and fails with `TIMEOUT`. Host shutdown leaves the job RUNNING until its `Batch:Lease` (5 min) expires |
-| lease | renewed just before the revision is written; a job that lost its lease stops without writing. Complete and fail change the job only for its lease owner; otherwise a warning is logged and the state is left to the owner |
+| timeout and cancellation | `Batch:Timeout` (2 min) per job; the analysis itself is not interrupted, but a job past its deadline does not write its revision and fails with `TIMEOUT`. On host shutdown the running analyses are cancelled and the worker waits for every job to settle (within the host's shutdown timeout): an analysis already stored records its outcome, any other job goes back to `PENDING` at once without spending an attempt, and its Case, if stored, is reused when it runs again |
+| lease | renewed just before the revision is written; a job that lost its lease stops without writing. Complete and fail change the job only for its lease owner on the attempt it claimed, while it is RUNNING; otherwise a warning is logged and the state is left to the owner |
 | retry budget | `Batch:MaxAttempts` (3); backoff `Batch:RetryDelay` (10 s), doubling per attempt |
 | idempotency key | unique across the job table. `ANALYZE_CASE:{triggerEventId}:{subjectRef}`: a repeat is reported as a duplicate, not queued. `REANALYZE:{caseId}:{profileId}:{version}`: a repeat is skipped in the outbox |
 | checkpoint | Case creation is idempotent on trigger and subject, so a retry after a crash reuses the stored revision; a re-analysis whose input already matches the list database creates no revision |

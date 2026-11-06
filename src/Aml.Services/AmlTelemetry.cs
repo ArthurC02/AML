@@ -14,7 +14,7 @@ public static class AmlTelemetry
     /// <summary>Analysis revisions, tagged with case result and execution status.</summary>
     public static readonly Counter<long> Analyses = Meter.CreateCounter<long>("aml.analyses");
 
-    /// <summary>Batch job attempts, tagged with outcome (SUCCEEDED, RETRY, DEAD_LETTER) and error code.</summary>
+    /// <summary>Batch job attempts, tagged with outcome (SUCCEEDED, RETRY, DEAD_LETTER, RELEASED on shutdown) and error code.</summary>
     public static readonly Counter<long> JobAttempts = Meter.CreateCounter<long>("aml.job.attempts");
 
     public static readonly Histogram<double> AnalysisDuration = Meter.CreateHistogram<double>("aml.analysis.duration", "ms");

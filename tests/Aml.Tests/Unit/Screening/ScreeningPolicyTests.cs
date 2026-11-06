@@ -22,9 +22,9 @@ public class ScreeningPolicyTests
         new("DJ:1", Gender.Male, ["陳志明"], [], citizenship.Length == 0 ? ["TW"] : citizenship, [], [new SourceCategory(category, sub)], [],
             roles ?? [], [], list, [], []);
 
-    private static HitResult Analyze(SourceProfile p, ListFlags? flags = null, bool isRca = false, ScreenedSubject? subject = null) =>
+    private static HitResult Analyze(SourceProfile p, ListFlags? flags = null, bool isRca = false, ScreenedSubject? subject = null, DateOnly? asOf = null) =>
         CaseAnalyzer.Analyze(new CaseInput(subject ?? Subject(), [new CandidateRow("陳志明", "1", null, isRca, flags)],
-            new Dictionary<string, SourceProfile> { ["1"] = p }, new Dictionary<string, NewsItem>(), [])).Hits[0];
+            new Dictionary<string, SourceProfile> { ["1"] = p }, new Dictionary<string, NewsItem>(), []), asOf: asOf).Hits[0];
 
     private static ListFlags Flags(FlagValue pep = FlagValue.Missing, FlagValue blacklist = FlagValue.Missing, FlagValue adverse = FlagValue.Missing) =>
         new(pep, blacklist, adverse);
@@ -310,7 +310,8 @@ public class ScreeningPolicyTests
         Assert.DoesNotContain(DispositionPolicy.FormerPepInfluence, Analyze(Profile("Politically Exposed Person")).Disposition.PendingChecks);
     }
 
-    // Analysis date 2026-11-04: a role ends only when the last day its end date stands for is before it.
+    // Analysis date 2026-11-04: a role ends only when the last day its end date stands for is before it. The date is the
+    // CaseService clock's (UTC), passed in; a call that gives none uses today.
     [Theory]
     [InlineData(2025, null, null, true)]
     [InlineData(2026, null, null, false)]
@@ -322,6 +323,17 @@ public class ScreeningPolicyTests
         Assert.Equal(former, SourceConditions.IsFormerPep(
             Profile("Politically Exposed Person", roles: [new ProfileRole("部長", "某部", new PartialDate(2010), new PartialDate(year, month, day))]),
             ownRoles: true, new DateOnly(2026, 11, 4)));
+
+    [Fact]
+    public void the_analysis_takes_its_date_from_the_caller_not_the_machine_clock()
+    {
+        var profile = Profile("Politically Exposed Person", roles: [new ProfileRole("部長", "某部", new PartialDate(2010), new PartialDate(2026, 6, 30))]);
+        var before = Analyze(profile, asOf: new DateOnly(2026, 6, 30));
+        var after = Analyze(profile, asOf: new DateOnly(2026, 7, 1));
+        Assert.Equal((null, "FORMER_PEP"), (Assert.Single(before.Conditions).PepType, Assert.Single(after.Conditions).PepType));
+        Assert.DoesNotContain(DispositionPolicy.FormerPepInfluence, before.Disposition.PendingChecks);
+        Assert.Contains(DispositionPolicy.FormerPepInfluence, after.Disposition.PendingChecks);
+    }
 
     [Fact]
     public void a_pep_with_one_ended_and_one_current_role_is_not_former()

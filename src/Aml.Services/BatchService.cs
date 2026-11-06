@@ -36,7 +36,8 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
 
     public static string ExceptionCode(Exception e) => "EXCEPTION:" + e.GetType().Name;
 
-    private readonly string _owner = $"{Environment.MachineName}:{Guid.NewGuid():N}";
+    // A new lease owner per claim: a job whose lease expired and that this process claims again is not the earlier attempt's.
+    private static string NewLeaseOwner() => $"{Environment.MachineName}:{Guid.NewGuid():N}";
     private readonly SemaphoreSlim _slots = new(options.MaxWorkers, options.MaxWorkers);
 
     public BatchOptions Options => options;
@@ -80,6 +81,13 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         return running.Count;
     }
 
+    /// <summary>Waits until every job started has recorded its outcome, or been released when the host stops.</summary>
+    public async Task DrainAsync(CancellationToken ct)
+    {
+        for (var taken = 0; taken < options.MaxWorkers; taken++) await _slots.WaitAsync(ct).ConfigureAwait(false);
+        _slots.Release(options.MaxWorkers);
+    }
+
     public void Dispose() => _slots.Dispose();
 
     // Every write of a job (claim, lease, Case, outcome) is replayable (ADR-0026): if a power loss takes the newest of them,
@@ -94,7 +102,8 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         {
             var now = clock.GetUtcNow();
             await queue.ReclaimExpiredAsync(options.MaxAttempts, now, ct).ConfigureAwait(false);
-            jobs = await queue.ClaimAsync(_owner, free, now, now + options.Lease, ct).ConfigureAwait(false);
+            // No token: a claim cancelled after its commit would leave jobs RUNNING with no task to run or release them.
+            jobs = await queue.ClaimAsync(NewLeaseOwner(), free, now, now + options.Lease, CancellationToken.None).ConfigureAwait(false);
         }
         catch
         {
@@ -120,8 +129,8 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         {
             await RunAsync(job, ct).ConfigureAwait(false);
         }
-#pragma warning disable CA1031 // a database hiccup while recording the outcome must not stop the worker; the lease expires and the job is retried
-        catch (Exception e) when (!ct.IsCancellationRequested)
+#pragma warning disable CA1031 // a database hiccup while recording the outcome (or the release, on shutdown) must not stop the worker; the lease expires and the job is retried
+        catch (Exception e)
 #pragma warning restore CA1031
         {
             Warn?.Invoke($"Job {job.JobId}: outcome not recorded ({e.GetType().Name}); it returns to the queue when its lease expires");
@@ -137,11 +146,11 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         var (item, reanalysis) = ReadPayload(job);
         if (item is null && reanalysis is null)
         {
-            await DeadLetterAsync(job, InvalidPayload, ct).ConfigureAwait(false);
+            await DeadLetterAsync(job, InvalidPayload).ConfigureAwait(false);
             return;
         }
 
-        var input = item is null ? null : await ReadInputOrDeadLetterAsync(job, item, ct).ConfigureAwait(false);
+        var input = item is null ? null : await ReadInputOrDeadLetterAsync(job, item).ConfigureAwait(false);
         if (item is not null && input is null) return;
 
         // CaseService checks the deadline before writing. The constructor, unlike CancelAfter, cancels at once for a zero timeout.
@@ -150,23 +159,30 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         try
         {
             var record = await AnalyzeOrReanalyzeAsync(job, item, input, reanalysis, linked.Token, ct).ConfigureAwait(false);
-            if (!await queue.CompleteAsync(job.JobId, _owner, record.CaseId, record.CurrentRevision, clock.GetUtcNow(), ct).ConfigureAwait(false))
+            // Outcome writes take no token: once the analysis is stored, a stopping host still records it.
+            if (!await queue.CompleteAsync(job.JobId, job.LeaseOwner, record.CaseId, record.CurrentRevision, clock.GetUtcNow(), CancellationToken.None).ConfigureAwait(false))
                 Warn?.Invoke($"Job {job.JobId}: completed, but its lease had passed to another worker; the job state was left to that worker");
             AmlTelemetry.JobAttempts.Add(1, new KeyValuePair<string, object?>("outcome", "SUCCEEDED"));
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+#pragma warning disable CA1031 // whatever the stop surfaced as (a cancellation, or a database error wrapping one), the job is not at fault
+        catch (Exception) when (ct.IsCancellationRequested)
+#pragma warning restore CA1031
         {
-            // Host stopping: the lease expires and another round picks the job up again.
+            // Host stopping: the job goes back to the queue at once, and the interrupted attempt does not count. A Case already
+            // stored is reused when it runs again (it takes the job's id).
+            if (!await queue.ReleaseAsync(job.JobId, job.LeaseOwner, clock.GetUtcNow(), CancellationToken.None).ConfigureAwait(false))
+                Warn?.Invoke($"Job {job.JobId}: not released on shutdown, its lease had passed to another worker");
+            AmlTelemetry.JobAttempts.Add(1, new KeyValuePair<string, object?>("outcome", "RELEASED"));
         }
 #pragma warning disable CA1031 // failure isolation: one item's error must not stop the batch
         catch (Exception e)
 #pragma warning restore CA1031
         {
-            await FailAsync(job, e is OperationCanceledException ? Timeout : ExceptionCode(e), job.AttemptCount >= options.MaxAttempts, ct).ConfigureAwait(false);
+            await FailAsync(job, e is OperationCanceledException ? Timeout : ExceptionCode(e), job.AttemptCount >= options.MaxAttempts).ConfigureAwait(false);
         }
     }
 
-    private async Task<CaseInput?> ReadInputOrDeadLetterAsync(ClaimedJob job, BatchItemRequest item, CancellationToken ct)
+    private async Task<CaseInput?> ReadInputOrDeadLetterAsync(ClaimedJob job, BatchItemRequest item)
     {
         try
         {
@@ -176,7 +192,7 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         catch (Exception)
 #pragma warning restore CA1031
         {
-            await DeadLetterAsync(job, InvalidInput, ct).ConfigureAwait(false);
+            await DeadLetterAsync(job, InvalidInput).ConfigureAwait(false);
             return null;
         }
     }
@@ -209,20 +225,20 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
 
     private async Task RenewLeaseBeforeWriteAsync(ClaimedJob job, CancellationToken ct)
     {
-        if (!await queue.RenewLeaseAsync(job.JobId, _owner, clock.GetUtcNow() + options.Lease, ct).ConfigureAwait(false))
+        if (!await queue.RenewLeaseAsync(job.JobId, job.LeaseOwner, clock.GetUtcNow() + options.Lease, ct).ConfigureAwait(false))
             throw new InvalidOperationException($"Job {job.JobId} lost its lease");
     }
 
-    private Task DeadLetterAsync(ClaimedJob job, string errorCode, CancellationToken ct) => FailAsync(job, errorCode, deadLetter: true, ct);
+    private Task DeadLetterAsync(ClaimedJob job, string errorCode) => FailAsync(job, errorCode, deadLetter: true);
 
     private TimeSpan ExponentialBackoff(int attemptCount) => options.RetryDelay * Math.Pow(2, Math.Max(0, attemptCount - 1));
 
-    private async Task FailAsync(ClaimedJob job, string errorCode, bool deadLetter, CancellationToken ct)
+    private async Task FailAsync(ClaimedJob job, string errorCode, bool deadLetter)
     {
         AmlTelemetry.JobAttempts.Add(1, new("outcome", deadLetter ? "DEAD_LETTER" : "RETRY"), new("error_code", errorCode));
         var now = clock.GetUtcNow();
         var next = now + ExponentialBackoff(job.AttemptCount);
-        if (!await queue.FailAsync(job.JobId, _owner, deadLetter, errorCode, next, now, ct).ConfigureAwait(false))
+        if (!await queue.FailAsync(job.JobId, job.LeaseOwner, deadLetter, errorCode, next, now, CancellationToken.None).ConfigureAwait(false))
             Warn?.Invoke($"Job {job.JobId}: failure {errorCode} not recorded, its lease had passed to another worker");
     }
 }

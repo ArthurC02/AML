@@ -21,4 +21,17 @@ public sealed class CaseInputException : Exception
     public string? Table { get; }
 
     public string Problem { get; }
+
+    /// <summary>Runs a read of <paramref name="file"/>, turning the failures a layout mismatch causes into a MALFORMED input problem.</summary>
+    internal static T ReadOrMalformed<T>(string file, Func<T> read)
+    {
+        try
+        {
+            return read();
+        }
+        catch (Exception e) when (e is IndexOutOfRangeException or KeyNotFoundException or InvalidOperationException or FormatException or ArgumentException or IOException)
+        {
+            throw new CaseInputException(file, null, Malformed, $"{file} is not in the export layout.", e);
+        }
+    }
 }

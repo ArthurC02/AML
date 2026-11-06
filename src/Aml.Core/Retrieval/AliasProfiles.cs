@@ -4,43 +4,72 @@ namespace Aml.Core.Retrieval;
 /// The index's fixed alias table: which Profile each alias position belongs to and the aliases' name order, and the ranking
 /// of Profiles by their best-scoring alias built on it. Never changed after construction; shared by concurrent searches.
 /// </summary>
-/// <param name="profileOf">The Profile number of each alias position.</param>
-/// <param name="nameOrder">Each alias's rank by (name, Profile key): the ordinal tie-break of every ranking, as one integer comparison.</param>
-internal sealed class AliasProfiles(int[] profileOf, int profileCount, int[] nameOrder)
+internal sealed class AliasProfiles
 {
-    public int ProfileCount => profileCount;
+    private readonly int[] _profileOf;
+    private readonly int[] _nameOrder;
 
-    public int ProfileOf(int alias) => profileOf[alias];
+    /// <param name="profileOf">The Profile number (0 to <paramref name="profileCount"/> - 1) of each alias position; copied.</param>
+    /// <param name="nameOrder">Each alias's rank by (name, Profile key), the ordinal tie-break of every ranking; copied.</param>
+    public AliasProfiles(IReadOnlyList<int> profileOf, int profileCount, IReadOnlyList<int> nameOrder)
+    {
+        if (nameOrder.Count != profileOf.Count) throw new ArgumentException("One name order rank per alias is required.", nameof(nameOrder));
+        _profileOf = [.. profileOf];
+        _nameOrder = [.. nameOrder];
+        ProfileCount = profileCount;
+        if (_profileOf.Any(p => p < 0 || p >= profileCount)) throw new ArgumentOutOfRangeException(nameof(profileOf));
+    }
+
+    public int AliasCount => _profileOf.Length;
+
+    public int ProfileCount { get; }
+
+    public int ProfileOf(int alias) => _profileOf[alias];
 
     /// <summary>Whether alias <paramref name="x"/> comes before alias <paramref name="y"/> in name order.</summary>
-    public bool NamedBefore(int x, int y) => nameOrder[x] < nameOrder[y];
+    public bool NamedBefore(int x, int y) => _nameOrder[x] < _nameOrder[y];
 
     /// <summary>
     /// Of the first <paramref name="reachedCount"/> aliases in <paramref name="reached"/>, those scoring above 0 and at least
     /// <paramref name="floor"/>, one per Profile (its best), by score and then name order, written to the front of
     /// <paramref name="ranked"/>; returns how many. <paramref name="scores"/> is indexed like <paramref name="reached"/>.
     /// </summary>
-    public int BestAliasPerProfile(int[] reached, int reachedCount, double[] scores, double floor, int[] ranked)
+    public int BestAliasPerProfile(PooledArray<int> reached, int reachedCount, PooledArray<double> scores, double floor, Span<int> ranked)
     {
-        using var bestOf = new PooledArray<int>(profileCount);
-        using var winners = new PooledArray<int>(profileCount);
-        bestOf.Span.Fill(-1);
-        var best = bestOf.Array;
+        using var bestOf = new PooledArray<int>(ProfileCount);
+        using var winners = new PooledArray<int>(ProfileCount);
+        var best = bestOf.Span;
+        var winner = winners.Span;
+        var reachedSpan = reached.Span[..reachedCount];
+        var scoreSpan = scores.Span[..reachedCount];
+        best.Fill(-1);
         var count = 0;
-        for (var i = 0; i < reachedCount; i++)
+        for (var i = 0; i < reachedSpan.Length; i++)
         {
-            if (!(scores[i] > 0 && scores[i] >= floor)) continue;
-            var p = profileOf[reached[i]];
-            if (best[p] < 0) winners.Array[count++] = p;
-            if (best[p] < 0 || Before(scores, reached, i, best[p])) best[p] = i;
+            var score = scoreSpan[i];
+            if (!(score > 0 && score >= floor)) continue;
+            var p = _profileOf[reachedSpan[i]];
+            if (best[p] < 0) winner[count++] = p;
+            if (best[p] < 0 || Before(scoreSpan, reachedSpan, i, best[p])) best[p] = i;
         }
-        var order = winners.Array.AsSpan(0, count);
+        var order = winner[..count];
         for (var w = 0; w < order.Length; w++) order[w] = best[order[w]];
-        order.Sort((i, j) => Before(scores, reached, i, j) ? -1 : Before(scores, reached, j, i) ? 1 : 0);
-        for (var w = 0; w < order.Length; w++) ranked[w] = reached[order[w]];
+        order.Sort(new ByScoreThenName(this, scores, reached));
+        for (var w = 0; w < order.Length; w++) ranked[w] = reachedSpan[order[w]];
         return count;
     }
 
-    private bool Before(double[] scores, int[] reached, int i, int j) =>
+    private bool Before(ReadOnlySpan<double> scores, ReadOnlySpan<int> reached, int i, int j) =>
         scores[i] > scores[j] || (scores[i] == scores[j] && NamedBefore(reached[i], reached[j]));
+
+    // Orders positions of the reached aliases best first; a comparer, since a sort's lambda cannot hold spans.
+    private readonly struct ByScoreThenName(AliasProfiles table, PooledArray<double> scores, PooledArray<int> reached) : IComparer<int>
+    {
+        public int Compare(int i, int j)
+        {
+            ReadOnlySpan<double> s = scores.Span;
+            ReadOnlySpan<int> r = reached.Span;
+            return table.Before(s, r, i, j) ? -1 : table.Before(s, r, j, i) ? 1 : 0;
+        }
+    }
 }

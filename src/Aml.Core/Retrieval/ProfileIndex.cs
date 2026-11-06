@@ -141,6 +141,8 @@ public sealed class ProfileIndex
     /// </summary>
     public IReadOnlyList<RetrievedCandidate> Search(string name, int top = 10)
     {
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentOutOfRangeException.ThrowIfNegative(top);
         var keys = NameComparison.NameKeys(name, true).Where(k => k.Length > 0).ToHashSet(StringComparer.Ordinal);
         if (keys.Count == 0) return [];
 
@@ -167,7 +169,7 @@ public sealed class ProfileIndex
     {
         var query = new Query(name);
         using var reached = new PooledArray<int>(_aliases.Length);
-        var reachedCount = CollectReached(query, exactProfiles, reached.Array);
+        var reachedCount = CollectReached(query, exactProfiles, reached);
         var parallel = reachedCount >= MinAliasesForParallelScoring;
 
         using var bm25 = new PooledArray<double>(reachedCount);
@@ -176,24 +178,24 @@ public sealed class ProfileIndex
         // Every score is a pure function of the query and one immutable alias, so aliases score in parallel into their own slots.
         ForEachIndex(reachedCount, parallel, i =>
         {
-            var a = _aliases[reached.Array[i]];
-            bm25.Array[i] = _bm25.Score(query.Tokens, a.Tokens, a.Cjk);
-            nGram.Array[i] = TermOverlap.Dice(query.Grams, a.Grams);
-            reading.Array[i] = TermOverlap.SharedCount(query.ReadingKeys, a.ReadingKeys);
+            var a = _aliases[reached[i]];
+            bm25[i] = _bm25.Score(query.Tokens, a.Tokens, a.Cjk);
+            nGram[i] = TermOverlap.Dice(query.Grams, a.Grams);
+            reading[i] = TermOverlap.SharedCount(query.ReadingKeys, a.ReadingKeys);
         });
 
         using var bm25Ranked = new PooledArray<int>(_aliasProfiles.ProfileCount);
         using var nGramRanked = new PooledArray<int>(_aliasProfiles.ProfileCount);
         using var readingRanked = new PooledArray<int>(_aliasProfiles.ProfileCount);
-        (double[] Scores, double Floor, int[] Ranked)[] routes =
-            [(bm25.Array, 0, bm25Ranked.Array), (nGram.Array, query.NGramFloor, nGramRanked.Array), (reading.Array, 0, readingRanked.Array)];
+        (PooledArray<double> Scores, double Floor, PooledArray<int> Ranked)[] routes =
+            [(bm25, 0, bm25Ranked), (nGram, query.NGramFloor, nGramRanked), (reading, 0, readingRanked)];
         var rankedCount = new int[routes.Length];
         ForEachIndex(routes.Length, parallel, r =>
-            rankedCount[r] = _aliasProfiles.BestAliasPerProfile(reached.Array, reachedCount, routes[r].Scores, routes[r].Floor, routes[r].Ranked));
+            rankedCount[r] = _aliasProfiles.BestAliasPerProfile(reached, reachedCount, routes[r].Scores, routes[r].Floor, routes[r].Ranked.Span));
 
         using var fusion = new ReciprocalRankFusion(_aliasProfiles);
-        for (var r = 0; r < routes.Length; r++) fusion.AddRanking(routes[r].Ranked.AsSpan(0, rankedCount[r]), route: r);
-        return (fusion.Best(take).Select(p => Candidate(fusion, p)).ToList(), fusion.Count);
+        for (var r = 0; r < routes.Length; r++) fusion.AddRanking(routes[r].Ranked.Span[..rankedCount[r]], route: r);
+        return (fusion.Best(take).Select(Candidate).ToList(), fusion.Count);
     }
 
     /// <summary>A query's terms per route, computed once per search.</summary>
@@ -214,32 +216,33 @@ public sealed class ProfileIndex
         }
     }
 
-    private RetrievedCandidate Candidate(ReciprocalRankFusion fusion, int profile)
+    private RetrievedCandidate Candidate(FusedProfile fused)
     {
-        var a = _aliases[fusion.MatchedAlias(profile)];
-        return new RetrievedCandidate(ProfileKeys.IdOf(a.ProfileKey), a.ProfileKey, a.Name, RouteNames[fusion.Route(profile)], fusion.Score(profile), RetrievalMode.IndexSearch);
+        var a = _aliases[fused.Alias];
+        return new RetrievedCandidate(ProfileKeys.IdOf(a.ProfileKey), a.ProfileKey, a.Name, RouteNames[fused.Route], fused.Score, RetrievalMode.IndexSearch);
     }
 
     /// <summary>Distinct aliases posted under any query term, outside the exact tier, written to the front of <paramref name="reached"/>.</summary>
-    private int CollectReached(Query query, HashSet<int> exactProfiles, int[] reached)
+    private int CollectReached(Query query, HashSet<int> exactProfiles, PooledArray<int> reached)
     {
         using var seen = new PooledArray<bool>(_aliases.Length, clear: true);
         var count = 0;
-        void Collect(FrozenDictionary<string, int[]> postings, IEnumerable<string> terms)
+        Collect(_aliasPositionsByToken, query.Tokens, seen.Span, reached.Span, ref count);
+        Collect(_aliasPositionsByGram, query.Grams, seen.Span, reached.Span, ref count);
+        Collect(_aliasPositionsByReading, query.ReadingKeys, seen.Span, reached.Span, ref count);
+        return count;
+
+        void Collect(FrozenDictionary<string, int[]> postings, IEnumerable<string> terms, Span<bool> seenAt, Span<int> reachedAt, ref int count)
         {
             foreach (var t in terms)
                 if (postings.TryGetValue(t, out var positions))
                     foreach (var at in positions)
-                        if (!seen.Array[at] && !exactProfiles.Contains(_aliasProfiles.ProfileOf(at)))
+                        if (!seenAt[at] && !exactProfiles.Contains(_aliasProfiles.ProfileOf(at)))
                         {
-                            seen.Array[at] = true;
-                            reached[count++] = at;
+                            seenAt[at] = true;
+                            reachedAt[count++] = at;
                         }
         }
-        Collect(_aliasPositionsByToken, query.Tokens);
-        Collect(_aliasPositionsByGram, query.Grams);
-        Collect(_aliasPositionsByReading, query.ReadingKeys);
-        return count;
     }
 
     private static void ForEachIndex(int count, bool parallel, Action<int> body)

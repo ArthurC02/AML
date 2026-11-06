@@ -14,6 +14,21 @@ public class ProfileIndexTests
 
     private static readonly Document Id = new("TW_NATIONAL_ID", "A123456789", "TW");
 
+    // ---- encapsulation ----
+
+    [Fact]
+    public void Search_exposes_its_results_and_hides_the_algorithms_that_rank_them()
+    {
+        var exported = typeof(ProfileIndex).Assembly.GetExportedTypes().Where(t => t.Namespace == typeof(ProfileIndex).Namespace).Select(t => t.Name).ToHashSet();
+        Assert.Superset(new HashSet<string> { nameof(ProfileIndex), nameof(RetrievedCandidate), nameof(RetrievalMode) }, exported);
+        Assert.Empty(exported.Intersect(["NameTerms", "Bm25Scorer", "TermOverlap", "AliasProfiles", "ReciprocalRankFusion", "FusedProfile", "PooledArray`1"]));
+        Assert.DoesNotContain("CaseExport", typeof(Aml.Infra.Txt.TxtCaseReader).Assembly.GetExportedTypes().Select(t => t.Name));
+    }
+
+    [Fact]
+    public void Search_rejects_a_negative_top() =>
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ProfileIndex([]).Search("陳志明", -1));
+
     // ---- merging ----
 
     [Fact]

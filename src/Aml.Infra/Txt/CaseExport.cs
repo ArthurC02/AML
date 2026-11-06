@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using Aml.Infra.Html;
 
@@ -12,9 +13,17 @@ namespace Aml.Infra.Txt;
 /// </summary>
 internal sealed partial class CaseExport
 {
+    static CaseExport() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance); // Big5 fallback
+
+    public const string UnsupportedAttachment = "UNSUPPORTED_ATTACHMENT";
+    public const string EncodingFallback = "ENCODING_FALLBACK";
+
     private const string GoldenCaseLabelFile = "expected.yaml";
     private const char ByteOrderMark = (char)0xFEFF;
     private const int MarkupSniffChars = 256;
+    private const int Big5CodePage = 950;
+
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     private readonly Dictionary<string, string> _exportTexts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, byte[]> _attachments = new(StringComparer.OrdinalIgnoreCase);
@@ -32,7 +41,7 @@ internal sealed partial class CaseExport
     private CaseExport(List<(string Name, byte[] Content)> ordered)
     {
         foreach (var (name, content) in ordered) Add(name, content);
-        SourceHashes = ordered.ToDictionary(s => s.Name, s => Convert.ToHexString(SHA256.HashData(s.Content)));
+        SourceHashes = ordered.ToDictionary(s => s.Name, s => Convert.ToHexString(SHA256.HashData(s.Content))).AsReadOnly();
         Names = [.. _exportTexts.Keys, .. _attachments.Keys];
     }
 
@@ -53,11 +62,25 @@ internal sealed partial class CaseExport
             throw new CaseInputException(target, null, CaseInputException.Duplicate, $"Two input files read as {target}");
         if (!known) _attachments[target] = content;
         else if (IsHtmlName(name) || LooksLikeMarkup(content))
-            _exportTexts[target] = TxtCaseReader.ReadOrMalformed(name, () => HtmlExport.ToExportText(content, HtmlExport.KindOf(Path.GetFileNameWithoutExtension(target)))).TrimStart(ByteOrderMark);
+            _exportTexts[target] = CaseInputException.ReadOrMalformed(name, () => HtmlExport.ToExportText(content, HtmlExport.KindOf(Path.GetFileNameWithoutExtension(target)))).TrimStart(ByteOrderMark);
         else
         {
-            _exportTexts[target] = TxtCaseReader.Decode(content, out var fallback);
-            if (fallback) _findings.Add($"{TxtCaseReader.EncodingFallback}:{name}");
+            _exportTexts[target] = Decode(content, out var fallback);
+            if (fallback) _findings.Add($"{EncodingFallback}:{name}");
+        }
+    }
+
+    public static string Decode(byte[] bytes, out bool fallback)
+    {
+        fallback = false;
+        try
+        {
+            return StrictUtf8.GetString(bytes).TrimStart(ByteOrderMark);
+        }
+        catch (DecoderFallbackException)
+        {
+            fallback = true;
+            return Encoding.GetEncoding(Big5CodePage).GetString(bytes);
         }
     }
 
@@ -67,6 +90,7 @@ internal sealed partial class CaseExport
     /// A file's text: an export file as decoded, an attachment as File.ReadAllText reads a file (UTF-8 unless a byte order
     /// mark says otherwise), for a case table that names a file outside the export layout.
     /// </summary>
+    /// <exception cref="KeyNotFoundException">No file has this name; check <see cref="Contains"/> first.</exception>
     public string Text(string name)
     {
         if (_exportTexts.TryGetValue(name, out var text)) return text;
@@ -88,7 +112,7 @@ internal sealed partial class CaseExport
         _attachments.Keys.Concat(_exportTexts.Where(f => LooksLikeMarkup(f.Value)).Select(f => f.Key))
             .Where(name => name != GoldenCaseLabelFile)
             .Order(StringComparer.OrdinalIgnoreCase)
-            .Select(name => $"{TxtCaseReader.UnsupportedAttachment}:{name}");
+            .Select(name => $"{UnsupportedAttachment}:{name}");
 
     [GeneratedRegex("^(案件資訊.*|名單資料_\\d+|新聞資訊_\\d+|客戶-背景資料|客戶-聯絡資料|客戶-關聯人背景資料)\\.txt$")]
     private static partial Regex KnownFile();

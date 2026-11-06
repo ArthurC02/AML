@@ -12,15 +12,12 @@ namespace Aml.Infra.Txt;
 /// <summary>Reads one case folder in the bank's .txt export layout (samples/golden/README.md); HTML pages arrive converted by HtmlExport.</summary>
 public static partial class TxtCaseReader
 {
-    static TxtCaseReader() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-
     private const string CaseInfoPrefix = "案件資訊";
     private const string CaseInfoFile = "案件資訊.txt";
     private const string CustomerFile = "客戶-背景資料.txt";
     private const string RelatedPartyFile = "客戶-關聯人背景資料.txt";
     private const string ContactFile = "客戶-聯絡資料.txt";
     private const string CustomerCategory = "客戶";
-    private const int Big5CodePage = 950;
     private const char ByteOrderMark = '\uFEFF';
 
     public static CaseInput ReadFiles(IReadOnlyDictionary<string, string> files) =>
@@ -51,33 +48,10 @@ public static partial class TxtCaseReader
             throw new CaseInputException(file, null, problem, $"{file}: {problem}");
     }
 
-    internal static T ReadOrMalformed<T>(string file, Func<T> read)
-    {
-        try
-        {
-            return read();
-        }
-        catch (Exception e) when (e is IndexOutOfRangeException or KeyNotFoundException or InvalidOperationException or FormatException or ArgumentException or IOException)
-        {
-            throw new CaseInputException(file, null, CaseInputException.Malformed, $"{file} is not in the export layout.", e);
-        }
-    }
+    private static T ReadOrMalformed<T>(string file, Func<T> read) => CaseInputException.ReadOrMalformed(file, read);
 
-    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
-
-    public static string Decode(byte[] bytes, out bool fallback)
-    {
-        fallback = false;
-        try
-        {
-            return StrictUtf8.GetString(bytes).TrimStart(ByteOrderMark);
-        }
-        catch (DecoderFallbackException)
-        {
-            fallback = true;
-            return Encoding.GetEncoding(Big5CodePage).GetString(bytes);
-        }
-    }
+    /// <summary>A file's text: strict UTF-8 without a leading byte order mark, else Big5 with <paramref name="fallback"/> set.</summary>
+    public static string Decode(byte[] bytes, out bool fallback) => CaseExport.Decode(bytes, out fallback);
 
     private static CaseInput ReadExport(CaseExport export)
     {
@@ -118,12 +92,12 @@ public static partial class TxtCaseReader
         return imported;
     }
 
-    public const string UnsupportedAttachment = "UNSUPPORTED_ATTACHMENT";
+    public const string UnsupportedAttachment = CaseExport.UnsupportedAttachment;
     public const string LegacyRecordBoundaryUnclear = "LEGACY_RECORD_BOUNDARY_UNCLEAR";
     public const string Unparseable = Findings.Unparseable;
     public const string FieldConflict = "FIELD_CONFLICT";
     public const string Ambiguous = Findings.Ambiguous;
-    public const string EncodingFallback = "ENCODING_FALLBACK";
+    public const string EncodingFallback = CaseExport.EncodingFallback;
     public const string FieldAbsent = "FIELD_ABSENT";
     public const string FieldBlank = "FIELD_BLANK";
     public const string PlaceholderDash = "PLACEHOLDER_DASH";

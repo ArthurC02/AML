@@ -330,6 +330,28 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
             using var collided = await client.PostAsync("/api/cases", same, ct);
             await Problem(collided, HttpStatusCode.BadRequest, "UNSUPPORTED_FILE", ct);
         }
+
+        // A client's folder is never echoed back.
+        using var pathed = new MultipartFormDataContent
+        {
+            { new StringContent("s"), "subjectRef" }, { new StringContent("t"), "triggerEventId" },
+            { new ByteArrayContent([1]), "files", @"C:\Users\someone\Desktop\x.exe" },
+        };
+        using var pathRefused = await client.PostAsync("/api/cases", pathed, ct);
+        Assert.Equal("x.exe", (await Problem(pathRefused, HttpStatusCode.BadRequest, "UNSUPPORTED_FILE", ct)).GetProperty("errors")[0].GetProperty("file").GetString());
+
+        // JSON follows the same rules: a folder in a name or a name repeated in another letter case is UNSUPPORTED_FILE.
+        foreach (var files in new[] { new Dictionary<string, string> { ["d/a.txt"] = "x" }, new() { ["A.txt"] = "x", ["a.TXT"] = "y" } })
+        {
+            using var json = await client.PostAsJsonAsync("/api/cases", new { subjectRef = "s", triggerEventId = "t", files }, ct);
+            await Problem(json, HttpStatusCode.BadRequest, "UNSUPPORTED_FILE", ct);
+        }
+
+        // A ref is an identifier, not free text; a batch item is checked by the same rules.
+        using var longRef = await client.PostAsJsonAsync("/api/cases", new { subjectRef = new string('s', 129), triggerEventId = "t", files = new Dictionary<string, string> { ["a.txt"] = "x" } }, ct);
+        Assert.Equal("subjectRef", (await Problem(longRef, HttpStatusCode.BadRequest, "INVALID_REQUEST", ct)).GetProperty("errors")[0].GetProperty("parameter").GetString());
+        using var batch = await client.PostAsJsonAsync("/api/batches", new[] { new { subjectRef = "s", triggerEventId = "t", files = new Dictionary<string, string> { ["A.txt"] = "x", ["a.txt"] = "y" } } }, ct);
+        Assert.Equal(0, (await Problem(batch, HttpStatusCode.BadRequest, "INVALID_REQUEST", ct)).GetProperty("errors")[0].GetProperty("item").GetInt32());
     }
 
     /// <summary>An RFC 9457 problem: the status, application/problem+json and the type of its catalog entry.</summary>
@@ -367,7 +389,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
     [InlineData("POST", "/api/cases", "form-broken", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("POST", "/api/cases", "form-twice", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("POST", "/api/cases", "json-charset", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
-    [InlineData("POST", "/api/cases", """{"subjectRef":"s","triggerEventId":"t","files":{"x/案件資訊.txt":"x"}}""", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("POST", "/api/cases", """{"subjectRef":"s","triggerEventId":"t","files":{"x/案件資訊.txt":"x"}}""", HttpStatusCode.BadRequest, "UNSUPPORTED_FILE")]
     [InlineData("POST", "/api/cases/unknown/analyses", "case-files", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("GET", "/api/batches/unknown", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("POST", "/api/batches/unknown/rerun", "none", HttpStatusCode.NotFound, "NOT_FOUND")]

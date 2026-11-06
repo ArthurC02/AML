@@ -80,8 +80,8 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
     public Task<bool> CompleteAsync(string jobId, string leaseOwner, string caseId, int revision, DateTimeOffset now, CancellationToken ct) =>
         ChangesOneAsync("Batch.Complete", new { jobId, leaseOwner, caseId, revision, now = FormatTime(now) }, ct);
 
-    public Task<bool> ReleaseAsync(string jobId, string leaseOwner, DateTimeOffset now, CancellationToken ct) =>
-        ChangesOneAsync("Batch.Release", new { jobId, leaseOwner, now = FormatTime(now) }, ct);
+    public Task<bool> ReleaseAsync(string jobId, string leaseOwner, int maxReleases, int maxAttempts, DateTimeOffset now, CancellationToken ct) =>
+        ChangesOneAsync("Batch.Release", new { jobId, leaseOwner, maxReleases, maxAttempts, now = FormatTime(now) }, ct);
 
     public Task<bool> FailAsync(string jobId, string leaseOwner, bool deadLetter, string errorCode, DateTimeOffset nextAttemptAt, DateTimeOffset now, CancellationToken ct) =>
         ChangesOneAsync("Batch.Fail", new
@@ -94,8 +94,8 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
             completedAt = deadLetter ? FormatTime(now) : null,
         }, ct);
 
-    public Task<int> ReclaimExpiredAsync(int maxAttempts, DateTimeOffset now, CancellationToken ct) =>
-        ExecuteAsync("Batch.ReclaimExpired", new { maxAttempts, now = FormatTime(now) }, ct);
+    public Task<int> ReclaimExpiredAsync(int maxAttempts, DateTimeOffset now, DateTimeOffset retryAt, CancellationToken ct) =>
+        ExecuteAsync("Batch.ReclaimExpired", new { maxAttempts, now = FormatTime(now), retryAt = FormatTime(retryAt) }, ct);
 
     private async Task<bool> ChangesOneAsync(string sql, object args, CancellationToken ct) => await ExecuteAsync(sql, args, ct).ConfigureAwait(false) == 1;
 

@@ -27,8 +27,8 @@ Steps 1 to 3 of the [operating architecture](system-overview.md#operating-archit
 
 Input files are read as raw bytes, so the reader decides the encoding:
 
-- an export `.txt` is decoded as strict UTF-8 (a BOM is dropped); bytes that are not valid UTF-8 are decoded as CP950 (Big5) and an `ENCODING_FALLBACK:<file>` finding is recorded;
-- an HTML page is handed to the HTML parser as bytes, which takes the encoding from a BOM, then from its `<meta charset>`;
+- an export `.txt` is decoded as UTF-16 when a UTF-16 byte order mark says so, else as strict UTF-8 (a BOM is dropped); bytes that are not valid UTF-8 are decoded as CP950 (Big5) and an `ENCODING_FALLBACK:<file>` finding is recorded;
+- an HTML page is decoded by the same rules before it is parsed; its `<meta charset>` is not followed. The upload keeps the bytes but a stored copy, or a file sent as JSON, is text re-encoded as UTF-8, and both must read the same: a Big5 page saying `<meta charset=big5>` would otherwise be read as Big5 a second time and garbled;
 - every input file's SHA-256 is taken on the bytes as uploaded, before any decoding or conversion, and kept as `CaseInput.SourceHashes`.
 
 ## HTML processing
@@ -51,7 +51,7 @@ In the PoC, `Infra/Html/HtmlExport` covers steps 3 and 4 by converting each page
 - a cell keeps its text and its control values in document order: a checkbox reads 是 or 否, a checked radio its label (else its value), a select its selected options, an input or textarea its value; the label text of a checkbox or radio is not repeated;
 - `<br>` and block elements (`p`, `div`, `li`, table cells …) break lines;
 - colspan repeats the cell across, rowspan carries it down;
-- a page is refused as `MALFORMED` when it does not parse within 3 s (deep nesting parses in quadratic time), nests elements deeper than 256 levels (the read recurses per level, and a stack overflow cannot be caught), or its tables spread into more than 200,000 cells or 20 million characters in one table;
+- a page is refused as `MALFORMED` when it does not parse within 5 s (deep nesting parses in quadratic time; a 5 MB table page parses in about 1.3 s on one core), nests elements deeper than 256 levels (the read recurses per level, and a stack overflow cannot be caught), or its tables spread into more than 200,000 cells or 20 million characters across the page. At most one page per core is parsed at a time, and the wait is not counted, so pages parsed side by side (a list import, concurrent uploads) do not overrun the budget by sharing the cores. Reading the parsed page costs linear time: which label names a control and which elements hold a table or heading are worked out once per page;
 - hidden content is not read: the `hidden` attribute, an inline `display:none` or `visibility:hidden` style, `script`, `style`, `template`, `noscript`, buttons and hidden inputs; hiding by stylesheet class is not detected;
 - a blank field is written blank, never as `-`, so it is recorded as `FIELD_BLANK`, not `PLACEHOLDER_DASH` ([missing values](#missing-values)).
 

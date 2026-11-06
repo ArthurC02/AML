@@ -32,7 +32,7 @@ public sealed class ListImportTests : ServiceTestBase
         Assert.Equal(($"REANALYZE:{c.CaseId}:90000011:1", JobStatus.Pending), (item.IdempotencyKey, item.Status));
         Assert.Equal(1, (await _cases.GetAsync(c.CaseId, ct))!.CurrentRevision); // nothing runs inside the import
 
-        using var batch = Batch();
+        var batch = Batch();
         Assert.Equal(1, await batch.RunOnceAsync(ct));
         Assert.Equal(2, (await _cases.GetAsync(c.CaseId, ct))!.CurrentRevision);
         Assert.Equal((JobStatus.Succeeded, 2), ((await _jobs.ListItemsAsync(report.BatchId!, ct))[0].Status, (await _jobs.ListItemsAsync(report.BatchId!, ct))[0].AnalysisRevision));
@@ -124,7 +124,7 @@ public sealed class ListImportTests : ServiceTestBase
 
         var job = Assert.Single(report.QueuedReanalyses);
         Assert.Equal((c.CaseId, "90000011", 1), (job.CaseId, job.ProfileId, job.Version));
-        using var batch = Batch();
+        var batch = Batch();
         Assert.Equal(1, await batch.RunOnceAsync(ct));
         Assert.Equal(3, (await _cases.GetAsync(c.CaseId, ct))!.CurrentRevision);
         Assert.Equal(original, (await _cases.LatestInputAsync(c.CaseId, ct))![ProfileName]);

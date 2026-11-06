@@ -1,3 +1,4 @@
+using System.Globalization;
 using Aml.Core.Cases;
 using Aml.Core.Codes;
 using Aml.Core.Explanation;
@@ -175,6 +176,7 @@ public static class CaseWorkbook
             rows.Add(Item("沿革", "代碼字典版本", l.CodeCatalogVersion));
             rows.Add(Item("沿革", "儲存格式版本", l.SchemaVersion));
             rows.Add(Item("沿革", "應用程式版本", l.AppVersion));
+            rows.Add(Item("沿革", "分析基準日", l.AsOf.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
         }
         if (r.Quality is { } q)
         {

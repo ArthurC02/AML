@@ -14,7 +14,7 @@ public class CodeCatalogTests
     public void Every_job_error_code_is_in_the_catalog()
     {
         string[] codes = [BatchService.InvalidInput, BatchService.InvalidPayload, BatchService.Timeout, BatchService.LeaseExpired,
-            BatchService.ExceptionCode(new InvalidOperationException())];
+            BatchService.ReleaseLimit, BatchService.ExceptionCode(new InvalidOperationException())];
         Assert.All(codes, c => Assert.Equal("JOB_ERROR", CodeCatalog.Find(c)?.Kind));
     }
 

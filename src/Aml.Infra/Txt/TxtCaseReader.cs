@@ -110,11 +110,15 @@ public static partial class TxtCaseReader
     private static readonly string[] RelatedPartyFields = ["姓名/名稱", "性別", "出生日期", "國籍", "證件號碼"];
 
     private static IEnumerable<string> MissingFieldFindings(IEnumerable<(string Field, bool Present, string? Raw)> fields) =>
-        fields.Where(f => !f.Present || SourceValues.NullIfPlaceholder(f.Raw) is null).Select(f =>
+        fields.Where(f => !f.Present || (IsCountryField(f.Field) ? SourceValues.NullIfPlaceholderCountry(f.Raw) : SourceValues.NullIfPlaceholder(f.Raw)) is null).Select(f =>
             !f.Present ? $"{FieldAbsent}:{f.Field}"
             : string.IsNullOrWhiteSpace(f.Raw) ? $"{FieldBlank}:{f.Field}"
             : SourceValues.IsDash(f.Raw!) ? $"{PlaceholderDash}:{f.Field}"
             : $"{PlaceholderText}:{f.Field}");
+
+    // A country field reads a country code before placeholders: NA there is Namibia, not "not available".
+    private static bool IsCountryField(string field) =>
+        field is "國籍" or "國籍 1" or "國籍 2" or "發照地" || field.EndsWith(CountryHeadingSuffix, StringComparison.Ordinal);
 
     private static PartialDate? Date(string field, string? raw, List<string> findings)
     {
@@ -246,7 +250,8 @@ public static partial class TxtCaseReader
 
         var findings = MissingFieldFindings(CustomerFields.Select(f => (f, Array.IndexOf(background, f) >= 0, RawValue(f)))).ToList();
         var names = new[] { Value("本地名稱"), Value("客戶名稱") }.OfType<string>().ToList();
-        var nationalities = new[] { Country("國籍 1", Value("國籍 1"), findings), Country("國籍 2", Value("國籍 2"), findings) }.OfType<string>().ToList();
+        // Country fields take the raw value: Country reads a code before treating the text as a placeholder.
+        var nationalities = new[] { Country("國籍 1", RawValue("國籍 1"), findings), Country("國籍 2", RawValue("國籍 2"), findings) }.OfType<string>().ToList();
         var docNumber = Value("證件號碼");
         var taxId = Value("稅號/統一編號") switch
         {
@@ -261,7 +266,7 @@ public static partial class TxtCaseReader
 
         return new ScreenedSubject(
             SubjectRole.Customer, null, names, SourceValues.Gender(Value("性別")), dob,
-            nationalities, docNumber is null ? null : new Document(DocumentType(Value("證件種類")), docNumber, IssuingCountry(Value("發照地"), findings)),
+            nationalities, docNumber is null ? null : new Document(DocumentType(Value("證件種類")), docNumber, IssuingCountry(RawValue("發照地"), findings)),
             null, taxId, Occupation(Value("職業")), Dedupe(addresses, out var dup), AddressFindings(addresses, dup, findings), PartyType: Value("客戶類型"));
     }
 
@@ -299,16 +304,17 @@ public static partial class TxtCaseReader
     private static ScreenedSubject ReadRelatedParty(string[] lines, string relationship, string? referenceNumber)
     {
         var fields = ReadKeyValueLines(lines);
-        string? Value(string key) => SourceValues.NullIfPlaceholder(fields.FirstOrDefault(f => f.Key == key).Value);
+        var firstByKey = fields.GroupBy(f => f.Key).ToDictionary(g => g.Key, g => g.First().Value); // one lookup per field, not a scan
+        string? RawValue(string key) => firstByKey.GetValueOrDefault(key);
+        string? Value(string key) => SourceValues.NullIfPlaceholder(RawValue(key));
 
-        var findings = MissingFieldFindings(RelatedPartyFields
-            .Select(k => (k, fields.Any(f => f.Key == k), fields.FirstOrDefault(f => f.Key == k).Value))).ToList();
+        var findings = MissingFieldFindings(RelatedPartyFields.Select(k => (k, firstByKey.ContainsKey(k), RawValue(k)))).ToList();
         var addresses = fields
             .Where(f => f.Value is not null && AddressKey().IsMatch(f.Key))
             .Select(f =>
             {
                 var role = AddressKey().Match(f.Key).Groups[1].Value;
-                return MakeAddress(role, f.Value!, Value(role + CountryHeadingSuffix), findings);
+                return MakeAddress(role, f.Value!, RawValue(role + CountryHeadingSuffix), findings);
             })
             .ToList();
         var docNumber = Value("證件號碼");
@@ -317,8 +323,8 @@ public static partial class TxtCaseReader
         return new ScreenedSubject(
             SubjectRole.RelatedParty, relationship, new[] { Value("姓名/名稱") }.OfType<string>().ToList(),
             SourceValues.Gender(Value("性別")), dob,
-            new[] { Country("國籍", Value("國籍"), findings) }.OfType<string>().ToList(),
-            docNumber is null ? null : new Document(DocumentType(Value("證件種類")), docNumber, IssuingCountry(Value("發照地"), findings)),
+            new[] { Country("國籍", RawValue("國籍"), findings) }.OfType<string>().ToList(),
+            docNumber is null ? null : new Document(DocumentType(Value("證件種類")), docNumber, IssuingCountry(RawValue("發照地"), findings)),
             referenceNumber ?? Value("參考號碼"), null, null, Dedupe(addresses, out var dup), AddressFindings(addresses, dup, findings), PartyType: Value("類型"));
     }
 
@@ -399,7 +405,7 @@ public static partial class TxtCaseReader
 
     /// <summary>The text a Profile file's content hash is taken on: an HTML page converted, an export as it is.</summary>
     public static string ProfileExportText(string content) =>
-        content.TrimStart().TrimStart(ByteOrderMark).StartsWith('<') ? HtmlExport.ToExportText(content, HtmlExport.Kind.Profile) : content;
+        content.AsSpan().TrimStart([ByteOrderMark, ' ', '\t', '\r', '\n']).StartsWith('<') ? HtmlExport.ToExportText(content, HtmlExport.Kind.Profile) : content;
 
     private const string ProfileIdKey = "Profile_ID";
     private const string OriginalScriptNameRow = "OSN";
@@ -597,7 +603,8 @@ public static partial class TxtCaseReader
         return new SourceReference(id, parts[0].Trim(), url, published, retrievedOn);
     }
 
-    [GeneratedRegex("\\((https?://[^)\\s]+)\\)")]
+    // No '(' inside the URL: a run of "(http://a" no longer rescans to the end from every '(' (quadratic in the cell).
+    [GeneratedRegex("\\((https?://[^()\\s]+)\\)")]
     private static partial Regex SourceUrl();
 
     // News export: id line, section, title, reporter, length, "2026 年 9 月 6 日" (or "2026年9月6日"), publisher, …, "文件 <id>".

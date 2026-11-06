@@ -48,6 +48,8 @@ public static partial class StatedAgeCheck
     private const string NotThresholdOrApproximation = "(?<![\\d〇零一二兩三四五六七八九十廿卅百]|滿|約|逾|近|超過|未滿|年滿)";
     private const string Respectively = "分別";
 
+    private const int MaxNames = 100;
+
     /// <summary>
     /// "陳志明（45歲）", "陳志明今年四十五歲", "45歲的陳志明", "Chen Chih-Ming, aged 45", "45-year-old Chen Chih-Ming",
     /// "甲、乙分別為 44 歲、45 歲" (one age per person, in order); within one sentence and adjacent to the name.
@@ -56,7 +58,9 @@ public static partial class StatedAgeCheck
 
     private static (int Age, bool StatedAtEventTime)? Find(string text, IEnumerable<string> names)
     {
-        var list = names.Where(n => n.Length > 0).ToList();
+        // ponytail: the first 100 names only. Each name is a regex tried on every sentence that might hold it; a Profile of
+        // thousands of aliases against a long article took minutes. Raise the cap if a real Profile needs more.
+        var list = names.Where(n => n.Length > 0).Take(MaxNames).ToList();
         var matchers = list.Select(n => (Name: n, Regex: new Lazy<Regex>(() => AgeNextToName(n), isThreadSafe: false))).ToArray();
         foreach (var sentence in CjkText.Sentences(text))
         {

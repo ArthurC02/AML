@@ -29,6 +29,13 @@ var workbookQueue = builder.Configuration.GetValue<int?>("Api:WorkbookQueue") ??
 if (workbookConcurrency < 1 || workbookQueue < 0)
     throw new InvalidOperationException("Api:WorkbookConcurrency must be at least 1 and Api:WorkbookQueue at least 0.");
 
+// The hosting "Request starting/finished" lines carry the full URL, and a query (subjectRef=, a searched name) is personal
+// data: they are kept out of the default log level. Configuration (Logging:LogLevel) still overrides this.
+builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Warning);
+// An upload file up to the accepted size stays in memory: a temp file on disk would hold customer data in plain text and
+// outlive a crash. A larger file is still buffered to disk until it is refused.
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(o => o.MemoryBufferThreshold = Uploads.MaxBytes);
+
 var db = new SqliteDatabase(builder.Configuration["Database:ConnectionString"] ?? "Data Source=aml.db");
 db.Upgrade();
 builder.Services.AddSingleton(db);
@@ -36,7 +43,11 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ICaseStore, CaseStore>();
 builder.Services.AddSingleton<CaseService>();
 builder.Services.AddSingleton<IJobStore, JobStore>();
-builder.Services.AddSingleton(builder.Configuration.GetSection("Batch").Get<BatchOptions>() ?? new BatchOptions());
+var batchOptions = builder.Configuration.GetSection("Batch").Get<BatchOptions>() ?? new BatchOptions();
+batchOptions.Validate();
+builder.Services.AddSingleton(batchOptions);
+// Long enough for running jobs to settle (JobWorker drains them); the host's default of 30 s is shorter than one job's deadline.
+builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = batchOptions.ShutdownTimeout);
 builder.Services.AddSingleton<Func<IReadOnlyDictionary<string, string>, CaseInput>>(TxtCaseReader.ReadFiles);
 builder.Services.AddSingleton<BatchService>();
 builder.Services.AddSingleton<IListStore, ListStore>();

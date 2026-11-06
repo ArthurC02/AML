@@ -21,11 +21,34 @@ public sealed record BatchOptions
     public TimeSpan Lease { get; init; } = TimeSpan.FromMinutes(5);
     public TimeSpan RetryDelay { get; init; } = TimeSpan.FromSeconds(10);
     public TimeSpan PollInterval { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>Times the host may stop during one job and give its attempt back; past it, an interruption spends an attempt.</summary>
+    public int MaxReleases { get; init; } = 5;
+
+    /// <summary>
+    /// How long a stopping host waits for running jobs to record their outcome or go back to the queue. Above Timeout, so an
+    /// analysis already under way can finish; a container's grace period (Kubernetes terminationGracePeriodSeconds) must
+    /// be longer still, or the process is killed first and the jobs wait out their lease.
+    /// </summary>
+    public TimeSpan ShutdownTimeout { get; init; } = TimeSpan.FromMinutes(2.5);
+
+    /// <summary>Refuses settings that cannot work, at startup rather than on the first job.</summary>
+    public void Validate()
+    {
+        if (MaxWorkers < 1 || MaxAttempts < 1 || MaxReleases < 0)
+            throw new InvalidOperationException("Batch:MaxWorkers and Batch:MaxAttempts must be at least 1, Batch:MaxReleases at least 0.");
+        // A job past its lease is reclaimed and run again while it still runs: the deadline must come first.
+        if (Timeout <= TimeSpan.Zero || Timeout >= Lease)
+            throw new InvalidOperationException("Batch:Timeout must be above zero and below Batch:Lease.");
+        if (RetryDelay < TimeSpan.Zero || PollInterval <= TimeSpan.Zero || ShutdownTimeout <= Timeout)
+            throw new InvalidOperationException("Batch:RetryDelay must not be negative, Batch:PollInterval must be above zero and Batch:ShutdownTimeout above Batch:Timeout.");
+    }
 }
 
 /// <summary>At most MaxWorkers jobs in flight; a finished job frees its slot for the next one at once.</summary>
+[System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "The slot semaphore holds no handle and must outlive a drain that overruns the host's shutdown timeout.")]
 public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadOnlyDictionary<string, string>, CaseInput> read, BatchOptions options, TimeProvider clock,
-    ListService? lists = null) : IDisposable
+    ListService? lists = null)
 {
     public const string AnalyzeCase = "ANALYZE_CASE";
     public const string ReanalyzeCase = "REANALYZE_CASE";
@@ -33,11 +56,21 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
     public const string InvalidPayload = "INVALID_PAYLOAD";
     public const string Timeout = "TIMEOUT";
     public const string LeaseExpired = "LEASE_EXPIRED"; // written by the job store when it reclaims an expired lease
+    public const string ReleaseLimit = "RELEASE_LIMIT"; // written by the job store when a job interrupted past Batch:MaxReleases spends its attempts
 
     public static string ExceptionCode(Exception e) => "EXCEPTION:" + e.GetType().Name;
 
+    /// <summary>
+    /// One key per alert: the trigger's length goes first, so a ':' inside a ref cannot make two alerts read as one
+    /// (trigger "a:b" with subject "c" and trigger "a" with subject "b:c").
+    /// </summary>
+    public static string IdempotencyKey(BatchItemRequest item) => $"{AnalyzeCase}:{item.TriggerEventId.Length}:{item.TriggerEventId}:{item.SubjectRef}";
+
     // A new lease owner per claim: a job whose lease expired and that this process claims again is not the earlier attempt's.
     private static string NewLeaseOwner() => $"{Environment.MachineName}:{Guid.NewGuid():N}";
+
+    // Not disposed: it holds no handle (AvailableWaitHandle is never read), and disposing it while a drain outlives the
+    // host's shutdown timeout would make every job still running throw on Release instead of recording its outcome.
     private readonly SemaphoreSlim _slots = new(options.MaxWorkers, options.MaxWorkers);
 
     public BatchOptions Options => options;
@@ -48,7 +81,7 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
     {
         var batchId = Guid.CreateVersion7().ToString();
         var jobs = items.Select(item => new NewJob(Guid.CreateVersion7().ToString(), AnalyzeCase, batchId,
-            $"{AnalyzeCase}:{item.TriggerEventId}:{item.SubjectRef}", JsonSerializer.Serialize(item, CaseJson.Options))).ToList();
+            IdempotencyKey(item), JsonSerializer.Serialize(item, CaseJson.Options))).ToList();
         var queued = (await queue.EnqueueAsync(jobs, clock.GetUtcNow(), ct).ConfigureAwait(false)).ToHashSet(StringComparer.Ordinal);
         var duplicates = jobs.Where(j => !queued.Contains(j.JobId)).Select(j => j.IdempotencyKey).ToList();
         return new BatchSubmitted(batchId, items.Count - duplicates.Count, duplicates);
@@ -88,8 +121,6 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         _slots.Release(options.MaxWorkers);
     }
 
-    public void Dispose() => _slots.Dispose();
-
     // Every write of a job (claim, lease, Case, outcome) is replayable (ADR-0026): if a power loss takes the newest of them,
     // the job is still queued or its lease expires, and it runs again; a batch item's Case takes the job's id, so the re-run
     // stores the same Case. The task started for each job inherits the scope.
@@ -101,7 +132,12 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         try
         {
             var now = clock.GetUtcNow();
-            await queue.ReclaimExpiredAsync(options.MaxAttempts, now, ct).ConfigureAwait(false);
+            // A reclaimed job waits a retry delay: if it crashed its worker, the next one is not taken down at once with it.
+            if (await queue.ReclaimExpiredAsync(options.MaxAttempts, now, now + options.RetryDelay, ct).ConfigureAwait(false) is > 0 and var reclaimed)
+            {
+                Warn?.Invoke($"{reclaimed} job(s) whose worker stopped without a word were reclaimed ({LeaseExpired})");
+                AmlTelemetry.JobAttempts.Add(reclaimed, new KeyValuePair<string, object?>("outcome", "RECLAIMED"));
+            }
             // No token: a claim cancelled after its commit would leave jobs RUNNING with no task to run or release them.
             jobs = await queue.ClaimAsync(NewLeaseOwner(), free, now, now + options.Lease, CancellationToken.None).ConfigureAwait(false);
         }
@@ -170,7 +206,7 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         {
             // Host stopping: the job goes back to the queue at once, and the interrupted attempt does not count. A Case already
             // stored is reused when it runs again (it takes the job's id).
-            if (!await queue.ReleaseAsync(job.JobId, job.LeaseOwner, clock.GetUtcNow(), CancellationToken.None).ConfigureAwait(false))
+            if (!await queue.ReleaseAsync(job.JobId, job.LeaseOwner, options.MaxReleases, options.MaxAttempts, clock.GetUtcNow(), CancellationToken.None).ConfigureAwait(false))
                 Warn?.Invoke($"Job {job.JobId}: not released on shutdown, its lease had passed to another worker");
             AmlTelemetry.JobAttempts.Add(1, new KeyValuePair<string, object?>("outcome", "RELEASED"));
         }

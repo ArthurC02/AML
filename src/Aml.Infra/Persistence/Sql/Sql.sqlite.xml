@@ -103,15 +103,15 @@
       <description>What one revision was computed from.</description>
       <sql><![CDATA[
         INSERT INTO analysis_lineage (case_id, revision, schema_version, source_policy_version, code_catalog_version,
-                                      app_version, input_files_json, profiles_json)
-        VALUES (@caseId, @revision, @schemaVersion, @sourcePolicyVersion, @codeCatalogVersion, @appVersion, @inputFilesJson, @profilesJson)
+                                      app_version, as_of, input_files_json, profiles_json)
+        VALUES (@caseId, @revision, @schemaVersion, @sourcePolicyVersion, @codeCatalogVersion, @appVersion, @asOf, @inputFilesJson, @profilesJson)
       ]]></sql>
     </statement>
 
     <statement id="Case.GetLineage" kind="Select">
       <description>Lineage of one revision.</description>
       <sql><![CDATA[
-        SELECT l.input_files_json, l.profiles_json, l.source_policy_version, l.code_catalog_version, l.schema_version, l.app_version
+        SELECT l.input_files_json, l.profiles_json, l.source_policy_version, l.code_catalog_version, l.schema_version, l.app_version, l.as_of
         FROM analysis_lineage l
         WHERE l.case_id = @caseId AND l.revision = @revision
       ]]></sql>
@@ -255,21 +255,25 @@
     </statement>
 
     <statement id="Batch.Release" kind="Update">
-      <description>The host is stopping: back to PENDING at once, and the interrupted attempt does not count.</description>
+      <description>The host is stopping: back to PENDING at once, and the interrupted attempt does not count, up to @maxReleases times; a job interrupted more often than that (one that keeps the host from stopping cleanly) spends its attempts and dead-letters (RELEASE_LIMIT) once they are spent.</description>
       <sql><![CDATA[
         UPDATE job
-        SET status = 'PENDING', attempt_count = attempt_count - 1, next_attempt_at = @now, lease_owner = NULL, lease_expiry = NULL
+        SET status = CASE WHEN release_count >= @maxReleases AND attempt_count >= @maxAttempts THEN 'DEAD_LETTER' ELSE 'PENDING' END,
+            completed_at = CASE WHEN release_count >= @maxReleases AND attempt_count >= @maxAttempts THEN @now ELSE NULL END,
+            error_code = CASE WHEN release_count >= @maxReleases AND attempt_count >= @maxAttempts THEN 'RELEASE_LIMIT' ELSE error_code END,
+            attempt_count = attempt_count - CASE WHEN release_count < @maxReleases THEN 1 ELSE 0 END,
+            release_count = release_count + 1, next_attempt_at = @now, lease_owner = NULL, lease_expiry = NULL
         WHERE job_id = @jobId AND lease_owner = @leaseOwner AND status = 'RUNNING'
       ]]></sql>
     </statement>
 
     <statement id="Batch.ReclaimExpired" kind="Update">
-      <description>Jobs whose worker died: back to PENDING, or DEAD_LETTER when the retry budget is spent.</description>
+      <description>Jobs whose worker died: back to PENDING after a retry delay (a job that crashed its worker must not crash the next one at once), or DEAD_LETTER when the retry budget is spent.</description>
       <sql><![CDATA[
         UPDATE job
         SET status = CASE WHEN attempt_count >= @maxAttempts THEN 'DEAD_LETTER' ELSE 'PENDING' END,
             completed_at = CASE WHEN attempt_count >= @maxAttempts THEN @now ELSE NULL END,
-            error_code = 'LEASE_EXPIRED', lease_owner = NULL, lease_expiry = NULL, next_attempt_at = @now
+            error_code = 'LEASE_EXPIRED', lease_owner = NULL, lease_expiry = NULL, next_attempt_at = @retryAt
         WHERE status = 'RUNNING' AND lease_expiry < @now
       ]]></sql>
     </statement>
@@ -301,7 +305,7 @@
       <description>Operator re-run: dead-lettered items get a fresh retry budget.</description>
       <sql><![CDATA[
         UPDATE job
-        SET status = 'PENDING', attempt_count = 0, next_attempt_at = @now, error_code = NULL, completed_at = NULL
+        SET status = 'PENDING', attempt_count = 0, release_count = 0, next_attempt_at = @now, error_code = NULL, completed_at = NULL
         WHERE batch_id = @batchId AND status = 'DEAD_LETTER'
       ]]></sql>
     </statement>

@@ -45,11 +45,13 @@ public sealed class BatchTests : IDisposable
         await _jobs.EnqueueAsync("j1", "T", "b1", "k1", "{}", T0, ct);
         await _jobs.ClaimAsync("dead-worker", 1, T0, T0.AddMinutes(1), ct);
 
-        Assert.Equal(1, await _jobs.ReclaimExpiredAsync(maxAttempts: 2, T0.AddMinutes(2), ct));
+        Assert.Equal(1, await _jobs.ReclaimExpiredAsync(maxAttempts: 2, T0.AddMinutes(2), retryAt: T0.AddMinutes(2.5), ct));
         Assert.Equal(JobStatus.Pending, (await _jobs.ListItemsAsync("b1", ct))[0].Status);
 
-        await _jobs.ClaimAsync("dead-worker", 1, T0.AddMinutes(2), T0.AddMinutes(3), ct); // attempt 2 of 2
-        await _jobs.ReclaimExpiredAsync(maxAttempts: 2, T0.AddMinutes(4), ct);
+        // Not claimable before its retry delay: a job that took its worker down does not take down the next one at once.
+        Assert.Empty(await _jobs.ClaimAsync("next-worker", 1, T0.AddMinutes(2.4), T0.AddMinutes(3), ct));
+        await _jobs.ClaimAsync("dead-worker", 1, T0.AddMinutes(2.5), T0.AddMinutes(3), ct); // attempt 2 of 2
+        await _jobs.ReclaimExpiredAsync(maxAttempts: 2, T0.AddMinutes(4), T0.AddMinutes(4), ct);
         var item = (await _jobs.ListItemsAsync("b1", ct))[0];
         Assert.Equal((JobStatus.DeadLetter, BatchService.LeaseExpired), (item.Status, item.ErrorCode));
 
@@ -135,7 +137,11 @@ public sealed class BatchTests : IDisposable
         Assert.Equal((JobStatus.DeadLetter, BatchService.InvalidInput, 1), (item.Status, item.ErrorCode, item.AttemptCount));
 
         var again = await batch.SubmitAsync([Item("a.txt")], ct);
-        Assert.Equal((0, "ANALYZE_CASE:e1:s1"), (again.Queued, Assert.Single(again.Duplicates)));
+        Assert.Equal((0, "ANALYZE_CASE:2:e1:s1"), (again.Queued, Assert.Single(again.Duplicates)));
+
+        // A ':' inside a ref does not make two alerts read as one.
+        var colons = await batch.SubmitAsync([new BatchItemRequest("c", "a:b", Item("a.txt").Files), new BatchItemRequest("b:c", "a", Item("a.txt").Files)], ct);
+        Assert.Equal((2, 0), (colons.Queued, colons.Duplicates.Count));
 
         // The way forward: the fixed files create the Case directly; no Case row was left behind.
         var files = Directory.GetFiles(GoldenCases.GoldenCaseTests.Folder("GC-11"), "*.txt").ToDictionary(p => Path.GetFileName(p), File.ReadAllText);
@@ -150,7 +156,7 @@ public sealed class BatchTests : IDisposable
         // Each read waits until all four are in flight: run one after another, the first would wait alone and time out.
         using var allIn = new CountdownEvent(4);
         var together = 0;
-        using var batch = new BatchService(_jobs, new CaseService(new CaseStore(_db), TimeProvider.System), _ =>
+        var batch = new BatchService(_jobs, new CaseService(new CaseStore(_db), TimeProvider.System), _ =>
             {
                 allIn.Signal();
                 if (allIn.Wait(TimeSpan.FromSeconds(10), ct)) Interlocked.Increment(ref together);
@@ -188,7 +194,7 @@ public sealed class BatchTests : IDisposable
         var ct = TestContext.Current.CancellationToken;
         var input = Aml.Infra.Txt.TxtCaseReader.Read(GoldenCases.GoldenCaseTests.Folder("GC-01"));
         var clock = new ManualTimeProvider(T0);
-        using var batch = new BatchService(_jobs, new CaseService(new UnavailableStore(), clock), _ => input,
+        var batch = new BatchService(_jobs, new CaseService(new UnavailableStore(), clock), _ => input,
             new BatchOptions { MaxAttempts = 3, RetryDelay = TimeSpan.FromSeconds(10) }, clock);
         var b = await batch.SubmitAsync([Item("a.txt")], ct);
         Assert.Equal(1, await batch.RunOnceAsync(ct));

@@ -61,18 +61,25 @@ internal sealed partial class CaseExport
         if (Contains(target))
             throw new CaseInputException(target, null, CaseInputException.Duplicate, $"Two input files read as {target}");
         if (!known) _attachments[target] = content;
-        else if (IsHtmlName(name) || LooksLikeMarkup(content))
-            _exportTexts[target] = CaseInputException.ReadOrMalformed(name, () => HtmlExport.ToExportText(content, HtmlExport.KindOf(Path.GetFileNameWithoutExtension(target)))).TrimStart(ByteOrderMark);
         else
         {
-            _exportTexts[target] = Decode(content, out var fallback);
+            // A page is decoded by the same rules as a text file, not by its meta charset: the upload keeps the bytes, a
+            // stored or JSON copy is text re-encoded as UTF-8, and both must read the same (a Big5 page with
+            // <meta charset=big5>, re-encoded, would otherwise be read as Big5 again and garbled).
+            var text = Decode(content, out var fallback);
             if (fallback) _findings.Add($"{EncodingFallback}:{name}");
+            _exportTexts[target] = IsHtmlName(name) || LooksLikeMarkup(text)
+                ? CaseInputException.ReadOrMalformed(name, () => HtmlExport.ToExportText(text, HtmlExport.KindOf(Path.GetFileNameWithoutExtension(target)))).TrimStart(ByteOrderMark)
+                : text;
         }
     }
 
+    /// <summary>UTF-16 when a byte order mark says so, else UTF-8, else Big5 with <paramref name="fallback"/> set.</summary>
     public static string Decode(byte[] bytes, out bool fallback)
     {
         fallback = false;
+        if (bytes is [0xFF, 0xFE, ..]) return Encoding.Unicode.GetString(bytes, 2, bytes.Length - 2);
+        if (bytes is [0xFE, 0xFF, ..]) return Encoding.BigEndianUnicode.GetString(bytes, 2, bytes.Length - 2);
         try
         {
             return StrictUtf8.GetString(bytes).TrimStart(ByteOrderMark);
@@ -123,14 +130,6 @@ internal sealed partial class CaseExport
         IsHtmlName(path) || Path.GetExtension(path).Equals(".txt", StringComparison.OrdinalIgnoreCase)
             ? Path.GetFileNameWithoutExtension(path) + ".txt"
             : Path.GetFileName(path);
-
-    // Sniffs the head as a StreamReader decodes it: UTF-8 unless a byte order mark says otherwise.
-    private static bool LooksLikeMarkup(byte[] content)
-    {
-        using var reader = new StreamReader(new MemoryStream(content));
-        var head = new char[MarkupSniffChars];
-        return LooksLikeMarkup(new string(head, 0, reader.Read(head, 0, head.Length)));
-    }
 
     private static bool LooksLikeMarkup(string text) =>
         text.AsSpan(0, Math.Min(text.Length, MarkupSniffChars)).TrimStart([ByteOrderMark, ' ', '\r', '\n', '\t']).StartsWith('<');

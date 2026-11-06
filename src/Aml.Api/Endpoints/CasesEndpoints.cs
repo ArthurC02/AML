@@ -203,6 +203,8 @@ internal static partial class CasesEndpoints
 
     private static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
 
+    private static readonly string[] RefParameters = ["subjectRef", "triggerEventId"];
+
     private static readonly string ItemFix = $"Send subjectRef, triggerEventId and files: .txt, .html or .htm files up to {MaxSizeText} each.";
 
     private static async Task<(BatchItemRequest? Item, CaseInput? Input, IReadOnlyDictionary<string, string>? Contents, ProblemHttpResult? Error)> ReadFormAsync(HttpRequest request, CancellationToken ct)
@@ -216,11 +218,13 @@ internal static partial class CasesEndpoints
         // answers it with its own status (413, 408), not as a malformed form.
         catch (Exception e) when (e is InvalidDataException or IOException and not BadHttpRequestException)
         {
-            return (null, null, null, Problems.Of(Problems.InvalidRequest, "The body is not a readable multipart form.", ItemFix));
+            return (null, null, null, Problems.Of(Problems.InvalidRequest, "The body is not a readable multipart form.", ItemFix, new { parameter = "body" }));
         }
         var (subjectRef, triggerEventId) = (form["subjectRef"].ToString(), form["triggerEventId"].ToString());
-        if (form["subjectRef"].Count != 1 || form["triggerEventId"].Count != 1 || string.IsNullOrWhiteSpace(subjectRef) || string.IsNullOrWhiteSpace(triggerEventId))
-            return (null, null, null, Problems.Of(Problems.InvalidRequest, "subjectRef and triggerEventId are required.", ItemFix, new { parameter = "subjectRef" }, new { parameter = "triggerEventId" }));
+        var refErrors = RefErrors(subjectRef, triggerEventId);
+        refErrors.AddRange(RefParameters.Where(p => form[p].Count > 1).Select(p => (object)new { parameter = p, problem = "REPEATED" }));
+        if (refErrors.Count > 0)
+            return (null, null, null, Problems.Of(Problems.InvalidRequest, $"subjectRef and triggerEventId are required, once each, up to {MaxRefLength} characters.", ItemFix, [.. refErrors]));
         var (input, contents, error) = await ReadUploadAsync(form.Files, ct);
         return (new BatchItemRequest(subjectRef, triggerEventId, contents ?? []), input, contents, error);
     }
@@ -229,7 +233,7 @@ internal static partial class CasesEndpoints
     private static async Task<(BatchItemRequest? Item, CaseInput? Input, IReadOnlyDictionary<string, string>? Contents, ProblemHttpResult? Error)> ReadJsonAsync(HttpRequest request, CancellationToken ct)
     {
         if (!request.HasJsonContentType())
-            return (null, null, null, Problems.Of(Problems.InvalidRequest, "Send multipart/form-data or application/json.", ItemFix));
+            return (null, null, null, Problems.Of(Problems.InvalidRequest, "Send multipart/form-data or application/json.", ItemFix, new { parameter = "Content-Type" }));
         BatchItemRequest? item;
         try
         {
@@ -237,11 +241,15 @@ internal static partial class CasesEndpoints
         }
         catch (Exception e) when (e is JsonException or InvalidOperationException)
         {
-            return (null, null, null, Problems.Of(Problems.InvalidRequest, "The body is not a JSON object with subjectRef, triggerEventId and files.", ItemFix));
+            return (null, null, null, Problems.Of(Problems.InvalidRequest, "The body is not a JSON object with subjectRef, triggerEventId and files.", ItemFix, new { parameter = "body" }));
         }
-        if (!ValidItem(item))
-            return (null, null, null, Problems.Of(Problems.InvalidRequest, $"subjectRef, triggerEventId and .txt, .html or .htm files up to {MaxSizeText} each are required.", ItemFix));
-        return (item, TxtCaseReader.ReadFiles(item!.Files), item.Files, null);
+        // The same rules as the multipart form: a missing or malformed ref is INVALID_REQUEST, an unreadable file UNSUPPORTED_FILE.
+        var errors = ItemErrors(item);
+        if (item is null || RefErrors(item.SubjectRef, item.TriggerEventId).Count > 0 || item.Files is not { Count: > 0 })
+            return (null, null, null, Problems.Of(Problems.InvalidRequest, $"subjectRef and triggerEventId (up to {MaxRefLength} characters) and files are required.", ItemFix, [.. errors]));
+        if (errors.Count > 0)
+            return (null, null, null, Problems.Of(Problems.UnsupportedFile, "Some files cannot be read", FileFix, [.. errors]));
+        return (item, TxtCaseReader.ReadFiles(item.Files), item.Files, null);
     }
 
     private static JsonHttpResult<T> View<T>(T value, int status = StatusCodes.Status200OK) => TypedResults.Json(value, CaseJson.Options, statusCode: status);

@@ -67,7 +67,7 @@ TEMPORAL_ROLE
 OTHER_IDENTIFIER
 ```
 
-Jaro-Winkler, Levenshtein and exact comparison of the same name are correlated features inside one NAME group. Aliases, former names, maiden names and other transliterations are compared inside NAME, not as extra groups.
+Jaro-Winkler, Levenshtein and exact comparison of the same name are correlated features inside one NAME group. Both measures compare at most the first 256 characters, far past any name: their cost is the product of the two lengths. Stated ages and the news legal stage look for the first 100 names of a Profile only, since each name is searched for in every sentence. Aliases, former names, maiden names and other transliterations are compared inside NAME, not as extra groups.
 
 `OTHER_IDENTIFIER` holds reference numbers and other labelled identifiers that are not identity documents; they keep their source label and never become DOCUMENT evidence, however much they look like one, even when a reference number passes the national-ID checksum (GC-12).
 

@@ -24,7 +24,7 @@ public static class CodeCatalog
     public static readonly IReadOnlyDictionary<string, CodeEntry> All = new (string Kind, string Code, string Name, string Description, string Rule, string Doc)[]
     {
         ("IDENTITY_REASON", "TEMPORALLY_PLAUSIBLE", "時序合理", "受檢對象在報導事件或職務起始時的年齡可能成立；不是身分佐證。", "EvidenceBuilder.TemporalEvidence", Identity + "#temporal-and-role-consistency"),
-        ("IDENTITY_REASON", "IMPOSSIBLE_AGE_AT_REPORTED_EVENT", "事件時年齡不可能", "受檢對象在名單記載的事件時不可能已達成年；已由 GC-01 驗證的硬衝突，可排除。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
+        ("IDENTITY_REASON", "IMPOSSIBLE_AGE_AT_REPORTED_EVENT", "事件時年齡不可能", "受檢對象在名單記載的事件（職務開始）時未滿 14 歲；已由 GC-01 驗證的硬衝突，可排除身分，除非來源品質降級（SOURCE_QUALITY_DOWNGRADE）或名單條件依放行控制仍需人工複核。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
         ("IDENTITY_REASON", "IMPOSSIBLE_ROLE_AT_REPORTED_EVENT", "事件時職務不可能", "受檢對象在職務起始時未達該職務的法定年齡；規則待驗證，維持 REVIEW。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
         ("IDENTITY_REASON", "FULL_DOB_CONFLICT", "完整出生日期不符", "雙方都有完整出生日期且不同；第三階段第 1 列，REVIEW。", "EvidenceBuilder.Build", Identity + "#stage-3-table"),
         ("IDENTITY_REASON", "DOCUMENT_IDENTITY_CONFLICT", "同類證件不符", "同類型、同發證國的證件號碼不同；第三階段第 1 列，REVIEW。", "EvidenceBuilder.DocumentEvidence", Identity + "#stage-3-table"),
@@ -180,6 +180,7 @@ public static class CodeCatalog
         ("JOB_ERROR", "TIMEOUT", "逾時", "工作超過 Batch:Timeout，不寫入 revision；依重試預算重試。", "BatchService", Api + "#durable-batch-execution"),
         ("JOB_ERROR", "EXCEPTION", "未預期的例外", "EXCEPTION:<例外型別>，例如資料庫錯誤；依重試預算重試，預算用盡後修正原因再以 rerun 重跑。", "BatchService", Api + "#durable-batch-execution"),
         ("JOB_ERROR", "LEASE_EXPIRED", "租約逾期", "工作者中途停止，租約到期後工作回到佇列；預算用盡則進入 DEAD_LETTER。", "JobStore.ReclaimExpiredAsync", Api + "#durable-batch-execution"),
+        ("JOB_ERROR", "RELEASE_LIMIT", "停機中斷過多", "主機停機時中斷超過 Batch:MaxReleases 次後，每次中斷都計入嘗試；預算用盡則進入 DEAD_LETTER。確認工作為何拖住停機後再以 rerun 重跑。", "JobStore.ReleaseAsync", Api + "#durable-batch-execution"),
         ("INPUT_PROBLEM", "MISSING", "缺檔", "必要檔案不存在。", "TxtCaseReader.RequiredFileProblem", Api + "#errors"),
         ("INPUT_PROBLEM", "DUPLICATE", "重複", "同一份必要檔案出現兩次，或兩個檔案讀成同一名稱。", "TxtCaseReader", Api + "#errors"),
         ("INPUT_PROBLEM", "MISSING_SECTION", "缺少區段", "案件資訊沒有「疑似符合的名單資料」區段。", "TxtCaseReader.ReadCaseTable", Api + "#errors"),

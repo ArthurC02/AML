@@ -22,7 +22,7 @@ When a second provider is chosen, the provider-specific parts of `SqliteDatabase
 | `aml_case` | one row per Case; unique on `(trigger_event_id, subject_ref)` (`uq_case_trigger`), indexed by `subject_ref` |
 | `case_analysis` | every analysis revision with its result and explanation as JSON, read back into their Core types |
 | `case_input` | the input files (decoded text) of each revision, for re-analysis after a source update |
-| `analysis_lineage` | what a revision was computed from: input file names and SHA-256, each Profile with its list version or `CASE_FILES`, and the source-policy, code-catalog, schema and application versions |
+| `analysis_lineage` | what a revision was computed from: input file names and SHA-256, each Profile with its list version or `CASE_FILES`, the source-policy, code-catalog, schema and application versions, and the analysis date (`as_of`, UTC) the time-dependent rules ran on |
 | `analysis_quality` | data quality of a revision: comparison cells by status, Profiles not evaluated, findings counted by code |
 | `case_hit`, `hit_evidence`, `hit_reason` | queryable facts of each hit (identity decision, stage 3 row, hard conflict, pair result, priority; each evidence group's direction, status, strength and detail code; identity, pair and disposition reason codes in order); `hit_reason` indexed by `reason_code` |
 | `job` | batch jobs (`ANALYZE_CASE`, `REANALYZE_CASE`) and their payloads; unique on `idempotency_key` (`uq_job_idempotency`), indexed by `(batch_id, status)` and, for claiming, `(status, priority DESC, created_at, next_attempt_at)`; `payload` is the last column |
@@ -108,7 +108,9 @@ One affected row means the worker owns the job. The worker gives a new `lease_ow
 
 - `Batch.RenewLease` extends `lease_expiry` just before the job writes its analysis revision; zero rows (the lease expired and was reclaimed) stops the job before it writes;
 - `Batch.Complete` and `Batch.Fail` change only that row; zero rows means the lease was reclaimed or the job already finished, and the worker logs a warning and leaves the job's state alone;
-- `Batch.Release`, when the host stops during a job, puts it back to `PENDING`, due at once, and takes back the interrupted attempt (`attempt_count - 1`).
+- `Batch.Release`, when the host stops during a job, puts it back to `PENDING`, due at once, and takes back the interrupted attempt (`attempt_count - 1`) while `release_count` is below `Batch:MaxReleases`; past that the attempt counts, and a job whose attempts are spent is dead-lettered (`RELEASE_LIMIT`). `release_count` rises on every release, and a re-run resets it with the attempts.
+
+`Batch.ReclaimExpired` returns a RUNNING job past its lease (its worker died) to `PENDING`, due after `Batch:RetryDelay`, or dead-letters it when its attempts are spent.
 
 Ceiling: many concurrent workers cause wasted attempts; upgrade to `UPDLOCK, READPAST` (SQL Server) or `FOR UPDATE SKIP LOCKED` (Oracle) when measured.
 

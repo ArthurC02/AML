@@ -36,11 +36,18 @@ public interface IJobStore
     /// <summary>Back to PENDING at <paramref name="nextAttemptAt"/>, or DEAD_LETTER. False when the caller no longer owns the lease.</summary>
     Task<bool> FailAsync(string jobId, string leaseOwner, bool deadLetter, string errorCode, DateTimeOffset nextAttemptAt, DateTimeOffset now, CancellationToken ct);
 
-    /// <summary>Back to PENDING now, giving the interrupted attempt back (host stopping). False when the caller no longer owns the lease.</summary>
-    Task<bool> ReleaseAsync(string jobId, string leaseOwner, DateTimeOffset now, CancellationToken ct);
+    /// <summary>
+    /// Back to PENDING now (host stopping), giving the interrupted attempt back for the first <paramref name="maxReleases"/>
+    /// releases of the job; past them, DEAD_LETTER (RELEASE_LIMIT) once <paramref name="maxAttempts"/> are spent. False when the
+    /// caller no longer owns the lease.
+    /// </summary>
+    Task<bool> ReleaseAsync(string jobId, string leaseOwner, int maxReleases, int maxAttempts, DateTimeOffset now, CancellationToken ct);
 
-    /// <summary>Returns RUNNING jobs with an expired lease to the queue, or dead-letters them when the retry budget is spent.</summary>
-    Task<int> ReclaimExpiredAsync(int maxAttempts, DateTimeOffset now, CancellationToken ct);
+    /// <summary>
+    /// Returns RUNNING jobs with an expired lease to the queue, due at <paramref name="retryAt"/>, or dead-letters them when
+    /// the retry budget is spent.
+    /// </summary>
+    Task<int> ReclaimExpiredAsync(int maxAttempts, DateTimeOffset now, DateTimeOffset retryAt, CancellationToken ct);
 
     /// <summary>Null statuses means all; ordered by (created at, id), starting after <paramref name="after"/>.</summary>
     Task<IReadOnlyList<JobItem>> ListItemsAsync(string batchId, CancellationToken ct,

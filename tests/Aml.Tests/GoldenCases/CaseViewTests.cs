@@ -19,7 +19,7 @@ public class CaseViewTests
         var analysis = CaseAnalyzer.Analyze(input);
         var explanation = ExplanationBuilder.Build(input, analysis);
         var revision = new AnalysisRecord("c1", 1, CaseLifecycle.Execution(analysis), CaseLifecycle.Aggregate(analysis), analysis, explanation,
-            AnalysisLineage.Of(input, []), AnalysisQuality.Of(explanation.Hits, input.Subject.Findings, analysis.NotEvaluatedProfiles.Count), T0);
+            AnalysisLineage.Of(input, [], DateOnly.FromDateTime(T0.UtcDateTime)), AnalysisQuality.Of(explanation.Hits, input.Subject.Findings, analysis.NotEvaluatedProfiles.Count), T0);
         var effective = revision.ExecutionStatus == ExecutionStatus.Completed ? 1 : (int?)null;
         return (new CaseRecord("c1", "s1", "e1", CaseLifecycle.AfterAnalysis(analysis, CaseStatus.Open), 1, effective, T0, T0), revision);
     }

@@ -14,8 +14,18 @@ public static class Similarity
     private const int WordBits = 64;
     private const int MaxStackallocCodePoints = 256;
 
+    /// <summary>
+    /// Longest text compared: no name is near it, and both measures cost the product of the two lengths, so a 1 MB "name"
+    /// would take hours. Longer text is compared on its first 256 characters.
+    /// </summary>
+    public const int MaxCompared = 256;
+
+    private static string Capped(string s) =>
+        s.Length <= MaxCompared ? s : s[..(char.IsHighSurrogate(s[MaxCompared - 1]) ? MaxCompared - 1 : MaxCompared)];
+
     public static int Levenshtein(string x, string y)
     {
+        (x, y) = (Capped(x), Capped(y));
         if (!HasSurrogates(x) && !HasSurrogates(y)) return Levenshtein<char>(x, y);
         Span<int> aBuffer = stackalloc int[Math.Min(x.Length, MaxStackallocCodePoints)];
         Span<int> bBuffer = stackalloc int[Math.Min(y.Length, MaxStackallocCodePoints)];
@@ -75,6 +85,7 @@ public static class Similarity
     public static double JaroWinkler(string x, string y)
     {
         if (x == y) return 1;
+        (x, y) = (Capped(x), Capped(y));
         if (!HasSurrogates(x) && !HasSurrogates(y)) return JaroWinkler<char>(x, y);
         Span<int> aBuffer = stackalloc int[Math.Min(x.Length, MaxStackallocCodePoints)];
         Span<int> bBuffer = stackalloc int[Math.Min(y.Length, MaxStackallocCodePoints)];

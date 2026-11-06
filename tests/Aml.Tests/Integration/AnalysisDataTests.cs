@@ -70,6 +70,8 @@ public sealed class AnalysisDataTests : ServiceTestBase
         Assert.Equal(("source-policy-0.2", CodeCatalog.Version, CaseJson.SchemaVersion),
             (lineage.SourcePolicyVersion, lineage.CodeCatalogVersion, lineage.SchemaVersion));
         Assert.Equal(new ProfileUse("90000031", AnalysisLineage.CaseFiles, null, lineage.Profiles[0].ContentHash), Assert.Single(lineage.Profiles));
+        var stored = DateOnly.FromDateTime(first.CreatedAt.UtcDateTime); // the analysis date is the UTC day it ran, at most midnight before the write
+        Assert.InRange(lineage.AsOf, stored.AddDays(-1), stored);
         Assert.Equal(9, first.Quality!.ComparisonCells);
 
         // The list database gets a changed version; its re-analysis records that version.

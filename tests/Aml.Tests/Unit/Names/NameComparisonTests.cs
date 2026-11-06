@@ -155,4 +155,26 @@ public class NameComparisonTests
         Assert.True(started.Elapsed < TimeSpan.FromSeconds(2), $"took {started.Elapsed}");
         Assert.Contains("XIANXIAN", Romanization.ReadingKeys("Xian Xian"));
     }
+
+    [Fact]
+    public void Text_far_longer_than_a_name_is_compared_on_its_first_256_characters()
+    {
+        var (a, b) = (new string('x', 1_000_000), new string('y', 1_000_000));
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Equal(Similarity.MaxCompared, Similarity.Levenshtein(a, b));
+        Assert.Equal(0, Similarity.JaroWinkler(a, b));
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(2), $"took {started.Elapsed}");
+        Assert.Equal(1, Similarity.Levenshtein(new string('x', 200) + "a", new string('x', 200) + "b")); // a name is compared whole
+    }
+
+    [Fact]
+    public void Many_aliases_or_a_long_article_cost_linear_time()
+    {
+        var aliases = Enumerable.Range(0, 10_000).Select(i => $"Alias{i}").ToList();
+        var article = string.Concat(Enumerable.Repeat("(x。", 10_000));
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Null(Aml.Core.Identity.StatedAgeCheck.FindStatedAge(article, aliases));
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(5), $"stated age took {started.Elapsed}");
+        Assert.Equal(45, Aml.Core.Identity.StatedAgeCheck.FindStatedAge("Alias7, aged 45", aliases));
+    }
 }

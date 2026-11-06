@@ -191,6 +191,8 @@ public static class ExplanationBuilder
         if (h.Identity.HardConflict is { } hc)
             sb.Append("硬衝突 " + hc + (!HardConflictGate.ValidatedReasonCodes.Contains(hc) ? "，規則尚待驗證，不自動排除。"
                 : h.Identity.ReasonCodes.Contains(ReasonCodes.SourceQualityDowngrade) ? "，但來源品質有疑慮（SOURCE_QUALITY_DOWNGRADE），維持人工複核，不自動排除。"
+                // The identity is excluded, but a raised Sanction, PEP or RCA condition keeps the pair for a person to close.
+                : h.PairReasonCodes.Contains(AssessmentPolicy.ReleaseControlHumanReview) ? "，身分可排除，但名單條件依放行控制（RELEASE_CONTROL_HUMAN_REVIEW）仍需人工複核。"
                 : "，足以排除。"));
         sb.Append(support.Count == 0
             ? "除姓名、國籍、性別等前提條件外，沒有任何佐證。"

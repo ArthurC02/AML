@@ -294,8 +294,9 @@ public static partial class SourceConditions
     /// <summary>An ADVERSE_MEDIA condition about conduct unrelated to money laundering (Article 22 ②): it is set aside.</summary>
     internal static bool IsUnrelatedAdverseMedia(SourceCondition c) => c.Type == ListType.AdverseMedia && c.AmlRelevance == AmlRelevance.Unrelated;
 
+    // ponytail: the first 100 names, as in StatedAgeCheck: every sentence and clause is searched for each name.
     private static bool MentionsAnyName(string sentence, IReadOnlyList<string> names) =>
-        names.Any(n => n.Length > 1 && sentence.Contains(n, StringComparison.OrdinalIgnoreCase));
+        names.Take(100).Any(n => n.Length > 1 && sentence.Contains(n, StringComparison.OrdinalIgnoreCase));
 
     // "〔記者丙／台北報導〕", "（中央社台北6日電）": the report states where it happened.
     [GeneratedRegex("／\\p{IsCJKUnifiedIdeographs}{2,4}報導|中央社\\p{IsCJKUnifiedIdeographs}{2,4}\\d{1,2}日電")]
@@ -338,74 +339,145 @@ public static partial class SourceConditions
     // - A dismissal or indictment counts in such a sentence, or in one that points at nobody else: a subjectless 檢方已起訴
     //   or a collective 起訴七人 (GC-12) is the person's; 同案, 另一, 其他 … mark someone else. Negation goes first:
     //   不起訴, 緩起訴 and 撤回起訴 are DISMISSED, never INDICTED.
-    // - A modal, request or presumption before the keyword in its clause (可, 恐, 求, 最重, 推定) is no stage: 最重可判處,
-    //   請求從重判處, 恐遭起訴. Words that only hold those characters (恐嚇, 恐怖, 可疑, 許可, 求償, 要求) are not modals.
+    // - A modal, request, plan, condition or hearsay before the keyword in its clause (可, 恐, 求, 最重, 推定, 擬, 預計, 即將,
+    //   將會, 若, 如果, 一旦, 據傳) is no stage: 最重可判處, 請求從重判處, 恐遭起訴, 擬起訴. Words that only hold those
+    //   characters (恐嚇, 恐怖, 恐龍, 可疑, 可是, 許可, 求償, 要求, 模擬, 若干) are not modals.
+    // - A negation or question just before the keyword (未, 沒有, 並未, 尚未, 從未, 不會, 無, 是否, with 被/遭/受 between)
+    //   is no stage: 尚未起訴, 沒有被起訴, 是否起訴. 不予起訴 and 免予起訴 are DISMISSED.
+    // - Quoted speech (「…」, 『…』, “…”) is a claim, not a report: no stage is read inside it, but names still are.
+    // - A clause whose own subject is another person is not the Profile person's, even in a sentence that names them:
+    //   王大明與李四涉詐欺，李四遭起訴. The clause must open (past 而, 但, 隨後 …) with a 2 or 3 character name of a common
+    //   surname other than the person's own, or "X姓男子", right before 遭, 被 or 獲 (李四遭, 林姓男子被); 王男遭 for 王大明
+    //   is the person, and 施用毒品遭 or 他曾涉案遭 open with no name.
     //   無罪 is an acquittal only after 判決, 改判 or 宣判 in its clause (堅稱無罪 is a claim).
     // - The last stage in the text wins; 偵辦 or 調查 give ALLEGED only when there is no judicial stage.
     private static LegalStage LegalStageFromNews(string? news, IReadOnlyList<string> names)
     {
         if (news is null) return LegalStage.Unknown;
         var stage = LegalStage.Unknown;
-        foreach (var sentence in CjkText.Sentences(news))
+        var surnames = names.Where(n => n.Length > 1 && CjkText.IsCjk(n[0])).Select(n => n[0]).ToHashSet();
+        // Quoted speech is blanked out, keeping every position: stages are looked for in the blanked text, names in the
+        // original (綽號「阿明」的王大明 still names the person).
+        var blanked = Quoted().Replace(news, m => new string('　', m.Length));
+        foreach (var (start, length) in Spans(blanked, 0, blanked.Length, SentenceEnds))
         {
-            var own = MentionsAnyName(sentence, names);
-            var attributable = own || !OtherParty.Any(m => sentence.Contains(m, StringComparison.Ordinal));
-            foreach (var clause in sentence.Split('，', ','))
+            var own = MentionsAnyName(news.Substring(start, length), names);
+            var attributable = own || !OtherParty.Any(m => blanked.AsSpan(start, length).Contains(m, StringComparison.Ordinal));
+            foreach (var (at, size) in Spans(blanked, start, length, ClauseEnds))
+            {
+                var clause = blanked.Substring(at, size);
+                if (!MentionsAnyName(news.Substring(at, size), names) && NamesAnotherPerson(clause, surnames)) continue;
                 if (LastStageIn(clause, attributable, own) is { } found) stage = found;
+            }
         }
-        var underInvestigation = news.Contains("偵辦", StringComparison.Ordinal) || news.Contains("調查", StringComparison.Ordinal);
+        var underInvestigation = blanked.Contains("偵辦", StringComparison.Ordinal) || blanked.Contains("調查", StringComparison.Ordinal);
         return stage == LegalStage.Unknown && underInvestigation ? LegalStage.Alleged : stage;
     }
+
+    private static readonly char[] SentenceEnds = ['。', '！', '？', '\n', '；'], ClauseEnds = ['，', ','];
+
+    // The (start, length) of each piece of text[from..from+length] between separators, as string.Split cuts it.
+    private static IEnumerable<(int Start, int Length)> Spans(string text, int from, int length, char[] separators)
+    {
+        var end = from + length;
+        for (var start = from; start <= end;)
+        {
+            var next = text.IndexOfAny(separators, start, end - start);
+            if (next < 0) next = end;
+            yield return (start, next - start);
+            start = next + 1;
+        }
+    }
+
+    // The clause's own subject is another person: it opens (past a connective) with a name of a common surname other
+    // than the person's own, 2 or 3 characters, or "X姓男子", right before 遭, 被 or 獲. A clause that opens with
+    // anything else (施用毒品遭, 高院二審被, 他曾涉案遭) is not taken as naming someone.
+    private static bool NamesAnotherPerson(string clause, HashSet<char> ownSurnames) =>
+        OtherPersonOpening().Match(clause) is { Success: true } m && CommonSurnames.Contains(m.Groups["surname"].Value[0], StringComparison.Ordinal)
+        && !ownSurnames.Contains(m.Groups["surname"].Value[0]);
 
     private static LegalStage? LastStageIn(string clause, bool attributable, bool own)
     {
         var found = new List<(int End, LegalStage Stage)>();
+        var modalEnd = FirstModalEnd(clause); // once per clause: a modal ending at or before a keyword qualifies it
         if (attributable)
         {
-            Find(found, clause, Dismissal(), LegalStage.Dismissed);
-            Find(found, clause, Indictment(), LegalStage.Indicted);
+            Find(found, clause, Dismissal(), LegalStage.Dismissed, modalEnd);
+            Find(found, clause, Indictment(), LegalStage.Indicted, modalEnd);
         }
         if (own)
         {
-            Find(found, clause, Conviction(), LegalStage.Convicted);
-            Find(found, clause, Acquittal(), LegalStage.Acquitted);
+            Find(found, clause, Conviction(), LegalStage.Convicted, modalEnd);
+            Find(found, clause, Acquittal(), LegalStage.Acquitted, modalEnd);
         }
         return found.Count > 0 ? found.MaxBy(f => f.End).Stage : null;
     }
 
-    private static void Find(List<(int, LegalStage)> found, string clause, Regex pattern, LegalStage stage)
+    private static void Find(List<(int, LegalStage)> found, string clause, Regex pattern, LegalStage stage, int modalEnd)
     {
         foreach (Match m in pattern.Matches(clause))
-            if (!ModalBefore(clause, m.Index)) found.Add((m.Index + m.Length, stage));
+            if (modalEnd > m.Index && !Negated(clause, m.Index)) found.Add((m.Index + m.Length, stage));
     }
 
-    // A modal anywhere before the keyword in its clause makes it no stage (最重可判處, 恐遭起訴, 檢方請求法院依法從重判處), but
-    // a word that only holds the modal's character is not one: 恐嚇, 恐怖, 可疑, 許可, 求償, 要求 (因恐嚇取財罪被判處 is a conviction).
+    // Where the first modal of the clause ends (past the end when there is none). A modal anywhere before the keyword makes
+    // it no stage (最重可判處, 檢方請求法院依法從重判處), but a word that only holds the modal's characters is not one.
     // ponytail: a name holding 可 or 求 (陳可欣遭起訴) still reads as a modal, so no stage: the safe side; exclude the matched
     // names when that costs real hits.
-    private static bool ModalBefore(string clause, int keyword)
+    private static int FirstModalEnd(string clause)
     {
+        var first = int.MaxValue;
         foreach (var (modal, notBefore, notAfter) in Modals)
-            for (var at = clause.IndexOf(modal, 0, keyword, StringComparison.Ordinal); at >= 0;
-                 at = at + 1 < keyword ? clause.IndexOf(modal, at + 1, keyword - at - 1, StringComparison.Ordinal) : -1)
+            for (var at = clause.IndexOf(modal, StringComparison.Ordinal); at >= 0 && at + modal.Length < first;
+                 at = clause.IndexOf(modal, at + 1, StringComparison.Ordinal))
             {
                 var next = at + modal.Length;
                 if (at > 0 && notBefore.Contains(clause[at - 1], StringComparison.Ordinal)) continue;
                 if (next < clause.Length && notAfter.Contains(clause[next], StringComparison.Ordinal)) continue;
-                return true;
+                first = next;
+                break;
             }
+        return first;
+    }
+
+    // 尚未起訴, 沒有被起訴, 是否遭到起訴: the words just before the keyword, past a passive marker.
+    private static bool Negated(string clause, int keyword)
+    {
+        var before = clause.AsSpan(0, keyword);
+        foreach (var passive in Passives)
+            if (before.EndsWith(passive, StringComparison.Ordinal)) { before = before[..^passive.Length]; break; }
+        foreach (var negation in Negations)
+            if (before.EndsWith(negation, StringComparison.Ordinal)) return true;
         return false;
     }
 
+    private static readonly string[] Passives = ["遭到", "遭", "被", "受"];
+
+    private static readonly string[] Negations = ["未", "沒有", "沒", "不會", "無", "是否"];
+
     private static readonly (string Modal, string NotBefore, string NotAfter)[] Modals =
-        [("可", "許認核不", "疑"), ("恐", "", "嚇怖慌懼"), ("求", "要訴需追", "償援助職"), ("最重", "", ""), ("推定", "", "")];
+    [
+        ("可", "許認核", "疑是"), ("恐", "", "嚇怖慌懼龍"), ("求", "要訴需追", "償援助職"), ("最重", "", ""), ("推定", "", ""),
+        ("擬", "模虛", ""), ("預計", "", ""), ("即將", "", ""), ("將會", "", ""), ("若", "", "干"), ("如果", "", ""), ("一旦", "", ""), ("據傳", "", ""),
+    ];
 
     private static readonly string[] OtherParty = ["同案", "另一", "另名", "其他", "其餘", "共犯", "共同被告"];
 
-    [GeneratedRegex("不起訴|緩起訴|撤回起訴")]
+    // ponytail: the commonest Taiwanese surnames, enough to tell 李四遭起訴 from 一審遭判處; a person with a rarer surname
+    // still reads as the Profile person's clause.
+    private const string CommonSurnames =
+        "陳林黃張李王吳劉蔡楊許鄭謝郭洪曾邱廖賴周徐蘇葉莊呂江何蕭羅高潘簡朱鍾鐘游彭詹胡施沈余盧梁趙顏柯翁魏孫戴范方宋鄧杜傅侯曹薛丁卓阮馬董溫唐藍蔣石古紀姚連馮歐程湯田康姜白汪鄒尤巫黎涂龔嚴韓袁金童陸夏柳邵錢伍倪于譚駱熊任甘秦顧毛章史官萬俞雷粘饒";
+
+    [GeneratedRegex(@"^\s*(?:而|但|則|另外|另|隨後|其後|後來|至於)?(?<surname>\p{IsCJKUnifiedIdeographs})(?:\p{IsCJKUnifiedIdeographs}{1,2}|姓(?:男子|女子|男|女|嫌犯|被告))(?:也|亦|則|已|均)?(?:遭到|遭|被|獲)")]
+    private static partial Regex OtherPersonOpening();
+
+    // Non-backtracking: a backtracking engine rescans to the end from every unclosed opening quote (1M 「 is quadratic).
+    [GeneratedRegex("「[^」]*」|『[^』]*』|“[^”]*”", RegexOptions.NonBacktracking)]
+    private static partial Regex Quoted();
+
+    [GeneratedRegex("不起訴|緩起訴|撤回起訴|不予起訴|免予起訴")]
     private static partial Regex Dismissal();
 
-    [GeneratedRegex("(?<!不|緩|撤回)起訴")]
+    [GeneratedRegex("(?<!不|緩|撤回|予)起訴")]
     private static partial Regex Indictment();
 
     [GeneratedRegex("判處|判刑|判決有罪|有罪確定|(?<!無罪)定讞")]

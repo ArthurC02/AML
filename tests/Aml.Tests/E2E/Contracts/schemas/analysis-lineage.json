@@ -1,5 +1,5 @@
 {
-  "$id": "aml:AnalysisLineage:v4",
+  "$id": "aml:AnalysisLineage:v5",
   "type": [
     "object",
     "null"
@@ -88,6 +88,11 @@
     "appVersion": {
       "description": "應用程式版本（組件 informational version）",
       "type": "string"
+    },
+    "asOf": {
+      "description": "分析基準日（UTC 日期）：PEP 職務是否都已結束以此日判斷",
+      "type": "string",
+      "format": "date"
     }
   },
   "required": [
@@ -96,6 +101,7 @@
     "sourcePolicyVersion",
     "codeCatalogVersion",
     "schemaVersion",
-    "appVersion"
+    "appVersion",
+    "asOf"
   ]
 }

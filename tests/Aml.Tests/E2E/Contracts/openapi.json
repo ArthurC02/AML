@@ -877,7 +877,7 @@
           "Batches"
         ],
         "summary": "Operator re-run: dead-lettered items of the batch go back to the queue with a fresh retry budget",
-        "description": "For transient failures (TIMEOUT, LEASE_EXPIRED, EXCEPTION:<type>) after their cause is fixed. Every dead-lettered item is requeued; INVALID_INPUT and INVALID_PAYLOAD fail the same way again, so fixed files for INVALID_INPUT go to POST /api/cases. Returns how many items were requeued.",
+        "description": "For transient failures (TIMEOUT, LEASE_EXPIRED, RELEASE_LIMIT, EXCEPTION:<type>) after their cause is fixed. Every dead-lettered item is requeued; INVALID_INPUT and INVALID_PAYLOAD fail the same way again, so fixed files for INVALID_INPUT go to POST /api/cases. Returns how many items were requeued.",
         "operationId": "rerunBatch",
         "parameters": [
           {
@@ -1131,7 +1131,8 @@
           "sourcePolicyVersion",
           "codeCatalogVersion",
           "schemaVersion",
-          "appVersion"
+          "appVersion",
+          "asOf"
         ],
         "type": "object",
         "properties": {
@@ -1169,6 +1170,11 @@
           "appVersion": {
             "type": "string",
             "description": "應用程式版本（組件 informational version）"
+          },
+          "asOf": {
+            "type": "string",
+            "description": "分析基準日（UTC 日期）：PEP 職務是否都已結束以此日判斷",
+            "format": "date"
           }
         }
       },

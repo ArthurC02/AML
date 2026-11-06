@@ -108,6 +108,22 @@ public class ExplanationTests
     }
 
     [Fact]
+    public void A_validated_hard_conflict_on_a_pep_says_the_identity_is_excluded_but_the_pair_stays_for_review()
+    {
+        // A role from age 9: the validated rule excludes the identity, but a PEP condition keeps the pair under release control.
+        var subject = new ScreenedSubject(SubjectRole.Customer, null, ["陳志明"], Gender.Male, new PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
+        var profile = new SourceProfile("DJ:1", Gender.Male, ["陳志明"], [], ["TW"], [],
+            [new SourceCategory("Politically Exposed Person (PEP)", null)], [], [new ProfileRole("部長", "某部", new PartialDate(1990, 1))], [], null, [], []);
+        var input = new CaseInput(subject, [new CandidateRow("陳志明", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
+            new Dictionary<string, NewsItem>(), []);
+        var h = Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input, asOf: new DateOnly(2026, 11, 4))).Hits);
+
+        Assert.Equal(ReasonCodes.ImpossibleAgeAtReportedEvent, h.HardConflict);
+        Assert.StartsWith("硬衝突 IMPOSSIBLE_AGE_AT_REPORTED_EVENT，身分可排除，但名單條件依放行控制", h.Summary.KeyEvidenceOrGaps, StringComparison.Ordinal);
+        Assert.DoesNotContain("足以排除", h.Summary.KeyEvidenceOrGaps, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void A_pending_hard_conflict_is_explained_as_not_closing_the_pair()
     {
         // A director at 17 under the pre-2023 adult age of 20: the role rule fires, but it is not validated, so the pair stays REVIEW.

@@ -27,8 +27,9 @@
 2. `INVALID_INPUT`: the files are incomplete or not in the export layout. Re-running fails the same way, and a new batch with the same `triggerEventId` and `subjectRef` is reported as a duplicate; create the Case from the fixed files with `POST /api/cases`. The batch item stays `DEAD_LETTER` and is not linked to that Case; a later re-run of the batch fails it again.
 3. `INVALID_PAYLOAD`: the job row has an unknown type, unreadable JSON or a missing field. It is dead-lettered at once; re-running it fails the same way.
 4. `TIMEOUT` or `EXCEPTION:<type>` (for example `EXCEPTION:SqliteException`): fix the cause, then `POST /api/batches/{batchId}/rerun`.
-5. `LEASE_EXPIRED`: a worker stopped mid-job. The job returns to the queue by itself while budget remains; otherwise re-run.
-6. Scale-out: several instances may share one database; the claim is optimistic, so a job runs on one worker at a time.
+5. `LEASE_EXPIRED`: a worker stopped mid-job without settling it (killed, crashed, or stopped past `Batch:ShutdownTimeout`). The job returns to the queue after `Batch:RetryDelay` while budget remains; otherwise re-run. Every job running in a process that crashed is charged an attempt, the job that caused the crash and its neighbours alike: a crash repeated `Batch:MaxAttempts` times dead-letters them all, and the re-run brings the innocent ones back. The warning "job(s) whose worker stopped without a word were reclaimed" and `aml.job.attempts{outcome="RECLAIMED"}` count them.
+6. Stopping: the worker cancels running analyses and waits for each job to settle, up to `Batch:ShutdownTimeout` (2.5 min, above `Batch:Timeout`); the log shows "waiting for running jobs" and then "settled in N s". A container's grace period (Kubernetes `terminationGracePeriodSeconds`, 30 s by default) must be longer, or the process is killed first. A job interrupted by a stop goes back to the queue without spending an attempt, at most `Batch:MaxReleases` (5) times; past that each interruption counts, so a job that keeps the host from stopping cleanly dead-letters with `RELEASE_LIMIT` (`aml.job.attempts{outcome="RELEASED"}` counts releases); find why it outlasts a stop, then re-run.
+7. Scale-out: several instances may share one SQLite database only on one host with a local disk (WAL over a network share, NFS, SMB or a shared volume, is unsafe). Group commit is per process, so instances on one file contend for the write lock (`busy_timeout` 5 s) and a write that waits longer fails. More than one host needs a server database; the claim is optimistic, so a job still runs on one worker at a time.
 
 ## Looking up a Case
 
@@ -39,7 +40,7 @@
 ## Audit
 
 - Every analysis revision is kept (`case_analysis`); nothing is overwritten. A late revision never replaces a newer effective one.
-- Each revision stores the full result and the explanation as JSON: evidence, source conditions with basis and policy version, identity decision, reason codes, review priority and the changes from the last effective revision. With it are its lineage (input file hashes, the list version of each Profile, rule-set and application versions) and its data quality counts.
+- Each revision stores the full result and the explanation as JSON: evidence, source conditions with basis and policy version, identity decision, reason codes, review priority and the changes from the last effective revision. With it are its lineage (input file hashes, the list version of each Profile, rule-set and application versions, the analysis date) and its data quality counts.
 - Document and reference numbers are masked in the explanation (first 3 and last 2 characters). The input files of every revision are stored (`case_input`) for re-analysis, as are batch job payloads; they hold unmasked personal data, so database access is restricted accordingly.
 - Every captured Profile version is kept with the SHA-256 of its normalized export text (`list_profile`); a changed Profile queues, in the same transaction, a re-analysis job for every Case whose latest input used it, and each job produces a new revision.
 - Imported legacy decisions are kept as `ImportedDecision` and never used as evidence.

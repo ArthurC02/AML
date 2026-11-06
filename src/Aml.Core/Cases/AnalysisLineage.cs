@@ -24,7 +24,8 @@ public sealed record AnalysisLineage(
     [property: Description("名單條件規則版本")] string SourcePolicyVersion,
     [property: Description("代碼字典版本")] string CodeCatalogVersion,
     [property: Description("儲存格式（JSON Schema）版本")] int SchemaVersion,
-    [property: Description("應用程式版本（組件 informational version）")] string AppVersion)
+    [property: Description("應用程式版本（組件 informational version）")] string AppVersion,
+    [property: Description("分析基準日（UTC 日期）：PEP 職務是否都已結束以此日判斷")] DateOnly AsOf)
 {
     public const string ListDatabase = "LIST_DATABASE";
     public const string CaseFiles = "CASE_FILES";
@@ -32,8 +33,8 @@ public sealed record AnalysisLineage(
     public static string CurrentAppVersion { get; } =
         typeof(AnalysisLineage).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
 
-    public static AnalysisLineage Of(CaseInput input, IReadOnlyList<ProfileUse> profiles) => new(
-        InputFilesByName(input), profiles, SourceConditions.PolicyVersion, CodeCatalog.Version, CaseJson.SchemaVersion, CurrentAppVersion);
+    public static AnalysisLineage Of(CaseInput input, IReadOnlyList<ProfileUse> profiles, DateOnly asOf) => new(
+        InputFilesByName(input), profiles, SourceConditions.PolicyVersion, CodeCatalog.Version, CaseJson.SchemaVersion, CurrentAppVersion, asOf);
 
     private static List<InputFile> InputFilesByName(CaseInput input) =>
         (input.SourceHashes ?? new Dictionary<string, string>()).OrderBy(f => f.Key, StringComparer.Ordinal).Select(f => new InputFile(f.Key, f.Value)).ToList();

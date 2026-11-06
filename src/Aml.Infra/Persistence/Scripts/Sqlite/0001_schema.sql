@@ -44,6 +44,7 @@ CREATE TABLE analysis_lineage (
     source_policy_version TEXT    NOT NULL,
     code_catalog_version  TEXT    NOT NULL,
     app_version           TEXT    NOT NULL,
+    as_of                 TEXT    NOT NULL, -- analysis date (UTC, yyyy-MM-dd) the time-dependent rules ran on
     input_files_json      TEXT    NOT NULL,
     profiles_json         TEXT    NOT NULL,
     CONSTRAINT pk_analysis_lineage PRIMARY KEY (case_id, revision),
@@ -125,6 +126,8 @@ CREATE TABLE job (
     created_at        TEXT    NOT NULL,
     completed_at      TEXT    NULL,
     error_code        TEXT    NULL,
+    -- Times the host stopped during the job and gave its attempt back; past Batch:MaxReleases the attempt counts.
+    release_count     INTEGER NOT NULL DEFAULT 0,
     -- Last: it holds the case files, and SQLite reads a row's columns in order, so the claim and status queries never
     -- read past it.
     payload           TEXT    NULL
@@ -146,4 +149,4 @@ CREATE TABLE list_profile (
 );
 
 -- The format of this file; must equal CaseJson.SchemaVersion (checked at startup and by CaseStoreTests).
-PRAGMA user_version = 4;
+PRAGMA user_version = 5;

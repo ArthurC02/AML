@@ -14,10 +14,11 @@ internal static class BatchesEndpoints
         batches.MapPost("/", async Task<Results<Accepted<BatchSubmitted>, ProblemHttpResult>> (BatchItemRequest[] items, BatchService service, CancellationToken ct) =>
         {
             var fix = $"Give every item subjectRef, triggerEventId and files: file name → text of a .txt, .html or .htm file up to {Uploads.MaxSizeText}.";
-            if (items.Length == 0) return Problems.Of(Problems.InvalidRequest, "No items", fix);
-            var invalid = items.Select((item, index) => (Index: index, Valid: Uploads.ValidItem(item))).Where(x => !x.Valid).Select(x => new { item = x.Index }).ToArray();
+            if (items.Length == 0) return Problems.Of(Problems.InvalidRequest, "No items", fix, new { parameter = "body" });
+            // The rules of POST /api/cases, so an item accepted here does not dead-letter later on its names.
+            var invalid = items.SelectMany((item, index) => Uploads.ItemErrors(item).Select(error => new { item = index, error })).ToArray();
             if (invalid.Length > 0)
-                return Problems.Of(Problems.InvalidRequest, $"Every item needs subjectRef, triggerEventId and .txt, .html or .htm files up to {Uploads.MaxSizeText} each", fix, invalid);
+                return Problems.Of(Problems.InvalidRequest, $"Every item needs subjectRef and triggerEventId (up to {Uploads.MaxRefLength} characters) and readable files", fix, invalid);
             var submitted = await service.SubmitAsync(items, ct);
             return TypedResults.Accepted($"/api/batches/{submitted.BatchId}", submitted);
         })
@@ -50,7 +51,7 @@ internal static class BatchesEndpoints
         batches.MapPost("/{batchId}/rerun", async Task<Results<Ok<RerunResponse>, NotFound>> (string batchId, BatchService service, CancellationToken ct) =>
             await service.GetAsync(batchId, ct, pageSize: 1) is null ? TypedResults.NotFound() : TypedResults.Ok(new RerunResponse(await service.RerunAsync(batchId, ct))))
         .WithSummary("Operator re-run: dead-lettered items of the batch go back to the queue with a fresh retry budget")
-        .WithDescription("For transient failures (TIMEOUT, LEASE_EXPIRED, EXCEPTION:<type>) after their cause is fixed. Every dead-lettered item is requeued; INVALID_INPUT and INVALID_PAYLOAD fail the same way again, so fixed files for INVALID_INPUT go to POST /api/cases. Returns how many items were requeued.")
+        .WithDescription("For transient failures (TIMEOUT, LEASE_EXPIRED, RELEASE_LIMIT, EXCEPTION:<type>) after their cause is fixed. Every dead-lettered item is requeued; INVALID_INPUT and INVALID_PAYLOAD fail the same way again, so fixed files for INVALID_INPUT go to POST /api/cases. Returns how many items were requeued.")
         .WithName("rerunBatch")
         .WithTags(Tags.Batches);
     }

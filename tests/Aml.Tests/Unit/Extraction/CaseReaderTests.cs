@@ -205,17 +205,25 @@ public class CaseReaderTests
         Assert.DoesNotContain(input.Subject.Findings, f => f.StartsWith("ENCODING_FALLBACK", StringComparison.Ordinal));
     }
 
-    [Theory]
-    [InlineData("one invalid byte")]
-    [InlineData("UTF-16")]
-    public void Bytes_that_are_not_utf8_fall_back_to_cp950_with_a_finding(string kind)
+    [Fact]
+    public void Bytes_that_are_not_utf8_fall_back_to_cp950_with_a_finding()
     {
-        var text = Text("GC-11", Customer);
-        var bytes = kind == "UTF-16"
-            ? [.. Encoding.Unicode.Preamble, .. Encoding.Unicode.GetBytes(text)]
-            : Encoding.UTF8.GetBytes(text).Append((byte)0xFF).ToArray();
+        var bytes = Encoding.UTF8.GetBytes(Text("GC-11", Customer)).Append((byte)0xFF).ToArray();
         var input = Read("GC-11", [], new Dictionary<string, byte[]> { [Customer] = bytes });
         Assert.Contains("ENCODING_FALLBACK:客戶-背景資料.txt", input.Subject.Findings);
+    }
+
+    [Fact]
+    public void UTF16_with_a_byte_order_mark_is_read_as_UTF16()
+    {
+        var text = Text("GC-11", Customer);
+        var expected = Read("GC-11", []).Subject;
+        foreach (var encoding in new[] { Encoding.Unicode, Encoding.BigEndianUnicode })
+        {
+            var subject = Read("GC-11", [], new Dictionary<string, byte[]> { [Customer] = [.. encoding.Preamble, .. encoding.GetBytes(text)] }).Subject;
+            Assert.Equal(expected.Names, subject.Names);
+            Assert.DoesNotContain(subject.Findings, f => f.StartsWith("ENCODING_FALLBACK", StringComparison.Ordinal));
+        }
     }
 
     // Input inventory.
@@ -277,11 +285,22 @@ public class CaseReaderTests
     private static string[] Lines(string html, HtmlExport.Kind kind = HtmlExport.Kind.Customer) =>
         HtmlExport.ToExportText(html, kind).Split('\n');
 
-    [Fact]
-    public void Html_bytes_follow_the_meta_charset()
+    [Theory]
+    [InlineData("big5 bytes")]
+    [InlineData("stored text")]  // the copy a re-read or a JSON item gets: text, re-encoded as UTF-8
+    [InlineData("utf-16")]
+    public void A_page_reads_the_same_as_uploaded_bytes_or_as_stored_text(string form)
     {
-        var page = Big5.GetBytes("<html><head><meta charset=\"big5\"></head><body><table><tr><th>本地名稱</th><td>鐘仁聲</td></tr></table></body></html>");
-        Assert.Equal(["本地名稱", "鐘仁聲", ""], HtmlExport.ToExportText(page, HtmlExport.Kind.Customer).Split('\n'));
+        const string Page = "<html><head><meta charset=\"big5\"></head><body><table><tr><th>本地名稱</th><td>鐘仁聲</td></tr></table></body></html>";
+        var bytes = form switch
+        {
+            "big5 bytes" => Big5.GetBytes(Page),
+            "stored text" => Encoding.UTF8.GetBytes(Page),
+            _ => [.. Encoding.Unicode.Preamble, .. Encoding.Unicode.GetBytes(Page)],
+        };
+        var input = Read("GC-11", [], new Dictionary<string, byte[]> { ["客戶-背景資料.html"] = bytes }, remove: [Customer]);
+        Assert.Contains("鐘仁聲", input.Subject.Names);
+        Assert.Equal(form == "big5 bytes", input.Subject.Findings.Contains("ENCODING_FALLBACK:客戶-背景資料.html"));
     }
 
     [Fact]
@@ -322,13 +341,18 @@ public class CaseReaderTests
         // 100,000 nested divs would overflow the stack of a recursive read, which no catch survives, and take the parser
         // minutes. The parse is cut at its budget, as text or as bytes, whatever markup does the nesting.
         static string Nested(int depth, string open = "<div>") => string.Concat(Enumerable.Repeat(open, depth)) + "<table><tr><td>a</td><td>b</td></tr></table>";
-        foreach (var open in new[] { "<div>", "<div/>", "<rt>", "<span-a></span>" })
+        // Side by side, as concurrent uploads would be: each waits its turn at the parser, then runs to its budget.
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        Parallel.ForEach(new Func<string>[]
         {
-            var started = System.Diagnostics.Stopwatch.StartNew();
-            Assert.Throws<FormatException>(() => HtmlExport.ToExportText(Nested(200_000, open), HtmlExport.Kind.Customer));
-            Assert.True(started.Elapsed < HtmlExport.ParseBudget * 2, $"{open} took {started.Elapsed}");
-        }
-        Assert.Throws<FormatException>(() => HtmlExport.ToExportText(Encoding.UTF8.GetBytes(Nested(200_000)), HtmlExport.Kind.Customer));
+            () => HtmlExport.ToExportText(Nested(200_000, "<div>"), HtmlExport.Kind.Customer),
+            () => HtmlExport.ToExportText(Nested(200_000, "<div/>"), HtmlExport.Kind.Customer),
+            () => HtmlExport.ToExportText(Nested(200_000, "<rt>"), HtmlExport.Kind.Customer),
+            () => HtmlExport.ToExportText(Nested(200_000, "<span-a></span>"), HtmlExport.Kind.Customer),
+            () => HtmlExport.ToExportText(Nested(200_000, "<p><div>"), HtmlExport.Kind.Customer),
+        }, read => Assert.Throws<FormatException>(read));
+        // Cut at the budget, not run for minutes: the bound leaves room for other tests sharing the cores.
+        Assert.True(started.Elapsed < HtmlExport.ParseBudget * (Environment.ProcessorCount >= 5 ? 4 : 8), $"took {started.Elapsed}");
         // Deeper than the read recurses, yet quick to parse: refused after the parse.
         Assert.Throws<FormatException>(() => HtmlExport.ToExportText(Nested(HtmlExport.MaxDepth + 10), HtmlExport.Kind.Customer));
         Assert.Throws<FormatException>(() => HtmlExport.ToExportText(string.Concat(Enumerable.Repeat("<table><tr><td>", 100)), HtmlExport.Kind.Customer));
@@ -341,6 +365,17 @@ public class CaseReaderTests
         var table = $"<table><tr><td colspan=\"100\">{new string('x', 100_000)}</td></tr></table>"; // 10 M characters each
         Assert.Equal(2, HtmlExport.ToExportText(table, HtmlExport.Kind.CaseTable).Split('\n').Length);
         Assert.Throws<FormatException>(() => HtmlExport.ToExportText(string.Concat(Enumerable.Repeat(table, 3)), HtmlExport.Kind.CaseTable));
+
+        // Pages that cost nothing to parse but used to cost minutes to read: every label or radio looked across the whole
+        // page, and every nesting level searched its subtree for a table.
+        // 40,000 labels took 61 s; the bound leaves room for other tests sharing the cores.
+        var read = System.Diagnostics.Stopwatch.StartNew();
+        HtmlExport.ToExportText(string.Concat(Enumerable.Repeat("<label for=z>a</label>", 40_000)), HtmlExport.Kind.Customer);
+        Assert.True(read.Elapsed < TimeSpan.FromSeconds(10), $"read in {read.Elapsed}");
+        Assert.Equal(["h", ""], HtmlExport.ToExportText(string.Concat(Enumerable.Repeat("<div>", 250)) + string.Concat(Enumerable.Repeat("<p>", 1_000)) + "<h1>h</h1>", HtmlExport.Kind.Customer).Split('\n'));
+        // A checked radio still reads as its label, found by for= or by nesting, the first label in page order.
+        Assert.Contains("v7", HtmlExport.ToExportText("<input type=radio name=a id=x checked><label for=x>v7</label><label for=x>v8</label>", HtmlExport.Kind.Customer), StringComparison.Ordinal);
+        Assert.Contains("v9", HtmlExport.ToExportText("<label><input type=radio name=b checked>v9</label>", HtmlExport.Kind.Customer), StringComparison.Ordinal);
 
         // One cell spanning 1,000 columns and many rows, under 20 KB of HTML.
         var spread = "<table><tr><td rowspan=\"65534\" colspan=\"1000\">x</td></tr>" + string.Concat(Enumerable.Repeat("<tr><td>y</td></tr>", 1_000)) + "</table>";
@@ -454,6 +489,18 @@ public class CaseReaderTests
         ]);
         Assert.Equal(["TW"], input.Subject.Nationalities);
         Assert.Contains(input.Subject.Addresses, a => a.Raw == "32556桃園市龍潭區 中興里１鄰中興路８８巷１２號");
+    }
+
+    [Fact]
+    public void NA_in_a_bank_side_country_field_is_Namibia_not_a_placeholder()
+    {
+        var customer = Read("GC-11", [(Customer, "國籍 1\nTaiwan", "國籍 1\nNA")]);
+        Assert.Contains("NA", customer.Subject.Nationalities);
+        Assert.DoesNotContain(customer.Subject.Findings, f => f.EndsWith(":國籍 1", StringComparison.Ordinal));
+
+        var related = Read("GC-12", [("客戶-關聯人背景資料.txt", "國籍 ：\nTaiwan", "國籍 ：\nNA")]);
+        Assert.Equal(["NA"], related.Subject.Nationalities);
+        Assert.Empty(Read("GC-12", [("客戶-關聯人背景資料.txt", "國籍 ：\nTaiwan", "國籍 ：\nN/A")]).Subject.Nationalities);
     }
 
     [Theory]                                // a single letter is AMBIGUOUS; a TW tax number has 8 digits

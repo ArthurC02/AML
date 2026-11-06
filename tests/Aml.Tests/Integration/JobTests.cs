@@ -26,7 +26,7 @@ public sealed class JobTests : ServiceTestBase
     {
         var ct = TestContext.Current.CancellationToken;
         await _jobs.EnqueueAsync("j1", jobType, "b1", "k1", payload, T0, ct);
-        using var batch = Batch();
+        var batch = Batch();
         Assert.Equal(1, await batch.RunOnceAsync(ct));
         var item = Assert.Single(await _jobs.ListItemsAsync("b1", ct));
         Assert.Equal((JobStatus.DeadLetter, BatchService.InvalidPayload, 1), (item.Status, item.ErrorCode, item.AttemptCount));
@@ -36,7 +36,7 @@ public sealed class JobTests : ServiceTestBase
     public async Task An_analysis_past_its_deadline_is_not_written()
     {
         var ct = TestContext.Current.CancellationToken;
-        using var batch = Batch(new BatchOptions { Timeout = TimeSpan.Zero, RetryDelay = TimeSpan.Zero });
+        var batch = Batch(new BatchOptions { Timeout = TimeSpan.Zero, RetryDelay = TimeSpan.Zero });
         var b = await batch.SubmitAsync([new BatchItemRequest("subject-11", "event-11", CaseFiles())], ct);
         await batch.RunOnceAsync(ct);
 
@@ -50,7 +50,7 @@ public sealed class JobTests : ServiceTestBase
     public async Task A_batch_items_Case_takes_its_jobs_id_so_a_replay_stores_the_same_Case()
     {
         var ct = TestContext.Current.CancellationToken;
-        using var batch = Batch();
+        var batch = Batch();
         var b = await batch.SubmitAsync([new BatchItemRequest("subject-12", "event-12", CaseFiles())], ct);
         await batch.RunOnceAsync(ct);
         var first = (await batch.GetAsync(b.BatchId, ct))!.Items[0];
@@ -73,7 +73,7 @@ public sealed class JobTests : ServiceTestBase
         var ct = TestContext.Current.CancellationToken;
         var seen = new System.Collections.Concurrent.ConcurrentBag<(string Call, bool Replayable)>();
         var queue = Record<IJobStore>(_jobs, seen);
-        using var batch = new BatchService(queue, new CaseService(Record<ICaseStore>(_cases, seen), TimeProvider.System),
+        var batch = new BatchService(queue, new CaseService(Record<ICaseStore>(_cases, seen), TimeProvider.System),
             TxtCaseReader.ReadFiles, new BatchOptions(), TimeProvider.System);
         await batch.SubmitAsync([new BatchItemRequest("subject-13", "event-13", CaseFiles())], ct);
         seen.Clear();
@@ -110,7 +110,7 @@ public sealed class JobTests : ServiceTestBase
     public async Task Batch_items_page_oldest_first_and_filter_by_view_or_status()
     {
         var ct = TestContext.Current.CancellationToken;
-        using var batch = Batch();
+        var batch = Batch();
         string[] ids = ["j0", "j1", "j2", "j3", "j4"];
         int[] seconds = [0, 1, 2, 2, 3]; // j2 and j3 tie on created_at: the job id breaks it
         foreach (var (id, s) in ids.Zip(seconds))
@@ -149,9 +149,31 @@ public sealed class JobTests : ServiceTestBase
         Assert.False(await _jobs.RenewLeaseAsync("j1", "b", T0.AddMinutes(5), ct));
         Assert.False(await _jobs.CompleteAsync("j1", "b", "c", 1, T0, ct));
         Assert.False(await _jobs.FailAsync("j1", "b", true, "X", T0, T0, ct));
-        Assert.False(await _jobs.ReleaseAsync("j1", "b", T0, ct));
+        Assert.False(await _jobs.ReleaseAsync("j1", "b", 5, 3, T0, ct));
         Assert.True(await _jobs.RenewLeaseAsync("j1", "a", T0.AddMinutes(5), ct));
-        Assert.Equal(0, await _jobs.ReclaimExpiredAsync(3, T0.AddMinutes(2), ct)); // renewed past the original expiry
+        Assert.Equal(0, await _jobs.ReclaimExpiredAsync(3, T0.AddMinutes(2), T0.AddMinutes(2), ct)); // renewed past the original expiry
+    }
+
+    [Fact]
+    public async Task A_job_released_more_than_the_cap_spends_its_attempts_dead_letters_and_a_rerun_resets_the_count()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        await _jobs.EnqueueAsync("j1", "T", "b1", "k1", "{}", T0, ct);
+        async Task<(int, JobStatus, string?)> ClaimAndRelease()
+        {
+            Assert.Single(await _jobs.ClaimAsync("a", 1, T0, T0.AddMinutes(1), ct));
+            Assert.True(await _jobs.ReleaseAsync("j1", "a", maxReleases: 2, maxAttempts: 3, T0, ct));
+            var item = Assert.Single(await _jobs.ListItemsAsync("b1", ct));
+            return (item.AttemptCount, item.Status, item.ErrorCode);
+        }
+        var outcomes = new List<(int, JobStatus, string?)>();
+        for (var i = 0; i < 5; i++) outcomes.Add(await ClaimAndRelease());
+        // Two releases refunded, then each interruption counts until the third attempt is spent.
+        Assert.Equal([(0, JobStatus.Pending, null), (0, JobStatus.Pending, null), (1, JobStatus.Pending, null), (2, JobStatus.Pending, null),
+            (3, JobStatus.DeadLetter, BatchService.ReleaseLimit)], outcomes);
+
+        await _jobs.RerunAsync("b1", T0, ct);
+        Assert.Equal((0, JobStatus.Pending, null), await ClaimAndRelease()); // a fresh budget, releases included
     }
 
     [Fact]
@@ -162,7 +184,7 @@ public sealed class JobTests : ServiceTestBase
         await _jobs.ClaimAsync("a", 1, T0, T0.AddMinutes(1), ct);
         Assert.True(await _jobs.CompleteAsync("j1", "a", "c", 1, T0, ct));
         Assert.False(await _jobs.FailAsync("j1", "a", true, "X", T0, T0, ct));
-        Assert.False(await _jobs.ReleaseAsync("j1", "a", T0, ct));
+        Assert.False(await _jobs.ReleaseAsync("j1", "a", 5, 3, T0, ct));
         Assert.Equal((JobStatus.Succeeded, "c"), Assert.Single(await _jobs.ListItemsAsync("b1", ct)) is var i ? (i.Status, i.CaseId) : default);
     }
 
@@ -176,7 +198,7 @@ public sealed class JobTests : ServiceTestBase
                 CREATE TRIGGER record_claim AFTER UPDATE OF status ON job WHEN NEW.status = 'RUNNING'
                 BEGIN INSERT INTO claim_owner VALUES (NEW.job_id, NEW.lease_owner); END;
                 """);
-        using var batch = Batch();
+        var batch = Batch();
         await _jobs.EnqueueAsync("j1", "T", "b1", "k1", "{}", T0, ct);
         await _jobs.EnqueueAsync("j2", "T", "b1", "k2", "{}", T0, ct);
         await batch.RunOnceAsync(ct); // both dead-letter (unreadable payload), each claimed once
@@ -200,7 +222,7 @@ public sealed class JobTests : ServiceTestBase
             stopping.Cancel(); // the host stops while the job runs
             return input;
         }
-        using var batch = new BatchService(_jobs, _caseService, ReadThenStop, new BatchOptions(), TimeProvider.System, _listService);
+        var batch = new BatchService(_jobs, _caseService, ReadThenStop, new BatchOptions(), TimeProvider.System, _listService);
         var b = await batch.SubmitAsync([new BatchItemRequest("subject-14", "event-14", CaseFiles())], ct);
 
         Assert.Equal(1, await batch.RunOnceAsync(stopping.Token));
@@ -242,7 +264,7 @@ public sealed class JobTests : ServiceTestBase
     public async Task A_job_that_lost_its_lease_before_writing_stores_no_revision()
     {
         var ct = TestContext.Current.CancellationToken;
-        using var batch = new BatchService(new LeaseLostQueue(_jobs), _caseService, TxtCaseReader.ReadFiles,
+        var batch = new BatchService(new LeaseLostQueue(_jobs), _caseService, TxtCaseReader.ReadFiles,
             new BatchOptions { RetryDelay = TimeSpan.Zero }, TimeProvider.System, _listService);
         var b = await batch.SubmitAsync([new BatchItemRequest("subject-11", "event-11", CaseFiles())], ct);
 
@@ -268,8 +290,8 @@ public sealed class JobTests : ServiceTestBase
             inner.CompleteAsync(jobId, leaseOwner, caseId, revision, now, ct);
         public Task<bool> FailAsync(string jobId, string leaseOwner, bool deadLetter, string errorCode, DateTimeOffset nextAttemptAt, DateTimeOffset now, CancellationToken ct) =>
             inner.FailAsync(jobId, leaseOwner, deadLetter, errorCode, nextAttemptAt, now, ct);
-        public Task<bool> ReleaseAsync(string jobId, string leaseOwner, DateTimeOffset now, CancellationToken ct) => inner.ReleaseAsync(jobId, leaseOwner, now, ct);
-        public Task<int> ReclaimExpiredAsync(int maxAttempts, DateTimeOffset now, CancellationToken ct) => inner.ReclaimExpiredAsync(maxAttempts, now, ct);
+        public Task<bool> ReleaseAsync(string jobId, string leaseOwner, int maxReleases, int maxAttempts, DateTimeOffset now, CancellationToken ct) => inner.ReleaseAsync(jobId, leaseOwner, maxReleases, maxAttempts, now, ct);
+        public Task<int> ReclaimExpiredAsync(int maxAttempts, DateTimeOffset now, DateTimeOffset retryAt, CancellationToken ct) => inner.ReclaimExpiredAsync(maxAttempts, now, retryAt, ct);
         public Task<IReadOnlyList<JobItem>> ListItemsAsync(string batchId, CancellationToken ct,
             IReadOnlyCollection<JobStatus>? statuses = null, (DateTimeOffset At, string Id)? after = null, int limit = int.MaxValue) =>
             inner.ListItemsAsync(batchId, ct, statuses, after, limit);

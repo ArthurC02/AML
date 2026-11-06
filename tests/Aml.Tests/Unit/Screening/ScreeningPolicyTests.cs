@@ -121,6 +121,32 @@ public class ScreeningPolicyTests
     [InlineData("陳志明因訴求勞資爭議被起訴。", LegalStage.Indicted)]
     [InlineData("陳志明未經許可吸金遭起訴。", LegalStage.Indicted)]
     [InlineData("檢方請求法院依法從重判處陳志明。", LegalStage.Unknown)]               // a request, however far before
+    [InlineData("陳志明尚未起訴。", LegalStage.Unknown)]                              // negations and questions are no stage
+    [InlineData("陳志明並未被起訴。", LegalStage.Unknown)]
+    [InlineData("陳志明沒有遭到起訴。", LegalStage.Unknown)]
+    [InlineData("檢方尚在評估是否起訴陳志明。", LegalStage.Unknown)]
+    [InlineData("陳志明未遭判刑。", LegalStage.Unknown)]
+    [InlineData("檢方對陳志明不予起訴。", LegalStage.Dismissed)]
+    [InlineData("陳志明不可能被起訴。", LegalStage.Unknown)]
+    [InlineData("檢方擬起訴陳志明。", LegalStage.Unknown)]                             // a plan, a condition, hearsay
+    [InlineData("陳志明若遭起訴將辭職。", LegalStage.Unknown)]
+    [InlineData("據傳陳志明已遭起訴。", LegalStage.Unknown)]
+    [InlineData("陳志明稱「我早就被判刑了」。", LegalStage.Unknown)]                   // quoted speech is a claim
+    [InlineData("陳志明說：「李四已被判刑」。", LegalStage.Unknown)]
+    [InlineData("陳志明與李四涉詐欺，李四遭起訴。", LegalStage.Unknown)]                // another person's clause
+    [InlineData("陳志明涉詐欺；李四遭起訴。", LegalStage.Unknown)]
+    [InlineData("陳志明涉詐欺，林姓男子被判處有期徒刑一年。", LegalStage.Unknown)]
+    [InlineData("陳志明涉詐欺，陳男遭起訴。", LegalStage.Indicted)]                    // the person's own surname: the person
+    [InlineData("陳志明涉詐欺，隨後李四也遭起訴。", LegalStage.Unknown)]
+    [InlineData("陳志明涉詐欺，施用毒品遭起訴。", LegalStage.Indicted)]                // a clause opening with a word, not a name
+    [InlineData("陳志明涉詐欺，高額詐貸遭起訴。", LegalStage.Indicted)]
+    [InlineData("陳志明涉貪，任內涉貪遭起訴。", LegalStage.Indicted)]
+    [InlineData("陳志明涉詐欺，他曾涉案遭起訴。", LegalStage.Indicted)]
+    [InlineData("陳志明遭起訴，地方法院一審被判處有期徒刑一年。", LegalStage.Convicted)]
+    [InlineData("綽號「阿明」的陳志明遭判處有期徒刑一年。", LegalStage.Convicted)]   // a quote does not hide the name around it
+    [InlineData("陳志明遭起訴，一審遭判處有期徒刑一年。", LegalStage.Convicted)]          // 一審 is no person
+    [InlineData("恐龍法官判處陳志明有期徒刑一年。", LegalStage.Convicted)]              // 恐龍 and 可是 are no modals
+    [InlineData("陳志明可是仍遭起訴。", LegalStage.Indicted)]
     [InlineData("陳志明恐遭起訴。", LegalStage.Unknown)]                              // still a possibility…
     [InlineData("陳志明可能遭到起訴。", LegalStage.Unknown)]
     [InlineData("檢方偵辦後，陳志明可能遭到起訴。", LegalStage.Alleged)]               // …so only the investigation counts
@@ -323,6 +349,26 @@ public class ScreeningPolicyTests
         Assert.Equal(former, SourceConditions.IsFormerPep(
             Profile("Politically Exposed Person", roles: [new ProfileRole("部長", "某部", new PartialDate(2010), new PartialDate(year, month, day))]),
             ownRoles: true, new DateOnly(2026, 11, 4)));
+
+    [Fact]
+    public void a_clause_of_many_keywords_is_read_in_linear_time()
+    {
+        // The modal was looked for again before every keyword: 200,000 起訴 in one clause took 13 s.
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var news = "陳志明" + string.Concat(Enumerable.Repeat("起訴", 200_000));
+        Assert.Equal(LegalStage.Indicted, Assert.Single(SourceConditions.Determine(Profile("Adverse Media"), false, news)).LegalStage);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(3), $"took {started.Elapsed}");
+    }
+
+    [Fact]
+    public void unclosed_quotes_are_read_in_linear_time()
+    {
+        // A backtracking quote pattern rescanned to the end from every unclosed 「.
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        var news = "陳志明遭起訴" + new string('「', 1_000_000);
+        Assert.Equal(LegalStage.Indicted, Assert.Single(SourceConditions.Determine(Profile("Adverse Media"), false, news)).LegalStage);
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(3), $"took {started.Elapsed}");
+    }
 
     [Fact]
     public void the_analysis_takes_its_date_from_the_caller_not_the_machine_clock()

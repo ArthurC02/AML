@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Aml.Core.Cases;
 using Aml.Core.Codes;
@@ -19,7 +20,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
 
     private sealed record AnalysisRow(string CaseId, long Revision, string ExecutionStatus, string CaseResult, string ResultJson, string? ExplanationJson, string CreatedAt);
 
-    private sealed record LineageRow(string InputFilesJson, string ProfilesJson, string SourcePolicyVersion, string CodeCatalogVersion, long SchemaVersion, string AppVersion);
+    private sealed record LineageRow(string InputFilesJson, string ProfilesJson, string SourcePolicyVersion, string CodeCatalogVersion, long SchemaVersion, string AppVersion, string AsOf);
 
     // Settable properties, not a constructor: the change count is NULL on a first revision, which a constructor match cannot type.
     private sealed class RevisionRow
@@ -124,7 +125,8 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
         return new AnalysisRecord(row.CaseId, (int)row.Revision, ParseCode<ExecutionStatus>(row.ExecutionStatus), ParseCode<ScreeningAssessment>(row.CaseResult),
             Read<CaseAnalysis>(row.ResultJson), row.ExplanationJson is null ? null : Read<CaseExplanation>(row.ExplanationJson),
             lineage is null ? null : new AnalysisLineage(Read<List<InputFile>>(lineage.InputFilesJson), Read<List<ProfileUse>>(lineage.ProfilesJson),
-                lineage.SourcePolicyVersion, lineage.CodeCatalogVersion, (int)lineage.SchemaVersion, lineage.AppVersion),
+                lineage.SourcePolicyVersion, lineage.CodeCatalogVersion, (int)lineage.SchemaVersion, lineage.AppVersion,
+                DateOnly.ParseExact(lineage.AsOf, "yyyy-MM-dd", CultureInfo.InvariantCulture)),
             quality is null ? null : ToQuality(quality),
             ParseTime(row.CreatedAt));
     }
@@ -170,6 +172,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
                 sourcePolicyVersion = l.SourcePolicyVersion,
                 codeCatalogVersion = l.CodeCatalogVersion,
                 appVersion = l.AppVersion,
+                asOf = l.AsOf.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 inputFilesJson = JsonSerializer.Serialize(l.InputFiles, CaseJson.Options),
                 profilesJson = JsonSerializer.Serialize(l.Profiles, CaseJson.Options),
             }).ConfigureAwait(false);

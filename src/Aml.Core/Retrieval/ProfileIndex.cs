@@ -45,7 +45,10 @@ public sealed class ProfileIndex
 
     // An alias's terms as numbers from the route's postings: tokens in name order with repeats (term frequency), grams and
     // reading keys distinct (sets).
-    private sealed record Alias(string ProfileKey, string Name, string Key, bool Cjk, int[] TokenIds, int[] GramIds, int[] ReadingIds);
+    private sealed record Alias(string ProfileKey, string Name, string Key, bool Cjk, int[] TokenIds, int[] GramIds, int[] ReadingIds)
+    {
+        public ulong GramSignature { get; } = TermOverlap.Signature(GramIds);
+    }
 
     // Built once and never changed: concurrent searches share it without locks. Aliases are addressed by position.
     private readonly Alias[] _aliases;
@@ -162,7 +165,7 @@ public sealed class ProfileIndex
         {
             var a = _aliases[reached[i]];
             bm25[i] = query.Bm25.Score(a.TokenIds, a.Cjk);
-            nGram[i] = TermOverlap.Dice(query.GramCount, a.GramIds.Length, TermOverlap.SharedCount(query.IsGram.Span, a.GramIds));
+            nGram[i] = NGramDice(query, a);
             reading[i] = TermOverlap.SharedCount(query.IsReading.Span, a.ReadingIds);
         });
 
@@ -181,6 +184,17 @@ public sealed class ProfileIndex
     }
 
     /// <summary>
+    /// The NGRAM route's Dice score, or 0 when even the most the two gram sets could share stays below the route's floor: the
+    /// ranking drops a score below the floor either way, so the bound only skips counting, never changes a result.
+    /// </summary>
+    private static double NGramDice(Query query, Alias a)
+    {
+        var mostShared = TermOverlap.MaxSharedCount(query.GramCount, query.GramSignature, a.GramIds.Length, a.GramSignature);
+        if (TermOverlap.Dice(query.GramCount, a.GramIds.Length, mostShared) < query.NGramFloor) return 0;
+        return TermOverlap.Dice(query.GramCount, a.GramIds.Length, TermOverlap.SharedCount(query.IsGram.Span, a.GramIds));
+    }
+
+    /// <summary>
     /// A query's terms per route as the index's term numbers, worked out once per search, with a pooled flag per term number
     /// for the overlap routes. Terms no alias holds are left out of the numbers (they match nothing), but still count in
     /// <see cref="GramCount"/>, the query's side of the Dice ratio.
@@ -191,6 +205,7 @@ public sealed class ProfileIndex
         public IReadOnlyList<int> TokenIds => Bm25.TokenIds;
         public int[] GramIds { get; }
         public int GramCount { get; }
+        public ulong GramSignature { get; }
         public int[] ReadingIds { get; }
         public PooledArray<bool> IsGram { get; }
         public PooledArray<bool> IsReading { get; }
@@ -204,6 +219,7 @@ public sealed class ProfileIndex
             Bm25 = index._bm25.For(tokens);
             GramIds = index._grams.KnownIds(grams);
             GramCount = grams.Count;
+            GramSignature = TermOverlap.Signature(GramIds);
             ReadingIds = index._readings.KnownIds(NameTerms.ReadingKeys(name));
             IsGram = Flags(index._grams.TermCount, GramIds);
             IsReading = Flags(index._readings.TermCount, ReadingIds);

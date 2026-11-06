@@ -21,7 +21,7 @@ Each record states context, decision and consequences. Records are never edited 
 | [0015](0015-no-commercially-licensed-libraries.md) | No commercially licensed libraries by default | Accepted |
 | [0016](0016-bank-list-type-vocabulary.md) | Bank list-type vocabulary and flag-first mapping | Accepted |
 | [0017](0017-article-22-disposition-policy.md) | Article 22 as a disposition policy | Accepted |
-| [0018](0018-legacy-ai-report-rules-not-adopted.md) | Legacy AI-report rules not adopted | Accepted |
+| [0018](0018-legacy-ai-report-rules-not-adopted.md) | Legacy AI-report rules not adopted | Accepted; Excel row amended by 0027 |
 | [0019](0019-strength-decision-table-before-fellegi-sunter.md) | Evidence-strength decision table before Fellegi-Sunter | Accepted |
 | [0020](0020-identification-only.md) | The system does identification only | Accepted |
 | [0021](0021-deferred-capabilities-built-behind-controls.md) | Deferred capabilities built behind the Phase 1 controls | Accepted |
@@ -30,6 +30,7 @@ Each record states context, decision and consequences. Records are never edited 
 | [0024](0024-business-api.md) | Business API | Accepted |
 | [0025](0025-lineage-records-what-ran.md) | Lineage records what ran | Accepted |
 | [0026](0026-replayable-job-writes-commit-without-sync.md) | Replayable job writes commit without a log sync | Accepted |
+| [0027](0027-case-workbook-renders-the-api.md) | The case workbook renders the API | Accepted |
 
 Template:
 

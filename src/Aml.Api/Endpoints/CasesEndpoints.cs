@@ -6,6 +6,7 @@ using System.Text.Json;
 using Microsoft.OpenApi;
 using Aml.Core.Retrieval;
 using Aml.Core.Subjects;
+using Aml.Infra.Excel;
 using Aml.Infra.Txt;
 using static Aml.Api.Endpoints.Uploads;
 
@@ -133,6 +134,36 @@ internal static class CasesEndpoints
         .WithSummary("The full record of one revision: result, explanation, lineage and data quality")
         .WithDescription("The audit record: nothing is left out, so it holds identifier values. Lineage gives the input file hashes, the Profile versions and the rule versions. Field meanings are in /api/schemas/revision, codes at /api/codes/{code}.")
         .WithName("getRevision")
+        .WithTags(Tags.Cases);
+
+        cases.MapGet("/{caseId}/workbook", async Task<Results<FileContentHttpResult, NotFound, ProblemHttpResult>> (
+            string caseId, string? view, int? revision, HttpResponse response, CaseService service, CancellationToken ct) =>
+        {
+            if (view is not (null or "summary" or "full"))
+                return Problems.Of(Problems.InvalidRequest, $"Unknown view '{view}'.", "Send view=summary or view=full.", new { parameter = "view" });
+            if (await service.GetAsync(caseId, ct) is not { } c || (revision ?? c.EffectiveRevision) is not { } rev
+                || await service.GetAnalysisAsync(caseId, rev, ct) is not { } a)
+                return TypedResults.NotFound();
+            using var bytes = new MemoryStream();
+            CaseWorkbook.Write(bytes, c, a, withIdentifierValues: view == "full");
+            response.Headers.CacheControl = "no-store";
+            return TypedResults.File(bytes.ToArray(), Xlsx.ContentType, $"case-{caseId}-revision-{rev}.xlsx");
+        })
+        .AddOpenApiOperationTransformer((op, _, _) =>
+        {
+            op.Responses!["200"] = new OpenApiResponse
+            {
+                Description = "OK",
+                Content = new Dictionary<string, OpenApiMediaType>
+                {
+                    [Xlsx.ContentType] = new() { Schema = new OpenApiSchema { Type = JsonSchemaType.String, Format = "binary" } },
+                },
+            };
+            return Task.CompletedTask;
+        })
+        .WithSummary("One revision (the effective one, or ?revision=) as an Excel workbook of seven sheets: 說明, 命中, 比對, 證據, 來源, 變更 and 代碼")
+        .WithDescription("Each sheet is one table with a frozen, filterable header; the hit number joins them. The workbook restates the stored revision and adds nothing. view=summary (default) holds no identifier values, compared values or source titles and, of personal data, only the Profile's main name; view=full adds them, as GET /api/cases/{caseId}/revisions/{revision}. Text is never a formula. The response is not cached (Cache-Control: no-store).")
+        .WithName("getCaseWorkbook")
         .WithTags(Tags.Cases);
     }
 

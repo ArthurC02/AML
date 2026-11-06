@@ -48,6 +48,7 @@ GET  /api/cases/{caseId}?view=full|summary
 GET  /api/cases/{caseId}/hits/{hit}?view=detail|summary&revision=
 GET  /api/cases/{caseId}/revisions
 GET  /api/cases/{caseId}/revisions/{revision}
+GET  /api/cases/{caseId}/workbook?view=summary|full&revision=
 GET  /api/cases/{caseId}/candidates?source=table|previous&top=
 POST /api/batches
 GET  /api/batches/{batchId}?view=summary|full&status=&pageSize=&pageToken=
@@ -80,6 +81,22 @@ A Case, a hit and a Profile are returned whole by default; `view=summary` return
 - **Revision** (`GET …/revisions/{revision}`): the full record of one revision: result, explanation, lineage and data quality. Nothing is left out of it, unlike the summaries. `GET …/revisions` lists every revision with its time, execution status, case result, whether it is effective and how many changes it made against the previous effective revision (none for the first analysis or a revision without an explanation).
 
 The hit views read the effective revision unless `?revision=` names another; any other `view` is `INVALID_REQUEST`. The full views hold identifier values; the summaries hold no field marked `IDENTIFIER` and, of the `PERSONAL` fields, only names ([data classification](security-and-privacy.md#data-classification)). Views and revision records leave out null fields; the Case and hit summaries also leave out empty lists.
+
+## Case workbook
+
+`GET /api/cases/{caseId}/workbook` returns the effective revision, or `?revision=`, as an Excel workbook (`Infra/Excel/CaseWorkbook`, written by `Infra/Excel/Xlsx` with the standard library; [ADR-0027](../adr/0027-case-workbook-renders-the-api.md)). It restates the stored revision and adds nothing. Its seven sheets are each one table with a bold, frozen and filterable header row, and the hit number joins them:
+
+| Sheet | Rows |
+|---|---|
+| 說明 | the Case (ids, status, revision, execution status, analysis time in UTC, case result, conclusion, changes), lineage (input file hashes, Profile versions, rule versions), quality counts and rates, and a data dictionary naming the field and meaning of every column |
+| 命中 | one per hit: Profile, list categories, HIT conditions, identity decision, stage 3 row, hard conflict, reason codes, pair result, review priority, Article 22 recommendation, findings, unknown fields, `wouldChangeIf` and the summary sentences |
+| 比對 | one per comparison row: field, status and difference |
+| 證據 | one per support and conflict item: group, direction, status, strength and detail |
+| 來源 | one per source: ref, id, name and URL (full view only), dates, use and whether it is attached to the Profile |
+| 變更 | one per change from the previous effective revision; none for a first analysis, which 說明 says |
+| 代碼 | every catalogued code the other sheets show, with its kind, Chinese name and meaning |
+
+`view=summary`, the default, holds what the summaries hold: no `IDENTIFIER` field, no compared value or note and, of personal data, only the Profile's main name. `view=full` adds the screened subject, matched names, the internal and external data sentences, compared values, notes, and source names and URLs (a news title can quote personal data). The 說明 conclusion is the Case summary's for the effective revision; another revision's says which revision is effective. A value joined with `；`, or with `,` in a change, is looked up as several codes for 代碼. Text is a text cell formatted as Text, never a formula; characters XML cannot carry are dropped, and text over 32,767 characters is cut with a note. Times are UTC. The same revision gives the same bytes. The file is named `case-<caseId>-revision-<n>.xlsx` and sent with `Cache-Control: no-store`; an unknown `view` is `INVALID_REQUEST`, an unknown Case or revision, or a Case without an effective revision and no `?revision=`, is `404`.
 
 ## Pagination
 

@@ -7,7 +7,7 @@
 | Topic | Decision | ADR |
 |---|---|---|
 | Runtime | C#, .NET 10 LTS, ASP.NET Core | [0007](../adr/0007-dotnet-technology-stack.md) |
-| Delivery | API + OpenAPI / Swagger UI, no UI | [0009](../adr/0009-api-only.md) |
+| Delivery | API + OpenAPI / Swagger UI, no UI; a case workbook (.xlsx) renders the API | [0009](../adr/0009-api-only.md), [0027](../adr/0027-case-workbook-renders-the-api.md) |
 | Input | supplied `.txt` exports and HTML pages; API or crawler later behind ports | [0012](../adr/0012-source-acquisition-behind-ports.md) |
 | Database | SQLite in the PoC; SQL Server or Oracle for production | [0010](../adr/0010-replaceable-persistence.md) |
 | Data access | Dapper + DbUp; SQL in `Sql.<provider>.xml` | [0010](../adr/0010-replaceable-persistence.md), [0014](../adr/0014-per-provider-xml-sql-catalog.md) |
@@ -58,6 +58,7 @@ AML/
 │   │   ├── Persistence/          # see feature/persistence.md
 │   │   ├── Txt/                  # .txt export reader (UTF-8, CP950 fallback), CaseInputException
 │   │   ├── Html/                 # HTML page to export layout (AngleSharp)
+│   │   ├── Excel/                # Xlsx (SpreadsheetML with the standard library), CaseWorkbook (seven sheets)
 │   │   └── Jobs/                 # JobStore
 │   └── Aml.Api/                  # composition root
 │       ├── Program.cs            # DI, OpenAPI, OpenTelemetry, health check, endpoint registration

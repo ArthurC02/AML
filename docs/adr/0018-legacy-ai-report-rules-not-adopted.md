@@ -1,6 +1,6 @@
 # ADR-0018: Legacy AI-report rules not adopted
 
-- Status: Accepted
+- Status: Accepted; Excel row amended by [ADR-0027](0027-case-workbook-renders-the-api.md)
 - Date: 2026-11-02
 
 ## Context

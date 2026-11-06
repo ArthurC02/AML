@@ -95,6 +95,22 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(revision.GetRawText(), full.GetProperty("effective").GetRawText());
         Assert.Equal(full.GetRawText(), (await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}?view=full", ct)).GetRawText());
 
+        // The workbook renders the effective revision, or ?revision=, and is never cached.
+        using var workbook = await client.GetAsync($"/api/cases/{caseId}/workbook?revision=1", ct);
+        Assert.Equal(HttpStatusCode.OK, workbook.StatusCode);
+        Assert.Equal(Infra.Excel.Xlsx.ContentType, workbook.Content.Headers.ContentType?.MediaType);
+        Assert.Equal($"case-{caseId}-revision-1.xlsx", workbook.Content.Headers.ContentDisposition?.FileName);
+        Assert.True(workbook.Headers.CacheControl?.NoStore);
+        var sheets = GoldenCases.WorkbookTests.Read(await workbook.Content.ReadAsByteArrayAsync(ct));
+        Assert.Equal(7, sheets.Count);
+        var fullBook = GoldenCases.WorkbookTests.Read(await client.GetByteArrayAsync($"/api/cases/{caseId}/workbook?view=full", ct));
+        Assert.Contains("受檢對象的值", fullBook.Single(s => s.Name == "比對").Rows[0]);
+        Assert.DoesNotContain("受檢對象的值", sheets.Single(s => s.Name == "比對").Rows[0]);
+        // Revision 1 is no longer effective, so its conclusion only points to the effective one.
+        Assert.Contains(sheets[0].Rows, row => row[1] == "結論" && row[2]!.Contains("生效 revision 為 2", StringComparison.Ordinal));
+        using var noRevision = await client.GetAsync($"/api/cases/{caseId}/workbook?revision=9", ct);
+        Assert.Equal(HttpStatusCode.NotFound, noRevision.StatusCode);
+
         var found = await client.GetFromJsonAsync<JsonElement>("/api/cases?subjectRef=subject-GC-03", ct);
         Assert.Contains(found.GetProperty("items").EnumerateArray(), i => i.GetProperty("caseId").GetString() == caseId);
     }
@@ -271,6 +287,8 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
     [InlineData("GET", "/api/cases/unknown?view=table", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("GET", "/api/cases/unknown/revisions", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("GET", "/api/cases/unknown/revisions/1", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/cases/unknown/workbook", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/cases/unknown/workbook?view=table", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("GET", "/api/cases", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("GET", "/api/cases?subjectRef=s&pageSize=101", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("GET", "/api/cases?subjectRef=s&pageSize=abc", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")] // binding failure

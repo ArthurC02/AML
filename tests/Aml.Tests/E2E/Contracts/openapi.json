@@ -713,6 +713,61 @@
         }
       }
     },
+    "/api/cases/{caseId}/workbook": {
+      "get": {
+        "tags": [
+          "Cases"
+        ],
+        "summary": "One revision (the effective one, or ?revision=) as an Excel workbook of seven sheets: 說明, 命中, 比對, 證據, 來源, 變更 and 代碼",
+        "description": "Each sheet is one table with a frozen, filterable header; the hit number joins them. The workbook restates the stored revision and adds nothing. view=summary (default) holds no identifier values, compared values or source titles and, of personal data, only the Profile's main name; view=full adds them, as GET /api/cases/{caseId}/revisions/{revision}. Text is never a formula. The response is not cached (Cache-Control: no-store).",
+        "operationId": "getCaseWorkbook",
+        "parameters": [
+          {
+            "name": "caseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "revision",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "Not Found"
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/batches": {
       "post": {
         "tags": [

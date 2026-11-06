@@ -74,7 +74,7 @@ public class CaseReaderTests
     [InlineData("Korea", null)]
     [InlineData("no", null)]
     public void Country_maps_iso_codes_names_and_taiwan_aliases_else_null(string raw, string? code) =>
-        Assert.Equal(code, Normalize.Country(raw));
+        Assert.Equal(code, SourceValues.Country(raw));
 
     [Fact]
     public void TW_and_Taiwan_Province_of_China_do_not_conflict()

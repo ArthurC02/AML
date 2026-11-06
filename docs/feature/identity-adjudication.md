@@ -112,7 +112,7 @@ Similarity values only grade `PARTIAL` within a group (placeholder thresholds, p
 
 ### Name comparison
 
-`Normalize.CompareNames` compares every subject name with every Profile name (aliases included). Comparison keys apply NFKC, fold case, drop spaces and punctuation, and keep letters, digits and private-use (造字) characters per code point, so a supplementary-plane character is one character. A character the source could not render (?, ＊, U+FFFD) stays in the key as an unknown character; a key holding one is never EXACT.
+`NameComparison.CompareNames` compares every subject name with every Profile name (aliases included). Comparison keys apply NFKC, fold case, drop spaces and punctuation, and keep letters, digits and private-use (造字) characters per code point, so a supplementary-plane character is one character. A character the source could not render (?, ＊, U+FFFD) stays in the key as an unknown character; a key holding one is never EXACT.
 
 A name is EXACT when a subject key equals a Profile key, trying the fewest relaxations first (each alone, then combined). Each relaxation used is disclosed as a finding in the NAME detail:
 

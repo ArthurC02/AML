@@ -49,7 +49,7 @@ public static class Romanization
     }
 
     private static bool IsUnreadUnknownOrOtherScript(Rune r) =>
-        Normalize.IsUnrenderable(r) || (!Rune.IsWhiteSpace(r) && !Rune.IsPunctuation(r));
+        NameComparison.IsUnrenderable(r) || (!Rune.IsWhiteSpace(r) && !Rune.IsPunctuation(r));
 
     private static IEnumerable<string> Product(IReadOnlyList<IReadOnlyCollection<string>> sets)
     {
@@ -60,7 +60,7 @@ public static class Romanization
 
     private static List<HashSet<string>[]>? SyllableReadingsPerWordOrder(string name)
     {
-        var words = Normalize.NameTokens(name).SelectMany(w => w.Split([',', '.'], StringSplitOptions.RemoveEmptyEntries)).ToArray();
+        var words = NameComparison.NameTokens(name).SelectMany(w => w.Split([',', '.'], StringSplitOptions.RemoveEmptyEntries)).ToArray();
         if (words.Length == 0) return null;
         // ponytail: a hyphenated given name (Chih-Ming) marks Taiwanese passport style, so a syllable that is also a
         // Wade-Giles/Tongyong/passport spelling reads only in those systems (Chi-Ming is ji/qi, not chi). Heuristic; a
@@ -86,7 +86,7 @@ public static class Romanization
         var acc = new List<string>();
         foreach (var hyphenPart in word.Split('-', StringSplitOptions.RemoveEmptyEntries))
         {
-            var key = Normalize.NameKey(hyphenPart);
+            var key = NameComparison.NameKey(hyphenPart);
             if (key.Length == 0 || !key.All(char.IsAsciiLetter) || !Split(key, 0, acc)) return null;
         }
         return acc.Count == 0 ? null : [.. acc];
@@ -119,7 +119,7 @@ public static class Romanization
     private const int WadeGilesPassportColumn = 1;
     private const int TongyongColumn = 2;
 
-    private static readonly string[][] Rows = Normalize.DataLines("romanization.txt").Select(l => l.Split('\t')).ToArray();
+    private static readonly string[][] Rows = EmbeddedTables.Lines("romanization.txt").Select(l => l.Split('\t')).ToArray();
     private static readonly HashSet<string> Pinyin = Rows.Select(r => r[PinyinColumn]).ToHashSet();
 
     // ponytail: the passport list is controlled and grows from reviewed cases.
@@ -136,7 +136,7 @@ public static class Romanization
     private static Dictionary<int, List<string>> BuildHanzi()
     {
         var map = new Dictionary<int, List<string>>();
-        foreach (var l in Normalize.DataLines("hanzi-pinyin.txt"))
+        foreach (var l in EmbeddedTables.Lines("hanzi-pinyin.txt"))
         {
             var tab = l.IndexOf('\t', StringComparison.Ordinal);
             foreach (var r in l[(tab + 1)..].EnumerateRunes())

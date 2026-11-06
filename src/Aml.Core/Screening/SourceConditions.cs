@@ -287,7 +287,7 @@ public static partial class SourceConditions
         if (news is null || hasPredicateRiskCategory) return AmlRelevance.Uncertain;
         var statesJurisdiction = (p.AllegationCountries ?? []).Count > 0 || Dateline().IsMatch(news);
         var mentionsPredicateOffence = PredicateConduct.Concat(SeriousConsequence).Any(w => news.Contains(w, StringComparison.OrdinalIgnoreCase));
-        var personNamedInNonPredicateConduct = Normalize.Sentences(news).Where(s => MentionsAnyName(s, p.Names))
+        var personNamedInNonPredicateConduct = CjkText.Sentences(news).Where(s => MentionsAnyName(s, p.Names))
             .Any(s => NonPredicateConduct.Any(w => s.Contains(w, StringComparison.OrdinalIgnoreCase)));
         return statesJurisdiction && personNamedInNonPredicateConduct && !mentionsPredicateOffence ? AmlRelevance.Unrelated : AmlRelevance.Uncertain;
     }
@@ -346,7 +346,7 @@ public static partial class SourceConditions
     {
         if (news is null) return LegalStage.Unknown;
         var stage = LegalStage.Unknown;
-        foreach (var sentence in Normalize.Sentences(news))
+        foreach (var sentence in CjkText.Sentences(news))
         {
             var own = MentionsAnyName(sentence, names);
             var attributable = own || !OtherParty.Any(m => sentence.Contains(m, StringComparison.Ordinal));

@@ -57,7 +57,7 @@ public static class StatedAgeCheck
     private static (int Age, bool StatedAtEventTime)? Find(string text, IEnumerable<string> names)
     {
         var list = names.Where(n => n.Length > 0).ToList();
-        foreach (var sentence in Normalize.Sentences(text))
+        foreach (var sentence in CjkText.Sentences(text))
         {
             if (AgeFromRespectivelyList(sentence, list) is { } each) return (each, false);
             foreach (var name in list)
@@ -74,7 +74,7 @@ public static class StatedAgeCheck
             $@"{n}\s?[（(，,]?\s?(?:今年|現年|(?<event>時年))?\s?{AgeNumber}{AgeUnit}|{NotThresholdOrApproximation}{AgeNumber}{AgeUnit}的?{n}"
             + $@"|{n},?\s+aged\s+(?<n>\d{{1,3}})\b|\b(?<n>\d{{1,3}})-year-old\s+{n}|{n}\s?\((?<n>\d{{1,3}})\)",
             RegexOptions.IgnoreCase);
-        return m.Success && Normalize.ChineseNumber(m.Groups["n"].Value) is { } age ? (age, m.Groups["event"].Success) : null;
+        return m.Success && ChineseNumerals.Parse(m.Groups["n"].Value) is { } age ? (age, m.Groups["event"].Success) : null;
     }
 
     // "甲、乙分別為44歲、45歲": the names before 分別 pair up in order with the ages after it.
@@ -84,7 +84,7 @@ public static class StatedAgeCheck
         if (at <= 0) return null;
         var who = Regex.Match(sentence[..at], "[\\p{IsCJKUnifiedIdeographs}、和及與]+$").Value.Split('、', '和', '及', '與');
         var ages = Regex.Matches(sentence[(at + Respectively.Length)..].TrimStart('為', ' '), $"\\G{AgeNumber}(?:{AgeUnit})?\\s?[、，,和及]?\\s?")
-            .Select(m => Normalize.ChineseNumber(m.Groups["n"].Value)).ToList();
+            .Select(m => ChineseNumerals.Parse(m.Groups["n"].Value)).ToList();
         if (ages.Count != who.Length || ages.Any(a => a is null)) return null;
         var index = Array.FindIndex(who, w => names.Any(n => w.EndsWith(n, StringComparison.Ordinal)));
         return index >= 0 ? ages[index] : null;

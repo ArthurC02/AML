@@ -26,17 +26,17 @@ public class IdentityRuleTests
     [InlineData("ＷＡＮＧ ＭＩＮＧ", "Wang Ming")]   // full-width Latin, NFKC
     public void Controlled_variants_and_NFKC_make_names_exact(string subject, string profile)
     {
-        var (status, _) = Normalize.CompareNames([subject], [profile]);
+        var (status, _) = NameComparison.CompareNames([subject], [profile]);
         Assert.Equal(Exact, status);
     }
 
     [Fact]
     public void Variant_match_is_disclosed_and_distinct_surnames_never_fold()
     {
-        Assert.Equal((Exact, Findings.VariantCharacters), Normalize.CompareNames(["鍾仁聲"], ["鐘仁聲"]));
-        Assert.Equal((Exact, (string?)null), Normalize.CompareNames(["鐘仁聲"], ["鐘仁聲"]));
-        Assert.Equal(Partial, Normalize.CompareNames(["涂志明"], ["塗志明"]).Status);
-        Assert.Equal(Partial, Normalize.CompareNames(["鍾仁聲"], ["鐘任聲"]).Status); // 仁/任 differ in reading and are not folded
+        Assert.Equal((Exact, Findings.VariantCharacters), NameComparison.CompareNames(["鍾仁聲"], ["鐘仁聲"]));
+        Assert.Equal((Exact, (string?)null), NameComparison.CompareNames(["鐘仁聲"], ["鐘仁聲"]));
+        Assert.Equal(Partial, NameComparison.CompareNames(["涂志明"], ["塗志明"]).Status);
+        Assert.Equal(Partial, NameComparison.CompareNames(["鍾仁聲"], ["鐘任聲"]).Status); // 仁/任 differ in reading and are not folded
     }
 
     [Theory]
@@ -44,20 +44,20 @@ public class IdentityRuleTests
     [InlineData("JHONG JENN SHENG", "Ren Sheng Zhong")]  // Tongyong-style spelling, given-first order
     [InlineData("Hsieh Chih-Ming", "XIE ZHI MING")]       // Wade-Giles
     public void Romanization_variants_are_partial_and_disclosed(string subject, string profile) =>
-        Assert.Equal((Partial, Findings.RomanizationVariant), Normalize.CompareNames([subject], [profile]));
+        Assert.Equal((Partial, Findings.RomanizationVariant), NameComparison.CompareNames([subject], [profile]));
 
     [Fact]
     public void Romanization_needs_every_syllable_and_never_reaches_chinese()
     {
-        Assert.NotEqual(Findings.RomanizationVariant, Normalize.CompareNames(["CHUNG JEN"], ["Zhong Ren Sheng"]).Detail);
-        Assert.NotEqual(Findings.RomanizationVariant, Normalize.CompareNames(["CHUNG JEN SHENG"], ["Zhong Lin Sheng"]).Detail);
-        Assert.NotEqual(Findings.RomanizationVariant, Normalize.CompareNames(["CHUNG JEN SHENG"], ["鍾仁聲"]).Detail);
+        Assert.NotEqual(Findings.RomanizationVariant, NameComparison.CompareNames(["CHUNG JEN"], ["Zhong Ren Sheng"]).Detail);
+        Assert.NotEqual(Findings.RomanizationVariant, NameComparison.CompareNames(["CHUNG JEN SHENG"], ["Zhong Lin Sheng"]).Detail);
+        Assert.NotEqual(Findings.RomanizationVariant, NameComparison.CompareNames(["CHUNG JEN SHENG"], ["鍾仁聲"]).Detail);
     }
 
     [Fact]
     public void Name_similarity_is_disclosed_on_partial_only()
     {
-        var (status, detail) = Normalize.CompareNames(["陳志明"], ["陳志銘"]);
+        var (status, detail) = NameComparison.CompareNames(["陳志明"], ["陳志銘"]);
         Assert.Equal(Partial, status);
         Assert.Equal("NOT_IDENTICAL_AFTER_NORMALIZATION（Jaro-Winkler 0.82，Levenshtein 1，DISSIMILAR）", detail);
         Assert.Equal(3, Similarity.Levenshtein("KITTEN", "SITTING"));
@@ -68,9 +68,9 @@ public class IdentityRuleTests
     public void Name_similarity_exactly_at_the_threshold_is_similar()
     {
         // Five of six letters agree in place with a one-letter common prefix: Jaro-Winkler is exactly 0.90.
-        Assert.Equal(Normalize.NameSimilarityThresholdLatin, Similarity.JaroWinkler("KARINA", "KORINA"));
+        Assert.Equal(NameComparison.NameSimilarityThresholdLatin, Similarity.JaroWinkler("KARINA", "KORINA"));
         Assert.Equal((Partial, "NOT_IDENTICAL_AFTER_NORMALIZATION（Jaro-Winkler 0.90，Levenshtein 1，SIMILAR）"),
-            Normalize.CompareNames(["KARINA"], ["KORINA"]));
+            NameComparison.CompareNames(["KARINA"], ["KORINA"]));
     }
 
     [Fact]
@@ -205,9 +205,9 @@ public class IdentityRuleTests
     [Fact]
     public void Structured_taiwan_address_matches_across_old_names_and_full_width_digits()
     {
-        Assert.Equal(AddressCompare.TaiwanAddressKey("242台北縣新莊市中平里１２鄰中華路３５巷８號３樓"), AddressCompare.TaiwanAddressKey("新北市新莊區中華路35巷8號3樓"));
-        Assert.NotEqual(AddressCompare.TaiwanAddressKey("新北市新莊區中華路35巷8號"), AddressCompare.TaiwanAddressKey("新北市新莊區中華路35巷10號"));
-        Assert.Null(AddressCompare.TaiwanAddressKey("Thôn Example, Xã An Hòa"));
+        Assert.Equal(TaiwanAddresses.Key("242台北縣新莊市中平里１２鄰中華路３５巷８號３樓"), TaiwanAddresses.Key("新北市新莊區中華路35巷8號3樓"));
+        Assert.NotEqual(TaiwanAddresses.Key("新北市新莊區中華路35巷8號"), TaiwanAddresses.Key("新北市新莊區中華路35巷10號"));
+        Assert.Null(TaiwanAddresses.Key("Thôn Example, Xã An Hòa"));
     }
 
     [Fact]

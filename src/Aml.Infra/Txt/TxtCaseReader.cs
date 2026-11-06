@@ -206,10 +206,10 @@ public static partial class TxtCaseReader
     private static readonly string[] RelatedPartyFields = ["姓名/名稱", "性別", "出生日期", "國籍", "證件號碼"];
 
     private static IEnumerable<string> MissingFieldFindings(IEnumerable<(string Field, bool Present, string? Raw)> fields) =>
-        fields.Where(f => !f.Present || Normalize.NullIfPlaceholder(f.Raw) is null).Select(f =>
+        fields.Where(f => !f.Present || SourceValues.NullIfPlaceholder(f.Raw) is null).Select(f =>
             !f.Present ? $"{FieldAbsent}:{f.Field}"
             : string.IsNullOrWhiteSpace(f.Raw) ? $"{FieldBlank}:{f.Field}"
-            : Normalize.IsDash(f.Raw!) ? $"{PlaceholderDash}:{f.Field}"
+            : SourceValues.IsDash(f.Raw!) ? $"{PlaceholderDash}:{f.Field}"
             : $"{PlaceholderText}:{f.Field}");
 
     private static PartialDate? Date(string field, string? raw, List<string> findings)
@@ -242,7 +242,7 @@ public static partial class TxtCaseReader
 
     private static string[] Cells(string line) => line.Split('\t').Select(c => c.Trim()).ToArray();
 
-    private static bool IsNumberedRow(string[] cells) => int.TryParse(Normalize.HalfWidth(cells[0]), out _);
+    private static bool IsNumberedRow(string[] cells) => int.TryParse(CjkText.HalfWidth(cells[0]), out _);
 
     private static (SubjectRow, List<CandidateRow>, List<string> Records, List<string> Findings) ReadCaseTable(string[] lines)
     {
@@ -270,8 +270,8 @@ public static partial class TxtCaseReader
         var cells = line.Split('\t');
         return new SubjectRow(
             cells[SubjectCategoryColumn].Trim(),
-            Normalize.NullIfPlaceholder(cells.ElementAtOrDefault(ReferenceNumberColumn)),
-            Normalize.NullIfPlaceholder(cells.ElementAtOrDefault(ListMatchColumn)));
+            SourceValues.NullIfPlaceholder(cells.ElementAtOrDefault(ReferenceNumberColumn)),
+            SourceValues.NullIfPlaceholder(cells.ElementAtOrDefault(ListMatchColumn)));
     }
 
     private static CandidateHeader ReadCandidateHeader(string[] lines, int sectionStart, int sectionEnd, List<string> findings)
@@ -302,10 +302,10 @@ public static partial class TxtCaseReader
         string? Column(string name) => Array.IndexOf(header.Columns, name) is var k and >= 0 ? cells.ElementAtOrDefault(k) : null;
         var wider = cells.Length > header.Columns.Length;
         if (wider) findings.Add($"{Unparseable}:candidate_row:{lineNumber}");
-        var rca = wider ? FlagValue.Unparseable : Normalize.SourceFlag(Column("Is RCA?"));
+        var rca = wider ? FlagValue.Unparseable : SourceValues.Flag(Column("Is RCA?"));
         var flags = wider || !header.FlagsReadable ? new ListFlags(FlagValue.Unparseable, FlagValue.Unparseable, FlagValue.Unparseable, rca)
-            : new ListFlags(Normalize.SourceFlag(Column("PEP")), Normalize.SourceFlag(Column("黑名單")), Normalize.SourceFlag(Column("負面新聞")), rca);
-        return new CandidateRow(Column("姓名/名稱")!, Normalize.HalfWidth(Column("名單資料編號")!), Normalize.NullIfPlaceholder(Column("理由")), rca == FlagValue.Yes, flags);
+            : new ListFlags(SourceValues.Flag(Column("PEP")), SourceValues.Flag(Column("黑名單")), SourceValues.Flag(Column("負面新聞")), rca);
+        return new CandidateRow(Column("姓名/名稱")!, CjkText.HalfWidth(Column("名單資料編號")!), SourceValues.NullIfPlaceholder(Column("理由")), rca == FlagValue.Yes, flags);
     }
 
     private static (List<string>, List<string>) ReadProcessingRecord(string[] lines)
@@ -338,7 +338,7 @@ public static partial class TxtCaseReader
             var next = background[at + 1];
             return CustomerLabels.Contains(next) ? string.Empty : next;
         }
-        string? Value(string label) => Normalize.NullIfPlaceholder(RawValue(label));
+        string? Value(string label) => SourceValues.NullIfPlaceholder(RawValue(label));
 
         var findings = MissingFieldFindings(CustomerFields.Select(f => (f, Array.IndexOf(background, f) >= 0, RawValue(f)))).ToList();
         var names = new[] { Value("本地名稱"), Value("客戶名稱") }.OfType<string>().ToList();
@@ -357,7 +357,7 @@ public static partial class TxtCaseReader
         var dob = Date("出生日期", Value("出生日期"), findings);
 
         return new ScreenedSubject(
-            SubjectRole.Customer, null, names, Normalize.Gender(Value("性別")), dob,
+            SubjectRole.Customer, null, names, SourceValues.Gender(Value("性別")), dob,
             nationalities, docNumber is null ? null : new Document(DocumentType(Value("證件種類")), docNumber, IssuingCountry(Value("發照地"), findings)),
             null, taxId, Occupation(Value("職業")), Dedupe(addresses, out var dup), AddressFindings(addresses, dup, findings), PartyType: Value("客戶類型"));
     }
@@ -372,7 +372,7 @@ public static partial class TxtCaseReader
         var contact = File.ReadAllLines(path).Select(l => l.Trim()).ToArray();
         var addresses = new List<Address>();
         for (var i = 0; i + 2 < contact.Length; i++)
-            if (IsCountryHeading(contact[i]) && contact[i + 1] == "地址" && Normalize.NullIfPlaceholder(contact[i + 2]) is { } raw)
+            if (IsCountryHeading(contact[i]) && contact[i + 1] == "地址" && SourceValues.NullIfPlaceholder(contact[i + 2]) is { } raw)
                 addresses.Add(MakeAddress(contact[i][..^CountryHeadingSuffix.Length], raw, BlockCountry(contact, i), findings));
         return addresses;
     }
@@ -383,7 +383,7 @@ public static partial class TxtCaseReader
         var blockEnd = nextHeading < 0 ? contact.Length : nextHeading;
         var afterAddress = heading + 3;
         var countryLabel = Array.FindIndex(contact, afterAddress, blockEnd - afterAddress, l => l == "國家");
-        return countryLabel >= 0 && countryLabel + 1 < contact.Length ? Normalize.NullIfPlaceholder(contact[countryLabel + 1]) : null;
+        return countryLabel >= 0 && countryLabel + 1 < contact.Length ? SourceValues.NullIfPlaceholder(contact[countryLabel + 1]) : null;
     }
 
     private static List<string> AddressFindings(List<Address> addresses, bool duplicated, List<string> findings)
@@ -396,7 +396,7 @@ public static partial class TxtCaseReader
     private static ScreenedSubject ReadRelatedParty(string path, string relationship, string? referenceNumber)
     {
         var fields = ReadKeyValueLines(path);
-        string? Value(string key) => Normalize.NullIfPlaceholder(fields.FirstOrDefault(f => f.Key == key).Value);
+        string? Value(string key) => SourceValues.NullIfPlaceholder(fields.FirstOrDefault(f => f.Key == key).Value);
 
         var findings = MissingFieldFindings(RelatedPartyFields
             .Select(k => (k, fields.Any(f => f.Key == k), fields.FirstOrDefault(f => f.Key == k).Value))).ToList();
@@ -413,7 +413,7 @@ public static partial class TxtCaseReader
 
         return new ScreenedSubject(
             SubjectRole.RelatedParty, relationship, new[] { Value("姓名/名稱") }.OfType<string>().ToList(),
-            Normalize.Gender(Value("性別")), dob,
+            SourceValues.Gender(Value("性別")), dob,
             new[] { Country("國籍", Value("國籍"), findings) }.OfType<string>().ToList(),
             docNumber is null ? null : new Document(DocumentType(Value("證件種類")), docNumber, IssuingCountry(Value("發照地"), findings)),
             referenceNumber ?? Value("參考號碼"), null, null, Dedupe(addresses, out var dup), AddressFindings(addresses, dup, findings), PartyType: Value("類型"));
@@ -437,19 +437,19 @@ public static partial class TxtCaseReader
 
     private static Address MakeAddress(string role, string raw, string? countryField, List<string> findings)
     {
-        if (Normalize.IsPostalCodeOnly(raw)) return new Address(role, raw, null, null, ValueState.Ambiguous, Findings.PostalCodeOnly);
-        var (normalized, finding) = Normalize.TaiwanAddress(raw);
+        if (TaiwanAddresses.IsPostalCodeOnly(raw)) return new Address(role, raw, null, null, ValueState.Ambiguous, Findings.PostalCodeOnly);
+        var (normalized, finding) = TaiwanAddresses.Normalize(raw);
         var textNamesTaiwanCity = TaiwanCity().IsMatch(normalized);
         var countryFromText = textNamesTaiwanCity ? "TW" : null;
         var country = countryField is null ? countryFromText : Country($"{role}{CountryHeadingSuffix}", countryField, findings);
-        var fieldContradictsText = country is not null && countryField is not null && (country == "TW" ? !raw.Any(Normalize.IsCjk) : textNamesTaiwanCity);
+        var fieldContradictsText = country is not null && countryField is not null && (country == "TW" ? !raw.Any(CjkText.IsCjk) : textNamesTaiwanCity);
         return new Address(role, raw, normalized, country, ValueState.Present, finding) { Conflict = fieldContradictsText };
     }
 
     private static string? Country(string field, string? raw, List<string> findings)
     {
-        if (Normalize.NullIfPlaceholder(raw) is not { } value) return null;
-        var code = Normalize.Country(value);
+        if (SourceValues.NullIfPlaceholder(raw) is not { } value) return null;
+        var code = SourceValues.Country(value);
         if (code is null) findings.Add($"{Ambiguous}:{field}");
         return code;
     }
@@ -553,14 +553,14 @@ public static partial class TxtCaseReader
         var addressCountries = MappedAddressCountries(addressRows, findings);
         var allegation = CountriesOfKind(countries, "Country of Reported Allegation", findings);
         var categories = tables.CompleteNumberedRows("類別", CategoryRowCells)
-            .Select(r => new SourceCategory(r[1], Normalize.NullIfPlaceholder(r.ElementAtOrDefault(2)))).ToList();
+            .Select(r => new SourceCategory(r[1], SourceValues.NullIfPlaceholder(r.ElementAtOrDefault(2)))).ToList();
         var sources = tables.CompleteNumberedRows("來源", SourceRowCells)
             .Select(r => Source($"DJ:{scalars[ProfileIdKey]}#source-{r[0]}", r[1], r.ElementAtOrDefault(2))).ToList();
         var otherIds = ReadOtherIdentifiers(tables);
 
         return new SourceProfile(
             ProfileKey: ProfileKeys.KeyOf(scalars[ProfileIdKey]),
-            Gender: Normalize.Gender(scalars.GetValueOrDefault("性別")),
+            Gender: SourceValues.Gender(scalars.GetValueOrDefault("性別")),
             Names: names.Distinct().ToList(),
             DatesOfBirth: datesOfBirth,
             Citizenship: citizenship,
@@ -641,7 +641,7 @@ public static partial class TxtCaseReader
     private static PartialDate? RoleDate(string? raw, List<string> findings)
     {
         var date = PartialDate.Parse(raw);
-        if (date is null && Normalize.NullIfPlaceholder(raw) is { } value && !IsOpenTermEndingInFutureYear(value)) findings.Add($"{Unparseable}:職位");
+        if (date is null && SourceValues.NullIfPlaceholder(raw) is { } value && !IsOpenTermEndingInFutureYear(value)) findings.Add($"{Unparseable}:職位");
         return date;
     }
 
@@ -668,7 +668,7 @@ public static partial class TxtCaseReader
         var rows = tables.Table("名單資訊").Where(r => r[0] != OfficialListHeaderCell).ToList();
         if (rows.Any(r => r.Length < OfficialListRowCells)) tables.Findings.Add($"{Unparseable}:名單資訊");
         return rows.Where(r => r.Length >= OfficialListRowCells)
-            .Select(r => new OfficialListEntry(r[0], r[1], r[2], Normalize.NullIfPlaceholder(r[4]))).FirstOrDefault();
+            .Select(r => new OfficialListEntry(r[0], r[1], r[2], SourceValues.NullIfPlaceholder(r[4]))).FirstOrDefault();
     }
 
     // ponytail: the 其他識別碼 table layout (編號 類型 號碼) is assumed; no sample has one yet.
@@ -681,7 +681,7 @@ public static partial class TxtCaseReader
     private static List<string> MappedAddressCountries(List<string[]> addressRows, List<string> findings) =>
         addressRows.Select(r => Country("地址", r[^1], findings)).OfType<string>().ToList();
 
-    private static string AddressLine(string[] row) => string.Join(", ", row[1..^1].Where(x => Normalize.NullIfPlaceholder(x) is not null));
+    private static string AddressLine(string[] row) => string.Join(", ", row[1..^1].Where(x => SourceValues.NullIfPlaceholder(x) is not null));
 
     // "Liberty Times (Chinese - Traditional), 06-Sep-2026, on Factiva.com (https://…)" + "2026/9/10 下午 01:00:15"
     private static SourceReference Source(string id, string text, string? retrieved)
@@ -692,7 +692,7 @@ public static partial class TxtCaseReader
                 ? d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : null)
             .FirstOrDefault(d => d is not null);
         var url = SourceUrl().Match(text) is { Success: true } m ? m.Groups[1].Value : null;
-        var retrievedOn = Normalize.NullIfPlaceholder(retrieved)?.Split(' ')[0] is { } r && PartialDate.Parse(r) is { } rd ? rd.ToString() : null;
+        var retrievedOn = SourceValues.NullIfPlaceholder(retrieved)?.Split(' ')[0] is { } r && PartialDate.Parse(r) is { } rd ? rd.ToString() : null;
         return new SourceReference(id, parts[0].Trim(), url, published, retrievedOn);
     }
 

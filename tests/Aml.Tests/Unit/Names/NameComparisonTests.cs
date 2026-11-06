@@ -8,7 +8,7 @@ namespace Aml.Tests.Unit.Names;
 public class NameComparisonTests
 {
     private static (ComparisonStatus Status, string? Detail) Compare(string subject, string profile) =>
-        Normalize.CompareNames([subject], [profile]);
+        NameComparison.CompareNames([subject], [profile]);
 
     [Theory]                                // supplementary-plane and private-use characters stay in the key
     [InlineData("黃𥕢明", "黃明")]
@@ -30,8 +30,8 @@ public class NameComparisonTests
     [Fact]
     public void Name_key_keeps_supplementary_characters_and_marks_unknown_ones()
     {
-        Assert.Equal("黃𥕢明", Normalize.NameKey("黃𥕢明"));
-        Assert.Equal("黃?明", Normalize.NameKey("黃＊明"));
+        Assert.Equal("黃𥕢明", NameComparison.NameKey("黃𥕢明"));
+        Assert.Equal("黃?明", NameComparison.NameKey("黃＊明"));
     }
 
     [Theory]                                // diacritic folding
@@ -39,7 +39,7 @@ public class NameComparisonTests
     [InlineData("José", "Jose")]
     public void Match_only_after_diacritic_folding_is_disclosed(string subject, string profile)
     {
-        Assert.Equal((Exact, Normalize.DiacriticVariant), Compare(subject, profile));
+        Assert.Equal((Exact, NameComparison.DiacriticVariant), Compare(subject, profile));
         Assert.Equal((Exact, (string?)null), Compare(subject, subject));
     }
 
@@ -48,27 +48,27 @@ public class NameComparisonTests
     [InlineData("đặng văn đức", "DANG VAN DUC")]
     public void Vietnamese_d_with_stroke_folds_to_d_in_comparison_and_retrieval_keys(string subject, string profile)
     {
-        Assert.Equal((Exact, Normalize.DiacriticVariant), Compare(subject, profile));
-        Assert.Equal("DANGVANDUC", Normalize.NameKey(subject));
-        Assert.Contains("DUCDANGVAN", Normalize.NameKeys(subject));
+        Assert.Equal((Exact, NameComparison.DiacriticVariant), Compare(subject, profile));
+        Assert.Equal("DANGVANDUC", NameComparison.NameKey(subject));
+        Assert.Contains("DUCDANGVAN", NameComparison.NameKeys(subject));
     }
 
     [Fact]                                  // a name with no letters gives an empty key, which matches nothing
     public void Names_without_letters_are_never_exact() =>
-        Assert.Equal((Partial, Normalize.NotComparableCrossScript), Compare("-", "·"));
+        Assert.Equal((Partial, NameComparison.NotComparableCrossScript), Compare("-", "·"));
 
     [Theory]                                // name order
     [InlineData("CHIH-MING　CHEN", "CHEN CHIH-MING")]
     [InlineData("穆罕默德·阿里", "阿里·穆罕默德")]
     [InlineData("Ming Chen", "Chen Ming")]
     public void Match_only_after_reordering_is_disclosed(string subject, string profile) =>
-        Assert.Equal((Exact, Normalize.NameOrderVariant), Compare(subject, profile));
+        Assert.Equal((Exact, NameComparison.NameOrderVariant), Compare(subject, profile));
 
     [Fact]
     public void Source_order_match_has_no_order_finding()
     {
         Assert.Equal((Exact, (string?)null), Compare("Chen Ming", "CHEN  MING"));
-        Assert.Equal((Exact, $"{Findings.VariantCharacters}；{Normalize.NameOrderVariant}"), Compare("志明 陈", "陳 志明"));
+        Assert.Equal((Exact, $"{Findings.VariantCharacters}；{NameComparison.NameOrderVariant}"), Compare("志明 陈", "陳 志明"));
     }
 
     [Theory]                                // romanization
@@ -96,8 +96,8 @@ public class NameComparisonTests
     [Fact]                                  // similarity
     public void Cross_script_names_are_not_compared()
     {
-        Assert.Equal((Partial, Normalize.NotComparableCrossScript), Compare("陳志明", "CHEN Chih-Ming"));
-        Assert.StartsWith("NOT_IDENTICAL_AFTER_NORMALIZATION", Normalize.CompareNames(["陳志明", "CHEN Chih-Ming"], ["陳志銘"]).Detail, StringComparison.Ordinal);
+        Assert.Equal((Partial, NameComparison.NotComparableCrossScript), Compare("陳志明", "CHEN Chih-Ming"));
+        Assert.StartsWith("NOT_IDENTICAL_AFTER_NORMALIZATION", NameComparison.CompareNames(["陳志明", "CHEN Chih-Ming"], ["陳志銘"]).Detail, StringComparison.Ordinal);
     }
 
     [Theory]                                // Winkler's published pairs; the window is half the longer string

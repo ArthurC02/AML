@@ -6,7 +6,7 @@
 
 Extractors report what the source states. They do not decide identity or screening outcomes.
 
-Source acquisition sits behind replaceable adapters ([ADR-0012](../adr/0012-source-acquisition-behind-ports.md)). The PoC reads the bank's `.txt` exports and HTML pages of the same files with `Infra/Txt/TxtCaseReader` and `Infra/Html/HtmlExport` (AngleSharp); normalization rules live in Core (`Normalize`).
+Source acquisition sits behind replaceable adapters ([ADR-0012](../adr/0012-source-acquisition-behind-ports.md)). The PoC reads the bank's `.txt` exports and HTML pages of the same files with `Infra/Txt/TxtCaseReader` and `Infra/Html/HtmlExport` (AngleSharp); normalization rules live in Core (`Aml.Core.Normalization`: `NameComparison`, `Romanization`, `SourceValues`, `TaiwanAddresses`, `ChineseNumerals`).
 
 ## Sources and refresh
 
@@ -115,7 +115,7 @@ Processing includes:
 - variant characters with the same reading (鍾/鐘) as comparison variants;
 - hyphen and punctuation variants.
 
-In the PoC (`Normalize`, `Romanization`):
+In the PoC (`NameComparison`, `Romanization`):
 
 - The comparison key is built per Unicode code point, so characters outside the Basic Multilingual Plane count as one character. After NFKC, diacritics and case are folded and spaces and punctuation removed; letters, digits and private-use (造字) characters are kept. A character the source could not render (`?`, `*`, U+FFFD) is kept as an unknown character, and a key holding one is never EXACT.
 - Name words come from NFKC and a split on any whitespace (including U+3000) and the middle dots · ‧ ・ ･; the order variants move the surname to either end.
@@ -135,7 +135,7 @@ Names keep their source characters and script:
 
 A value that cannot be a valid form of its field, such as a single letter in a tax-ID field, is `AMBIGUOUS`, neither a value nor missing.
 
-Only text whose sole meaning is "no data" is missing (`Normalize.IsPlaceholder`, whole value only): 未提供、未記載、不詳、無、N/A、NA、n.a.、none、null and the dashes -、–、—、－. Text with extra content, such as 「未提供（居住國臺灣）」, is a value. 無錫市, 無業 and 無國籍 are real values.
+Only text whose sole meaning is "no data" is missing (`SourceValues.IsPlaceholder`, whole value only): 未提供、未記載、不詳、無、N/A、NA、n.a.、none、null and the dashes -、–、—、－. Text with extra content, such as 「未提供（居住國臺灣）」, is a value. 無錫市, 無業 and 無國籍 are real values.
 
 "No data" has these distinct causes, kept apart:
 
@@ -175,7 +175,7 @@ Multi-valued and time-varying fields (several birth years, past offices, old and
 
 An age is extracted only when stated explicitly for a named person:
 
-- counted: Arabic or Chinese numerals (四十四歲、廿二歲, `Normalize.ChineseNumber`), bracketed numbers (陳志明（44歲）, `(44)`), English forms next to a romanized name (Chen Chih-Ming, 44; aged 44; 44-year-old); 足歲、周歲、週歲 mean 歲;
+- counted: Arabic or Chinese numerals (四十四歲、廿二歲, `ChineseNumerals.Parse`), bracketed numbers (陳志明（44歲）, `(44)`), English forms next to a romanized name (Chen Chih-Ming, 44; aged 44; 44-year-old); 足歲、周歲、週歲 mean 歲;
 - not counted: approximations or ranges (七八十歲、20 多歲), age thresholds (未滿 18 歲), statistics (被害人平均年齡 65 歲);
 - the age belongs to the person the sentence grammatically refers to, never by default to the Profile subject; 「甲、乙分別為 44 歲、45 歲」 yields one age per person in order, and nothing when the numbers of names and ages differ;
 - the stated age is preserved unchanged; names keep their source spelling.
@@ -198,7 +198,7 @@ Repeatedly seeing the same country in several roles does not create independent 
 
 Nationality comes only from nationality-labelled fields (nationality, citizenship). Allegation and residence countries are not nationality. Only values that map unambiguously to a country or code are normalized; anything else is `AMBIGUOUS`.
 
-In the PoC, `Normalize.Country` maps a value to an ISO 3166-1 alpha-2 code after NFKC (full-width letters and brackets) and whitespace collapsing. It accepts the alpha-2 or alpha-3 code (upper case only, so the words "No" or "in" are not codes), the ISO English short name, a controlled list of common English and Chinese names, and the Taiwan aliases (台灣, 臺灣, 中華民國, ROC, Republic of China, Chinese Taipei …). Names that fit more than one country, such as 韓國 or Korea, are not mapped. A value that does not map produces `AMBIGUOUS:<field>` (e.g. `AMBIGUOUS:國籍 1`, `AMBIGUOUS:Citizenship`) and is left out of comparison; placeholders stay missing.
+In the PoC, `SourceValues.Country` maps a value to an ISO 3166-1 alpha-2 code after NFKC (full-width letters and brackets) and whitespace collapsing. It accepts the alpha-2 or alpha-3 code (upper case only, so the words "No" or "in" are not codes), the ISO English short name, a controlled list of common English and Chinese names, and the Taiwan aliases (台灣, 臺灣, 中華民國, ROC, Republic of China, Chinese Taipei …). Names that fit more than one country, such as 韓國 or Korea, are not mapped. A value that does not map produces `AMBIGUOUS:<field>` (e.g. `AMBIGUOUS:國籍 1`, `AMBIGUOUS:Citizenship`) and is left out of comparison; placeholders stay missing.
 
 ## Documents
 

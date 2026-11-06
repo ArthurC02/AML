@@ -16,7 +16,7 @@ Questions that need a bank decision. When one is answered, record the answer her
 
 ## Identity policy
 
-- Approve the controlled variant-character list used for name comparison (`Normalize.CjkVariants`: OpenCC one-to-one simplified forms plus a controlled list of same-reading variants such as 鍾/鐘/钟; distinct surnames such as 涂/塗 are never folded). A name matched only after folding is EXACT with `VARIANT_CHARACTERS` disclosed.
+- Approve the controlled variant-character list used for name comparison (`NameComparison.CjkVariants`: OpenCC one-to-one simplified forms plus a controlled list of same-reading variants such as 鍾/鐘/钟; distinct surnames such as 涂/塗 are never folded). A name matched only after folding is EXACT with `VARIANT_CHARACTERS` disclosed.
 - Approve the controlled romanization table (`Romanization`: the MOFA table of Hanyu Pinyin, Wade-Giles and Tongyong spellings plus a controlled list of common passport spellings) and the Chinese-character readings it maps through (Unihan).
 - Minimum plausible age for an attributed adult role (hard conflict `IMPOSSIBLE_AGE_AT_REPORTED_EVENT`): the code uses 14 (`HardConflictGate.MinimumRoleAge`); GC-01 needs anything above 6.
 - Approve the role constraints for `IMPOSSIBLE_ROLE_AT_REPORTED_EVENT` (`HardConflictGate.AdultOnlyTitles`: 董事, 董事長, 副董事長, 常務董事, 獨立董事, 監察人, Director, Supervisor; the whole title must match) and supply a Golden Case for it, for `DOCUMENT_IDENTITY_CONFLICT` and for `DEATH_BEFORE_CUSTOMER_BIRTH`.
@@ -62,7 +62,7 @@ Questions that need a bank decision. When one is answered, record the answer her
 - Calibrate the Fellegi-Sunter weight (m and u per group, by `FellegiSunter.EstimateParameters` over representative pairs, and a threshold by `Calibrate` over labelled ones) and approve, or not, an AML risk policy; neither affects decisions today.
 - Approve the entity evidence groups (registration number, IMO) with an entity Golden Case.
 - Calibrate the placeholder thresholds from labelled cases. None of them makes evidence support, a conflict or a hit; they grade details, rank candidates or cap groups:
-  - name similarity per script (`Normalize.NameSimilarityThresholdCjk` and `…Latin`, 0.90) and address Jaccard (`AddressCompare.JaccardThreshold`, 0.5), which label a PARTIAL detail;
+  - name similarity per script (`NameComparison.NameSimilarityThresholdCjk` and `…Latin`, 0.90) and address Jaccard (`AddressCompare.JaccardThreshold`, 0.5), which label a PARTIAL detail;
   - n-gram Dice floors per query script (`ProfileIndex.NGramFloorCjk` 0.3, `NGramFloorLatin` about 0.46), BM25 constants (k1 1.2, b 0.3) and the reciprocal-rank-fusion k (60), from Recall@K;
   - the scattered-DOB cut-off (three or more Profile DOBs, or a span over two years, makes an agreeing DOB `PROFILE_MULTIPLE_DOB` without support);
   - the merge group size limit (10 Profiles) and the minimum comparable document length (4 characters).

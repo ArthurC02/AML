@@ -42,7 +42,7 @@ public readonly record struct PartialDate(
     }
 
     private static string HalfWidthDateWithoutTime(string s) =>
-        Normalize.HalfWidth(s.Trim()).Replace('／', '/').Replace('－', '-').Split([' ', '\t', 'T'], 2)[0];
+        CjkText.HalfWidth(s.Trim()).Replace('／', '/').Replace('－', '-').Split([' ', '\t', 'T'], 2)[0];
 
     private static string[] RocDateParts(string date) =>
         date[RocEraMarker.Length..].TrimEnd('日').Split(['年', '月'], StringSplitOptions.RemoveEmptyEntries);

@@ -181,7 +181,7 @@ public static class ExplanationBuilder
     {
         var sv = subject.ToList();
         var pv = profile.ToList();
-        var (status, detail) = Normalize.CompareNames(sv, pv);
+        var (status, detail) = NameComparison.CompareNames(sv, pv);
         return new(field, NullIfEmpty(Join(sv)), NullIfEmpty(Join(pv)), status, detail);
     }
 
@@ -217,7 +217,7 @@ public static class ExplanationBuilder
             ? new string('*', value.Length)
             : value[..MaskKeptPrefix] + new string('*', value.Length - MaskKeptPrefix - MaskKeptSuffix) + value[^MaskKeptSuffix..];
 
-    private static bool IsCjk(string s) => s.Any(Normalize.IsCjk);
+    private static bool IsCjk(string s) => s.Any(CjkText.IsCjk);
 
     private static string? Gender(Gender? g) => g switch { Shared.Gender.Male => "男", Shared.Gender.Female => "女", _ => null };
 

@@ -69,7 +69,7 @@ public sealed class ProfileIndex
 
     private void AddAlias(string profileKey, string name)
     {
-        var key = Normalize.NameKey(name, true);
+        var key = NameComparison.NameKey(name, true);
         var punctuationOnly = key.Length == 0;
         if (punctuationOnly) return;
         var alias = new Alias(profileKey, name, key, Tokens(name), Grams(key), IsCjk(key), ReadingKeys(name));
@@ -88,7 +88,7 @@ public sealed class ProfileIndex
     /// </summary>
     public IReadOnlyList<RetrievedCandidate> Search(string name, int top = 10)
     {
-        var keys = Normalize.NameKeys(name, true).Where(k => k.Length > 0).ToHashSet(StringComparer.Ordinal);
+        var keys = NameComparison.NameKeys(name, true).Where(k => k.Length > 0).ToHashSet(StringComparer.Ordinal);
         if (keys.Count == 0) return [];
 
         var exact = ExactAliasTier(keys);
@@ -114,7 +114,7 @@ public sealed class ProfileIndex
     private Dictionary<string, (double Rrf, int BestRank, string Route, string Name)> FuseRouteRanks(string name, HashSet<string> exactProfiles)
     {
         var tokens = Tokens(name);
-        var queryKey = Normalize.NameKey(name, true);
+        var queryKey = NameComparison.NameKey(name, true);
         var grams = Grams(queryKey);
         var readings = ReadingKeys(name);
         (string Route, Func<Alias, double> Score, double Floor)[] routes =
@@ -163,7 +163,7 @@ public sealed class ProfileIndex
     }
 
     /// <summary>Character n-gram Dice coefficient between two names: the score of the NGRAM route.</summary>
-    public static double NGramScore(string a, string b) => Dice(Grams(Normalize.NameKey(a, true)), Grams(Normalize.NameKey(b, true)));
+    public static double NGramScore(string a, string b) => Dice(Grams(NameComparison.NameKey(a, true)), Grams(NameComparison.NameKey(b, true)));
 
     private double Bm25Score(string[] query, Alias a)
     {
@@ -200,7 +200,7 @@ public sealed class ProfileIndex
     private static string[] Tokens(string name)
     {
         var words = name.Split([' ', '-', ',', '.', '·'], StringSplitOptions.RemoveEmptyEntries)
-            .Select(w => Normalize.NameKey(w, true)).Where(w => w.Length > 0).ToList();
+            .Select(w => NameComparison.NameKey(w, true)).Where(w => w.Length > 0).ToList();
         return words.SelectMany(w => IsCjk(w) ? CodePoints(w) : [w]).ToArray();
     }
 

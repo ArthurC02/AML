@@ -19,7 +19,7 @@ public class ExtractionRuleTests
     [InlineData("七八十", null)]
     [InlineData("二三", null)]
     public void Chinese_numerals_parse_to_one_number_or_none(string text, int? expected) =>
-        Assert.Equal(expected, Normalize.ChineseNumber(text));
+        Assert.Equal(expected, ChineseNumerals.Parse(text));
 
     [Theory]
     [InlineData("陳志明今年四十五歲", 45)]
@@ -50,7 +50,7 @@ public class ExtractionRuleTests
     [InlineData("N/A")]
     [InlineData("—")]
     [InlineData("－")]
-    public void Text_meaning_only_no_data_is_missing(string text) => Assert.Null(Normalize.NullIfPlaceholder(text));
+    public void Text_meaning_only_no_data_is_missing(string text) => Assert.Null(SourceValues.NullIfPlaceholder(text));
 
     [Theory]                                // source-flag table; words in any letter case
     [InlineData("是", FlagValue.Yes)]
@@ -75,7 +75,7 @@ public class ExtractionRuleTests
     [InlineData("待確認", FlagValue.Unparseable)]
     [InlineData("yess", FlagValue.Unparseable)]
     public void Flag_cells_read_by_the_source_flag_table(string? raw, FlagValue expected) =>
-        Assert.Equal(expected, Normalize.SourceFlag(raw));
+        Assert.Equal(expected, SourceValues.Flag(raw));
 
     [Theory]                                // two rows of one Profile, merged flag by flag, in either order
     [InlineData(FlagValue.Yes, FlagValue.Yes, FlagValue.Yes)]
@@ -104,7 +104,7 @@ public class ExtractionRuleTests
     [InlineData("無錫市")]
     [InlineData("無業")]
     [InlineData("無國籍")]
-    public void Text_with_content_is_a_value(string text) => Assert.Equal(text, Normalize.NullIfPlaceholder(text));
+    public void Text_with_content_is_a_value(string text) => Assert.Equal(text, SourceValues.NullIfPlaceholder(text));
 
     [Theory]
     [InlineData("台中縣大里市中興路二段十二號五樓", "臺中市大里區中興路2段12號5樓")]
@@ -113,15 +113,15 @@ public class ExtractionRuleTests
     [InlineData("台南縣永康鄉中華路5號", "臺南市永康區中華路5號")]
     public void Merged_counties_and_chinese_numerals_normalize(string raw, string expected)
     {
-        var (normalized, finding) = Normalize.TaiwanAddress(raw);
+        var (normalized, finding) = TaiwanAddresses.Normalize(raw);
         Assert.Equal((expected, Findings.HistoricalAdminDivision), (normalized, finding));
     }
 
     [Fact]
     public void Road_names_with_numerals_are_left_alone()
     {
-        Assert.Equal(("臺北市八德路3段12號", (string?)null), Normalize.TaiwanAddress("臺北市八德路三段十二號"));
-        Assert.Equal(AddressCompare.TaiwanAddressKey("臺北市中山區中山北路二段5號"), AddressCompare.TaiwanAddressKey("台北市中山區中山北路2段５號"));
+        Assert.Equal(("臺北市八德路3段12號", (string?)null), TaiwanAddresses.Normalize("臺北市八德路三段十二號"));
+        Assert.Equal(TaiwanAddresses.Key("臺北市中山區中山北路二段5號"), TaiwanAddresses.Key("台北市中山區中山北路2段５號"));
     }
 
     [Fact]

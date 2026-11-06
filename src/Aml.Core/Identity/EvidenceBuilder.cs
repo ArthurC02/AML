@@ -32,7 +32,7 @@ public static class EvidenceBuilder
 
     private static IEnumerable<Evidence> HitPrerequisites(ScreenedSubject s, SourceProfile p)
     {
-        var (nameStatus, nameDetail) = Normalize.CompareNames(s.Names, p.Names);
+        var (nameStatus, nameDetail) = NameComparison.CompareNames(s.Names, p.Names);
         var gender = Compare(s.Gender is null, p.Gender is null, () => s.Gender == p.Gender);
         var nationality = Compare(s.Nationalities.Count == 0, p.Citizenship.Count == 0, () => s.Nationalities.Intersect(p.Citizenship).Any());
         return
@@ -59,7 +59,7 @@ public static class EvidenceBuilder
     public static bool AreComparable(Document a, Document b) =>
         a.Type == b.Type && (a.Type == "IMO_NUMBER" || a.Country is not null && a.Country == b.Country);
 
-    internal static string DocumentNumber(string n) => Normalize.NameKey(Normalize.HalfWidth(n));
+    internal static string DocumentNumber(string n) => NameComparison.NameKey(CjkText.HalfWidth(n));
 
     /// <summary>Comparable documents with equal numbers are unique support, different ones a conflict.</summary>
     public static Evidence DocumentEvidence(Document? subject, IReadOnlyList<Document> profile)
@@ -122,7 +122,7 @@ public static class EvidenceBuilder
         if (profile.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.ProfileMissing);
 
         var sameOrganization = subject.SelectMany(a => profile, (a, b) => (a, b))
-            .Where(x => Normalize.NameKey(x.a.Organization, true) == Normalize.NameKey(x.b.Organization, true)).ToList();
+            .Where(x => NameComparison.NameKey(x.a.Organization, true) == NameComparison.NameKey(x.b.Organization, true)).ToList();
         if (sameOrganization.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, EvidenceDetails.DifferentOrganization);
         return sameOrganization.Any(x => PeriodsOverlapByYear(x.a, x.b))
             ? new(g, Direction.Support, ComparisonStatus.Exact, Strength.Medium, EvidenceDetails.SameOrganizationSamePeriod)
@@ -157,7 +157,7 @@ public static class EvidenceBuilder
             return profile.Count > 0 ? new(g, Direction.Neutral, ComparisonStatus.SubjectMissing) : null;
         if (profile.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.ProfileMissing);
         var same = subject.FirstOrDefault(a => profile.Any(b => CanonicalRelation(a.Relation) == CanonicalRelation(b.Relation)
-            && Normalize.CompareNames([a.Name], [b.Name]).Status == ComparisonStatus.Exact));
+            && NameComparison.CompareNames([a.Name], [b.Name]).Status == ComparisonStatus.Exact));
         return same is not null
             ? new(g, Direction.Support, ComparisonStatus.Exact, strength, $"{EvidenceDetails.SameNamedRelative}:{CanonicalRelation(same.Relation)}")
             : new(g, Direction.Neutral, ComparisonStatus.Uncertain);
@@ -191,8 +191,8 @@ public static class EvidenceBuilder
         if (!sharesCountry || subjectText.Count == 0 || profileText.Count == 0)
             return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, EvidenceDetails.SoftDifference);
 
-        var keys = subjectText.Select(AddressCompare.TaiwanAddressKey).OfType<string>().ToHashSet();
-        if (profileText.Select(AddressCompare.TaiwanAddressKey).Any(k => k is not null && keys.Contains(k)))
+        var keys = subjectText.Select(TaiwanAddresses.Key).OfType<string>().ToHashSet();
+        if (profileText.Select(TaiwanAddresses.Key).Any(k => k is not null && keys.Contains(k)))
             return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, EvidenceDetails.SameAddressNoPeriod);
         var jaccard = subjectText.SelectMany(a => profileText, AddressCompare.Jaccard).Max();
         var similarity = jaccard >= AddressCompare.JaccardThreshold ? "SIMILAR" : "DISSIMILAR";

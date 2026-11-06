@@ -16,6 +16,9 @@ public interface IJobStore
     /// <summary>False when the idempotency key is already queued (in this or an earlier batch).</summary>
     Task<bool> EnqueueAsync(string jobId, string jobType, string batchId, string idempotencyKey, string payload, DateTimeOffset now, CancellationToken ct);
 
+    /// <summary>Queues every job in one transaction; returns the ids of those queued, skipping keys already queued.</summary>
+    Task<IReadOnlyList<string>> EnqueueAsync(IReadOnlyList<NewJob> jobs, DateTimeOffset now, CancellationToken ct);
+
     /// <summary>Claims up to <paramref name="take"/> due jobs; each one is owned exclusively until the lease expires.</summary>
     Task<IReadOnlyList<ClaimedJob>> ClaimAsync(string leaseOwner, int take, DateTimeOffset now, DateTimeOffset leaseExpiry, CancellationToken ct);
 

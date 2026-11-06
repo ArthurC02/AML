@@ -1,6 +1,7 @@
 using Aml.Core.Ports;
 using Aml.Infra.Jobs;
 using Dapper;
+using Microsoft.Data.Sqlite;
 
 namespace Aml.Infra.Persistence.Repositories;
 
@@ -8,11 +9,13 @@ public sealed class ListStore(SqliteDatabase db) : IListStore
 {
     private sealed record Row(string ProfileId, long Version, string ContentHash, string SourceText, string CapturedAt);
 
-    public async Task<(ListProfileRecord Current, bool Changed, IReadOnlyList<string> QueuedJobIds)> CaptureAsync(
+    public Task<(ListProfileRecord Current, bool Changed, IReadOnlyList<string> QueuedJobIds)> CaptureAsync(
+        string profileId, string contentHash, string sourceText, DateTimeOffset now, Func<int, IReadOnlyList<NewJob>> jobsFor, CancellationToken ct) =>
+        db.WriteAsync((c, tx) => CaptureAsync(c, tx, profileId, contentHash, sourceText, now, jobsFor, ct), ct);
+
+    private async Task<(ListProfileRecord Current, bool Changed, IReadOnlyList<string> QueuedJobIds)> CaptureAsync(SqliteConnection c, SqliteTransaction tx,
         string profileId, string contentHash, string sourceText, DateTimeOffset now, Func<int, IReadOnlyList<NewJob>> jobsFor, CancellationToken ct)
     {
-        await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
-        await using var tx = await c.BeginTransactionAsync(ct).ConfigureAwait(false);
         var current = await c.QuerySingleOrDefaultAsync<Row>(new CommandDefinition(db.Sql["Extraction.GetLatestProfile"], new { profileId }, tx, cancellationToken: ct)).ConfigureAwait(false);
         if (current?.ContentHash == contentHash) return (Map(current), false, []);
 
@@ -25,7 +28,6 @@ public sealed class ListStore(SqliteDatabase db) : IListStore
         var queued = new List<string>();
         foreach (var job in jobsFor(version))
             if (await JobStore.TryEnqueueAsync(db, c, tx, job, at, ct).ConfigureAwait(false)) queued.Add(job.JobId);
-        await tx.CommitAsync(ct).ConfigureAwait(false);
         return (new ListProfileRecord(profileId, version, contentHash, sourceText, now), true, queued);
     }
 

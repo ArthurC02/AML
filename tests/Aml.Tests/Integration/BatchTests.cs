@@ -5,6 +5,7 @@ using Aml.Infra.Persistence;
 using Aml.Infra.Persistence.Repositories;
 using Aml.Infra.Txt;
 using Aml.Services;
+using Dapper;
 using Microsoft.Data.Sqlite;
 
 namespace Aml.Tests.Integration;
@@ -55,6 +56,36 @@ public sealed class BatchTests : IDisposable
         Assert.Equal(1, await _jobs.RerunAsync("b1", T0.AddMinutes(5), ct));
         item = (await _jobs.ListItemsAsync("b1", ct))[0];
         Assert.Equal((JobStatus.Pending, 0, null), (item.Status, item.AttemptCount, item.ErrorCode));
+    }
+
+    [Fact]
+    public async Task Concurrent_writes_commit_together_and_a_failing_write_is_undone_alone()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        // A write that holds the writer slot until released, so everything queued after it commits as one later batch.
+        var release = new TaskCompletionSource();
+        var holding = _db.WriteAsync(async (c, tx) => { await release.Task; return 0; }, ct);
+        var first = _db.WriteAsync((c, tx) => Task.FromResult(tx), ct);
+        var writes = Enumerable.Range(0, 40).Select(i => _jobs.EnqueueAsync($"j{i}", "T", "b1", $"k{i}", "{}", T0, ct)).ToList();
+        var failing = _db.WriteAsync<int>(async (c, tx) =>
+        {
+            await c.ExecuteAsync(new CommandDefinition(_db.Sql["Batch.Enqueue"],
+                new { jobId = "bad", jobType = "T", batchId = "b1", idempotencyKey = "bad", payload = "{}", now = T0.UtcDateTime.ToString("O") }, tx, cancellationToken: ct));
+            throw new InvalidOperationException("fails after its insert");
+        }, ct);
+        var duplicates = _jobs.EnqueueAsync([new NewJob("d1", "T", "b1", "k0", "{}"), new NewJob("d2", "T", "b1", "dk", "{}"), new NewJob("d3", "T", "b1", "dk", "{}")], T0, ct);
+        var last = _db.WriteAsync((c, tx) => Task.FromResult(tx), ct);
+        release.SetResult();
+
+        await holding;
+        Assert.Same(await first, await last); // one transaction, one commit
+        Assert.All(await Task.WhenAll(writes), Assert.True);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => failing);
+        var queued = await duplicates;
+        var items = await _jobs.ListItemsAsync("b1", ct);
+        Assert.Equal(41, items.Count);
+        Assert.DoesNotContain(items, j => j.JobId == "bad");
+        Assert.Equal(["d2"], queued); // writes run in the order they were queued: j0 already holds k0, and dk is queued once
     }
 
     private sealed class UnavailableStore : ICaseStore

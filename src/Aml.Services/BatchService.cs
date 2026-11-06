@@ -15,7 +15,7 @@ public sealed record BatchStatus(string BatchId, int Pending, int Running, int S
 
 public sealed record BatchOptions
 {
-    public int MaxWorkers { get; init; } = 4;
+    public int MaxWorkers { get; init; } = 16; // analysis is about 0.6 ms of CPU; the jobs mostly wait on commits, which group commit shares
     public int MaxAttempts { get; init; } = 3;
     public TimeSpan Timeout { get; init; } = TimeSpan.FromMinutes(2);
     public TimeSpan Lease { get; init; } = TimeSpan.FromMinutes(5);
@@ -46,14 +46,10 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
     public async Task<BatchSubmitted> SubmitAsync(IReadOnlyList<BatchItemRequest> items, CancellationToken ct)
     {
         var batchId = Guid.CreateVersion7().ToString();
-        var duplicates = new List<string>();
-        foreach (var item in items)
-        {
-            var key = $"{AnalyzeCase}:{item.TriggerEventId}:{item.SubjectRef}";
-            if (!await queue.EnqueueAsync(Guid.CreateVersion7().ToString(), AnalyzeCase, batchId, key,
-                    JsonSerializer.Serialize(item, CaseJson.Options), clock.GetUtcNow(), ct).ConfigureAwait(false))
-                duplicates.Add(key);
-        }
+        var jobs = items.Select(item => new NewJob(Guid.CreateVersion7().ToString(), AnalyzeCase, batchId,
+            $"{AnalyzeCase}:{item.TriggerEventId}:{item.SubjectRef}", JsonSerializer.Serialize(item, CaseJson.Options))).ToList();
+        var queued = (await queue.EnqueueAsync(jobs, clock.GetUtcNow(), ct).ConfigureAwait(false)).ToHashSet(StringComparer.Ordinal);
+        var duplicates = jobs.Where(j => !queued.Contains(j.JobId)).Select(j => j.IdempotencyKey).ToList();
         return new BatchSubmitted(batchId, items.Count - duplicates.Count, duplicates);
     }
 

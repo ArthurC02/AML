@@ -48,7 +48,7 @@ Configuration: `"Database": { "ConnectionString": "..." }`. SQLite-specific sett
 | avoid reserved words (`CASE`, `GROUP`, `LEVEL`, `SIZE`, `USER`, `COMMENT`, `DATE`, `NUMBER`) | e.g. table `aml_case`, column `evidence_group` |
 | never use `''` to mean missing | Oracle stores `''` as NULL; use `valueState` |
 | idempotent writes: plain `INSERT`, treat unique violation as "already exists" | avoids `MERGE` / `ON CONFLICT` differences |
-| one repository call is one transaction; repositories open and commit it | the units below commit whole or not at all on every provider |
+| one repository write call is one atomic unit; repositories run it through `SqliteDatabase.WriteAsync` ([group commit](#group-commit)) | the units below commit whole or not at all on every provider |
 
 ## Type mapping
 
@@ -69,6 +69,20 @@ Multilingual names on SQL Server require `nvarchar`; `varchar` without a UTF-8 c
 |---|---|---|
 | `CaseStore.AcceptAnalysisAsync` | the analysis revision with its lineage, quality and hit facts, its input files and the move of the Case to it; a revision is never stored without the input it was run on | `Case.InsertAnalysis`, `Case.InsertLineage`, `Case.InsertQuality`, `Case.InsertHit`, `Case.InsertEvidence`, `Case.InsertReason`, `Case.InsertInput`, `Case.AcceptAnalysis` |
 | `ListStore.CaptureAsync` | a new Profile version and the `REANALYZE_CASE` jobs it causes (transactional outbox) | `Extraction.GetLatestProfile`, `Extraction.InsertProfile`, `Batch.Enqueue` |
+| `JobStore.EnqueueAsync` (list) | every item of one `POST /api/batches`; an item whose idempotency key is already queued is skipped | `Batch.Enqueue` |
+| `JobStore.ClaimAsync` | the claim of every job taken in one round | `Batch.ListClaimable`, `Batch.Claim`, `Batch.GetClaimed` |
+
+## Group commit
+
+Every write goes through `SqliteDatabase.WriteAsync`. Each write runs as its own savepoint inside a shared transaction, and its caller resumes only after that transaction commits. Writes that arrive while a batch commits wait, then commit together. Concurrent jobs therefore share one sync of the write-ahead log instead of paying one each. The batching follows the LMAX Disruptor's smart batching under a single writer: whoever holds the writer slot drains every pending write, so batches grow with load and add no delay when idle.
+
+- Writes run in the order they were queued, and each sees the writes before it, as if run one by one.
+- A write that throws is rolled back to its savepoint alone, and only its caller gets the exception.
+- An error after which SQLite rolls back the whole transaction (a full disk, an I/O error), or a failed commit, fails every write of its batch with that error; nothing of the batch is stored.
+- Durability is unchanged: `synchronous` keeps its default (`FULL`), so a write whose call returned survives a power loss.
+- A write must not call `WriteAsync` again; reads use their own connections.
+
+Measured on golden cases with a scratch database, before → after: submitting 500 jobs took 1.36 s → 0.15 s, and running them went from about 50 jobs/s at any worker count to about 90 jobs/s with 4 workers and about 230 jobs/s with 16. The analysis itself is about 0.6 ms of CPU per case, so throughput is set by commits.
 
 Revision numbers are allocated optimistically: `CaseService` takes the Case's current revision + 1, and the primary key of `case_analysis` rejects a number another analysis already took. The repository then stores nothing and returns false; `CaseService` re-reads the Case, recomputes the number, status and changes, and tries again, at most `CaseService.MaxRevisionAttempts` (3) times before failing. `Case.AcceptAnalysis` moves the Case only while `current_revision < @revision`, so a late revision is kept as history and never overwrites a newer one.
 

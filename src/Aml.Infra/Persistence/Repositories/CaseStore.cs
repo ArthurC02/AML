@@ -34,26 +34,26 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
 
     private sealed record QualityRow(long Hits, long ComparisonCells, long MissingCells, long UncertainCells, long ConflictCells, long NotEvaluated, string FindingsJson);
 
-    public async Task<CaseRecord> CreateAsync(CaseRecord record, CancellationToken ct)
-    {
-        await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
-        try
+    public Task<CaseRecord> CreateAsync(CaseRecord record, CancellationToken ct) =>
+        db.WriteAsync(async (c, tx) =>
         {
-            await c.ExecuteAsync(new CommandDefinition(db.Sql["Case.Insert"],
-                new { caseId = record.CaseId, subjectRef = record.SubjectRef, triggerEventId = record.TriggerEventId, caseStatus = Code(record.Status), now = FormatTime(record.CreatedAt) },
-                cancellationToken: ct)).ConfigureAwait(false);
-            return record;
-        }
-        catch (SqliteException e) when (e.SqliteExtendedErrorCode == SqliteDatabase.SqliteUniqueViolation)
-        {
-            return await ExistingCaseOfSameTriggerAndSubjectAsync(c, record, ct).ConfigureAwait(false);
-        }
-    }
+            try
+            {
+                await c.ExecuteAsync(new CommandDefinition(db.Sql["Case.Insert"],
+                    new { caseId = record.CaseId, subjectRef = record.SubjectRef, triggerEventId = record.TriggerEventId, caseStatus = Code(record.Status), now = FormatTime(record.CreatedAt) },
+                    tx, cancellationToken: ct)).ConfigureAwait(false);
+                return record;
+            }
+            catch (SqliteException e) when (e.SqliteExtendedErrorCode == SqliteDatabase.SqliteUniqueViolation)
+            {
+                return await ExistingCaseOfSameTriggerAndSubjectAsync(c, tx, record, ct).ConfigureAwait(false);
+            }
+        }, ct);
 
-    private async Task<CaseRecord> ExistingCaseOfSameTriggerAndSubjectAsync(SqliteConnection c, CaseRecord record, CancellationToken ct)
+    private async Task<CaseRecord> ExistingCaseOfSameTriggerAndSubjectAsync(SqliteConnection c, SqliteTransaction tx, CaseRecord record, CancellationToken ct)
     {
         var row = await c.QuerySingleAsync<CaseRow>(new CommandDefinition(db.Sql["Case.GetByTrigger"],
-            new { triggerEventId = record.TriggerEventId, subjectRef = record.SubjectRef }, cancellationToken: ct)).ConfigureAwait(false);
+            new { triggerEventId = record.TriggerEventId, subjectRef = record.SubjectRef }, tx, cancellationToken: ct)).ConfigureAwait(false);
         return Map(row);
     }
 
@@ -64,10 +64,13 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
         return row is null ? null : Map(row);
     }
 
-    public async Task<bool> AcceptAnalysisAsync(AnalysisRecord analysis, CaseStatus status, IReadOnlyDictionary<string, string>? files, CancellationToken ct)
+    public Task<bool> AcceptAnalysisAsync(AnalysisRecord analysis, CaseStatus status, IReadOnlyDictionary<string, string>? files, CancellationToken ct) =>
+        db.WriteAsync((c, tx) => AcceptAnalysisAsync(c, tx, analysis, status, files, ct), ct);
+
+    // One savepoint: the analysis, its facts, its input and the Case's revision pointer are stored together or not at all.
+    private async Task<bool> AcceptAnalysisAsync(SqliteConnection c, SqliteTransaction tx, AnalysisRecord analysis, CaseStatus status,
+        IReadOnlyDictionary<string, string>? files, CancellationToken ct)
     {
-        await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
-        await using var tx = await c.BeginTransactionAsync(ct).ConfigureAwait(false);
         var now = FormatTime(analysis.CreatedAt);
         try
         {
@@ -105,8 +108,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
             now,
         }, tx, cancellationToken: ct)).ConfigureAwait(false);
 
-        await tx.CommitAsync(ct).ConfigureAwait(false); // a late revision stays stored as history
-        return moved == 1;
+        return moved == 1; // a late revision stays stored as history
     }
 
     public async Task<AnalysisRecord?> GetAnalysisAsync(string caseId, int revision, CancellationToken ct)

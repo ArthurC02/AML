@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.Json;
 using Aml.Core.Cases;
 using Aml.Core.Codes;
@@ -9,6 +8,7 @@ using Aml.Core.Screening;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using static Aml.Core.Cases.CaseJson;
+using static Aml.Infra.Persistence.SqliteValues;
 
 namespace Aml.Infra.Persistence.Repositories;
 
@@ -227,8 +227,4 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
 
     private static CaseRecord Map(CaseRow r) => new(r.CaseId, r.SubjectRef, r.TriggerEventId, ParseCode<CaseStatus>(r.CaseStatus),
         (int)r.CurrentRevision, (int?)r.EffectiveRevision, ParseTime(r.CreatedAt), ParseTime(r.UpdatedAt));
-
-    internal static string Time(DateTimeOffset t) => t.UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
-
-    internal static DateTimeOffset ParseTime(string s) => DateTimeOffset.Parse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
 }

@@ -51,8 +51,9 @@ public static class DispositionPolicy
         if (identity.Decision == IdentityDecision.NoMatch)
             return new(Recommendation.NotOnList, [.. reasons, IdentityNoMatch], pending);
 
-        // ①: foreign PEP presumption, on nationality-labelled fields only. An UNKNOWN condition counts only when it is an
-        // unmapped category that might be PEP: not an undecided 黑名單 type, and not when the PEP flag says NO.
+        // ①: foreign PEP presumption, on nationality-labelled fields only. A PEP condition that is HIT or UNKNOWN counts; a
+        // condition of unknown type counts only when it is an unmapped category that might be PEP: not an undecided 黑名單
+        // type, and not when the PEP flag says NO.
         var pepFlagNo = conditions.Any(c => c.Type == ListType.Pep && c.Status == ConditionStatus.NotHit && c.Basis == ConditionBasis.Flag);
         if (remaining.Any(c => c.Status != ConditionStatus.NotHit
             && (c.Type == ListType.Pep || (c.Type == ListType.Unknown && c.ReasonCodes.Contains(SourceConditions.UnmappedCategory) && !pepFlagNo))))
@@ -75,8 +76,8 @@ public static class DispositionPolicy
         return new(null, [.. reasons, NotDetermined], pending);
     }
 
-    // A value that is not a two-letter code did not map unambiguously to a country (Normalize.Country).
-    // A nationality value that did not map to a country (AMBIGUOUS:<field>) leaves the classification Unknown.
+    // No nationality, or one that did not map to a country (AMBIGUOUS:<field>), leaves the classification Unknown;
+    // a value that is not a two-letter code only occurs in hand-built input.
     private static Nationality Classify(IReadOnlyList<string> codes, IReadOnlyList<string> findings, string field) =>
         codes.Count == 0 || codes.Any(c => c.Length != 2) || findings.Any(f => f.StartsWith($"{Findings.Ambiguous}:{field}", StringComparison.Ordinal))
             ? Nationality.Unknown

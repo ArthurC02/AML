@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.RegularExpressions;
+using Aml.Core.Normalization;
 using Aml.Core.Subjects;
 
 namespace Aml.Core.Screening;
@@ -29,7 +30,7 @@ public sealed record SourceCondition(
     [property: Description("制裁計畫")] string? Program = null,
     [property: Description("管轄地")] string? Jurisdiction = null);
 
-/// <summary>List-type determination (ADR-0016): a flag with a value decides its types; a mapped category whose flag is MISSING keeps its category condition.</summary>
+/// <summary>List-type determination and source conditions (ADR-0016).</summary>
 public static partial class SourceConditions
 {
     public const string PolicyVersion = "source-policy-0.2";
@@ -99,7 +100,6 @@ public static partial class SourceConditions
                 FromFlag(decided, blacklist, flags.Blacklist, blacklist == ListType.Unknown ? BlacklistTypeUndecided : null);
             FromFlag(decided, ListType.AdverseMedia, flags.AdverseNews, null);
         }
-        // A mapped category whose flag is MISSING (every one when all flags are MISSING) keeps its category condition.
         foreach (var t in mapped.Where(t => FlagOf(t, flags) == FlagValue.Missing && !decided.Any(d => d.Type == t)
                      && !(t == ListType.Rca && flags.Rca == FlagValue.No)))
             decided.Add(t == ListType.Unknown
@@ -272,12 +272,10 @@ public static partial class SourceConditions
         if (news is null || risks.Count > 0) return AmlRelevance.Uncertain;
         var jurisdiction = (p.AllegationCountries ?? []).Count > 0 || Dateline().IsMatch(news);
         var predicate = PredicateConduct.Concat(SeriousConsequence).Any(w => news.Contains(w, StringComparison.OrdinalIgnoreCase));
-        var other = Sentences(news).Where(s => Names(s, p.Names))
+        var other = Normalize.Sentences(news).Where(s => Names(s, p.Names))
             .Any(s => NonPredicateConduct.Any(w => s.Contains(w, StringComparison.OrdinalIgnoreCase)));
         return jurisdiction && other && !predicate ? AmlRelevance.Unrelated : AmlRelevance.Uncertain;
     }
-
-    internal static string[] Sentences(string news) => news.Split('。', '！', '？', '\n', '；');
 
     /// <summary>An ADVERSE_MEDIA condition about conduct unrelated to money laundering (Article 22 ②): it is set aside.</summary>
     internal static bool IsUnrelatedAdverseMedia(SourceCondition c) => c.Type == ListType.AdverseMedia && c.AmlRelevance == AmlRelevance.Unrelated;
@@ -328,7 +326,7 @@ public static partial class SourceConditions
     {
         if (news is null) return LegalStage.Unknown;
         var stage = LegalStage.Unknown;
-        foreach (var sentence in Sentences(news))
+        foreach (var sentence in Normalize.Sentences(news))
         {
             var own = Names(sentence, names);
             var attributable = own || !OtherParty.Any(m => sentence.Contains(m, StringComparison.Ordinal));

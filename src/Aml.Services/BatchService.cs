@@ -167,15 +167,15 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         // The analysis itself is not interruptible; CaseService checks the deadline before writing. The constructor, unlike
         // CancelAfter, cancels at once for a zero timeout, so an expired deadline never races the timer.
         using var deadline = new CancellationTokenSource(options.Timeout);
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct, deadline.Token);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, deadline.Token);
         try
         {
             // Checkpoint: Case creation is idempotent on (trigger, subject), so a retry after a crash reuses the stored revision.
-            var c = item is not null
-                ? await cases.CreateAsync(item.SubjectRef, item.TriggerEventId, input!, timeout.Token, item.Files, () => RenewLeaseAsync(job, ct)).ConfigureAwait(false)
+            var record = item is not null
+                ? await cases.CreateAsync(item.SubjectRef, item.TriggerEventId, input!, linked.Token, item.Files, () => RenewLeaseAsync(job, ct)).ConfigureAwait(false)
                 : await (lists ?? throw new InvalidOperationException("REANALYZE_CASE needs the list service"))
-                    .ReanalyzeWithLatestProfilesAsync(reanalysis!.CaseId, timeout.Token, () => RenewLeaseAsync(job, ct)).ConfigureAwait(false);
-            if (!await queue.CompleteAsync(job.JobId, _owner, c.CaseId, c.CurrentRevision, clock.GetUtcNow(), ct).ConfigureAwait(false))
+                    .ReanalyzeWithLatestProfilesAsync(reanalysis!.CaseId, linked.Token, () => RenewLeaseAsync(job, ct)).ConfigureAwait(false);
+            if (!await queue.CompleteAsync(job.JobId, _owner, record.CaseId, record.CurrentRevision, clock.GetUtcNow(), ct).ConfigureAwait(false))
                 Warn?.Invoke($"Job {job.JobId}: completed, but its lease had passed to another worker; the job state was left to that worker");
             AmlTelemetry.JobAttempts.Add(1, new KeyValuePair<string, object?>("outcome", "SUCCEEDED"));
         }

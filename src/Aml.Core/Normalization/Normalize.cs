@@ -202,6 +202,9 @@ public static partial class Normalize
         _ => null,
     };
 
+    /// <summary>The sentences of a text, split at 。！？；and line ends.</summary>
+    public static string[] Sentences(string text) => text.Split('。', '！', '？', '\n', '；');
+
     /// <summary>A Chinese character of the Basic Multilingual Plane (CJK Extension A and Unified Ideographs, 㐀–鿿).</summary>
     public static bool IsCjk(char c) => c is >= '㐀' and <= '鿿';
 

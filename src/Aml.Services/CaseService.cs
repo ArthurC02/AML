@@ -7,7 +7,7 @@ using Aml.Core.Subjects;
 namespace Aml.Services;
 
 /// <summary>Sole writer of Case state. Runs AnalyzeCase synchronously.</summary>
-/// <remarks>ponytail: synchronous analysis; route through the job table (BatchService) when volume needs it.</remarks>
+/// <remarks>ponytail: POST /api/cases analyzes inline; high-volume callers use POST /api/batches.</remarks>
 /// <param name="lists">The list database, for the lineage of each Profile used; without it every Profile is recorded as CASE_FILES.</param>
 /// <param name="exportText">Turns a Profile file into the export text its content hash is taken on (as the list database does).</param>
 public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore? lists = null, Func<string, string>? exportText = null)

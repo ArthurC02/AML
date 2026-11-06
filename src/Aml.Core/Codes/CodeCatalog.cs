@@ -49,7 +49,7 @@ public static class CodeCatalog
         ("IDENTITY_REASON", "ENTITY_IDENTIFIER_CONFLICT", "實體識別碼不符", "非自然人記錄：同一種識別碼號碼不同。", "IdentityDecisionPolicy.EntityDecision", Identity + "#reason-code-registry"),
 
         // Pair result.
-        ("PAIR_REASON", "RELEASE_CONTROL_HUMAN_REVIEW", "放行控制：人工複核", "身分 PROBABLE_MATCH 在第一階段一律以 REVIEW 對外，交由人工。", "AssessmentPolicy.Assess", Disposition + "#two-results-read-separately"),
+        ("PAIR_REASON", "RELEASE_CONTROL_HUMAN_REVIEW", "放行控制：人工複核", "Sanction、PEP 或 RCA 條件為 HIT 或 UNKNOWN、原本為 NO_HIT 的組合，第一階段一律轉 REVIEW 交由人工。", "AssessmentPolicy.Assess", Disposition + "#two-results-read-separately"),
         ("PAIR_REASON", "SOURCE_CONDITION_UNKNOWN", "名單條件未知", "名單條件無法確定（UNKNOWN）；身分 NO_MATCH 時為 NO_HIT，Sanction、PEP、RCA 則由放行控制轉 REVIEW。", "AssessmentPolicy.Assess", Watchlist + "#reason-codes"),
 
         // Article 22 disposition recommendation and its pending checks.
@@ -76,7 +76,7 @@ public static class CodeCatalog
         ("PEP_TYPE", "PEP_FAMILY", "PEP 家屬", "名單類別表明為 PEP 的家庭成員。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#pep-source-attributes"),
         ("PEP_TYPE", "PEP_CLOSE_ASSOCIATE", "PEP 密切關係人", "名單類別表明為 PEP 的密切關係人。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#pep-source-attributes"),
         ("PEP_TYPE", "RCA_UNCONFIRMED", "RCA 關係未確認", "RCA 名單，但關係類型未說明。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#rca-relationship-scope"),
-        ("PEP_TYPE", "FORMER_PEP", "卸任 PEP", "所有記錄的職務都已結束。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#former-pep"),
+        ("PEP_TYPE", "FORMER_PEP", "卸任 PEP", "名單子類別標示 Former／Inactive，或 PEP 本人所有記錄的職務都已結束。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#former-pep"),
 
         // Risk categories of adverse information.
         ("RISK_CATEGORY", "FINANCIAL_CRIME", "金融犯罪", "名單或新聞的風險類別：金融犯罪。", "SourceConditions", Watchlist + "#risk-categories"),
@@ -155,7 +155,6 @@ public static class CodeCatalog
         ("RETRIEVAL_ROUTE", "BM25", "詞彙檢索", "以 BM25 依詞彙排序。", "ProfileIndex.Search", Identity + "#retrieval-modes"),
         ("RETRIEVAL_ROUTE", "NGRAM", "字元 n-gram", "以字元 n-gram Dice 排序。", "ProfileIndex.Search", Identity + "#retrieval-modes"),
         ("RETRIEVAL_ROUTE", "READING", "讀音", "以共同的拼音讀音排序；只是檢索路徑，不是相符。", "ProfileIndex.Search", Identity + "#retrieval-modes"),
-        ("RETRIEVAL_ROUTE", "PROFILE_ID", "名單編號", "以名單編號直接取得。", "ListService", Identity + "#retrieval-modes"),
         ("RETRIEVAL_ROUTE", "PREVIOUS_CASE_INPUT", "前次案件輸入", "取自該案件前次分析的名單。", "ListService", Identity + "#retrieval-modes"),
         ("RETRIEVAL_ROUTE", "CASE_TABLE", "案件疑似名單表", "取自案件資訊的疑似符合名單表。", "ListService", Identity + "#retrieval-modes"),
 

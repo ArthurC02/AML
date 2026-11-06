@@ -47,7 +47,8 @@ public sealed record ScreenedSubject(
 {
     /// <summary>
     /// A legal person or group (客戶類型 法人), compared on entity identifiers, never on DOB or nationality rules.
-    /// 個人, 自然人, Person, Individual and Natural Person are natural persons; no party type means a natural person.
+    /// A party type containing 個 or 自然人 (個人, 自然人), or exactly Person, Individual or Natural Person, is a natural person;
+    /// no party type means a natural person.
     /// </summary>
     public bool IsEntity => PartyType is { } t
         && !PersonWords.Any(w => t.Contains(w, StringComparison.Ordinal))
@@ -146,5 +147,5 @@ public sealed record CaseInput(
     IReadOnlyList<CandidateRow> Rows,
     IReadOnlyDictionary<string, SourceProfile> Profiles,
     IReadOnlyDictionary<string, NewsItem> NewsByProfileId,
-    IReadOnlyList<ImportedDecision> LegacyDecisions,
+    IReadOnlyList<ImportedDecision> ImportedDecisions,
     IReadOnlyDictionary<string, string>? SourceHashes = null);

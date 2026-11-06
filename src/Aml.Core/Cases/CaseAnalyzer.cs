@@ -50,6 +50,6 @@ public static class CaseAnalyzer
             })
             .ToList();
         var notEvaluated = groups.Where(g => !input.Profiles.ContainsKey(g.Key)).Select(g => ProfileKeys.KeyOf(g.Key)).ToList();
-        return new CaseAnalysis(hits, notEvaluated, input.LegacyDecisions);
+        return new CaseAnalysis(hits, notEvaluated, input.ImportedDecisions);
     }
 }

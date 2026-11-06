@@ -161,7 +161,7 @@ public class AugmentedCaseTests
     {
         var (input, a) = Augment("GC-11",
             [("案件資訊.txt", Case11LastRow, Case11LastRow + "\n\n客戶檢核處理紀錄\n日期\t人員\t結果\n2026/9/12\t專員甲\t確認後符合")]);
-        Assert.Contains(input.LegacyDecisions, d => d.Field == "客戶檢核處理紀錄" && d.Value.Contains("確認後符合", StringComparison.Ordinal));
+        Assert.Contains(input.ImportedDecisions, d => d.Field == "客戶檢核處理紀錄" && d.Value.Contains("確認後符合", StringComparison.Ordinal));
         Assert.Equal(2, Assert.Single(a.Hits).CandidateRows); // the record table never becomes a candidate row
         Assert.DoesNotContain("LEGACY_RECORD_BOUNDARY_UNCLEAR", input.Subject.Findings);
     }

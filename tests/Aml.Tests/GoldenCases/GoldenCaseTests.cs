@@ -87,7 +87,7 @@ public class GoldenCaseTests
         Assert.Equal(ScreeningAssessment.Review, hit.PairResult);
 
         // Legacy decision is imported only, never evidence.
-        Assert.Contains(input.LegacyDecisions, d => d.Value == "確認後不符合" && !d.IndependentlyVerified);
+        Assert.Contains(input.ImportedDecisions, d => d.Value == "確認後不符合" && !d.IndependentlyVerified);
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public class GoldenCaseTests
         Assert.Equal([ReasonCodes.ConsistentAtAvailablePrecision, ReasonCodes.NoBilateralDirectIdentifier], id.ReasonCodes);
         Assert.Equal(ScreeningAssessment.Review, hit.PairResult);
 
-        Assert.Contains(input.LegacyDecisions, d => d.Value == "確認後符合" && !d.IndependentlyVerified);
+        Assert.Contains(input.ImportedDecisions, d => d.Value == "確認後符合" && !d.IndependentlyVerified);
     }
 
     // Advisory Article 22 recommendation; GC-03 and GC-11 PROBABLE_MATCH stays undetermined because automatic MATCH is disabled.

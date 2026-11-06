@@ -20,7 +20,7 @@ public sealed record AnalysisQuality(
 {
     /// <summary>
     /// Counts over the given hits; each finding is counted once per hit (subject findings once more when there are no hits),
-    /// by its catalog key. The Golden metrics call this over every Golden hit.
+    /// by its catalog key.
     /// </summary>
     public static AnalysisQuality Of(IReadOnlyList<HitExplanation> hits, IEnumerable<string> subjectFindings, int notEvaluated)
     {

@@ -8,7 +8,7 @@ using Aml.Infra.Txt;
 
 namespace Aml.Tests.Unit.Retrieval;
 
-/// <summary>List index, Profile merging, the Fellegi-Sunter shadow score, risk scoring and entity evidence.</summary>
+/// <summary>List index, Profile merging, the Fellegi-Sunter calibration weight, risk scoring and entity evidence.</summary>
 public class RetrievalAndScoringTests
 {
     private static SourceProfile Profile(string key, string[] names, IReadOnlyList<Document>? docs = null,
@@ -66,11 +66,11 @@ public class RetrievalAndScoringTests
     }
 
     [Fact]
-    public void Fellegi_sunter_shadow_weights_follow_the_strength_table_and_ignore_prerequisites()
+    public void Fellegi_sunter_calibration_weights_follow_the_strength_table_and_ignore_prerequisites()
     {
         var gc11 = CaseAnalyzer.Analyze(TxtCaseReader.Read(GoldenCases.GoldenCaseTests.Folder("GC-11"))).Hits[0].Identity;
-        var shadow = FellegiSunter.Score(gc11.Evidence);
-        var dob = Assert.Single(shadow.Groups); // only the year-precision DOB weighs; name, gender and nationality do not
+        var weight = FellegiSunter.Score(gc11.Evidence);
+        var dob = Assert.Single(weight.Groups); // only the year-precision DOB weighs; name, gender and nationality do not
         Assert.Equal(EvidenceGroup.DateOfBirth, dob.Group);
         Assert.Equal(Math.Log2(FellegiSunter.M * 60), dob.Weight, 6);
 

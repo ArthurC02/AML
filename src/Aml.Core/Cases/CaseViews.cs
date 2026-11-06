@@ -1,8 +1,4 @@
-using System.Buffers.Text;
 using System.ComponentModel;
-using System.Globalization;
-using System.Text;
-using System.Text.Json;
 using Aml.Core.Codes;
 using Aml.Core.Explanation;
 using Aml.Core.Identity;
@@ -133,7 +129,7 @@ public static class CaseViews
     {
         static EvidenceLine Line(Evidence e) => new(e.Group, e.Status, e.Strength, e.Detail);
         var codes = h.ReasonCodes.ToList();
-        // A hard conflict or a non-Person rule leaves the stage 3 row empty.
+        // A hard conflict, or a non-Person record without comparable entity identifiers, leaves the stage 3 row empty.
         var decisive = h.Stage3Row is >= 2 and <= 5
             ? h.Support.OrderByDescending(e => e.Strength).Take(MaxEvidence).Select(Line).ToList()
             : h.Conflicts.Select(e => (e, Rank: e.Detail is { } d ? codes.IndexOf(CodeCatalog.Key(d)) : -1))
@@ -143,44 +139,5 @@ public static class CaseViews
             h.IdentityDecision, h.HardConflict, h.Stage3Row, h.PairResult, h.ReviewPriority, NullIfEmpty(h.ReasonCodes), NullIfEmpty(decisive),
             decisive.Count == 0 && h.Stage3Row == 6 ? "僅前提條件相符" : null, NullIfEmpty(h.WouldChangeIf),
             $"/api/cases/{caseId}/hits/{h.HitNumber}?view=detail&revision={revision}");
-    }
-}
-
-/// <summary>Opaque keyset page token: the sort key (created at, id) of the last item on the page.</summary>
-public static class PageToken
-{
-    public const int DefaultSize = 20;
-    public const int MaxSize = 100;
-
-    /// <summary>The first <paramref name="size"/> of rows read one past the page, and the token for the next page when that extra row came back.</summary>
-    public static (List<T> Page, string? Next) Page<T>(IReadOnlyList<T> rows, int size, Func<T, (DateTimeOffset At, string Id)> key)
-    {
-        var page = rows.Take(size).ToList();
-        return (page, rows.Count > size && key(page[^1]) is var (at, id) ? Encode(at, id) : null);
-    }
-
-    public static string Encode(DateTimeOffset at, string id) =>
-        Base64Url.EncodeToString(Encoding.UTF8.GetBytes(string.Create(CultureInfo.InvariantCulture, $"{at.UtcTicks}|{id}")));
-
-    /// <summary>False for a token this API did not issue (not base64url, or not a tick count and an id).</summary>
-    public static bool TryDecode(string token, out (DateTimeOffset At, string Id) key)
-    {
-        key = default;
-        if (!Base64Url.IsValid(token)) return false;
-        string text;
-        try
-        {
-            text = new UTF8Encoding(false, throwOnInvalidBytes: true).GetString(Base64Url.DecodeFromChars(token));
-        }
-        catch (DecoderFallbackException)
-        {
-            return false;
-        }
-        var bar = text.IndexOf('|', StringComparison.Ordinal);
-        if (bar <= 0 || bar == text.Length - 1
-            || !long.TryParse(text.AsSpan(0, bar), NumberStyles.None, CultureInfo.InvariantCulture, out var ticks)
-            || ticks > DateTimeOffset.MaxValue.UtcTicks) return false;
-        key = (new DateTimeOffset(ticks, TimeSpan.Zero), text[(bar + 1)..]);
-        return true;
     }
 }

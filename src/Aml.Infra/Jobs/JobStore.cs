@@ -4,7 +4,7 @@ using Aml.Infra.Persistence;
 using Dapper;
 using Microsoft.Data.Sqlite;
 using static Aml.Core.Cases.CaseJson;
-using static Aml.Infra.Persistence.Repositories.CaseStore;
+using static Aml.Infra.Persistence.SqliteValues;
 
 namespace Aml.Infra.Jobs;
 

@@ -17,7 +17,7 @@ public sealed class ListStore(SqliteDatabase db) : IListStore
         if (current?.ContentHash == contentHash) return (Map(current), false, []);
 
         var version = (int)(current?.Version ?? 0) + 1;
-        var at = CaseStore.Time(now);
+        var at = SqliteValues.Time(now);
         await c.ExecuteAsync(new CommandDefinition(db.Sql["Extraction.InsertProfile"],
             new { profileId, version, contentHash, sourceText, now = at }, tx, cancellationToken: ct)).ConfigureAwait(false);
 
@@ -54,5 +54,5 @@ public sealed class ListStore(SqliteDatabase db) : IListStore
         return await c.ExecuteScalarAsync<long>(new CommandDefinition(db.Sql["Extraction.ListVersion"], cancellationToken: ct)).ConfigureAwait(false);
     }
 
-    private static ListProfileRecord Map(Row r) => new(r.ProfileId, (int)r.Version, r.ContentHash, r.SourceText, CaseStore.ParseTime(r.CapturedAt));
+    private static ListProfileRecord Map(Row r) => new(r.ProfileId, (int)r.Version, r.ContentHash, r.SourceText, SqliteValues.ParseTime(r.CapturedAt));
 }

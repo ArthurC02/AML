@@ -156,12 +156,12 @@ public static partial class TxtCaseReader
             .Where(x => File.Exists(x.path))
             .ToDictionary(x => x.id, x => Reading(Path.GetFileName(x.path), () => ReadNews(x.id, x.path)));
 
-        var legacy = new List<ImportedDecision>();
-        if (subjectRow.ListMatch is { } m) legacy.Add(new("是否符合名單", m));
-        foreach (var reason in rows.Select(r => r.LegacyReason).OfType<string>().Distinct()) legacy.Add(new("理由", reason));
-        legacy.AddRange(records.Select(r => new ImportedDecision(ProcessingRecord, r)));
+        var imported = new List<ImportedDecision>();
+        if (subjectRow.ListMatch is { } m) imported.Add(new("是否符合名單", m));
+        foreach (var reason in rows.Select(r => r.LegacyReason).OfType<string>().Distinct()) imported.Add(new("理由", reason));
+        imported.AddRange(records.Select(r => new ImportedDecision(ProcessingRecord, r)));
 
-        return new CaseInput(subject, rows, profiles, news, legacy);
+        return new CaseInput(subject, rows, profiles, news, imported);
     }
 
     public const string UnsupportedAttachment = "UNSUPPORTED_ATTACHMENT";
@@ -462,14 +462,15 @@ public static partial class TxtCaseReader
     [GeneratedRegex("\\(\\d+\\)$")]
     private static partial Regex TrailingCode();
 
-    // Profile file: "key:\tvalue" lines, or "key:" followed by a tab-separated table.
     public static SourceProfile ReadProfile(string path) => ParseProfile(File.ReadAllText(path));
 
     /// <summary>A Profile file's export text: an HTML page converted, an export as it is. The content hash is taken on it.</summary>
     public static string ProfileExportText(string content) =>
         content.TrimStart().TrimStart((char)0xFEFF).StartsWith('<') ? HtmlExport.ToExportText(content, HtmlExport.Kind.Profile) : content;
 
-    /// <summary>One Profile file's content, as the export or as an HTML page.</summary>
+    /// <summary>
+    /// One Profile file's content, as the export or as an HTML page: "key:\tvalue" lines, or "key:" followed by a tab-separated table.
+    /// </summary>
     public static SourceProfile ParseProfile(string content)
     {
         content = ProfileExportText(content);

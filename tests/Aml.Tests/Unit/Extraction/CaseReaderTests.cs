@@ -417,7 +417,7 @@ public class CaseReaderTests
     {
         var input = Read("GC-11", [(Case, Gc11Row2, Gc11Row2 + "\n\n" + section)]);
         Assert.Contains("LEGACY_RECORD_BOUNDARY_UNCLEAR", input.Subject.Findings);
-        Assert.DoesNotContain(input.LegacyDecisions, d => d.Field == "客戶檢核處理紀錄");
+        Assert.DoesNotContain(input.ImportedDecisions, d => d.Field == "客戶檢核處理紀錄");
         Assert.Equal(2, input.Rows.Count);
     }
 

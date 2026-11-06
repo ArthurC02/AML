@@ -195,7 +195,7 @@ Insufficient or conflicting evidence
     → REVIEW
 ```
 
-Phase 1 has no automatic MATCH: the identity decision is NO_MATCH, REVIEW or PROBABLE_MATCH. PROBABLE_MATCH is internal ([ADR-0003](../adr/0003-internal-probable-match.md)). There is no numeric score ([ADR-0019](../adr/0019-strength-decision-table-before-fellegi-sunter.md)); `FellegiSunter.Score` computes a shadow weight for Gate D calibration only, outside the result and the explanation; agreeing with any one of k Profile DOBs is k times as likely by chance, so the DOB u is multiplied by k. The calibration tools are in place and are not wired to any decision: `FellegiSunter.Pattern` turns a pair's evidence into an agreement pattern (support agrees, conflict disagrees, everything else is missing), `EstimateParameters` estimates m, u per group and the match share from unlabelled patterns by expectation-maximization under conditional independence, `Weight` scores a pattern with the estimate, and `Calibrate` picks the highest weight threshold that keeps a required recall on labelled pairs, with the precision it gives.
+Phase 1 has no automatic MATCH: the identity decision is NO_MATCH, REVIEW or PROBABLE_MATCH. PROBABLE_MATCH is internal ([ADR-0003](../adr/0003-internal-probable-match.md)). There is no numeric score ([ADR-0019](../adr/0019-strength-decision-table-before-fellegi-sunter.md)); `FellegiSunter.Score` computes a calibration weight for Gate D only; the analysis does not run it, and it is outside the result and the explanation; agreeing with any one of k Profile DOBs is k times as likely by chance, so the DOB u is multiplied by k. The calibration tools are in place and are not wired to any decision: `FellegiSunter.Pattern` turns a pair's evidence into an agreement pattern (support agrees, conflict disagrees, everything else is missing), `EstimateParameters` estimates m, u per group and the match share from unlabelled patterns by expectation-maximization under conditional independence, `Weight` scores a pattern with the estimate, and `Calibrate` picks the highest weight threshold that keeps a required recall on labelled pairs, with the precision it gives.
 
 ### Support strength
 
@@ -307,7 +307,7 @@ Every decision records its evidence per group, its hard-conflict code or stage 3
 - hard conflict and stage 3 row;
 - reason codes.
 
-The revision's lineage records the input file hashes, the list version of each Profile used and the source-condition policy, shadow model, code catalog, schema and app versions. The identity rules have no version of their own; the app version identifies them. Retrieval scope is not recorded.
+The revision's lineage records the input file hashes, the list version of each Profile used and the source-condition policy, code catalog, schema and app versions. The Fellegi-Sunter weight does not run in the analysis and so is not recorded ([ADR-0025](../adr/0025-lineage-records-what-ran.md)). The identity rules have no version of their own; the app version identifies them. Retrieval scope is not recorded.
 
 Every code a decision or explanation emits is in the code catalog, served by `GET /api/codes` with its meaning and the section that defines it.
 

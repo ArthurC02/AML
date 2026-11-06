@@ -48,4 +48,4 @@
 - `DispositionPolicy`: advisory Article 22 recommendation
 - `RiskPolicy` and `RiskScoring`: AML risk scoring under an approved policy
 
-Identity, source-condition, assessment and disposition outputs carry reason codes; a risk assessment carries its score contributions. Source conditions and risk assessments carry their policy version, and each revision's lineage records the source-condition policy, shadow model, code catalog, schema and app versions. Registered reason codes are in [identity adjudication](identity-adjudication.md#reason-code-registry).
+Identity, source-condition, assessment and disposition outputs carry reason codes; a risk assessment carries its score contributions. Source conditions and risk assessments carry their policy version, and each revision's lineage records the source-condition policy, code catalog, schema and app versions. Registered reason codes are in [identity adjudication](identity-adjudication.md#reason-code-registry).

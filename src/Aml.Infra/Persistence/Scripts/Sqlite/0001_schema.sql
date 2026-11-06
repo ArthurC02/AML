@@ -42,7 +42,6 @@ CREATE TABLE analysis_lineage (
     revision              INTEGER NOT NULL,
     schema_version        INTEGER NOT NULL,
     source_policy_version TEXT    NOT NULL,
-    model_version         TEXT    NOT NULL,
     code_catalog_version  TEXT    NOT NULL,
     app_version           TEXT    NOT NULL,
     input_files_json      TEXT    NOT NULL,
@@ -144,4 +143,4 @@ CREATE TABLE list_profile (
 );
 
 -- The format of this file; must equal CaseJson.SchemaVersion (checked at startup and by CaseStoreTests).
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;

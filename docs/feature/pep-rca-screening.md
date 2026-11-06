@@ -28,7 +28,7 @@ RCA_UNCONFIRMED
 
 ## PepPolicy
 
-The policy maps only approved source fields and source values. SIP, Financial Crime, RCA or free-text job titles are not silently converted to PEP. PEP and RCA are decided by the [list-type determination](watchlist-and-adverse-information.md#list-type-determination): a PEP flag with a value decides PEP, a PEP category with a blank flag keeps its PEP condition, `Is RCA? = YES` always adds RCA, `Is RCA? = NO` never clears an RCA category (UNKNOWN with `FLAG_CATEGORY_CONFLICT`), and the bank-internal PEP list counts as PEP evidence. Being on a bank-internal list does not by itself make a Profile a PEP.
+The policy maps only approved source fields and source values. SIP, Financial Crime, RCA or free-text job titles are not silently converted to PEP. PEP and RCA are decided by the [list-type determination](watchlist-and-adverse-information.md#list-type-determination): a PEP flag with a value decides PEP, a PEP category with a blank flag keeps its PEP condition, `Is RCA? = YES` always adds RCA, `Is RCA? = NO` never clears an RCA category (UNKNOWN with `FLAG_CATEGORY_CONFLICT`). A bank-internal list, including an internal PEP list, is not mapped: its category is `UNKNOWN` with `UNMAPPED_CATEGORY` until the export marks it ([open questions](../plan/open-questions.md#data-and-source)).
 
 ```yaml
 conditionType: PEP | RCA

@@ -15,7 +15,7 @@ namespace Aml.Core.Cases;
 /// </summary>
 public static class CaseJson
 {
-    public const int SchemaVersion = 2;
+    public const int SchemaVersion = 3;
 
     public static readonly JsonSerializerOptions Options = Create();
 

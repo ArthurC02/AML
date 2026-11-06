@@ -10,6 +10,7 @@ Questions that need a bank decision. When one is answered, record the answer her
 - Do bank exports write ROC (民國) dates in any form other than an explicit 民國 prefix? Only 民國 dates are converted; a bare two- or three-digit year (62/6/12) is UNPARSEABLE.
 - Does the Profile export carry dated roles (`職位`), keywords (`關鍵字`) and official-list details (`名單資訊`) as structured fields? The synthetic GC-01 to GC-03 samples assume so.
 - Is a Taiwan address written only in English (No. 1, Shifu Rd., Taipei) consistent with a TW country field? The reader recognises a Taiwan address by its Chinese city names, so such an address under a TW country field is recorded as `FIELD_CONFLICT`.
+- How does the export mark a bank-internal list (`BANK_INTERNAL_LIST`), and which internal lists also count as PEP or ADVERSE_MEDIA? Does an internal-list note count as attached news (proposed: when it holds a URL and at least one complete sentence)? No sample has one, so a bank-internal category is unmapped (`UNKNOWN`, `UNMAPPED_CATEGORY`) and its notes are not read.
 - Which source fields are authoritative for classifications and status?
 - How are Profile removal, correction and historical states represented?
 
@@ -58,7 +59,7 @@ Questions that need a bank decision. When one is answered, record the answer her
 - Which container platform, identity provider and CI/CD controls are standard?
 - List data refreshes on a schedule or on an event ([operating architecture](../feature/system-overview.md#operating-architecture)). What schedule, and which source events trigger a refresh and re-analysis?
 - Should index search over the list database ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)) feed Cases automatically, and with which Top N?
-- Calibrate the Fellegi-Sunter shadow (m and u per group, by `FellegiSunter.EstimateParameters` over representative pairs, and a threshold by `Calibrate` over labelled ones) and approve, or not, an AML risk policy; neither affects decisions today.
+- Calibrate the Fellegi-Sunter weight (m and u per group, by `FellegiSunter.EstimateParameters` over representative pairs, and a threshold by `Calibrate` over labelled ones) and approve, or not, an AML risk policy; neither affects decisions today.
 - Approve the entity evidence groups (registration number, IMO) with an entity Golden Case.
 - Calibrate the placeholder thresholds from labelled cases. None of them makes evidence support, a conflict or a hit; they grade details, rank candidates or cap groups:
   - name similarity per script (`Normalize.NameSimilarityThresholdCjk` and `…Latin`, 0.90) and address Jaccard (`AddressCompare.JaccardThreshold`, 0.5), which label a PARTIAL detail;

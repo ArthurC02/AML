@@ -22,7 +22,7 @@ When a second provider is chosen, the provider-specific parts of `SqliteDatabase
 | `aml_case` | one row per Case; unique on `(trigger_event_id, subject_ref)` (`uq_case_trigger`), indexed by `subject_ref` |
 | `case_analysis` | every analysis revision with its result and explanation as JSON, read back into their Core types |
 | `case_input` | the input files (decoded text) of each revision, for re-analysis after a source update |
-| `analysis_lineage` | what a revision was computed from: input file names and SHA-256, each Profile with its list version or `CASE_FILES`, and the source-policy, model, code-catalog, schema and application versions |
+| `analysis_lineage` | what a revision was computed from: input file names and SHA-256, each Profile with its list version or `CASE_FILES`, and the source-policy, code-catalog, schema and application versions |
 | `analysis_quality` | data quality of a revision: comparison cells by status, Profiles not evaluated, findings counted by code |
 | `case_hit`, `hit_evidence`, `hit_reason` | queryable facts of each hit (identity decision, stage 3 row, hard conflict, pair result, priority; each evidence group's direction, status, strength and detail code; identity, pair and disposition reason codes in order); `hit_reason` indexed by `reason_code` |
 | `job` | batch jobs (`ANALYZE_CASE`, `REANALYZE_CASE`) and their payloads; unique on `idempotency_key` (`uq_job_idempotency`), indexed by `(batch_id, status)` and, for claiming, `(status, next_attempt_at)` |

@@ -17,12 +17,14 @@ public sealed record ProfileUse(
     [property: Description("相同內容的名單庫版本；只來自案件檔時為 null")] int? ListVersion,
     [property: Description("正規化匯出文字的 SHA-256，與名單庫的內容雜湊同一算法")] string? ContentHash);
 
-/// <summary>What one revision was computed from: input files, Profile versions and the versions of every rule set.</summary>
+/// <summary>
+/// What one revision was computed from: input files, Profile versions and the versions of the rule sets that ran. A model
+/// that does not run in the analysis, such as the Fellegi-Sunter weight, is not recorded (ADR-0025).
+/// </summary>
 public sealed record AnalysisLineage(
     [property: Description("輸入檔與其雜湊")] IReadOnlyList<InputFile> InputFiles,
     [property: Description("分析用到的每一筆名單與其來源版本")] IReadOnlyList<ProfileUse> Profiles,
     [property: Description("名單條件規則版本")] string SourcePolicyVersion,
-    [property: Description("Fellegi-Sunter 影子模型版本")] string ModelVersion,
     [property: Description("代碼字典版本")] string CodeCatalogVersion,
     [property: Description("儲存格式（JSON Schema）版本")] int SchemaVersion,
     [property: Description("應用程式版本（組件 informational version）")] string AppVersion)
@@ -35,5 +37,5 @@ public sealed record AnalysisLineage(
 
     public static AnalysisLineage Of(CaseInput input, IReadOnlyList<ProfileUse> profiles) => new(
         (input.SourceHashes ?? new Dictionary<string, string>()).OrderBy(f => f.Key, StringComparer.Ordinal).Select(f => new InputFile(f.Key, f.Value)).ToList(),
-        profiles, SourceConditions.PolicyVersion, FellegiSunter.ModelVersion, CodeCatalog.Version, CaseJson.SchemaVersion, CurrentAppVersion);
+        profiles, SourceConditions.PolicyVersion, CodeCatalog.Version, CaseJson.SchemaVersion, CurrentAppVersion);
 }

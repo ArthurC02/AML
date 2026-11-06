@@ -19,7 +19,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
 
     private sealed record AnalysisRow(string CaseId, long Revision, string ExecutionStatus, string CaseResult, string ResultJson, string? ExplanationJson, string CreatedAt);
 
-    private sealed record LineageRow(string InputFilesJson, string ProfilesJson, string SourcePolicyVersion, string ModelVersion, string CodeCatalogVersion, long SchemaVersion, string AppVersion);
+    private sealed record LineageRow(string InputFilesJson, string ProfilesJson, string SourcePolicyVersion, string CodeCatalogVersion, long SchemaVersion, string AppVersion);
 
     // Settable properties, not a constructor: the change count is NULL on a first revision, which a constructor match cannot type.
     private sealed class RevisionRow
@@ -118,7 +118,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
         return new AnalysisRecord(row.CaseId, (int)row.Revision, ParseCode<ExecutionStatus>(row.ExecutionStatus), ParseCode<ScreeningAssessment>(row.CaseResult),
             Read<CaseAnalysis>(row.ResultJson), row.ExplanationJson is null ? null : Read<CaseExplanation>(row.ExplanationJson),
             l is null ? null : new AnalysisLineage(Read<List<InputFile>>(l.InputFilesJson), Read<List<ProfileUse>>(l.ProfilesJson),
-                l.SourcePolicyVersion, l.ModelVersion, l.CodeCatalogVersion, (int)l.SchemaVersion, l.AppVersion),
+                l.SourcePolicyVersion, l.CodeCatalogVersion, (int)l.SchemaVersion, l.AppVersion),
             q is null ? null : new AnalysisQuality((int)q.Hits, (int)q.ComparisonCells, (int)q.MissingCells, (int)q.UncertainCells, (int)q.ConflictCells,
                 Rate(q.MissingCells), Rate(q.UncertainCells), Rate(q.ConflictCells), (int)q.NotEvaluated, Read<Dictionary<string, int>>(q.FindingsJson)),
             ParseTime(row.CreatedAt));
@@ -156,7 +156,6 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
                 revision,
                 schemaVersion = l.SchemaVersion,
                 sourcePolicyVersion = l.SourcePolicyVersion,
-                modelVersion = l.ModelVersion,
                 codeCatalogVersion = l.CodeCatalogVersion,
                 appVersion = l.AppVersion,
                 inputFilesJson = JsonSerializer.Serialize(l.InputFiles, CaseJson.Options),

@@ -82,7 +82,7 @@ public sealed class CaseStoreTests : IDisposable
         var c = await _store.CreateAsync(NewCase(), ct);
         var other = await _store.CreateAsync(NewCase("evt-2"), ct);
         var lineage = new AnalysisLineage([new InputFile("a.txt", "h1")], [new ProfileUse("1", AnalysisLineage.ListDatabase, 2, "h2")],
-            "policy", "model", "codes", CaseJson.SchemaVersion, "app");
+            "policy", "codes", CaseJson.SchemaVersion, "app");
         var quality = new AnalysisQuality(1, 9, 3, 1, 0, 3 / 9.0, 1 / 9.0, 0, 0, new Dictionary<string, int> { ["F"] = 2 });
         var stored = Analysis(c.CaseId, 1) with { Lineage = lineage, Quality = quality };
         Assert.True(await _store.AcceptAnalysisAsync(stored, CaseStatus.InReview, null, ct));

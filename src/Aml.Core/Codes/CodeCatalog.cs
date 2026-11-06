@@ -9,7 +9,7 @@ public sealed record CodeEntry(string Code, string Kind, string Name, string Des
 /// </summary>
 public static class CodeCatalog
 {
-    public const string Version = "codes-4";
+    public const string Version = "codes-5";
 
     private const string Identity = "docs/feature/identity-adjudication.md";
     private const string Extraction = "docs/feature/extraction-and-normalization.md";
@@ -174,7 +174,7 @@ public static class CodeCatalog
         ("LIST_TYPE", "OFFICIAL_WANTED_LIST", "官方通緝名單", "官方通緝名單；通緝不是判決。", "SourceConditions.Determine", Watchlist + "#list-types"),
         ("LIST_TYPE", "OTHER_OFFICIAL_LIST", "其他官方名單", "其他官方名單；由 OfficialListPolicy 細分。", "SourceConditions.Determine", Watchlist + "#list-types"),
         ("LIST_TYPE", "ADVERSE_MEDIA", "負面新聞", "負面新聞類名單。", "SourceConditions.Determine", Watchlist + "#list-types"),
-        ("LIST_TYPE", "BANK_INTERNAL_LIST", "銀行內部名單", "銀行自建的內部名單。", "SourceConditions.Determine", Watchlist + "#list-types"),
+        ("LIST_TYPE", "BANK_INTERNAL_LIST", "銀行內部名單", "銀行自建的內部名單（尚無來源欄位標示，不產生）。", "SourceConditions.Determine", Watchlist + "#list-types"),
         ("CONDITION_STATUS", "HIT", "條件成立／命中", "名單條件成立；作為 pairResult 或 caseResult 時為命中（Phase 1 不產生）。", "SourceConditions.Determine", Watchlist + "#list-type-determination"),
         ("CONDITION_STATUS", "NOT_HIT", "條件不成立", "名單條件不成立。", "SourceConditions.Determine", Watchlist + "#list-type-determination"),
         ("CONDITION_STATUS", "UNKNOWN", "未知", "名單類型、條件狀態或法律階段無法確定（listType、status、legalStage 共用此代碼）。", "SourceConditions.Determine", Watchlist + "#list-type-determination"),

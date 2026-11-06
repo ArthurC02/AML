@@ -61,11 +61,10 @@ Applies to every mapped category whose flag is `MISSING`, and so to all of them 
 | Other Official List, Other Exclusion List | OTHER_OFFICIAL_LIST |
 | SIP – Other Official List / Other Exclusion List | OTHER_OFFICIAL_LIST |
 | SIP – Financial Crime, Tax Crime, Trafficking, Human Trafficking, Narcotics, Drug Trafficking, Organised Crime, Terror / Terrorism, Corruption, Bribery & Corruption, Money Laundering, Fraud, War Crimes, Cybercrime, Environmental Crime, Corporate Crime | ADVERSE_MEDIA, with the subcategory as risk category |
-| bank-internal list | BANK_INTERNAL_LIST; plus PEP for the internal PEP list and ADVERSE_MEDIA for the internal adverse-news list |
 
 - Subcategories do not change non-SIP types.
 - An SIP subcategory not in the table, or no subcategory (e.g. Regulatory Enforcement List), is unmapped: `UNKNOWN` with `UNMAPPED_CATEGORY`, never assumed to be adverse media.
-- Other bank-internal list names keep BANK_INTERNAL_LIST only.
+- `BANK_INTERNAL_LIST` is in the bank's vocabulary ([ADR-0016](../adr/0016-bank-list-type-vocabulary.md)) but no mapping produces it: no export field marks a bank-internal list yet ([open questions](../plan/open-questions.md#data-and-source)). A bank-internal category is therefore unmapped, `UNKNOWN` with `UNMAPPED_CATEGORY`, and goes to review.
 - SIP (Special Interest Person) is not SIE; Dow Jones Special Interest Entity is not SIE either.
 - Unmapped categories are copied verbatim into the explanation and left as UNKNOWN for review.
 
@@ -166,7 +165,7 @@ Predicate conduct follows 洗錢防制法 (Money Laundering Control Act) Article
 
 Profile-level conditions apply to the Profile subject only when source structure supports that attribution. People or companies merely mentioned in notes are not automatically assigned the Profile's risk category.
 
-A news item attached to a Profile counts as attached news; the Profile's own description does not. A bank-internal list note counts as news when it contains both a URL and at least one complete sentence.
+A news item attached to a Profile counts as attached news; the Profile's own description does not. Bank-internal list notes are not read ([open questions](../plan/open-questions.md#data-and-source)).
 
 ## Source versus customer result
 

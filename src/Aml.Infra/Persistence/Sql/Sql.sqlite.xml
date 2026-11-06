@@ -102,16 +102,16 @@
     <statement id="Case.InsertLineage" kind="Insert">
       <description>What one revision was computed from.</description>
       <sql><![CDATA[
-        INSERT INTO analysis_lineage (case_id, revision, schema_version, source_policy_version, model_version, code_catalog_version,
+        INSERT INTO analysis_lineage (case_id, revision, schema_version, source_policy_version, code_catalog_version,
                                       app_version, input_files_json, profiles_json)
-        VALUES (@caseId, @revision, @schemaVersion, @sourcePolicyVersion, @modelVersion, @codeCatalogVersion, @appVersion, @inputFilesJson, @profilesJson)
+        VALUES (@caseId, @revision, @schemaVersion, @sourcePolicyVersion, @codeCatalogVersion, @appVersion, @inputFilesJson, @profilesJson)
       ]]></sql>
     </statement>
 
     <statement id="Case.GetLineage" kind="Select">
       <description>Lineage of one revision.</description>
       <sql><![CDATA[
-        SELECT l.input_files_json, l.profiles_json, l.source_policy_version, l.model_version, l.code_catalog_version, l.schema_version, l.app_version
+        SELECT l.input_files_json, l.profiles_json, l.source_policy_version, l.code_catalog_version, l.schema_version, l.app_version
         FROM analysis_lineage l
         WHERE l.case_id = @caseId AND l.revision = @revision
       ]]></sql>

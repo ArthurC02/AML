@@ -152,7 +152,7 @@ The summary only restates recorded facts; it adds none. Sources are listed with 
 
 Each revision is stored with:
 
-- **lineage**: every input file with its SHA-256; every Profile the analysis used, with the list database version holding the same content (`LIST_DATABASE`) or `CASE_FILES` when it came from the Case's files only, and its content hash; the versions of the source policy, the Fellegi-Sunter shadow model, the code catalog, the stored schema and the application;
+- **lineage**: every input file with its SHA-256; every Profile the analysis used, with the list database version holding the same content (`LIST_DATABASE`) or `CASE_FILES` when it came from the Case's files only, and its content hash; the versions of the source policy, the code catalog, the stored schema and the application;
 - **quality**: comparison cells in total and by missing, uncertain and conflict, with their rates; Profiles not evaluated; data quality findings counted by code, once per hit. The Golden metrics compute their cell rates with the same function (`AnalysisQuality.Of`).
 
 ## Durable batch execution

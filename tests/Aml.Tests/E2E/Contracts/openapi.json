@@ -1074,7 +1074,6 @@
           "inputFiles",
           "profiles",
           "sourcePolicyVersion",
-          "modelVersion",
           "codeCatalogVersion",
           "schemaVersion",
           "appVersion"
@@ -1098,10 +1097,6 @@
           "sourcePolicyVersion": {
             "type": "string",
             "description": "名單條件規則版本"
-          },
-          "modelVersion": {
-            "type": "string",
-            "description": "Fellegi-Sunter 影子模型版本"
           },
           "codeCatalogVersion": {
             "type": "string",

@@ -1,5 +1,5 @@
 {
-  "$id": "aml:CaseDetail:v2",
+  "$id": "aml:CaseDetail:v3",
   "type": [
     "object",
     "null"
@@ -1789,10 +1789,6 @@
               "description": "名單條件規則版本",
               "type": "string"
             },
-            "modelVersion": {
-              "description": "Fellegi-Sunter 影子模型版本",
-              "type": "string"
-            },
             "codeCatalogVersion": {
               "description": "代碼字典版本",
               "type": "string"
@@ -1814,7 +1810,6 @@
             "inputFiles",
             "profiles",
             "sourcePolicyVersion",
-            "modelVersion",
             "codeCatalogVersion",
             "schemaVersion",
             "appVersion"

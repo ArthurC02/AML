@@ -67,8 +67,8 @@ public sealed class AnalysisDataTests : ServiceTestBase
         var lineage = first.Lineage!;
         Assert.Equal(files.Keys.Order(StringComparer.Ordinal), lineage.InputFiles.Select(f => f.Name));
         Assert.All(lineage.InputFiles, f => Assert.Matches("^[0-9A-F]{64}$", f.Sha256));
-        Assert.Equal(("source-policy-0.2", "fs-shadow-0.1", CodeCatalog.Version, CaseJson.SchemaVersion),
-            (lineage.SourcePolicyVersion, lineage.ModelVersion, lineage.CodeCatalogVersion, lineage.SchemaVersion));
+        Assert.Equal(("source-policy-0.2", CodeCatalog.Version, CaseJson.SchemaVersion),
+            (lineage.SourcePolicyVersion, lineage.CodeCatalogVersion, lineage.SchemaVersion));
         Assert.Equal(new ProfileUse("90000031", AnalysisLineage.CaseFiles, null, lineage.Profiles[0].ContentHash), Assert.Single(lineage.Profiles));
         Assert.Equal(9, first.Quality!.ComparisonCells);
 

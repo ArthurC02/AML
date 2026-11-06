@@ -42,7 +42,7 @@ AML/
 │   │   ├── Normalization/        # names, romanization, similarity, dates, Taiwan addresses
 │   │   │   ├── Countries.cs      # ISO 3166-1 codes and common English / Chinese names, Taiwan aliases
 │   │   │   └── Data/*.txt        # embedded reference tables (see Third-party data)
-│   │   ├── Identity/             # evidence groups, HardConflictGate, IdentityDecisionPolicy (with Contrast), Fellegi-Sunter shadow
+│   │   ├── Identity/             # evidence groups, HardConflictGate, IdentityDecisionPolicy (with Contrast), Fellegi-Sunter calibration
 │   │   ├── Screening/            # source-condition policies, combination matrix, DispositionPolicy, risk scoring
 │   │   ├── Retrieval/            # ProfileIndex (alias, BM25, n-gram, reading-key routes), ProfileMerge
 │   │   ├── Cases/                # CaseAnalyzer, Case records, revision changes, lineage, quality, CaseViews and page tokens, CaseJson (JSON form and schemas)

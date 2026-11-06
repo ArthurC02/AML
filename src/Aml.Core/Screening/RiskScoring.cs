@@ -36,7 +36,7 @@ public static class RiskScoring
         if (policy is not { Approved: true } || identity.Decision == IdentityDecision.NoMatch) return null;
         var scored = conditions.Where(c =>
             (c.Status == ConditionStatus.Hit || (c.Status == ConditionStatus.Unknown && c.Type is ListType.Sanction or ListType.Pep))
-            && !(c.Type == ListType.AdverseMedia && c.AmlRelevance == AmlRelevance.Unrelated)).ToList();
+            && !SourceConditions.IsUnrelatedAdverseMedia(c)).ToList();
         var parts = new List<(string Name, int Points)>();
         foreach (var c in scored)
         {

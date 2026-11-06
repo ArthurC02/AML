@@ -31,8 +31,7 @@ internal static class ProfilesEndpoints
         {
             if (string.IsNullOrWhiteSpace(name))
                 return Problems.Of(Problems.InvalidRequest, "name is required.", "Add ?name= with the name to search for.", new { parameter = "name" });
-            if (top is < 1 or > MaxTop)
-                return Problems.Of(Problems.InvalidRequest, $"top must be 1 to {MaxTop}.", $"Send a top from 1 to {MaxTop}, or leave it out for {DefaultTop}.", new { parameter = "top" });
+            if (Problems.Top(top) is { } invalid) return invalid;
             return TypedResults.Ok(await service.SearchAsync(name, top ?? DefaultTop, ct));
         })
         .WithSummary("Search the list database by name (INDEX_SEARCH)")
@@ -74,7 +73,7 @@ internal static class ProfilesEndpoints
 
         profiles.MapGet("/{profileId}/versions", async Task<Results<Ok<IReadOnlyList<ProfileVersionResponse>>, NotFound>> (string profileId, ListService service, CancellationToken ct) =>
             await service.HistoryAsync(profileId, ct) is { Count: > 0 } history
-                ? TypedResults.Ok<IReadOnlyList<ProfileVersionResponse>>(history.Select(v => new ProfileVersionResponse(v.ProfileId, ProfileKeys.Prefix + v.ProfileId, v.Version, v.ContentHash, v.CapturedAt)).ToList())
+                ? TypedResults.Ok<IReadOnlyList<ProfileVersionResponse>>(history.Select(v => new ProfileVersionResponse(v.ProfileId, ProfileKeys.KeyOf(v.ProfileId), v.Version, v.ContentHash, v.CapturedAt)).ToList())
                 : TypedResults.NotFound())
         .WithSummary("Every captured version of one Profile, with its content hash")
         .WithDescription("When a Profile changed; the content of a version is at GET /api/profiles/{profileId}?version=.")

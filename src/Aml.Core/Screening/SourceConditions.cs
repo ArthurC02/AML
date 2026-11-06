@@ -277,7 +277,10 @@ public static partial class SourceConditions
         return jurisdiction && other && !predicate ? AmlRelevance.Unrelated : AmlRelevance.Uncertain;
     }
 
-    private static string[] Sentences(string news) => news.Split('。', '！', '？', '\n', '；');
+    internal static string[] Sentences(string news) => news.Split('。', '！', '？', '\n', '；');
+
+    /// <summary>An ADVERSE_MEDIA condition about conduct unrelated to money laundering (Article 22 ②): it is set aside.</summary>
+    internal static bool IsUnrelatedAdverseMedia(SourceCondition c) => c.Type == ListType.AdverseMedia && c.AmlRelevance == AmlRelevance.Unrelated;
 
     private static bool Names(string sentence, IReadOnlyList<string> names) =>
         names.Any(n => n.Length > 1 && sentence.Contains(n, StringComparison.OrdinalIgnoreCase));

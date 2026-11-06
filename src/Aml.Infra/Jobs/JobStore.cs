@@ -1,15 +1,15 @@
+using System.Data.Common;
 using Aml.Core.Ports;
 using Aml.Infra.Persistence;
 using Dapper;
 using Microsoft.Data.Sqlite;
+using static Aml.Core.Cases.CaseJson;
 using static Aml.Infra.Persistence.Repositories.CaseStore;
 
 namespace Aml.Infra.Jobs;
 
 public sealed class JobStore(SqliteDatabase db) : IJobStore
 {
-    private const int SqliteConstraintUnique = 2067;
-
     private sealed record ClaimedRow(string JobId, string JobType, long AttemptCount, string Payload);
 
     private sealed record ItemRow(string JobId, string IdempotencyKey, string Status, long AttemptCount,
@@ -25,13 +25,26 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
     public async Task<bool> EnqueueAsync(string jobId, string jobType, string batchId, string idempotencyKey, string payload, DateTimeOffset now, CancellationToken ct)
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
+        return await TryEnqueueAsync(db, c, null, new NewJob(jobId, jobType, batchId, idempotencyKey, payload), Time(now), ct).ConfigureAwait(false);
+    }
+
+    /// <summary>Inserts a pending job; false when one is already queued under its idempotency key (only this statement is rolled back).</summary>
+    internal static async Task<bool> TryEnqueueAsync(SqliteDatabase db, SqliteConnection c, DbTransaction? tx, NewJob job, string now, CancellationToken ct)
+    {
         try
         {
-            await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.Enqueue"],
-                new { jobId, jobType, batchId, idempotencyKey, payload, now = Time(now) }, cancellationToken: ct)).ConfigureAwait(false);
+            await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.Enqueue"], new
+            {
+                jobId = job.JobId,
+                jobType = job.JobType,
+                batchId = job.BatchId,
+                idempotencyKey = job.IdempotencyKey,
+                payload = job.Payload,
+                now,
+            }, tx, cancellationToken: ct)).ConfigureAwait(false);
             return true;
         }
-        catch (SqliteException e) when (e.SqliteExtendedErrorCode == SqliteConstraintUnique)
+        catch (SqliteException e) when (e.SqliteExtendedErrorCode == SqliteDatabase.ConstraintUnique)
         {
             return false;
         }
@@ -76,7 +89,7 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
             jobId,
             leaseOwner,
             errorCode,
-            status = Enum(deadLetter ? JobStatus.DeadLetter : JobStatus.Pending),
+            status = Code(deadLetter ? JobStatus.DeadLetter : JobStatus.Pending),
             nextAttemptAt = Time(nextAttemptAt),
             completedAt = deadLetter ? Time(now) : null,
         }, cancellationToken: ct)).ConfigureAwait(false) == 1;
@@ -96,12 +109,12 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
         {
             batchId,
             allStatuses = statuses is null,
-            statuses = (statuses ?? []).Select(s => Enum(s)).DefaultIfEmpty("").ToArray(),
+            statuses = (statuses ?? []).Select(s => Code(s)).DefaultIfEmpty("").ToArray(),
             afterAt = after is { } a ? Time(a.At) : null,
             afterId = after?.Id,
             limit,
         }, cancellationToken: ct)).ConfigureAwait(false);
-        return rows.Select(r => new JobItem(r.JobId, r.IdempotencyKey, Parse<JobStatus>(r.Status), (int)r.AttemptCount,
+        return rows.Select(r => new JobItem(r.JobId, r.IdempotencyKey, ParseCode<JobStatus>(r.Status), (int)r.AttemptCount,
             r.CaseId, (int?)r.AnalysisRevision, r.ErrorCode, r.CompletedAt is null ? null : ParseTime(r.CompletedAt), ParseTime(r.CreatedAt))).ToList();
     }
 
@@ -109,7 +122,7 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
         var rows = await c.QueryAsync<CountRow>(new CommandDefinition(db.Sql["Batch.Counts"], new { batchId }, cancellationToken: ct)).ConfigureAwait(false);
-        return rows.ToDictionary(r => Parse<JobStatus>(r.Status), r => (int)r.Items);
+        return rows.ToDictionary(r => ParseCode<JobStatus>(r.Status), r => (int)r.Items);
     }
 
     public async Task<int> RerunAsync(string batchId, DateTimeOffset now, CancellationToken ct)

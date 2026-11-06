@@ -19,6 +19,21 @@ public static class CaseJson
 
     public static readonly JsonSerializerOptions Options = Create();
 
+    /// <summary>An enum value as the API and the database write it: InReview → IN_REVIEW.</summary>
+    public static string Code<T>(T value) where T : struct, Enum => JsonNamingPolicy.SnakeCaseUpper.ConvertName(value.ToString());
+
+    /// <summary>The enum value of a code (IN_REVIEW) or of its name (InReview), ignoring case; a number is never a code.</summary>
+    public static bool TryParseCode<T>(string code, out T value) where T : struct, Enum
+    {
+        var name = Enum.GetNames<T>().FirstOrDefault(n => n.Equals(code.Replace("_", "", StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase));
+        value = name is null ? default : Enum.Parse<T>(name);
+        return name is not null;
+    }
+
+    /// <summary>The enum value of a stored code; a code no value has is corrupt data.</summary>
+    public static T ParseCode<T>(string code) where T : struct, Enum =>
+        TryParseCode<T>(code, out var value) ? value : throw new FormatException($"'{code}' is not a {typeof(T).Name} code.");
+
     private static JsonSerializerOptions Create()
     {
         var o = new JsonSerializerOptions(JsonSerializerDefaults.Web)
@@ -53,7 +68,7 @@ public static class CaseJson
             if (node is not JsonObject o) return node;
             var member = ctx.PropertyInfo?.AttributeProvider as MemberInfo;
             if (member?.GetCustomAttribute<DescriptionAttribute>() is { } d) o.Insert(0, "description", d.Description);
-            if (member?.GetCustomAttribute<SensitivityAttribute>() is { } s) o["x-sensitivity"] = JsonNamingPolicy.SnakeCaseUpper.ConvertName(s.Level.ToString());
+            if (member?.GetCustomAttribute<SensitivityAttribute>() is { } s) o["x-sensitivity"] = Code(s.Level);
             if (ctx.PropertyInfo is null && ctx.Path.IsEmpty) o.Insert(0, "$id", $"aml:{type.Name}:v{SchemaVersion}");
             // Nulls are left out when written, so a nullable field is never required.
             if (o["required"] is JsonArray required && o["properties"] is JsonObject props)

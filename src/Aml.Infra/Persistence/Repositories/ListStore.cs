@@ -1,13 +1,11 @@
 using Aml.Core.Ports;
+using Aml.Infra.Jobs;
 using Dapper;
-using Microsoft.Data.Sqlite;
 
 namespace Aml.Infra.Persistence.Repositories;
 
 public sealed class ListStore(SqliteDatabase db) : IListStore
 {
-    private const int SqliteConstraintUnique = 2067;
-
     private sealed record Row(string ProfileId, long Version, string ContentHash, string SourceText, string CapturedAt);
 
     public async Task<(ListProfileRecord Current, bool Changed, IReadOnlyList<string> QueuedJobIds)> CaptureAsync(
@@ -26,23 +24,7 @@ public sealed class ListStore(SqliteDatabase db) : IListStore
         // Transactional outbox: the new version and the work it causes commit together, or neither does.
         var queued = new List<string>();
         foreach (var job in jobsFor(version))
-            try
-            {
-                await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.Enqueue"], new
-                {
-                    jobId = job.JobId,
-                    jobType = job.JobType,
-                    batchId = job.BatchId,
-                    idempotencyKey = job.IdempotencyKey,
-                    payload = job.Payload,
-                    now = at,
-                }, tx, cancellationToken: ct)).ConfigureAwait(false);
-                queued.Add(job.JobId);
-            }
-            catch (SqliteException e) when (e.SqliteExtendedErrorCode == SqliteConstraintUnique)
-            {
-                // Already queued under the same idempotency key; only this statement is rolled back.
-            }
+            if (await JobStore.TryEnqueueAsync(db, c, tx, job, at, ct).ConfigureAwait(false)) queued.Add(job.JobId);
         await tx.CommitAsync(ct).ConfigureAwait(false);
         return (new ListProfileRecord(profileId, version, contentHash, sourceText, now), true, queued);
     }

@@ -28,5 +28,5 @@ public interface ICaseStore
     Task<IReadOnlyDictionary<string, string>?> LatestInputAsync(string caseId, CancellationToken ct);
 
     /// <summary>Each Case's latest stored input.</summary>
-    Task<IReadOnlyList<(string CaseId, int Revision, IReadOnlyDictionary<string, string> Files)>> LatestInputsAsync(CancellationToken ct);
+    Task<IReadOnlyList<(string CaseId, IReadOnlyDictionary<string, string> Files)>> LatestInputsAsync(CancellationToken ct);
 }

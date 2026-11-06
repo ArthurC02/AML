@@ -35,8 +35,8 @@ public abstract class ServiceTestBase : IDisposable
         _cases = new CaseStore(_db);
         _lists = new ListStore(_db);
         _jobs = new JobStore(_db);
-        _caseService = new CaseService(_cases, TimeProvider.System, _lists, ExportText);
-        _listService = new ListService(_lists, _cases, _caseService, TxtCaseReader.ParseProfile, TxtCaseReader.ReadFiles, TimeProvider.System, ExportText);
+        _caseService = new CaseService(_cases, TimeProvider.System, _lists, TxtCaseReader.ProfileExportText);
+        _listService = new ListService(_lists, _cases, _caseService, TxtCaseReader.ParseProfile, TxtCaseReader.ReadFiles, TimeProvider.System, TxtCaseReader.ProfileExportText);
     }
 
     public void Dispose()
@@ -50,9 +50,6 @@ public abstract class ServiceTestBase : IDisposable
 
     protected BatchService Batch(BatchOptions? options = null) =>
         new(_jobs, _caseService, TxtCaseReader.ReadFiles, options ?? new BatchOptions(), TimeProvider.System, _listService);
-
-    protected static string ExportText(string c) =>
-        c.TrimStart().TrimStart('﻿').StartsWith('<') ? HtmlExport.ToExportText(c, HtmlExport.Kind.Profile) : c;
 
     protected static AnalysisRecord Failed(string caseId, int revision) =>
         new(caseId, revision, ExecutionStatus.Failed, ScreeningAssessment.NotEvaluated, new CaseAnalysis([], [], []), null, null, null, T0);

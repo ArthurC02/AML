@@ -36,7 +36,7 @@ public static partial class AddressCompare
         {
             var t = Normalize.NameKey(w.Value);
             if (t.Length == 0) continue;
-            if (t.Any(c => c is >= '㐀' and <= '鿿') && t.Length > 1)
+            if (t.Any(Normalize.IsCjk) && t.Length > 1)
                 for (var i = 0; i + 1 < t.Length; i++) tokens.Add(t.Substring(i, 2));
             else tokens.Add(t);
         }

@@ -171,7 +171,7 @@
     <statement id="Case.LatestInputs" kind="Select">
       <description>Each Case's latest stored input, for re-analysis after a source update.</description>
       <sql><![CDATA[
-        SELECT i.case_id, i.revision, i.files_json
+        SELECT i.case_id, i.files_json
         FROM case_input i
         WHERE i.revision = (SELECT MAX(x.revision) FROM case_input x WHERE x.case_id = i.case_id)
       ]]></sql>

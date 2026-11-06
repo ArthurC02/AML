@@ -95,16 +95,16 @@ public static class CaseViews
 
     public static string HitLink(string caseId, int hit, int revision) => $"/api/cases/{caseId}/hits/{hit}?revision={revision}&view=summary";
 
-    public static string RevisionLink(string caseId, int revision) => $"/api/cases/{caseId}/revisions/{revision}";
+    public static string RevisionsLink(string caseId) => $"/api/cases/{caseId}/revisions";
 
-    private static string Code<T>(T value) where T : struct, Enum => JsonNamingPolicy.SnakeCaseUpper.ConvertName(value.ToString());
+    public static string RevisionLink(string caseId, int revision) => $"{RevisionsLink(caseId)}/{revision}";
 
     private static IReadOnlyList<T>? NullIfEmpty<T>(IReadOnlyList<T> items) => items.Count == 0 ? null : items;
 
     /// <summary>The Case and its effective revision (null when it has none).</summary>
     public static CaseSummary Summary(CaseRecord c, AnalysisRecord? effective)
     {
-        var revisions = $"/api/cases/{c.CaseId}/revisions";
+        var revisions = RevisionsLink(c.CaseId);
         var newer = c.EffectiveRevision is { } e && c.CurrentRevision > e;
         if (effective is null)
             return new(c.CaseId, c.SubjectRef, c.TriggerEventId, c.Status, c.CurrentRevision, null, null, false, null,
@@ -116,7 +116,7 @@ public static class CaseViews
             .Select(h => new HitLine(h.HitNumber, ProfileKeys.IdOf(h.ProfileKey), h.ProfileKey, h.ProfileName, h.PairResult, h.ReviewPriority, h.IdentityDecision, HitLink(c.CaseId, h.HitNumber, effective.Revision)))
             .ToList();
         var toReview = hits.Count(h => h.PairResult is ScreeningAssessment.Hit or ScreeningAssessment.Review);
-        var conclusion = $"案件結果 {Code(effective.CaseResult)}（revision {effective.Revision}）：{hits.Count} 個 hit，{toReview} 個需複核"
+        var conclusion = $"案件結果 {CaseJson.Code(effective.CaseResult)}（revision {effective.Revision}）：{hits.Count} 個 hit，{toReview} 個需複核"
             + (newer ? $"；revision {c.CurrentRevision} 未完成，未取代此結果" : "");
         return new(c.CaseId, c.SubjectRef, c.TriggerEventId, c.Status, c.CurrentRevision, effective.Revision, effective.CreatedAt, newer,
             effective.CaseResult, conclusion, NullIfEmpty(lines.Take(MaxHits).ToList()), lines.Count > MaxHits ? lines.Count - MaxHits : null,
@@ -151,6 +151,13 @@ public static class PageToken
 {
     public const int DefaultSize = 20;
     public const int MaxSize = 100;
+
+    /// <summary>The first <paramref name="size"/> of rows read one past the page, and the token for the next page when that extra row came back.</summary>
+    public static (List<T> Page, string? Next) Page<T>(IReadOnlyList<T> rows, int size, Func<T, (DateTimeOffset At, string Id)> key)
+    {
+        var page = rows.Take(size).ToList();
+        return (page, rows.Count > size && key(page[^1]) is var (at, id) ? Encode(at, id) : null);
+    }
 
     public static string Encode(DateTimeOffset at, string id) =>
         Base64Url.EncodeToString(Encoding.UTF8.GetBytes(string.Create(CultureInfo.InvariantCulture, $"{at.UtcTicks}|{id}")));

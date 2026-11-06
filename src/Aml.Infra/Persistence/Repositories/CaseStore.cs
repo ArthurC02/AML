@@ -8,14 +8,12 @@ using Aml.Core.Retrieval;
 using Aml.Core.Screening;
 using Dapper;
 using Microsoft.Data.Sqlite;
+using static Aml.Core.Cases.CaseJson;
 
 namespace Aml.Infra.Persistence.Repositories;
 
 public sealed class CaseStore(SqliteDatabase db) : ICaseStore
 {
-    private const int SqliteConstraintUnique = 2067;
-    private const int SqliteConstraintPrimaryKey = 1555;
-
     private sealed record CaseRow(string CaseId, string SubjectRef, string TriggerEventId, string CaseStatus,
         long CurrentRevision, long? EffectiveRevision, string CreatedAt, string UpdatedAt);
 
@@ -42,11 +40,11 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
         try
         {
             await c.ExecuteAsync(new CommandDefinition(db.Sql["Case.Insert"],
-                new { caseId = record.CaseId, subjectRef = record.SubjectRef, triggerEventId = record.TriggerEventId, caseStatus = Enum(record.Status), now = Time(record.CreatedAt) },
+                new { caseId = record.CaseId, subjectRef = record.SubjectRef, triggerEventId = record.TriggerEventId, caseStatus = Code(record.Status), now = Time(record.CreatedAt) },
                 cancellationToken: ct)).ConfigureAwait(false);
             return record;
         }
-        catch (SqliteException e) when (e.SqliteExtendedErrorCode == SqliteConstraintUnique)
+        catch (SqliteException e) when (e.SqliteExtendedErrorCode == SqliteDatabase.ConstraintUnique)
         {
             // Idempotent create: the same trigger and subject already have a Case.
             var row = await c.QuerySingleAsync<CaseRow>(new CommandDefinition(db.Sql["Case.GetByTrigger"],
@@ -73,14 +71,14 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
             {
                 caseId = analysis.CaseId,
                 revision = analysis.Revision,
-                executionStatus = Enum(analysis.ExecutionStatus),
-                caseResult = Enum(analysis.CaseResult),
+                executionStatus = Code(analysis.ExecutionStatus),
+                caseResult = Code(analysis.CaseResult),
                 resultJson = JsonSerializer.Serialize(analysis.Result, CaseJson.Options),
                 explanationJson = analysis.Explanation is null ? null : JsonSerializer.Serialize(analysis.Explanation, CaseJson.Options),
                 now,
             }, tx, cancellationToken: ct)).ConfigureAwait(false);
         }
-        catch (SqliteException e) when (e.SqliteExtendedErrorCode is SqliteConstraintPrimaryKey or SqliteConstraintUnique)
+        catch (SqliteException e) when (e.SqliteExtendedErrorCode is SqliteDatabase.ConstraintPrimaryKey or SqliteDatabase.ConstraintUnique)
         {
             return false; // another analysis took this revision number; the caller re-reads and retries
         }
@@ -100,7 +98,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
             caseId = analysis.CaseId,
             revision = analysis.Revision,
             effectiveRevision = effective,
-            caseStatus = Enum(status),
+            caseStatus = Code(status),
             now,
         }, tx, cancellationToken: ct)).ConfigureAwait(false);
 
@@ -117,7 +115,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
         var l = await c.QuerySingleOrDefaultAsync<LineageRow>(new CommandDefinition(db.Sql["Case.GetLineage"], args, cancellationToken: ct)).ConfigureAwait(false);
         var q = await c.QuerySingleOrDefaultAsync<QualityRow>(new CommandDefinition(db.Sql["Case.GetQuality"], args, cancellationToken: ct)).ConfigureAwait(false);
         double? Rate(long n) => q!.ComparisonCells == 0 ? null : (double)n / q.ComparisonCells;
-        return new AnalysisRecord(row.CaseId, (int)row.Revision, Parse<ExecutionStatus>(row.ExecutionStatus), Parse<ScreeningAssessment>(row.CaseResult),
+        return new AnalysisRecord(row.CaseId, (int)row.Revision, ParseCode<ExecutionStatus>(row.ExecutionStatus), ParseCode<ScreeningAssessment>(row.CaseResult),
             Read<CaseAnalysis>(row.ResultJson), row.ExplanationJson is null ? null : Read<CaseExplanation>(row.ExplanationJson),
             l is null ? null : new AnalysisLineage(Read<List<InputFile>>(l.InputFilesJson), Read<List<ProfileUse>>(l.ProfilesJson),
                 l.SourcePolicyVersion, l.ModelVersion, l.CodeCatalogVersion, (int)l.SchemaVersion, l.AppVersion),
@@ -130,8 +128,8 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
         var rows = await c.QueryAsync<RevisionRow>(new CommandDefinition(db.Sql["Case.Revisions"], new { caseId }, cancellationToken: ct)).ConfigureAwait(false);
-        return rows.Select(r => new RevisionLine((int)r.Revision, ParseTime(r.CreatedAt), Parse<ExecutionStatus>(r.ExecutionStatus),
-            Parse<ScreeningAssessment>(r.CaseResult), r.Effective, (int?)r.Changes)).ToList();
+        return rows.Select(r => new RevisionLine((int)r.Revision, ParseTime(r.CreatedAt), ParseCode<ExecutionStatus>(r.ExecutionStatus),
+            ParseCode<ScreeningAssessment>(r.CaseResult), r.Effective, (int?)r.Changes)).ToList();
     }
 
     // ponytail: "@x IS NULL OR" filters keep one statement; split per filter if the planner skips the indexes at volume.
@@ -185,23 +183,23 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
             revision,
             hitNumber = x.Number,
             profileId = ProfileKeys.IdOf(x.Hit.Profile.ProfileKey),
-            conditionTypes = string.Join(",", x.Hit.Conditions.Select(k => Enum(k.Type))),
-            legalStage = Enum(x.Hit.Conditions.Select(k => k.LegalStage).FirstOrDefault(s => s != LegalStage.Unknown)),
-            identityDecision = Enum(x.Hit.Identity.Decision),
+            conditionTypes = string.Join(",", x.Hit.Conditions.Select(k => Code(k.Type))),
+            legalStage = Code(x.Hit.Conditions.Select(k => k.LegalStage).FirstOrDefault(s => s != LegalStage.Unknown)),
+            identityDecision = Code(x.Hit.Identity.Decision),
             stage3Row = x.Hit.Identity.Stage3Row,
             hardConflict = x.Hit.Identity.HardConflict,
-            pairResult = Enum(x.Hit.PairResult),
-            reviewPriority = x.Hit.ReviewPriority is { } p ? Enum(p) : null,
+            pairResult = Code(x.Hit.PairResult),
+            reviewPriority = x.Hit.ReviewPriority is { } p ? Code(p) : null,
         }).ToList()).ConfigureAwait(false);
         await Run("Case.InsertEvidence", hits.SelectMany(x => x.Hit.Identity.Evidence.Values.Select(e => new
         {
             caseId,
             revision,
             hitNumber = x.Number,
-            evidenceGroup = Enum(e.Group),
-            direction = Enum(e.Direction),
-            comparisonStatus = Enum(e.Status),
-            strength = Enum(e.Strength),
+            evidenceGroup = Code(e.Group),
+            direction = Code(e.Direction),
+            comparisonStatus = Code(e.Status),
+            strength = Code(e.Strength),
             detailCode = e.Detail is null ? null : CodeCatalog.Key(e.Detail),
         })).ToList()).ConfigureAwait(false);
         await Run("Case.InsertReason", hits.SelectMany(x =>
@@ -217,26 +215,19 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
         return json is null ? null : JsonSerializer.Deserialize<Dictionary<string, string>>(json);
     }
 
-    private sealed record InputRow(string CaseId, long Revision, string FilesJson);
+    private sealed record InputRow(string CaseId, string FilesJson);
 
     // ponytail: reads every Case's latest input; add a case_input_profile index table when Case volume makes this slow.
-    public async Task<IReadOnlyList<(string CaseId, int Revision, IReadOnlyDictionary<string, string> Files)>> LatestInputsAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<(string CaseId, IReadOnlyDictionary<string, string> Files)>> LatestInputsAsync(CancellationToken ct)
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
         var rows = await c.QueryAsync<InputRow>(new CommandDefinition(db.Sql["Case.LatestInputs"], cancellationToken: ct)).ConfigureAwait(false);
-        return rows.Select(r => (r.CaseId, (int)r.Revision,
+        return rows.Select(r => (r.CaseId,
             (IReadOnlyDictionary<string, string>)JsonSerializer.Deserialize<Dictionary<string, string>>(r.FilesJson)!)).ToList();
     }
 
-    private static CaseRecord Map(CaseRow r) => new(r.CaseId, r.SubjectRef, r.TriggerEventId, Parse<CaseStatus>(r.CaseStatus),
+    private static CaseRecord Map(CaseRow r) => new(r.CaseId, r.SubjectRef, r.TriggerEventId, ParseCode<CaseStatus>(r.CaseStatus),
         (int)r.CurrentRevision, (int?)r.EffectiveRevision, ParseTime(r.CreatedAt), ParseTime(r.UpdatedAt));
-
-    // Enums stored as UPPER_SNAKE strings, e.g. InReview → IN_REVIEW.
-    internal static string Enum<T>(T value) where T : struct, System.Enum =>
-        string.Concat(value.ToString().Select((ch, i) => i > 0 && char.IsUpper(ch) ? "_" + ch : ch.ToString())).ToUpperInvariant();
-
-    internal static T Parse<T>(string s) where T : struct, System.Enum =>
-        System.Enum.Parse<T>(s.Replace("_", "", StringComparison.Ordinal), ignoreCase: true);
 
     internal static string Time(DateTimeOffset t) => t.UtcDateTime.ToString("O", CultureInfo.InvariantCulture);
 

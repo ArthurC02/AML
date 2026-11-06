@@ -42,7 +42,7 @@ public class ProfileIndexTests
         Assert.Equal(new MergeEdge("DJ:A", "DJ:B", ProfileMerge.SharedDocument, "TW_NATIONAL_ID|TW|A123456789"), edge);
         var refused = Assert.Single(result.Rejected);
         Assert.Equal(("DJ:B", "DJ:C", ProfileMerge.SourceLink), (refused.A, refused.B, refused.Basis));
-        Assert.Equal($"{ProfileMerge.GenderConflict}(DJ:A,DJ:C)", refused.Conflict);
+        Assert.Equal($"{ReasonCodes.GenderConflict}(DJ:A,DJ:C)", refused.Conflict);
     }
 
     [Fact]
@@ -50,7 +50,7 @@ public class ProfileIndexTests
     {
         var refused = ProfileMerge.Resolve([Profile("1", ["甲"], docs: [Id], dobs: [new(1970)]), Profile("2", ["乙"], docs: [Id], dobs: [new(1980, 1, 2)])]);
         Assert.Empty(refused.Groups);
-        Assert.StartsWith(ProfileMerge.DobConflict, Assert.Single(refused.Rejected).Conflict);
+        Assert.StartsWith(ReasonCodes.DobConflict, Assert.Single(refused.Rejected).Conflict);
 
         var merged = ProfileMerge.Group([Profile("1", ["甲"], docs: [Id], dobs: [new(1970)]), Profile("2", ["乙"], docs: [Id], dobs: [new(1970, 5, 1)])]);
         Assert.Equal(["DJ:1", "DJ:2"], Assert.Single(merged).ProfileKeys);

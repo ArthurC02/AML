@@ -10,10 +10,7 @@ public enum DatePrecision { Year, Month, Day }
 
 public enum Gender { Male, Female }
 
-public sealed record FieldValue(string? Value, ValueState State, string? Detail = null)
-{
-    public static FieldValue Missing(string detail) => new(null, ValueState.Missing, detail);
-}
+public sealed record FieldValue(string? Value, ValueState State, string? Detail = null);
 
 /// <summary>A date known to YEAR, MONTH or DAY precision.</summary>
 public readonly record struct PartialDate(

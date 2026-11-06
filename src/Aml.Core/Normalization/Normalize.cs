@@ -202,6 +202,9 @@ public static partial class Normalize
         _ => null,
     };
 
+    /// <summary>A Chinese character of the Basic Multilingual Plane (CJK Extension A and Unified Ideographs, 㐀–鿿).</summary>
+    public static bool IsCjk(char c) => c is >= '㐀' and <= '鿿';
+
     public static string HalfWidth(string s)
     {
         var sb = new StringBuilder(s.Length);

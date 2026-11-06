@@ -1,5 +1,7 @@
 using System.Text;
+using Aml.Core.Identity;
 using Aml.Core.Normalization;
+using Aml.Core.Shared;
 using Aml.Core.Subjects;
 
 namespace Aml.Core.Retrieval;
@@ -21,6 +23,9 @@ public static class ProfileKeys
 
     /// <summary>The Profile ID of a key or of an ID with or without the prefix; the prefix is matched in any case (dj:123).</summary>
     public static string IdOf(string key) => key.StartsWith(Prefix, StringComparison.OrdinalIgnoreCase) ? key[Prefix.Length..] : key;
+
+    /// <summary>The Profile key of an ID, or of a key in any case (dj:123 → DJ:123).</summary>
+    public static string KeyOf(string id) => Prefix + IdOf(id);
 }
 
 /// <summary>
@@ -49,7 +54,6 @@ public sealed class ProfileIndex
     private sealed record Alias(string ProfileKey, string Name, string Key, string[] Tokens, HashSet<string> Grams, bool Cjk, HashSet<string> ReadingKeys);
 
     private readonly List<Alias> _aliases = [];
-    private readonly Dictionary<string, SourceProfile> _profiles = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _documentFrequency = new(StringComparer.Ordinal);
     private readonly Dictionary<bool, double> _averageLength = [];
     // Postings (alias positions) by normalized key and by each route's terms. Every route scores 0 on an alias that shares
@@ -66,7 +70,6 @@ public sealed class ProfileIndex
     {
         foreach (var p in profiles.GroupBy(p => p.ProfileKey, StringComparer.Ordinal).Select(g => g.Last()))
         {
-            _profiles[p.ProfileKey] = p;
             foreach (var name in p.Names.Distinct())
             {
                 var key = Normalize.NameKey(name, true);
@@ -85,10 +88,6 @@ public sealed class ProfileIndex
         foreach (var cjk in new[] { false, true })
             _averageLength[cjk] = _aliases.Where(a => a.Cjk == cjk).Select(a => (double)a.Tokens.Length).DefaultIfEmpty(1).Average();
     }
-
-    public int Count => _profiles.Count;
-
-    public SourceProfile? Get(string profileKey) => _profiles.GetValueOrDefault(profileKey);
 
     /// <summary>
     /// Every exact alias match first (never cut, ordered by alias text), then the remaining Profiles by reciprocal rank
@@ -250,8 +249,6 @@ public static class ProfileMerge
     public const string SharedDocument = "SHARED_DOCUMENT_KEY";
     public const string SourceLink = "RECORDED_SOURCE_LINK";
     public const string OversizedGroup = "OVERSIZED_GROUP";
-    public const string GenderConflict = "GENDER_CONFLICT";
-    public const string DobConflict = "DOB_CONFLICT";
 
     // ponytail: group size and number length limits are judgement calls; revisit with real list volumes.
     private const int MaxGroupSize = 10;
@@ -311,7 +308,7 @@ public static class ProfileMerge
             foreach (var other in g.Skip(1)) Union(g.First().ProfileKey, other.ProfileKey, SharedDocument, g.Key);
         foreach (var p in list)
             foreach (var r in p.Relationships.Where(r => SameAs.Contains(r.Relation.Trim())))
-                Union(p.ProfileKey, r.ProfileId.StartsWith(ProfileKeys.Prefix, StringComparison.Ordinal) ? r.ProfileId : ProfileKeys.Prefix + r.ProfileId, SourceLink);
+                Union(p.ProfileKey, ProfileKeys.KeyOf(r.ProfileId), SourceLink);
 
         var groups = members.Values.Where(m => m.Count > 1)
             .Select(m => m.Order(StringComparer.Ordinal).ToList())
@@ -329,12 +326,12 @@ public static class ProfileMerge
     {
         var (type, country) = (Normalize.NullIfPlaceholder(d.Type), Normalize.NullIfPlaceholder(d.Country));
         if (type is null || country is null || Normalize.IsPlaceholder(d.Number)) return null;
-        var number = Normalize.NameKey(Normalize.HalfWidth(d.Number));
+        var number = EvidenceBuilder.DocumentNumber(d.Number);
         return number.Length < MinDocumentLength || number.Distinct().Count() == 1 ? null : $"{type}|{country}|{number}";
     }
 
     private static string? Conflict(SourceProfile x, SourceProfile y) =>
-        x.Gender is { } g && y.Gender is { } h && g != h ? GenderConflict
-        : x.DatesOfBirth.Count > 0 && y.DatesOfBirth.Count > 0 && !x.DatesOfBirth.Any(d => y.DatesOfBirth.Any(d.AgreesWith)) ? DobConflict
+        x.Gender is { } g && y.Gender is { } h && g != h ? ReasonCodes.GenderConflict
+        : x.DatesOfBirth.Count > 0 && y.DatesOfBirth.Count > 0 && !x.DatesOfBirth.Any(d => y.DatesOfBirth.Any(d.AgreesWith)) ? ReasonCodes.DobConflict
         : null;
 }

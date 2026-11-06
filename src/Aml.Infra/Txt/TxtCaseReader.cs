@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Aml.Core.Normalization;
+using Aml.Core.Retrieval;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
 using Aml.Infra.Html;
@@ -165,10 +166,9 @@ public static partial class TxtCaseReader
 
     public const string UnsupportedAttachment = "UNSUPPORTED_ATTACHMENT";
     public const string LegacyRecordBoundaryUnclear = "LEGACY_RECORD_BOUNDARY_UNCLEAR";
-    public const string Unparseable = "UNPARSEABLE";
+    public const string Unparseable = Findings.Unparseable;
     public const string FieldConflict = "FIELD_CONFLICT";
-    /// <summary><c>AMBIGUOUS:&lt;field&gt;</c>: a country value that maps to no country unambiguously; it is left out of comparison.</summary>
-    public const string Ambiguous = "AMBIGUOUS";
+    public const string Ambiguous = Findings.Ambiguous;
     /// <summary><c>ENCODING_FALLBACK:&lt;file&gt;</c>: the file is not UTF-8 and was read as CP950 (Big5).</summary>
     public const string EncodingFallback = "ENCODING_FALLBACK";
     public const string FieldAbsent = "FIELD_ABSENT";
@@ -407,7 +407,7 @@ public static partial class TxtCaseReader
         var (normalized, finding) = Normalize.TaiwanAddress(raw);
         var taiwan = TaiwanCity().IsMatch(normalized);
         var country = countryField is null ? (taiwan ? "TW" : null) : Country($"{role}(國家)", countryField, findings);
-        var conflict = country is not null && countryField is not null && (country == "TW" ? !raw.Any(c => c is >= '㐀' and <= '鿿') : taiwan);
+        var conflict = country is not null && countryField is not null && (country == "TW" ? !raw.Any(Normalize.IsCjk) : taiwan);
         return new Address(role, raw, normalized, country, ValueState.Present, finding) { Conflict = conflict };
     }
 
@@ -465,10 +465,14 @@ public static partial class TxtCaseReader
     // Profile file: "key:\tvalue" lines, or "key:" followed by a tab-separated table.
     public static SourceProfile ReadProfile(string path) => ParseProfile(File.ReadAllText(path));
 
+    /// <summary>A Profile file's export text: an HTML page converted, an export as it is. The content hash is taken on it.</summary>
+    public static string ProfileExportText(string content) =>
+        content.TrimStart().TrimStart((char)0xFEFF).StartsWith('<') ? HtmlExport.ToExportText(content, HtmlExport.Kind.Profile) : content;
+
     /// <summary>One Profile file's content, as the export or as an HTML page.</summary>
     public static SourceProfile ParseProfile(string content)
     {
-        if (content.TrimStart().TrimStart((char)0xFEFF).StartsWith('<')) content = HtmlExport.ToExportText(content, HtmlExport.Kind.Profile);
+        content = ProfileExportText(content);
         var scalars = new Dictionary<string, string>();
         var tables = new Dictionary<string, List<string[]>>();
         string? section = null;
@@ -549,7 +553,7 @@ public static partial class TxtCaseReader
         var otherIds = Rows("其他識別碼", 3).Select(r => new OtherIdentifier(r[1], r[2])).ToList();
 
         return new SourceProfile(
-            ProfileKey: "DJ:" + scalars["Profile_ID"],
+            ProfileKey: ProfileKeys.KeyOf(scalars["Profile_ID"]),
             Gender: Normalize.Gender(scalars.GetValueOrDefault("性別")),
             Names: names.Distinct().ToList(),
             DatesOfBirth: dobs,

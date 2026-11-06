@@ -19,8 +19,7 @@ public static class AssessmentPolicy
     public static ScreeningAssessment Combine(ConditionStatus status, IdentityDecision identity) => status switch
     {
         ConditionStatus.NotHit => ScreeningAssessment.NotApplicable,
-        // Phase 1 has no identity MATCH, so a system HIT never occurs; PROBABLE_MATCH surfaces as REVIEW.
-        ConditionStatus.Hit => identity == IdentityDecision.NoMatch ? ScreeningAssessment.NoHit : ScreeningAssessment.Review,
+        // HIT and UNKNOWN alike. Phase 1 has no identity MATCH, so a system HIT never occurs; PROBABLE_MATCH surfaces as REVIEW.
         _ => identity == IdentityDecision.NoMatch ? ScreeningAssessment.NoHit : ScreeningAssessment.Review,
     };
 

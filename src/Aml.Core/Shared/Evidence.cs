@@ -71,4 +71,8 @@ public static class Findings
     public const string ProfileMultipleDob = "PROFILE_MULTIPLE_DOB";
     public const string VariantCharacters = "VARIANT_CHARACTERS";
     public const string RomanizationVariant = "ROMANIZATION_VARIANT";
+    /// <summary><c>UNPARSEABLE:&lt;field&gt;</c>: a value the reader could not read.</summary>
+    public const string Unparseable = "UNPARSEABLE";
+    /// <summary><c>AMBIGUOUS:&lt;field&gt;</c>: a country value that maps to no country unambiguously; it is left out of comparison.</summary>
+    public const string Ambiguous = "AMBIGUOUS";
 }

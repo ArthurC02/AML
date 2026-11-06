@@ -45,7 +45,7 @@ public static class DispositionPolicy
         var reasons = new List<string>();
 
         // ②: only the unrelated ADVERSE_MEDIA condition is set aside; other conditions still count.
-        var remaining = conditions.Where(c => !(c.Type == ListType.AdverseMedia && c.AmlRelevance == AmlRelevance.Unrelated)).ToList();
+        var remaining = conditions.Where(c => !SourceConditions.IsUnrelatedAdverseMedia(c)).ToList();
         if (remaining.Count < conditions.Count) reasons.Add(AdverseUnrelated);
 
         if (identity.Decision == IdentityDecision.NoMatch)
@@ -78,7 +78,7 @@ public static class DispositionPolicy
     // A value that is not a two-letter code did not map unambiguously to a country (Normalize.Country).
     // A nationality value that did not map to a country (AMBIGUOUS:<field>) leaves the classification Unknown.
     private static Nationality Classify(IReadOnlyList<string> codes, IReadOnlyList<string> findings, string field) =>
-        codes.Count == 0 || codes.Any(c => c.Length != 2) || findings.Any(f => f.StartsWith($"AMBIGUOUS:{field}", StringComparison.Ordinal))
+        codes.Count == 0 || codes.Any(c => c.Length != 2) || findings.Any(f => f.StartsWith($"{Findings.Ambiguous}:{field}", StringComparison.Ordinal))
             ? Nationality.Unknown
         : codes.Contains("TW") ? Nationality.Taiwan
         : Nationality.Foreign;

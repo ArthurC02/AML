@@ -1,10 +1,6 @@
 using System.Diagnostics;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using Aml.Core.Cases;
 using Aml.Core.Explanation;
-using Aml.Core.Identity;
-using Aml.Core.Screening;
 using Aml.Core.Ports;
 using Aml.Core.Subjects;
 
@@ -66,7 +62,7 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
         var c = await store.GetAsync(caseId, ct).ConfigureAwait(false);
         if (c is null) return null;
         var effective = c.EffectiveRevision is { } rev ? await store.GetAnalysisAsync(caseId, rev, ct).ConfigureAwait(false) : null;
-        return new CaseDetail(c, effective, $"/api/cases/{caseId}/revisions");
+        return new CaseDetail(c, effective, CaseViews.RevisionsLink(caseId));
     }
 
     /// <summary>One hit of the given revision, or of the effective one; null when the Case, revision or hit does not exist.</summary>
@@ -86,8 +82,8 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
     public async Task<CasePage> SearchAsync(string? subjectRef, string? triggerEventId, int pageSize, (DateTimeOffset At, string Id)? after, CancellationToken ct)
     {
         var rows = await store.SearchAsync(subjectRef, triggerEventId, after, pageSize + 1, ct).ConfigureAwait(false);
-        var page = rows.Take(pageSize).ToList();
-        return new CasePage(page, rows.Count > pageSize ? PageToken.Encode(page[^1].CreatedAt, page[^1].CaseId) : null);
+        var (page, next) = PageToken.Page(rows, pageSize, c => (c.CreatedAt, c.CaseId));
+        return new CasePage(page, next);
     }
 
     private async Task<IReadOnlyList<PairSnapshot>> SnapshotAsync(string caseId, int revision, CancellationToken ct) =>

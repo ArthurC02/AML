@@ -33,8 +33,7 @@ builder.Services.AddSingleton<BatchService>();
 builder.Services.AddSingleton<IListStore, ListStore>();
 builder.Services.AddSingleton<Func<string, SourceProfile>>(TxtCaseReader.ParseProfile);
 // The Profile content hash is taken on the export text, so an HTML page and its .txt export are one version.
-builder.Services.AddSingleton<Func<string, string>>(c =>
-    c.TrimStart().TrimStart('﻿').StartsWith('<') ? HtmlExport.ToExportText(c, HtmlExport.Kind.Profile) : c);
+builder.Services.AddSingleton<Func<string, string>>(TxtCaseReader.ProfileExportText);
 builder.Services.AddSingleton<ListService>();
 builder.Services.AddHostedService<JobWorker>();
 // A null field is left out of the views and revision records (CaseJson), so a property whose C# type can be null is never required.

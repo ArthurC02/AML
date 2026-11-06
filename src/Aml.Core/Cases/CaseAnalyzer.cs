@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Aml.Core.Identity;
+using Aml.Core.Retrieval;
 using Aml.Core.Screening;
 using Aml.Core.Subjects;
 
@@ -48,7 +49,7 @@ public static class CaseAnalyzer
                     RiskScoring.Assess(conditions, identity, risk));
             })
             .ToList();
-        var notEvaluated = groups.Where(g => !input.Profiles.ContainsKey(g.Key)).Select(g => "DJ:" + g.Key).ToList();
+        var notEvaluated = groups.Where(g => !input.Profiles.ContainsKey(g.Key)).Select(g => ProfileKeys.KeyOf(g.Key)).ToList();
         return new CaseAnalysis(hits, notEvaluated, input.LegacyDecisions);
     }
 }

@@ -11,6 +11,10 @@ namespace Aml.Infra.Persistence;
 /// </summary>
 public sealed class SqliteDatabase
 {
+    /// <summary>SQLite extended result codes: a UNIQUE or a PRIMARY KEY constraint failed.</summary>
+    public const int ConstraintUnique = 2067;
+    public const int ConstraintPrimaryKey = 1555;
+
     private readonly string _connectionString;
 
     public SqliteDatabase(string connectionString)

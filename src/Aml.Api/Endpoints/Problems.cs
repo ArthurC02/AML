@@ -1,3 +1,4 @@
+using Aml.Core.Cases;
 using Aml.Core.Codes;
 using Aml.Infra.Txt;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -46,6 +47,25 @@ internal static class Problems
     public static ProblemHttpResult Of(string code, string detail, string fix, params object[] errors) =>
         TypedResults.Problem(detail, type: Type(code), title: Title(code), statusCode: StatusCodes.Status400BadRequest,
             extensions: new Dictionary<string, object?> { ["errors"] = errors, ["fix"] = fix });
+
+    /// <summary>top of a candidate list; null when it is usable.</summary>
+    public static ProblemHttpResult? Top(int? top) => top is < 1 or > ProfilesEndpoints.MaxTop
+        ? Of(InvalidRequest, $"top must be 1 to {ProfilesEndpoints.MaxTop}.", $"Send a top from 1 to {ProfilesEndpoints.MaxTop}, or leave it out for {ProfilesEndpoints.DefaultTop}.", new { parameter = "top" })
+        : null;
+
+    /// <summary>pageSize and pageToken of a keyset-paged list; null when both are usable.</summary>
+    public static ProblemHttpResult? Paging(int? pageSize, string? pageToken, out int size, out (DateTimeOffset, string)? after)
+    {
+        size = pageSize ?? PageToken.DefaultSize;
+        after = null;
+        if (size is < 1 or > PageToken.MaxSize)
+            return Of(InvalidRequest, $"pageSize must be 1 to {PageToken.MaxSize}.", $"Send a pageSize from 1 to {PageToken.MaxSize}, or leave it out for {PageToken.DefaultSize}.", new { parameter = "pageSize" });
+        if (string.IsNullOrEmpty(pageToken)) return null;
+        if (!PageToken.TryDecode(pageToken, out var key))
+            return Of(InvalidRequest, "pageToken was not issued by this API.", "Send the nextPageToken of the previous page unchanged, or leave it out for the first page.", new { parameter = "pageToken" });
+        after = key;
+        return null;
+    }
 
     /// <summary>A required file missing or sent twice is INPUT_INCOMPLETE; a file not in the export layout is INPUT_UNREADABLE.</summary>
     public static ProblemHttpResult Input(CaseInputException e) => e.Problem switch

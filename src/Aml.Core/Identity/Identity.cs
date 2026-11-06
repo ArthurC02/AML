@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Aml.Core.Normalization;
+using Aml.Core.Screening;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
 
@@ -172,7 +173,7 @@ public static class EvidenceBuilder
             : new(g, Direction.Neutral, ComparisonStatus.Uncertain);
     }
 
-    private static bool IsEmployer(string relation) => relation.Equals("Employer", StringComparison.OrdinalIgnoreCase);
+    internal static bool IsEmployer(string relation) => relation.Equals("Employer", StringComparison.OrdinalIgnoreCase);
 
     // ponytail: relation names seen in DJ exports and bank data; extend as new labels appear.
     private static string Relation(string raw) => raw.Trim().ToUpperInvariant() switch
@@ -264,7 +265,7 @@ public static class StatedAgeCheck
                     ? $"報導年齡 {stated} 歲；缺少完整出生日期或報導日期，依報導日期 {on} 可能為 {AgeRange(partial, on)}，不比較"
                     : $"報導年齡 {stated} 歲；缺少完整出生日期或報導日期，無法換算");
 
-        var age = at.Year - dob.Year - ((at.Month, at.Day).CompareTo((dob.Month, dob.Day)) < 0 ? 1 : 0);
+        var age = HardConflictGate.MaxAgeAt(dob, at); // both dates are complete, so this is the exact age
         var note = $"報導年齡 {stated} 歲；依報導日期 {at} 推算 {age} 歲";
         return Math.Abs(stated - age) <= ToleranceYears
             ? new Evidence(EvidenceGroup.StatedAge, Direction.Neutral, ComparisonStatus.Exact, Strength.None, ReasonCodes.AgeCompatibleAtReport, note)
@@ -295,7 +296,7 @@ public static class StatedAgeCheck
     private static (int Age, bool AtEvent)? Find(string text, IEnumerable<string> names)
     {
         var list = names.Where(n => n.Length > 0).ToList();
-        foreach (var sentence in text.Split('。', '！', '？', '\n', '；'))
+        foreach (var sentence in SourceConditions.Sentences(text))
         {
             if (Respectively(sentence, list) is { } each) return (each, false);
             foreach (var name in list)
@@ -352,7 +353,7 @@ public static class HardConflictGate
     public static bool SourceQualityConcern(SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence>? evidence = null) =>
         p.Roles.Any(r => r.From is { } from && (string.IsNullOrWhiteSpace(r.Organization) || from.Precision == DatePrecision.Year
             || p.DatesOfBirth.Any(d => MaxAgeAt(d, from) < MinimumRoleAge)))
-        || p.Findings.Any(f => f.StartsWith("UNPARSEABLE", StringComparison.Ordinal))
+        || p.Findings.Any(f => f.StartsWith(Findings.Unparseable, StringComparison.Ordinal))
         || (evidence?.Values.Any(e => e.IsSupport && e.Strength >= Strength.High) ?? false);
 
     public static string? Check(ScreenedSubject s, SourceProfile p)

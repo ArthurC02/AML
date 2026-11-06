@@ -64,16 +64,7 @@ internal static class CasesEndpoints
         {
             if (string.IsNullOrEmpty(subjectRef) && string.IsNullOrEmpty(triggerEventId))
                 return Problems.Of(Problems.InvalidRequest, "Give subjectRef, triggerEventId or both.", "Add ?subjectRef= or ?triggerEventId=.", new { parameter = "subjectRef" });
-            var size = pageSize ?? PageToken.DefaultSize;
-            if (size is < 1 or > PageToken.MaxSize)
-                return Problems.Of(Problems.InvalidRequest, $"pageSize must be 1 to {PageToken.MaxSize}.", $"Send a pageSize from 1 to {PageToken.MaxSize}, or leave it out for {PageToken.DefaultSize}.", new { parameter = "pageSize" });
-            (DateTimeOffset, string)? after = null;
-            if (!string.IsNullOrEmpty(pageToken))
-            {
-                if (!PageToken.TryDecode(pageToken, out var key))
-                    return Problems.Of(Problems.InvalidRequest, "pageToken was not issued by this API.", "Send the nextPageToken of the previous page unchanged, or leave it out for the first page.", new { parameter = "pageToken" });
-                after = key;
-            }
+            if (Problems.Paging(pageSize, pageToken, out var size, out var after) is { } paging) return paging;
             return View(await service.SearchAsync(NullIfEmpty(subjectRef), NullIfEmpty(triggerEventId), size, after, ct));
         })
         .Produces<CasePage>()
@@ -138,8 +129,7 @@ internal static class CasesEndpoints
         {
             if (source is not (null or "table" or "previous"))
                 return Problems.Of(Problems.InvalidRequest, $"Unknown source '{source}'.", "Send source=table (the Case's candidate table) or source=previous (the Profiles of its latest input).", new { parameter = "source" });
-            if (top is < 1 or > ProfilesEndpoints.MaxTop)
-                return Problems.Of(Problems.InvalidRequest, $"top must be 1 to {ProfilesEndpoints.MaxTop}.", $"Send a top from 1 to {ProfilesEndpoints.MaxTop}, or leave it out for {ProfilesEndpoints.DefaultTop}.", new { parameter = "top" });
+            if (Problems.Top(top) is { } invalid) return invalid;
             var found = await lists.CaseCandidatesAsync(caseId, source == "previous" ? CandidateSource.Previous : CandidateSource.Table, top ?? ProfilesEndpoints.DefaultTop, ct);
             return found is null ? TypedResults.NotFound() : TypedResults.Ok(found);
         })

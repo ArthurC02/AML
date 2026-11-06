@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Globalization;
 using System.Text;
 using Aml.Core.Cases;
 using Aml.Core.Identity;
@@ -114,7 +113,7 @@ public static class ExplanationBuilder
         var rows = Comparison(s, p, e);
         var subjectLabel = s.Role == SubjectRole.Customer ? "客戶" : $"關聯人（{s.Relationship}）";
         var subject = $"{subjectLabel} {string.Join(" / ", s.Names)}";
-        var matched = input.Rows.Where(r => "DJ:" + r.ProfileId == p.ProfileKey).Select(r => r.MatchedName).Distinct().ToList();
+        var matched = input.Rows.Where(r => ProfileKeys.KeyOf(r.ProfileId) == p.ProfileKey).Select(r => r.MatchedName).Distinct().ToList();
         var categories = p.Categories.Select(c => c.Subcategory is null ? c.Category : $"{c.Category} / {c.Subcategory}").ToList();
 
         var support = e.Values.Where(v => v.IsSupport).ToList();
@@ -122,7 +121,7 @@ public static class ExplanationBuilder
         var unknown = rows.Where(r => r.Status is ComparisonStatus.SubjectMissing or ComparisonStatus.ProfileMissing or ComparisonStatus.Uncertain)
             .Select(r => r.Field).ToList();
         var findings = s.Findings.Concat(s.Addresses.Select(a => a.Detail).OfType<string>()).Concat(p.Findings).Distinct().ToList();
-        var newsItem = input.NewsByProfileId.GetValueOrDefault(p.ProfileKey["DJ:".Length..]);
+        var newsItem = input.NewsByProfileId.GetValueOrDefault(ProfileKeys.IdOf(p.ProfileKey));
         var news = newsItem is not null;
         var sources = p.Sources.Select((x, i) => new ExplanationSource($"S{i + 1}", x.Id, x.Name, x.Url, x.PublishedOn, x.RetrievedOn, SourceUse.ProfileRecord, true)).ToList();
         if (newsItem is not null)
@@ -139,17 +138,17 @@ public static class ExplanationBuilder
                 + $"衝突：{Show(Join(rows.Where(r => r.Status == ComparisonStatus.Conflict).Select(r => r.Field)), "無")}；"
                 + $"無法比對：{Show(Join(unknown), "無")}。",
             KeyEvidenceOrGaps: KeyEvidence(h, support),
-            Conclusion: $"系統身分判斷 {Snake(h.Identity.Decision)}"
+            Conclusion: $"系統身分判斷 {CaseJson.Code(h.Identity.Decision)}"
                 + (h.Identity.HardConflict is { } hc ? $"（第一階段硬衝突 {hc}）"
                     : h.Identity.Stage3Row is { } row ? $"（第三階段第 {row} 列）" : $"（{h.Identity.ReasonCodes[0]}）")
-                + $"；對外結果 {Snake(h.PairResult)}" + (h.ReviewPriority is { } pr ? $"（複核優先序 {Snake(pr)}）" : "")
+                + $"；對外結果 {CaseJson.Code(h.PairResult)}" + (h.ReviewPriority is { } pr ? $"（複核優先序 {CaseJson.Code(pr)}）" : "")
                 + $"；理由碼 {Join(h.Identity.ReasonCodes.Concat(h.PairReasonCodes))}。名單條件與身分判斷各自獨立。"
                 + Disposition(h.Disposition));
 
         var related = (s.Relatives ?? []).Select(r => new RelatedParty("SUBJECT", r.Name, r.Relation, r.IsEntity))
             .Concat(p.Relationships.Select(r => new RelatedParty("PROFILE", r.Name, r.Relation, r.IsEntity, r.ProfileId))).ToList();
 
-        return new HitExplanation(number, subject, ProfileKeys.IdOf(p.ProfileKey), p.ProfileKey, p.Names.Count > 0 ? p.Names[0] : null, matched, input.Rows.Any(r => "DJ:" + r.ProfileId == p.ProfileKey && r.IsRca),
+        return new HitExplanation(number, subject, ProfileKeys.IdOf(p.ProfileKey), p.ProfileKey, p.Names.Count > 0 ? p.Names[0] : null, matched, input.Rows.Any(r => ProfileKeys.KeyOf(r.ProfileId) == p.ProfileKey && r.IsRca),
             categories, h.Conditions, news, rows, related, support, conflicts, unknown, h.Identity.HardConflict, h.Identity.Stage3Row,
             IdentityDecisionPolicy.Contrast(h.Identity), h.Identity.Decision, h.PairResult, h.ReviewPriority, h.PairReasonCodes, h.Disposition, h.Identity.ReasonCodes, findings, sources, summary);
     }
@@ -160,7 +159,7 @@ public static class ExplanationBuilder
         string? Detail(EvidenceGroup g) => e.TryGetValue(g, out var v) ? v.Detail : null;
 
         var roles = p.Roles.Select(r => $"{r.Title}，{r.Organization}" + (r.From is { } f ? $"（{f} 起）" : ""))
-            .Concat(p.Relationships.Where(r => r.Relation.Equals("Employer", StringComparison.OrdinalIgnoreCase)).Select(r => $"受僱於 {r.Name}"));
+            .Concat(p.Relationships.Where(r => EvidenceBuilder.IsEmployer(r.Relation)).Select(r => $"受僱於 {r.Name}"));
         var addresses = s.Addresses.Select(a => a.State == ValueState.Present ? a.Normalized ?? a.Raw : $"{a.Raw}（{a.Detail}）");
 
         return
@@ -210,7 +209,7 @@ public static class ExplanationBuilder
             sb.Append("硬衝突 " + hc + (HardConflictGate.Validated.Contains(hc) ? "，足以排除。" : "，規則尚待驗證，不自動排除。"));
         sb.Append(support.Count == 0
             ? "除姓名、國籍、性別等前提條件外，沒有任何佐證。"
-            : "佐證：" + Join(support.Select(v => $"{Snake(v.Group)}（{Snake(v.Strength)}{(v.Detail is null ? "" : "，" + v.Detail)}）")) + "。");
+            : "佐證：" + Join(support.Select(v => $"{CaseJson.Code(v.Group)}（{CaseJson.Code(v.Strength)}{(v.Detail is null ? "" : "，" + v.Detail)}）")) + "。");
         if (h.Identity.ReasonCodes.Contains(ReasonCodes.NoBilateralDirectIdentifier))
             sb.Append("雙方沒有可共同比對的直接識別資料（完整出生日期或證件）。");
         return sb.ToString();
@@ -218,23 +217,23 @@ public static class ExplanationBuilder
 
     // Advisory only: the final selection happens outside the system (ADR-0020).
     private static string Disposition(DispositionRecommendation d) =>
-        (d.Recommendation is { } r ? $"第 22 條建議 {Snake(r)}（{Join(d.ReasonCodes)}，僅供參考）。" : $"第 22 條無法給建議（{Join(d.ReasonCodes)}）。")
+        (d.Recommendation is { } r ? $"第 22 條建議 {CaseJson.Code(r)}（{Join(d.ReasonCodes)}，僅供參考）。" : $"第 22 條無法給建議（{Join(d.ReasonCodes)}）。")
         + (d.PendingChecks.Count > 0 ? $"待查核：{Join(d.PendingChecks)}（尚未執行）。" : "");
 
     private static string Condition(SourceCondition c)
     {
         var parts = new List<string>();
         if (c.RiskCategories.Count > 0) parts.Add(Join(c.RiskCategories));
-        if (c.LegalStage != LegalStage.Unknown) parts.Add("法律階段 " + Snake(c.LegalStage));
-        if (c.Status != ConditionStatus.Hit) parts.Add("條件狀態 " + Snake(c.Status) + (c.ReasonCodes.Count > 0 ? "，" + Join(c.ReasonCodes) : ""));
-        return Snake(c.Type) + (parts.Count > 0 ? $"（{string.Join("；", parts)}）" : "");
+        if (c.LegalStage != LegalStage.Unknown) parts.Add("法律階段 " + CaseJson.Code(c.LegalStage));
+        if (c.Status != ConditionStatus.Hit) parts.Add("條件狀態 " + CaseJson.Code(c.Status) + (c.ReasonCodes.Count > 0 ? "，" + Join(c.ReasonCodes) : ""));
+        return CaseJson.Code(c.Type) + (parts.Count > 0 ? $"（{string.Join("；", parts)}）" : "");
     }
 
     /// <summary>Keeps the first 3 and last 2 characters: A12*****89.</summary>
     public static string Mask(string value) =>
         value.Length <= 5 ? new string('*', value.Length) : value[..3] + new string('*', value.Length - 5) + value[^2..];
 
-    private static bool IsCjk(string s) => s.Any(c => c is >= '㐀' and <= '鿿');
+    private static bool IsCjk(string s) => s.Any(Normalize.IsCjk);
 
     private static string? Gender(Gender? g) => g switch { Shared.Gender.Male => "男", Shared.Gender.Female => "女", _ => null };
 
@@ -243,8 +242,4 @@ public static class ExplanationBuilder
     private static string? Opt(string s) => s.Length == 0 ? null : s;
 
     private static string Show(string? s, string missing = "未提供") => string.IsNullOrEmpty(s) ? missing : s;
-
-    // InReview → IN_REVIEW, matching the API's enum naming.
-    private static string Snake<T>(T value) where T : struct, Enum =>
-        string.Concat(value.ToString().Select((ch, i) => i > 0 && char.IsUpper(ch) ? "_" + ch : ch.ToString())).ToUpperInvariant();
 }

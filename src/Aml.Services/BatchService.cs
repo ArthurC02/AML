@@ -79,10 +79,9 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         IReadOnlyCollection<JobStatus>? statuses = status is { } s ? [s]
             : view == BatchView.Summary ? [JobStatus.Pending, JobStatus.Running, JobStatus.DeadLetter] : null;
         var rows = await queue.ListItemsAsync(batchId, ct, statuses, after, pageSize + 1).ConfigureAwait(false);
-        var page = rows.Take(pageSize).ToList();
+        var (page, next) = PageToken.Page(rows, pageSize, j => (j.CreatedAt, j.JobId));
         int Count(JobStatus st) => counts.GetValueOrDefault(st);
-        return new BatchStatus(batchId, Count(JobStatus.Pending), Count(JobStatus.Running), Count(JobStatus.Succeeded), Count(JobStatus.DeadLetter), page,
-            rows.Count > pageSize ? PageToken.Encode(page[^1].CreatedAt, page[^1].JobId) : null);
+        return new BatchStatus(batchId, Count(JobStatus.Pending), Count(JobStatus.Running), Count(JobStatus.Succeeded), Count(JobStatus.DeadLetter), page, next);
     }
 
     public Task<int> RerunAsync(string batchId, CancellationToken ct) => queue.RerunAsync(batchId, clock.GetUtcNow(), ct);

@@ -36,21 +36,11 @@ internal static class BatchesEndpoints
             JobStatus? only = null;
             if (status is not null)
             {
-                var name = Enum.GetNames<JobStatus>().FirstOrDefault(n => n.Equals(status.Replace("_", "", StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase));
-                if (name is null)
+                if (!CaseJson.TryParseCode<JobStatus>(status, out var parsed))
                     return Problems.Of(Problems.InvalidRequest, $"Unknown status '{status}'.", "Send status=PENDING, RUNNING, SUCCEEDED or DEAD_LETTER.", new { parameter = "status" });
-                only = Enum.Parse<JobStatus>(name);
+                only = parsed;
             }
-            var size = pageSize ?? PageToken.DefaultSize;
-            if (size is < 1 or > PageToken.MaxSize)
-                return Problems.Of(Problems.InvalidRequest, $"pageSize must be 1 to {PageToken.MaxSize}.", $"Send a pageSize from 1 to {PageToken.MaxSize}, or leave it out for {PageToken.DefaultSize}.", new { parameter = "pageSize" });
-            (DateTimeOffset, string)? after = null;
-            if (!string.IsNullOrEmpty(pageToken))
-            {
-                if (!PageToken.TryDecode(pageToken, out var key))
-                    return Problems.Of(Problems.InvalidRequest, "pageToken was not issued by this API.", "Send the nextPageToken of the previous page unchanged, or leave it out for the first page.", new { parameter = "pageToken" });
-                after = key;
-            }
+            if (Problems.Paging(pageSize, pageToken, out var size, out var after) is { } paging) return paging;
             var b = await service.GetAsync(batchId, ct, view == "full" ? BatchView.Full : BatchView.Summary, only, size, after);
             return b is null ? TypedResults.NotFound() : TypedResults.Ok(b);
         })

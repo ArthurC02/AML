@@ -74,9 +74,9 @@ public sealed class JobTests : ServiceTestBase
             }
         }
 
-        Assert.Equal(ids, await All(BatchView.Full));
-        Assert.Equal(["j1", "j2", "j3", "j4"], await All(BatchView.Summary));
-        Assert.Equal(["j3"], await All(BatchView.Full, JobStatus.DeadLetter));
+        Assert.Equal(ids, await All(BatchView.Every));
+        Assert.Equal(["j1", "j2", "j3", "j4"], await All(BatchView.NotYetSucceeded));
+        Assert.Equal(["j3"], await All(BatchView.Every, JobStatus.DeadLetter));
         Assert.Null(await batch.GetAsync("unknown", ct));
     }
 

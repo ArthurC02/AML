@@ -111,12 +111,12 @@ public class IdentityBoundaryTests
     [Fact]
     public void Documents_are_comparable_for_the_same_type_and_a_known_equal_country_and_imo_whatever_the_flag()
     {
-        Assert.True(EvidenceBuilder.Comparable(new("PASSPORT", "1", "TW"), new("PASSPORT", "2", "TW")));
-        Assert.False(EvidenceBuilder.Comparable(new("PASSPORT", "1", "TW"), new("PASSPORT", "1", "JP")));
-        Assert.False(EvidenceBuilder.Comparable(new("PASSPORT", "1"), new("PASSPORT", "1")));
-        Assert.False(EvidenceBuilder.Comparable(new("PASSPORT", "1", "TW"), new("PASSPORT", "1")));
-        Assert.False(EvidenceBuilder.Comparable(new("PASSPORT", "1", "TW"), new("TW_NATIONAL_ID", "1", "TW")));
-        Assert.True(EvidenceBuilder.Comparable(new("IMO_NUMBER", "1", "PA"), new("IMO_NUMBER", "1")));
+        Assert.True(EvidenceBuilder.AreComparable(new("PASSPORT", "1", "TW"), new("PASSPORT", "2", "TW")));
+        Assert.False(EvidenceBuilder.AreComparable(new("PASSPORT", "1", "TW"), new("PASSPORT", "1", "JP")));
+        Assert.False(EvidenceBuilder.AreComparable(new("PASSPORT", "1"), new("PASSPORT", "1")));
+        Assert.False(EvidenceBuilder.AreComparable(new("PASSPORT", "1", "TW"), new("PASSPORT", "1")));
+        Assert.False(EvidenceBuilder.AreComparable(new("PASSPORT", "1", "TW"), new("TW_NATIONAL_ID", "1", "TW")));
+        Assert.True(EvidenceBuilder.AreComparable(new("IMO_NUMBER", "1", "PA"), new("IMO_NUMBER", "1")));
     }
 
     [Fact]

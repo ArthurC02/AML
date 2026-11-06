@@ -302,9 +302,9 @@ public static partial class TxtCaseReader
         string? Column(string name) => Array.IndexOf(header.Columns, name) is var k and >= 0 ? cells.ElementAtOrDefault(k) : null;
         var wider = cells.Length > header.Columns.Length;
         if (wider) findings.Add($"{Unparseable}:candidate_row:{lineNumber}");
-        var rca = wider ? FlagValue.Unparseable : Normalize.Flag(Column("Is RCA?"));
+        var rca = wider ? FlagValue.Unparseable : Normalize.SourceFlag(Column("Is RCA?"));
         var flags = wider || !header.FlagsReadable ? new ListFlags(FlagValue.Unparseable, FlagValue.Unparseable, FlagValue.Unparseable, rca)
-            : new ListFlags(Normalize.Flag(Column("PEP")), Normalize.Flag(Column("黑名單")), Normalize.Flag(Column("負面新聞")), rca);
+            : new ListFlags(Normalize.SourceFlag(Column("PEP")), Normalize.SourceFlag(Column("黑名單")), Normalize.SourceFlag(Column("負面新聞")), rca);
         return new CandidateRow(Column("姓名/名稱")!, Normalize.HalfWidth(Column("名單資料編號")!), Normalize.NullIfPlaceholder(Column("理由")), rca == FlagValue.Yes, flags);
     }
 

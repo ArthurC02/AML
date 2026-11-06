@@ -3,15 +3,9 @@ using Aml.Core.Subjects;
 
 namespace Aml.Core.Identity;
 
-/// <summary>Stage 3 decision table (identity-adjudication.md). The first matching row wins.</summary>
+/// <summary>Identity decision: entity records, then stage 1 hard conflicts, then the stage 3 table (<see cref="Stage3Rows"/>).</summary>
 public static class IdentityDecisionPolicy
 {
-    private const int ConflictRow = 1;
-    private const int UniqueIdentifierRow = 2;
-    private const int StrongSupportRow = 3;
-    private const int ConsistentAtPrecisionRow = 4;
-    private const int PartialSupportRow = 5;
-    private const int NoSupportRow = 6;
     private const int StrongSupportMinimumCount = 2;
 
     private static readonly EvidenceGroup[] GroupsWithConflictCode = [EvidenceGroup.DateOfBirth, EvidenceGroup.Document, EvidenceGroup.StatedAge];
@@ -53,7 +47,7 @@ public static class IdentityDecisionPolicy
         if (!s.IsEntity) return new IdentityResult(e, null, null, IdentityDecision.Review, [ReasonCodes.NonPersonSubjectReview]);
         var subject = SubjectEntityIdentifiers(s);
         var profile = (p.Documents ?? []).Where(IsEntityIdentifier).ToList();
-        var comparable = subject.SelectMany(a => profile.Where(b => EvidenceBuilder.Comparable(a, b)), (a, b) => (a, b)).ToList();
+        var comparable = subject.SelectMany(a => profile.Where(b => EvidenceBuilder.AreComparable(a, b)), (a, b) => (a, b)).ToList();
         if (comparable.Count == 0)
         {
             e[g] = new(g, Direction.Neutral, subject.Count == 0 ? ComparisonStatus.SubjectMissing : profile.Count == 0 ? ComparisonStatus.ProfileMissing : ComparisonStatus.Uncertain);
@@ -62,10 +56,10 @@ public static class IdentityDecisionPolicy
         if (comparable.Any(x => EvidenceBuilder.DocumentNumber(x.a.Number) == EvidenceBuilder.DocumentNumber(x.b.Number)))
         {
             e[g] = new(g, Direction.Support, ComparisonStatus.Exact, Strength.Unique);
-            return new IdentityResult(e, null, UniqueIdentifierRow, IdentityDecision.ProbableMatch, [ReasonCodes.EntityIdentifierAgreement]);
+            return new IdentityResult(e, null, Stage3Rows.UniqueIdentifier, IdentityDecision.ProbableMatch, [ReasonCodes.EntityIdentifierAgreement]);
         }
         e[g] = new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.EntityIdentifierConflict);
-        return new IdentityResult(e, null, ConflictRow, IdentityDecision.Review, [ReasonCodes.EntityIdentifierConflict]);
+        return new IdentityResult(e, null, Stage3Rows.Conflict, IdentityDecision.Review, [ReasonCodes.EntityIdentifierConflict]);
     }
 
     private static List<Document> SubjectEntityIdentifiers(ScreenedSubject s)
@@ -85,7 +79,7 @@ public static class IdentityDecisionPolicy
     /// </summary>
     public static IReadOnlyList<WouldChangeIf> Contrast(IdentityResult r)
     {
-        if (r.Stage3Row is not (StrongSupportRow or ConsistentAtPrecisionRow or PartialSupportRow or NoSupportRow)) return [];
+        if (r.Stage3Row is not (Stage3Rows.StrongSupport or Stage3Rows.ConsistentAtPrecision or Stage3Rows.PartialSupport or Stage3Rows.NoSupport)) return [];
         var dob = r.Evidence.GetValueOrDefault(EvidenceGroup.DateOfBirth);
         if (dob?.Detail == Findings.ProfileMultipleDob) return [];
 
@@ -122,14 +116,14 @@ public static class IdentityDecisionPolicy
 
         var conflict = GroupsWithConflictCode.Select(g => e.GetValueOrDefault(g)).FirstOrDefault(v => v?.Status == ComparisonStatus.Conflict);
         if (conflict is not null)
-            return (ConflictRow, IdentityDecision.Review, conflict.Detail!); // every DOB, document and stated-age conflict carries its code
+            return (Stage3Rows.Conflict, IdentityDecision.Review, conflict.Detail!); // every DOB, document and stated-age conflict carries its code
 
         if (supports.Any(v => v.Strength == Strength.Unique))
-            return (UniqueIdentifierRow, IdentityDecision.ProbableMatch, ReasonCodes.UniqueIdentifierAgreement);
+            return (Stage3Rows.UniqueIdentifier, IdentityDecision.ProbableMatch, ReasonCodes.UniqueIdentifierAgreement);
 
         var oppositeGenders = StatusOf(EvidenceGroup.Gender) == ComparisonStatus.Conflict;
         if (!oppositeGenders && supports.Any(v => v.Strength == Strength.High) && supports.Length >= StrongSupportMinimumCount)
-            return (StrongSupportRow, IdentityDecision.ProbableMatch, ReasonCodes.StrongSupportCombination);
+            return (Stage3Rows.StrongSupport, IdentityDecision.ProbableMatch, ReasonCodes.StrongSupportCombination);
 
         var prerequisitesAgree = StatusOf(EvidenceGroup.Name) == ComparisonStatus.Exact
             && StatusOf(EvidenceGroup.Gender) == ComparisonStatus.Exact
@@ -138,11 +132,11 @@ public static class IdentityDecisionPolicy
         var docOrEmploymentUnsettled = new[] { EvidenceGroup.Document, EvidenceGroup.Employment }
             .Select(g => e.GetValueOrDefault(g)).Any(IsUnsettled);
         if (prerequisitesAgree && dobAgrees && !docOrEmploymentUnsettled)
-            return (ConsistentAtPrecisionRow, IdentityDecision.ProbableMatch, ReasonCodes.ConsistentAtAvailablePrecision);
+            return (Stage3Rows.ConsistentAtPrecision, IdentityDecision.ProbableMatch, ReasonCodes.ConsistentAtAvailablePrecision);
 
         return supports.Length > 0
-            ? (PartialSupportRow, IdentityDecision.Review, ReasonCodes.PartialSupportOnly)
-            : (NoSupportRow, IdentityDecision.Review, ReasonCodes.NoNonPrerequisiteSupport);
+            ? (Stage3Rows.PartialSupport, IdentityDecision.Review, ReasonCodes.PartialSupportOnly)
+            : (Stage3Rows.NoSupport, IdentityDecision.Review, ReasonCodes.NoNonPrerequisiteSupport);
     }
 
     private static bool IsUnsettled(Evidence? v) =>
@@ -155,5 +149,5 @@ public static class IdentityDecisionPolicy
         s.DateOfBirth?.Precision == DatePrecision.Day && p.DatesOfBirth.Any(d => d.Precision == DatePrecision.Day);
 
     private static bool BothHaveComparableDocument(ScreenedSubject s, SourceProfile p) =>
-        s.Document is { } d && (p.Documents ?? []).Any(x => EvidenceBuilder.Comparable(x, d));
+        s.Document is { } d && (p.Documents ?? []).Any(x => EvidenceBuilder.AreComparable(x, d));
 }

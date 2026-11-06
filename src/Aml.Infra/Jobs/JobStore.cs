@@ -25,7 +25,7 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
     public async Task<bool> EnqueueAsync(string jobId, string jobType, string batchId, string idempotencyKey, string payload, DateTimeOffset now, CancellationToken ct)
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
-        return await TryEnqueueAsync(db, c, null, new NewJob(jobId, jobType, batchId, idempotencyKey, payload), Time(now), ct).ConfigureAwait(false);
+        return await TryEnqueueAsync(db, c, null, new NewJob(jobId, jobType, batchId, idempotencyKey, payload), FormatTime(now), ct).ConfigureAwait(false);
     }
 
     /// <summary>Inserts a pending job; false when one is already queued under its idempotency key (only this statement is rolled back).</summary>
@@ -53,13 +53,13 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
     public async Task<IReadOnlyList<ClaimedJob>> ClaimAsync(string leaseOwner, int take, DateTimeOffset now, DateTimeOffset leaseExpiry, CancellationToken ct)
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
-        var ids = await c.QueryAsync<string>(new CommandDefinition(db.Sql["Batch.ListClaimable"], new { now = Time(now), take }, cancellationToken: ct)).ConfigureAwait(false);
+        var ids = await c.QueryAsync<string>(new CommandDefinition(db.Sql["Batch.ListClaimable"], new { now = FormatTime(now), take }, cancellationToken: ct)).ConfigureAwait(false);
         var claimed = new List<ClaimedJob>();
         foreach (var jobId in ids)
         {
             // Optimistic claim: another worker may have taken it since the list was read.
             var won = await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.Claim"],
-                new { jobId, leaseOwner, leaseExpiry = Time(leaseExpiry) }, cancellationToken: ct)).ConfigureAwait(false);
+                new { jobId, leaseOwner, leaseExpiry = FormatTime(leaseExpiry) }, cancellationToken: ct)).ConfigureAwait(false);
             if (won != 1) continue;
             var row = await c.QuerySingleAsync<ClaimedRow>(new CommandDefinition(db.Sql["Batch.GetClaimed"], new { jobId }, cancellationToken: ct)).ConfigureAwait(false);
             claimed.Add(new ClaimedJob(row.JobId, row.JobType, (int)row.AttemptCount, row.Payload));
@@ -71,14 +71,14 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
         return await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.RenewLease"],
-            new { jobId, leaseOwner, leaseExpiry = Time(leaseExpiry) }, cancellationToken: ct)).ConfigureAwait(false) == 1;
+            new { jobId, leaseOwner, leaseExpiry = FormatTime(leaseExpiry) }, cancellationToken: ct)).ConfigureAwait(false) == 1;
     }
 
     public async Task<bool> CompleteAsync(string jobId, string leaseOwner, string caseId, int revision, DateTimeOffset now, CancellationToken ct)
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
         return await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.Complete"],
-            new { jobId, leaseOwner, caseId, revision, now = Time(now) }, cancellationToken: ct)).ConfigureAwait(false) == 1;
+            new { jobId, leaseOwner, caseId, revision, now = FormatTime(now) }, cancellationToken: ct)).ConfigureAwait(false) == 1;
     }
 
     public async Task<bool> FailAsync(string jobId, string leaseOwner, bool deadLetter, string errorCode, DateTimeOffset nextAttemptAt, DateTimeOffset now, CancellationToken ct)
@@ -90,15 +90,15 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
             leaseOwner,
             errorCode,
             status = Code(deadLetter ? JobStatus.DeadLetter : JobStatus.Pending),
-            nextAttemptAt = Time(nextAttemptAt),
-            completedAt = deadLetter ? Time(now) : null,
+            nextAttemptAt = FormatTime(nextAttemptAt),
+            completedAt = deadLetter ? FormatTime(now) : null,
         }, cancellationToken: ct)).ConfigureAwait(false) == 1;
     }
 
     public async Task<int> ReclaimExpiredAsync(int maxAttempts, DateTimeOffset now, CancellationToken ct)
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
-        return await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.ReclaimExpired"], new { maxAttempts, now = Time(now) }, cancellationToken: ct)).ConfigureAwait(false);
+        return await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.ReclaimExpired"], new { maxAttempts, now = FormatTime(now) }, cancellationToken: ct)).ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<JobItem>> ListItemsAsync(string batchId, CancellationToken ct,
@@ -110,7 +110,7 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
             batchId,
             allStatuses = statuses is null,
             statuses = (statuses ?? []).Select(s => Code(s)).DefaultIfEmpty("").ToArray(),
-            afterAt = after is { } a ? Time(a.At) : null,
+            afterAt = after is { } a ? FormatTime(a.At) : null,
             afterId = after?.Id,
             limit,
         }, cancellationToken: ct)).ConfigureAwait(false);
@@ -128,6 +128,6 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
     public async Task<int> RerunAsync(string batchId, DateTimeOffset now, CancellationToken ct)
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
-        return await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.Rerun"], new { batchId, now = Time(now) }, cancellationToken: ct)).ConfigureAwait(false);
+        return await c.ExecuteAsync(new CommandDefinition(db.Sql["Batch.Rerun"], new { batchId, now = FormatTime(now) }, cancellationToken: ct)).ConfigureAwait(false);
     }
 }

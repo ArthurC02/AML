@@ -35,7 +35,6 @@ public static class DispositionPolicy
     public const string JudgmentPartyIdentity = "JUDGMENT_PARTY_IDENTITY";
     public const string FormerPepInfluence = "FORMER_PEP_INFLUENCE";
 
-    private const int NoSupportStage3Row = 6;
     private const string TaiwanCode = "TW";
 
     private enum Nationality { Taiwan, Foreign, Unknown }
@@ -81,7 +80,7 @@ public static class DispositionPolicy
 
     // Flagged, not applied: the 2026-10-14 ruling also needs a likelihood below 65%, and there is none (GC-12, open question).
     private static bool MayFallUnderRuling20261014(IdentityResult identity) =>
-        identity.Stage3Row == NoSupportStage3Row && identity.ReasonCodes.Contains(ReasonCodes.NoBilateralDirectIdentifier);
+        identity.Stage3Row == Stage3Rows.NoSupport && identity.ReasonCodes.Contains(ReasonCodes.NoBilateralDirectIdentifier);
 
     private static Nationality Classify(IReadOnlyList<string> codes, IReadOnlyList<string> findings, string field)
     {

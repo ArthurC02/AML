@@ -72,7 +72,7 @@ public class RetrievalAndScoringTests
         var weight = FellegiSunter.Score(gc11.Evidence);
         var dob = Assert.Single(weight.Groups); // only the year-precision DOB weighs; name, gender and nationality do not
         Assert.Equal(EvidenceGroup.DateOfBirth, dob.Group);
-        Assert.Equal(Math.Log2(FellegiSunter.M * 60), dob.Weight, 6);
+        Assert.Equal(Math.Log2(FellegiSunter.PlaceholderM * 60), dob.Weight, 6);
 
         var conflict = FellegiSunter.Score(new Dictionary<EvidenceGroup, Evidence>
         {

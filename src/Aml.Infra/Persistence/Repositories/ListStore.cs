@@ -17,7 +17,7 @@ public sealed class ListStore(SqliteDatabase db) : IListStore
         if (current?.ContentHash == contentHash) return (Map(current), false, []);
 
         var version = (int)(current?.Version ?? 0) + 1;
-        var at = SqliteValues.Time(now);
+        var at = SqliteValues.FormatTime(now);
         await c.ExecuteAsync(new CommandDefinition(db.Sql["Extraction.InsertProfile"],
             new { profileId, version, contentHash, sourceText, now = at }, tx, cancellationToken: ct)).ConfigureAwait(false);
 

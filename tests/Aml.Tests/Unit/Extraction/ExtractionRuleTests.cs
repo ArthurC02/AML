@@ -75,7 +75,7 @@ public class ExtractionRuleTests
     [InlineData("待確認", FlagValue.Unparseable)]
     [InlineData("yess", FlagValue.Unparseable)]
     public void Flag_cells_read_by_the_source_flag_table(string? raw, FlagValue expected) =>
-        Assert.Equal(expected, Normalize.Flag(raw));
+        Assert.Equal(expected, Normalize.SourceFlag(raw));
 
     [Theory]                                // two rows of one Profile, merged flag by flag, in either order
     [InlineData(FlagValue.Yes, FlagValue.Yes, FlagValue.Yes)]
@@ -121,7 +121,7 @@ public class ExtractionRuleTests
     public void Road_names_with_numerals_are_left_alone()
     {
         Assert.Equal(("臺北市八德路3段12號", (string?)null), Normalize.TaiwanAddress("臺北市八德路三段十二號"));
-        Assert.Equal(AddressCompare.TaiwanKey("臺北市中山區中山北路二段5號"), AddressCompare.TaiwanKey("台北市中山區中山北路2段５號"));
+        Assert.Equal(AddressCompare.TaiwanAddressKey("臺北市中山區中山北路二段5號"), AddressCompare.TaiwanAddressKey("台北市中山區中山北路2段５號"));
     }
 
     [Fact]

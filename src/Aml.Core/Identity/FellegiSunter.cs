@@ -19,7 +19,7 @@ public sealed record CalibrationWeight(string ModelVersion, double TotalWeight, 
 public static class FellegiSunter
 {
     public const string ModelVersion = "fs-calibration-0.1";
-    public const double M = 0.95;
+    public const double PlaceholderM = 0.95;
 
     private const double InitialM = 0.9;
     private const double InitialU = 0.1;
@@ -54,10 +54,10 @@ public static class FellegiSunter
         if (e.Direction == Direction.Support)
         {
             var u = AccidentalAgreementChance(e.Strength) * (e.Group == EvidenceGroup.DateOfBirth ? profileDobCount : 1);
-            return new(e.Group, M, u, AgreementWeight(M, u));
+            return new(e.Group, PlaceholderM, u, AgreementWeight(PlaceholderM, u));
         }
         if (e.Direction == Direction.Conflict && AccidentalDisagreementChanceOfHardGroups.TryGetValue(e.Group, out var du))
-            return new(e.Group, M, du, DisagreementWeight(M, du));
+            return new(e.Group, PlaceholderM, du, DisagreementWeight(PlaceholderM, du));
         return null;
     }
 

@@ -36,8 +36,7 @@ public sealed record ProfileSummary(
         v.Profile.Roles, v.Profile.OfficialList, v.Profile.Findings, $"/api/profiles/{v.ProfileId}?version={v.Version}&view=full");
 }
 
-/// <summary>Where a Case's candidates come from: its own candidate table, or the Profile files of its latest input.</summary>
-public enum CandidateSource { Table, Previous }
+public enum CandidateSource { CaseTable, LatestInputProfileFiles }
 
 public sealed record ReanalysisJob(string JobId, string CaseId, string ProfileId, string ProfileKey, int Version);
 
@@ -141,7 +140,7 @@ public sealed class ListService(
     {
         var input = await caseStore.LatestInputAsync(caseId, ct).ConfigureAwait(false);
         if (input is null) return null;
-        var all = source == CandidateSource.Previous
+        var all = source == CandidateSource.LatestInputProfileFiles
             ? input.Keys.Select(ProfileFiles.IdOf).OfType<string>().Distinct()
                 .Select(p => new RetrievedCandidate(p, ProfileKeys.KeyOf(p), "", "PREVIOUS_CASE_INPUT", 1, RetrievalMode.PreviousLink)).ToList()
             : readCase(input).Rows.GroupBy(r => r.ProfileId)

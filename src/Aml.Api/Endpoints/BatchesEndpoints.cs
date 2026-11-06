@@ -39,7 +39,7 @@ internal static class BatchesEndpoints
                 only = parsed;
             }
             if (Problems.Paging(pageSize, pageToken, out var size, out var after) is { } paging) return paging;
-            var batch = await service.GetAsync(batchId, ct, view == "full" ? BatchView.Full : BatchView.Summary, only, size, after);
+            var batch = await service.GetAsync(batchId, ct, view == "full" ? BatchView.Every : BatchView.NotYetSucceeded, only, size, after);
             return batch is null ? TypedResults.NotFound() : TypedResults.Ok(batch);
         })
         .WithSummary("Batch progress: counts per status and one page of items with their Case, revision, attempts and error code")

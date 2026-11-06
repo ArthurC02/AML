@@ -31,8 +31,8 @@ public sealed class CaseReadTests : ServiceTestBase
     }
 
     [Theory]
-    [InlineData(CandidateSource.Table)]
-    [InlineData(CandidateSource.Previous)]
+    [InlineData(CandidateSource.CaseTable)]
+    [InlineData(CandidateSource.LatestInputProfileFiles)]
     public async Task A_case_candidate_list_cut_by_top_is_marked_truncated(CandidateSource source)
     {
         var ct = TestContext.Current.CancellationToken;

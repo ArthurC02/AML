@@ -15,8 +15,6 @@ public static class AssessmentPolicy
     public const string ReleaseControlHumanReview = "RELEASE_CONTROL_HUMAN_REVIEW";
     public const string SourceConditionUnknown = "SOURCE_CONDITION_UNKNOWN";
 
-    private const int PartialSupportOnlyStage3Row = 5;
-
     public static ScreeningAssessment Combine(ConditionStatus status, IdentityDecision identity) => status switch
     {
         ConditionStatus.NotHit => ScreeningAssessment.NotApplicable,
@@ -50,6 +48,6 @@ public static class AssessmentPolicy
     private static ReviewPriority Priority(IdentityResult identity, IReadOnlyList<SourceCondition> conditions) =>
         identity.Decision == IdentityDecision.ProbableMatch
             || conditions.Any(c => c.Type == ListType.Sanction && IsRaised(c)) ? ReviewPriority.High
-        : identity.Stage3Row == PartialSupportOnlyStage3Row ? ReviewPriority.Normal
+        : identity.Stage3Row == Stage3Rows.PartialSupport ? ReviewPriority.Normal
         : ReviewPriority.Low;
 }

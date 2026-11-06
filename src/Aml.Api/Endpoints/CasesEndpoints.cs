@@ -111,7 +111,7 @@ internal static class CasesEndpoints
             if (source is not (null or "table" or "previous"))
                 return Problems.Of(Problems.InvalidRequest, $"Unknown source '{source}'.", "Send source=table (the Case's candidate table) or source=previous (the Profiles of its latest input).", new { parameter = "source" });
             if (Problems.Top(top) is { } invalid) return invalid;
-            var found = await lists.CaseCandidatesAsync(caseId, source == "previous" ? CandidateSource.Previous : CandidateSource.Table, top ?? ProfilesEndpoints.DefaultTop, ct);
+            var found = await lists.CaseCandidatesAsync(caseId, source == "previous" ? CandidateSource.LatestInputProfileFiles : CandidateSource.CaseTable, top ?? ProfilesEndpoints.DefaultTop, ct);
             return found is null ? TypedResults.NotFound() : TypedResults.Ok(found);
         })
         .WithSummary("A Case's candidate Profiles: source=table (CONTROLLED_SET, its own candidate table, the default) or source=previous (PREVIOUS_LINK, the Profiles of its latest input)")

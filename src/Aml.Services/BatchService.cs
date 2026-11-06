@@ -9,8 +9,7 @@ public sealed record BatchItemRequest(string SubjectRef, string TriggerEventId, 
 
 public sealed record BatchSubmitted(string BatchId, int Queued, IReadOnlyList<string> Duplicates);
 
-/// <summary>SUMMARY lists the items not yet succeeded; FULL lists every item.</summary>
-public enum BatchView { Summary, Full }
+public enum BatchView { NotYetSucceeded, Every }
 
 public sealed record BatchStatus(string BatchId, int Pending, int Running, int Succeeded, int DeadLetter, IReadOnlyList<JobItem> Items, string? NextPageToken = null);
 
@@ -58,7 +57,7 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         return new BatchSubmitted(batchId, items.Count - duplicates.Count, duplicates);
     }
 
-    public async Task<BatchStatus?> GetAsync(string batchId, CancellationToken ct, BatchView view = BatchView.Full, JobStatus? status = null,
+    public async Task<BatchStatus?> GetAsync(string batchId, CancellationToken ct, BatchView view = BatchView.Every, JobStatus? status = null,
         int pageSize = int.MaxValue - 1, (DateTimeOffset At, string Id)? after = null)
     {
         var counts = await queue.CountsAsync(batchId, ct).ConfigureAwait(false);
@@ -71,7 +70,7 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
 
     private static IReadOnlyCollection<JobStatus>? StatusesToList(BatchView view, JobStatus? status) =>
         status is { } only ? [only]
-        : view == BatchView.Summary ? [JobStatus.Pending, JobStatus.Running, JobStatus.DeadLetter]
+        : view == BatchView.NotYetSucceeded ? [JobStatus.Pending, JobStatus.Running, JobStatus.DeadLetter]
         : null;
 
     public Task<int> RerunAsync(string batchId, CancellationToken ct) => queue.RerunAsync(batchId, clock.GetUtcNow(), ct);

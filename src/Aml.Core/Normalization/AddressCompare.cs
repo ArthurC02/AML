@@ -8,7 +8,7 @@ public static partial class AddressCompare
     /// city + district + road + section + lane + alley + number + floor, from a normalized Taiwan address;
     /// null when the text does not parse down to the house number. Village and neighborhood are left out.
     /// </summary>
-    public static string? TaiwanKey(string address)
+    public static string? TaiwanAddressKey(string address)
     {
         var m = TaiwanAddress().Match(Normalize.TaiwanAddress(address).Normalized.Replace('台', '臺'));
         if (!m.Success) return null;

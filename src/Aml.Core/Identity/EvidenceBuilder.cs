@@ -56,7 +56,7 @@ public static class EvidenceBuilder
     /// Two documents say something about identity only for the same type and a known, equal issuing country; an IMO number
     /// identifies a vessel whatever its flag. The person, entity and direct-identifier rules all use this one test.
     /// </summary>
-    public static bool Comparable(Document a, Document b) =>
+    public static bool AreComparable(Document a, Document b) =>
         a.Type == b.Type && (a.Type == "IMO_NUMBER" || a.Country is not null && a.Country == b.Country);
 
     internal static string DocumentNumber(string n) => Normalize.NameKey(Normalize.HalfWidth(n));
@@ -67,7 +67,7 @@ public static class EvidenceBuilder
         const EvidenceGroup g = EvidenceGroup.Document;
         if (subject is null) return new(g, Direction.Neutral, ComparisonStatus.SubjectMissing);
         if (profile.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.ProfileMissing);
-        var comparable = profile.Where(d => Comparable(d, subject)).ToList();
+        var comparable = profile.Where(d => AreComparable(d, subject)).ToList();
         if (comparable.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, NotComparable);
         return comparable.Any(d => DocumentNumber(d.Number) == DocumentNumber(subject.Number))
             ? new(g, Direction.Support, ComparisonStatus.Exact, Strength.Unique)
@@ -191,8 +191,8 @@ public static class EvidenceBuilder
         if (!sharesCountry || subjectText.Count == 0 || profileText.Count == 0)
             return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, EvidenceDetails.SoftDifference);
 
-        var keys = subjectText.Select(AddressCompare.TaiwanKey).OfType<string>().ToHashSet();
-        if (profileText.Select(AddressCompare.TaiwanKey).Any(k => k is not null && keys.Contains(k)))
+        var keys = subjectText.Select(AddressCompare.TaiwanAddressKey).OfType<string>().ToHashSet();
+        if (profileText.Select(AddressCompare.TaiwanAddressKey).Any(k => k is not null && keys.Contains(k)))
             return new(g, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, EvidenceDetails.SameAddressNoPeriod);
         var jaccard = subjectText.SelectMany(a => profileText, AddressCompare.Jaccard).Max();
         var similarity = jaccard >= AddressCompare.JaccardThreshold ? "SIMILAR" : "DISSIMILAR";

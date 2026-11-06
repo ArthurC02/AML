@@ -82,8 +82,6 @@ public static class CaseViews
     public const int MaxHits = 10;
     public const int MaxEvidence = 3;
 
-    private const int PrerequisitesOnlyRow = 6;
-
     public static string HitLink(string caseId, int hit, int revision) => $"/api/cases/{caseId}/hits/{hit}?revision={revision}&view=summary";
 
     public static string RevisionsLink(string caseId) => $"/api/cases/{caseId}/revisions";
@@ -130,15 +128,13 @@ public static class CaseViews
         return new(h.HitNumber, revision, ProfileKeys.IdOf(h.ProfileKey), h.ProfileKey, h.ProfileName,
             NullIfEmpty(h.SourceConditions.Where(s => s.Status == ConditionStatus.Hit).Select(s => s.Type).ToList()),
             h.IdentityDecision, h.HardConflict, h.Stage3Row, h.PairResult, h.ReviewPriority, NullIfEmpty(h.ReasonCodes), NullIfEmpty(decisive),
-            decisive.Count == 0 && h.Stage3Row == PrerequisitesOnlyRow ? "僅前提條件相符" : null, NullIfEmpty(h.WouldChangeIf),
+            decisive.Count == 0 && h.Stage3Row == Stage3Rows.NoSupport ? "僅前提條件相符" : null, NullIfEmpty(h.WouldChangeIf),
             $"/api/cases/{caseId}/hits/{h.HitNumber}?view=detail&revision={revision}");
     }
 
     // A hard conflict, or a non-Person record without comparable entity identifiers, leaves no stage 3 row; a rule with no evidence of its own (death before birth) yields none.
     private static List<EvidenceLine> DecisiveEvidence(HitExplanation h) =>
-        IsDecidedBySupport(h.Stage3Row) ? StrongestSupport(h) : ConflictsInReasonCodeOrder(h);
-
-    private static bool IsDecidedBySupport(int? stage3Row) => stage3Row is >= 2 and <= 5;
+        Stage3Rows.IsDecidedBySupport(h.Stage3Row) ? StrongestSupport(h) : ConflictsInReasonCodeOrder(h);
 
     private static List<EvidenceLine> StrongestSupport(HitExplanation h) =>
         h.Support.OrderByDescending(e => e.Strength).Take(MaxEvidence).Select(Line).ToList();

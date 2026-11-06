@@ -315,7 +315,7 @@ public static partial class Normalize
     private static partial Regex PostalCode();
 
     /// <summary>A PEP / 黑名單 / 負面新聞 / Is RCA? cell (extraction-and-normalization.md#source-flags).</summary>
-    public static Subjects.FlagValue Flag(string? raw) => raw?.Trim() switch
+    public static Subjects.FlagValue SourceFlag(string? raw) => raw?.Trim() switch
     {
         null or "" => Subjects.FlagValue.Missing,
         var v when IsDash(v) => Subjects.FlagValue.Missing,

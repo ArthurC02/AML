@@ -205,9 +205,9 @@ public class IdentityRuleTests
     [Fact]
     public void Structured_taiwan_address_matches_across_old_names_and_full_width_digits()
     {
-        Assert.Equal(AddressCompare.TaiwanKey("242台北縣新莊市中平里１２鄰中華路３５巷８號３樓"), AddressCompare.TaiwanKey("新北市新莊區中華路35巷8號3樓"));
-        Assert.NotEqual(AddressCompare.TaiwanKey("新北市新莊區中華路35巷8號"), AddressCompare.TaiwanKey("新北市新莊區中華路35巷10號"));
-        Assert.Null(AddressCompare.TaiwanKey("Thôn Example, Xã An Hòa"));
+        Assert.Equal(AddressCompare.TaiwanAddressKey("242台北縣新莊市中平里１２鄰中華路３５巷８號３樓"), AddressCompare.TaiwanAddressKey("新北市新莊區中華路35巷8號3樓"));
+        Assert.NotEqual(AddressCompare.TaiwanAddressKey("新北市新莊區中華路35巷8號"), AddressCompare.TaiwanAddressKey("新北市新莊區中華路35巷10號"));
+        Assert.Null(AddressCompare.TaiwanAddressKey("Thôn Example, Xã An Hòa"));
     }
 
     [Fact]

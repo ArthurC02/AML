@@ -210,7 +210,7 @@ public class IdentityEvidenceTests
         {
             [EvidenceGroup.DateOfBirth] = new(EvidenceGroup.DateOfBirth, Direction.Support, Exact, Strength.High),
         };
-        Assert.Equal(Math.Log2(FellegiSunter.M * 22_000), Assert.Single(FellegiSunter.Score(evidence).Groups).Weight, 6);
+        Assert.Equal(Math.Log2(FellegiSunter.PlaceholderM * 22_000), Assert.Single(FellegiSunter.Score(evidence).Groups).Weight, 6);
     }
 
     [Fact]
@@ -218,7 +218,7 @@ public class IdentityEvidenceTests
     {
         var hit = CaseAnalyzer.Analyze(TxtCaseReader.Read(GoldenCases.GoldenCaseTests.Folder("GC-11"))).Hits[0];
         var dob = Assert.Single(FellegiSunter.Score(hit.Identity.Evidence, hit.Profile).Groups); // 1973 and 1972
-        Assert.Equal(Math.Log2(FellegiSunter.M * 60 / 2), dob.Weight, 6);
+        Assert.Equal(Math.Log2(FellegiSunter.PlaceholderM * 60 / 2), dob.Weight, 6);
     }
 
     // Employment and document comparability.

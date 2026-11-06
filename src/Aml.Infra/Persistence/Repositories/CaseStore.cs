@@ -40,7 +40,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
         try
         {
             await c.ExecuteAsync(new CommandDefinition(db.Sql["Case.Insert"],
-                new { caseId = record.CaseId, subjectRef = record.SubjectRef, triggerEventId = record.TriggerEventId, caseStatus = Code(record.Status), now = Time(record.CreatedAt) },
+                new { caseId = record.CaseId, subjectRef = record.SubjectRef, triggerEventId = record.TriggerEventId, caseStatus = Code(record.Status), now = FormatTime(record.CreatedAt) },
                 cancellationToken: ct)).ConfigureAwait(false);
             return record;
         }
@@ -68,7 +68,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
         await using var tx = await c.BeginTransactionAsync(ct).ConfigureAwait(false);
-        var now = Time(analysis.CreatedAt);
+        var now = FormatTime(analysis.CreatedAt);
         try
         {
             await c.ExecuteAsync(new CommandDefinition(db.Sql["Case.InsertAnalysis"], new
@@ -145,7 +145,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
     {
         await using var c = await db.OpenAsync(ct).ConfigureAwait(false);
         var rows = await c.QueryAsync<CaseRow>(new CommandDefinition(db.Sql["Case.Search"],
-            new { subjectRef, triggerEventId, afterAt = after is { } a ? Time(a.At) : null, afterId = after?.Id, limit }, cancellationToken: ct)).ConfigureAwait(false);
+            new { subjectRef, triggerEventId, afterAt = after is { } a ? FormatTime(a.At) : null, afterId = after?.Id, limit }, cancellationToken: ct)).ConfigureAwait(false);
         return rows.Select(Map).ToList();
     }
 

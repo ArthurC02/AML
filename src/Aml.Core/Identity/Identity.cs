@@ -260,13 +260,23 @@ public static class StatedAgeCheck
                 $"報導年齡 {stated} 歲（時年，事件當時）；事件日期未知，不與報導日期比較");
         if (s.DateOfBirth is not { Precision: DatePrecision.Day } dob || news.PublishedOn is not { Precision: DatePrecision.Day } at)
             return new Evidence(EvidenceGroup.StatedAge, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, ReasonCodes.AgeNotComparable,
-                $"報導年齡 {stated} 歲；缺少完整出生日期或報導日期，無法換算");
+                s.DateOfBirth is { } partial && news.PublishedOn is { } on && HardConflictGate.MaxAgeAt(partial, on) >= 0
+                    ? $"報導年齡 {stated} 歲；缺少完整出生日期或報導日期，依報導日期 {on} 可能為 {AgeRange(partial, on)}，不比較"
+                    : $"報導年齡 {stated} 歲；缺少完整出生日期或報導日期，無法換算");
 
         var age = at.Year - dob.Year - ((at.Month, at.Day).CompareTo((dob.Month, dob.Day)) < 0 ? 1 : 0);
         var note = $"報導年齡 {stated} 歲；依報導日期 {at} 推算 {age} 歲";
         return Math.Abs(stated - age) <= ToleranceYears
             ? new Evidence(EvidenceGroup.StatedAge, Direction.Neutral, ComparisonStatus.Exact, Strength.None, ReasonCodes.AgeCompatibleAtReport, note)
             : new Evidence(EvidenceGroup.StatedAge, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.AgeDifferenceAtReport, note);
+    }
+
+    /// <summary>"44 歲" or "43～44 歲": every age the person can have at a possibly imprecise time point.</summary>
+    public static string AgeRange(PartialDate dob, PartialDate at)
+    {
+        var max = HardConflictGate.MaxAgeAt(dob, at);
+        var min = Math.Max(0, HardConflictGate.MinAgeAt(dob, at));
+        return min == max ? $"{max} 歲" : $"{min}～{max} 歲";
     }
 
     // Arabic or Chinese numerals; 足歲, 周歲 and 週歲 mean 歲. A number followed by 多/餘 never reaches 歲, so ranges drop out.
@@ -373,6 +383,13 @@ public static class HardConflictGate
         // The birthday has surely not come only when a known month, or a known day of the same month, is earlier.
         var age = at.Year - dob.Year;
         return at.Month < dob.Month || (at.Month == dob.Month && at.Day < dob.Day) ? age - 1 : age;
+    }
+
+    /// <summary>Youngest the person can have been: the birthday has surely come only when the known parts say so.</summary>
+    public static int MinAgeAt(PartialDate dob, PartialDate at)
+    {
+        var age = at.Year - dob.Year;
+        return at.Month > dob.Month || (at.Month == dob.Month && at.Day >= dob.Day) ? age : age - 1;
     }
 }
 

@@ -232,8 +232,22 @@ public class IdentityBoundaryTests
         Assert.Equal((ReasonCodes.AgeCompatibleAtReport, "報導年齡 45 歲；依報導日期 2026-03-01 推算 45 歲"), (age?.Detail, age?.Note));
 
         var coarse = StatedAgeCheck.Check(Subject(D(1980)), Profile(), news);
-        Assert.Equal("報導年齡 45 歲；缺少完整出生日期或報導日期，無法換算", coarse?.Note);
+        Assert.Equal((ReasonCodes.AgeNotComparable, "報導年齡 45 歲；缺少完整出生日期或報導日期，依報導日期 2026-03-01 可能為 45～46 歲，不比較"), (coarse?.Detail, coarse?.Note));
+        Assert.Equal("報導年齡 45 歲；缺少完整出生日期或報導日期，無法換算",
+            StatedAgeCheck.Check(Subject(D(1980)), Profile(), news with { PublishedOn = null })?.Note);
     }
+
+    // Every age a partial DOB allows at a partial time point; the youngest is the oldest less one unless the birthday has surely come.
+    [Theory]
+    [InlineData(1980, null, null, 2026, 3, 1, "45～46 歲")]
+    [InlineData(1980, 5, null, 2026, 3, 1, "45 歲")]   // March is before May: the birthday has not come
+    [InlineData(1980, 2, null, 2026, 3, 1, "46 歲")]   // February: it has
+    [InlineData(1980, 3, null, 2026, 3, 1, "45～46 歲")] // same month, day unknown
+    [InlineData(1980, 3, 1, 2026, 3, 1, "46 歲")]     // the birthday itself
+    [InlineData(1980, 5, 20, 2026, null, null, "45～46 歲")]
+    [InlineData(2026, null, null, 2026, 3, 1, "0 歲")] // never below zero
+    public void The_possible_age_range_covers_every_date_both_values_can_stand_for(int y, int? m, int? d, int ay, int? am, int? ad, string expected) =>
+        Assert.Equal(expected, StatedAgeCheck.AgeRange(new PartialDate(y, m, d), new PartialDate(ay, am, ad)));
 
     // Either side's period can end before the other's starts.
     [Theory]

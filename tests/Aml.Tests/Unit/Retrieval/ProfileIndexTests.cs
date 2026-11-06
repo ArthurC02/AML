@@ -268,7 +268,7 @@ public class ProfileIndexTests
             if (rank == 0) misses.Add($"{kind}: {query} → {target}");
             else if (rank > worstRank) ranked.Add($"{kind}: {query} → {target} at rank {rank}, expected {worstRank} or better");
         }
-        var recall = 1 - (double)misses.Count / Labelled.Count;
+        var recall = index.RecallAtK([.. Labelled.Select(r => (r.Data.Item2, ProfileKeys.IdOf(r.Data.Item3)))], 10);
         TestContext.Current.TestOutputHelper?.WriteLine($"Recall@10 = {recall:F3} over {Labelled.Count} labelled queries");
         foreach (var m in misses) TestContext.Current.TestOutputHelper?.WriteLine("miss " + m);
         Assert.Empty(misses);

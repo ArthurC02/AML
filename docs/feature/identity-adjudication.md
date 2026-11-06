@@ -30,7 +30,7 @@ They are served by `GET /api/profiles/search` (INDEX_SEARCH), `GET /api/profiles
 - Ties break on alias text, then Profile key, so the order is deterministic. A name whose key is empty (punctuation or 「-」 only) is not indexed, and an empty query returns nothing. A Profile key given twice keeps its last Profile, with that Profile's aliases only.
 - The index keeps postings by alias key, word, n-gram and reading key. A query scores only the aliases that share at least one of its terms, since every route scores the others 0, so a search never scans the whole list. A very common term (a frequent surname) still reaches a large share of it.
 
-A name query returns the Top N Profiles, counted after deduplication; when more Profiles matched than are returned, or the exact tier alone exceeds Top N, every result carries `truncated`. The constants are literature defaults pending tuning on Recall@K. Candidate data is then fetched for the named or retrieved Profiles. Index search does not feed a Case automatically; whether it should, and with which Top N, is an [open question](../plan/open-questions.md#technology-governance).
+A name query returns the Top N Profiles, counted after deduplication; when more Profiles matched than are returned, or the exact tier alone exceeds Top N, every result carries `truncated`. The constants are literature defaults pending tuning on Recall@K (`ProfileIndex.RecallAtK`: the share of labelled name queries whose Profile is among the first K results). Candidate data is then fetched for the named or retrieved Profiles. Index search does not feed a Case automatically; whether it should, and with which Top N, is an [open question](../plan/open-questions.md#technology-governance).
 
 ## Profile-level deduplication
 
@@ -150,7 +150,7 @@ Applies only to an age explicitly stated for a named person in a bounded source 
 
 - Compare ages at the same time point: the time point stated in the source, else the report date, which is disclosed. Today's age is never compared with an old report.
 - Age at time point = year of time point − birth year, minus 1 if the time point's month/day precedes the birthday. Difference = stated age − age at time point.
-- Requires a full DOB on the subject side; otherwise the result is UNKNOWN and the explanation may show the possible age range.
+- Requires a full DOB on the subject side; otherwise the result is `AGE_NOT_COMPARABLE`, and with a partial DOB and a report date the note gives the possible age range at the report date (`StatedAgeCheck.AgeRange`, e.g. 45～46 歲 for a birth year only), which is shown, not compared.
 - |difference| ≤ 2 (inclusive) → `AGE_COMPATIBLE_AT_REPORT`, recorded like `TEMPORALLY_PLAUSIBLE`: compatible is not support.
 - |difference| > 2 → `AGE_DIFFERENCE_AT_REPORT`, a soft conflict that keeps the pair in REVIEW; it is never a hard conflict.
 - Without a full subject DOB or a report date the result is `AGE_NOT_COMPARABLE`.
@@ -195,7 +195,7 @@ Insufficient or conflicting evidence
     → REVIEW
 ```
 
-Phase 1 has no automatic MATCH: the identity decision is NO_MATCH, REVIEW or PROBABLE_MATCH. PROBABLE_MATCH is internal ([ADR-0003](../adr/0003-internal-probable-match.md)). There is no numeric score ([ADR-0019](../adr/0019-strength-decision-table-before-fellegi-sunter.md)); `FellegiSunter.Score` computes a shadow weight for Gate D calibration only, outside the result and the explanation; agreeing with any one of k Profile DOBs is k times as likely by chance, so the DOB u is multiplied by k.
+Phase 1 has no automatic MATCH: the identity decision is NO_MATCH, REVIEW or PROBABLE_MATCH. PROBABLE_MATCH is internal ([ADR-0003](../adr/0003-internal-probable-match.md)). There is no numeric score ([ADR-0019](../adr/0019-strength-decision-table-before-fellegi-sunter.md)); `FellegiSunter.Score` computes a shadow weight for Gate D calibration only, outside the result and the explanation; agreeing with any one of k Profile DOBs is k times as likely by chance, so the DOB u is multiplied by k. The calibration tools are in place and are not wired to any decision: `FellegiSunter.Pattern` turns a pair's evidence into an agreement pattern (support agrees, conflict disagrees, everything else is missing), `EstimateParameters` estimates m, u per group and the match share from unlabelled patterns by expectation-maximization under conditional independence, `Weight` scores a pattern with the estimate, and `Calibrate` picks the highest weight threshold that keeps a required recall on labelled pairs, with the precision it gives.
 
 ### Support strength
 

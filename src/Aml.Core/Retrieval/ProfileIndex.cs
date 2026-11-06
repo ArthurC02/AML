@@ -150,6 +150,17 @@ public sealed class ProfileIndex
             .ToList();
     }
 
+    /// <summary>
+    /// Recall@K over labelled queries: the share whose expected Profile is among the first <paramref name="k"/> candidates
+    /// <see cref="Search"/> returns for the name. The exact alias tier counts toward K like any other candidate.
+    /// </summary>
+    public double RecallAtK(IReadOnlyList<(string Name, string ExpectedProfileId)> queries, int k)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(k, 1);
+        if (queries.Count == 0) return 0;
+        return (double)queries.Count(q => Search(q.Name, k).Take(k).Any(c => c.ProfileId == q.ExpectedProfileId)) / queries.Count;
+    }
+
     /// <summary>Character n-gram Dice coefficient between two names: the score of the NGRAM route.</summary>
     public static double NGramScore(string a, string b) => Dice(Grams(Normalize.NameKey(a, true)), Grams(Normalize.NameKey(b, true)));
 

@@ -81,6 +81,94 @@ public class RetrievalAndScoringTests
         Assert.True(conflict.TotalWeight < 0);
     }
 
+    [Fact]
+    public void A_pattern_keeps_support_and_conflict_and_leaves_every_other_group_out()
+    {
+        var pattern = FellegiSunter.Pattern(new Dictionary<EvidenceGroup, Evidence>
+        {
+            [EvidenceGroup.Name] = new(EvidenceGroup.Name, Direction.Prerequisite, ComparisonStatus.Exact),
+            [EvidenceGroup.DateOfBirth] = new(EvidenceGroup.DateOfBirth, Direction.Support, ComparisonStatus.Exact, Strength.High),
+            [EvidenceGroup.Document] = new(EvidenceGroup.Document, Direction.Conflict, ComparisonStatus.Conflict),
+            [EvidenceGroup.Address] = new(EvidenceGroup.Address, Direction.Neutral, ComparisonStatus.Uncertain),
+        });
+        Assert.Equal([(EvidenceGroup.DateOfBirth, true), (EvidenceGroup.Document, false)], pattern.OrderBy(x => x.Key).Select(x => (x.Key, x.Value)));
+    }
+
+    // Synthetic pairs drawn from known m, u and match share; EM recovers them without labels.
+    [Fact]
+    public void Em_recovers_m_u_and_the_match_share_from_unlabelled_patterns()
+    {
+        var truth = new (EvidenceGroup Group, double M, double U)[]
+            { (EvidenceGroup.DateOfBirth, 0.95, 0.02), (EvidenceGroup.Document, 0.9, 0.01), (EvidenceGroup.Employment, 0.7, 0.1) };
+        var random = new Random(42);
+        var patterns = Enumerable.Range(0, 4000).Select(i =>
+        {
+            var match = i % 10 == 0; // a share of 0.1
+            var p = new Dictionary<EvidenceGroup, bool>();
+            foreach (var (g, m, u) in truth)
+                if (g != EvidenceGroup.Document || random.NextDouble() < 0.5) // a document is on both sides for half the pairs
+                    p[g] = random.NextDouble() < (match ? m : u);
+            return (IReadOnlyDictionary<EvidenceGroup, bool>)p;
+        }).ToList();
+
+        var estimate = FellegiSunter.EstimateParameters(patterns);
+
+        Assert.Equal(0.1, estimate.MatchShare, 0.02);
+        foreach (var (g, m, u) in truth)
+        {
+            var e = Assert.Single(estimate.Groups, x => x.Group == g);
+            Assert.Equal(m, e.M, 0.06);
+            Assert.Equal(u, e.U, 0.02);
+        }
+        Assert.InRange(estimate.Iterations, 1, 199); // converged before the cap
+        Assert.True(FellegiSunter.Weight(truth.ToDictionary(t => t.Group, _ => true), estimate) > 0);
+        Assert.True(FellegiSunter.Weight(truth.ToDictionary(t => t.Group, _ => false), estimate) < 0);
+    }
+
+    [Fact]
+    public void Em_rejects_a_match_share_outside_zero_and_one()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => FellegiSunter.EstimateParameters([], matchShare: 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => FellegiSunter.EstimateParameters([], matchShare: 1));
+        Assert.Equal((0, 0.1, 0), (FellegiSunter.EstimateParameters([]).Groups.Count, FellegiSunter.EstimateParameters([]).MatchShare, FellegiSunter.EstimateParameters([]).Iterations));
+    }
+
+    [Fact]
+    public void A_group_without_parameters_weighs_nothing()
+    {
+        var estimate = new Estimate([new GroupParameters(EvidenceGroup.DateOfBirth, 0.9, 0.1)], 0.1, 1);
+        Assert.Equal(Math.Log2(9), FellegiSunter.Weight(new Dictionary<EvidenceGroup, bool> { [EvidenceGroup.DateOfBirth] = true, [EvidenceGroup.Address] = true }, estimate), 9);
+        Assert.Equal(Math.Log2(0.1 / 0.9), FellegiSunter.Weight(new Dictionary<EvidenceGroup, bool> { [EvidenceGroup.DateOfBirth] = false }, estimate), 9);
+    }
+
+    [Theory]
+    [InlineData(1.0, 2, 1.0, 0.75)]       // every match kept: the lowest match weight
+    [InlineData(0.6, 3, 2.0 / 3, 2.0 / 3)] // two of three matches
+    [InlineData(0.33, 5, 1.0 / 3, 1.0)]
+    public void The_threshold_is_the_highest_weight_that_keeps_the_recall(double minRecall, double weight, double recall, double precision)
+    {
+        var t = FellegiSunter.Calibrate([(5, true), (3, true), (1, false), (4, false), (2, true)], minRecall)!;
+        Assert.Equal((weight, recall, precision), (t.Weight, t.Recall, t.Precision));
+    }
+
+    [Fact]
+    public void Calibration_needs_a_labelled_match_and_a_recall_in_zero_to_one()
+    {
+        Assert.Null(FellegiSunter.Calibrate([(1, false)]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => FellegiSunter.Calibrate([(1, true)], 0));
+        Assert.Throws<ArgumentOutOfRangeException>(() => FellegiSunter.Calibrate([(1, true)], 1.01));
+    }
+
+    [Fact]
+    public void Recall_at_k_counts_the_queries_whose_profile_is_in_the_first_k()
+    {
+        // 陳志明先生 ranks DJ:2 first and DJ:3 second.
+        Assert.Equal(0.5, Index.RecallAtK([("陳志明先生", "2"), ("陳志明先生", "3")], 1));
+        Assert.Equal(1.0, Index.RecallAtK([("陳志明先生", "2"), ("陳志明先生", "3")], 2));
+        Assert.Equal(0, Index.RecallAtK([], 5));
+        Assert.Throws<ArgumentOutOfRangeException>(() => Index.RecallAtK([], 0));
+    }
+
     private static readonly RiskPolicy SamplePolicy = new("risk-sample-unapproved", Approved: true,
         new Dictionary<ListType, int> { [ListType.AdverseMedia] = 10, [ListType.Sanction] = 50 },
         new Dictionary<string, int> { ["FRAUD"] = 5, ["TAX_EVASION"] = 5 },

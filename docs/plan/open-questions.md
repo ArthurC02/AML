@@ -58,7 +58,7 @@ Questions that need a bank decision. When one is answered, record the answer her
 - Which container platform, identity provider and CI/CD controls are standard?
 - List data refreshes on a schedule or on an event ([operating architecture](../feature/system-overview.md#operating-architecture)). What schedule, and which source events trigger a refresh and re-analysis?
 - Should index search over the list database ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)) feed Cases automatically, and with which Top N?
-- Calibrate the Fellegi-Sunter shadow (m and u per group) and approve, or not, an AML risk policy; neither affects decisions today.
+- Calibrate the Fellegi-Sunter shadow (m and u per group, by `FellegiSunter.EstimateParameters` over representative pairs, and a threshold by `Calibrate` over labelled ones) and approve, or not, an AML risk policy; neither affects decisions today.
 - Approve the entity evidence groups (registration number, IMO) with an entity Golden Case.
 - Calibrate the placeholder thresholds from labelled cases. None of them makes evidence support, a conflict or a hit; they grade details, rank candidates or cap groups:
   - name similarity per script (`Normalize.NameSimilarityThresholdCjk` and `…Latin`, 0.90) and address Jaccard (`AddressCompare.JaccardThreshold`, 0.5), which label a PARTIAL detail;

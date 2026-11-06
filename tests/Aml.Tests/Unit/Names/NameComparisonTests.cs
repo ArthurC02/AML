@@ -143,4 +143,16 @@ public class NameComparisonTests
         Assert.Empty(Romanization.ReadingKeys("黃?明"));
         Assert.Empty(Romanization.ReadingKeys("Smith-Jones"));
     }
+
+    [Fact]
+    public void A_word_with_many_ambiguous_splits_or_too_many_letters_is_read_at_once()
+    {
+        // XIAN reads as XIAN or XI+AN; the final Q fails every split. Without remembering failed positions this is 2^11 parses
+        // per word, and 2^n for longer words.
+        var started = System.Diagnostics.Stopwatch.StartNew();
+        Assert.Empty(Romanization.ReadingKeys(string.Concat(Enumerable.Repeat("XIAN", 11)) + "Q"));
+        Assert.Empty(Romanization.ReadingKeys(new string('A', 1_000_000)));
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(2), $"took {started.Elapsed}");
+        Assert.Contains("XIANXIAN", Romanization.ReadingKeys("Xian Xian"));
+    }
 }

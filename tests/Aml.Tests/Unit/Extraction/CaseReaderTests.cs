@@ -317,6 +317,37 @@ public class CaseReaderTests
             Lines("<table><tr><td rowspan=\"2\">R</td><td colspan=\"2\">A</td><td>B</td></tr><tr><td>x</td><td>y</td><td>z</td></tr></table>", HtmlExport.Kind.CaseTable));
 
     [Fact]
+    public void Html_too_deep_or_spreading_into_too_many_cells_is_refused_not_read()
+    {
+        // 100,000 nested divs would overflow the stack of a recursive read, which no catch survives, and take the parser
+        // minutes. The parse is cut at its budget, as text or as bytes, whatever markup does the nesting.
+        static string Nested(int depth, string open = "<div>") => string.Concat(Enumerable.Repeat(open, depth)) + "<table><tr><td>a</td><td>b</td></tr></table>";
+        foreach (var open in new[] { "<div>", "<div/>", "<rt>", "<span-a></span>" })
+        {
+            var started = System.Diagnostics.Stopwatch.StartNew();
+            Assert.Throws<FormatException>(() => HtmlExport.ToExportText(Nested(200_000, open), HtmlExport.Kind.Customer));
+            Assert.True(started.Elapsed < HtmlExport.ParseBudget * 2, $"{open} took {started.Elapsed}");
+        }
+        Assert.Throws<FormatException>(() => HtmlExport.ToExportText(Encoding.UTF8.GetBytes(Nested(200_000)), HtmlExport.Kind.Customer));
+        // Deeper than the read recurses, yet quick to parse: refused after the parse.
+        Assert.Throws<FormatException>(() => HtmlExport.ToExportText(Nested(HtmlExport.MaxDepth + 10), HtmlExport.Kind.Customer));
+        Assert.Throws<FormatException>(() => HtmlExport.ToExportText(string.Concat(Enumerable.Repeat("<table><tr><td>", 100)), HtmlExport.Kind.Customer));
+        // Nesting a real page uses, and runs of elements that close themselves, are read.
+        Assert.Equal(["a", "b", ""], HtmlExport.ToExportText(Nested(HtmlExport.MaxDepth - 10), HtmlExport.Kind.Customer).Split('\n'));
+        Assert.Equal(["x", ""], HtmlExport.ToExportText(string.Concat(Enumerable.Repeat("<p><br>", 10_000)) + "x", HtmlExport.Kind.Customer).Split('\n'));
+        // A long cell repeated across columns: few cells, but more text than a line can hold.
+        Assert.Throws<FormatException>(() => HtmlExport.ToExportText($"<table><tr><td colspan=\"1000\">{new string('x', 100_000)}</td></tr></table>", HtmlExport.Kind.CaseTable));
+        // Many tables each under the limit add up past it: the counts run across the page.
+        var table = $"<table><tr><td colspan=\"100\">{new string('x', 100_000)}</td></tr></table>"; // 10 M characters each
+        Assert.Equal(2, HtmlExport.ToExportText(table, HtmlExport.Kind.CaseTable).Split('\n').Length);
+        Assert.Throws<FormatException>(() => HtmlExport.ToExportText(string.Concat(Enumerable.Repeat(table, 3)), HtmlExport.Kind.CaseTable));
+
+        // One cell spanning 1,000 columns and many rows, under 20 KB of HTML.
+        var spread = "<table><tr><td rowspan=\"65534\" colspan=\"1000\">x</td></tr>" + string.Concat(Enumerable.Repeat("<tr><td>y</td></tr>", 1_000)) + "</table>";
+        Assert.Throws<FormatException>(() => HtmlExport.ToExportText(spread, HtmlExport.Kind.CaseTable)); // read as MALFORMED input
+    }
+
+    [Fact]
     public void Html_blank_field_is_written_blank_not_dash()
     {
         Assert.Equal(["國籍 2", "", ""], Lines("<table><tr><th>國籍 2</th><td></td></tr></table>"));
@@ -378,6 +409,16 @@ public class CaseReaderTests
     {
         var input = Read("GC-11", [("新聞資訊_90000011.txt", "2026 年 5 月 7 日", "2026年5月7日")]);
         Assert.Equal(new PartialDate(2026, 5, 7), input.NewsByProfileId["90000011"].PublishedOn);
+    }
+
+    [Theory]
+    [InlineData("２０２６年５月７日", 2026, 5, 7)] // full-width digits are read, not a MALFORMED case
+    [InlineData("2026年13月7日", null, null, null)] // an impossible date is no date
+    [InlineData("2026年2月30日", null, null, null)]
+    public void News_date_goes_through_the_date_parser(string date, int? year, int? month, int? day)
+    {
+        var input = Read("GC-11", [("新聞資訊_90000011.txt", "2026 年 5 月 7 日", date)]);
+        Assert.Equal(year is null ? null : new PartialDate(year.Value, month, day), input.NewsByProfileId["90000011"].PublishedOn);
     }
 
     // Customer and related-party layouts.

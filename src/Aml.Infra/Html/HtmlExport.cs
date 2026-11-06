@@ -27,23 +27,66 @@ public static partial class HtmlExport
         _ => Kind.Customer,
     };
 
-    public static string ToExportText(string html, Kind kind) => Export(new HtmlParser().ParseDocument(html), kind);
+    public static string ToExportText(string html, Kind kind) =>
+        Export(Parse((parser, ct) => parser.ParseDocumentAsync(html, ct)), kind);
 
     /// <summary>The page as uploaded: AngleSharp decides the encoding (BOM, then meta charset).</summary>
     public static string ToExportText(byte[] html, Kind kind)
     {
         using var stream = new MemoryStream(html);
-        return Export(new HtmlParser().ParseDocument(stream), kind);
+        return Export(Parse((parser, ct) => parser.ParseDocumentAsync(stream, ct)), kind);
     }
+
+    /// <summary>
+    /// Longest a page may take to parse. The HTML parser checks element scope against every open element, so markup
+    /// nested deeply, by any of the many ways HTML nests, parses in time quadratic in its depth (40,000 levels took 6 s, a
+    /// 5 MB page could take hours); a real export page parses in milliseconds. The parse is cancelled, not the markup guessed at.
+    /// </summary>
+    public static readonly TimeSpan ParseBudget = TimeSpan.FromSeconds(3);
+
+    private static IHtmlDocument Parse(Func<HtmlParser, CancellationToken, Task<IHtmlDocument>> parse)
+    {
+        using var budget = new CancellationTokenSource(ParseBudget);
+        try
+        {
+            // The parse runs on this thread and checks the token between tokens; nothing here waits on I/O.
+            return parse(new HtmlParser(), budget.Token).GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException) when (budget.IsCancellationRequested)
+        {
+            throw new FormatException($"The page did not parse within {ParseBudget.TotalSeconds:0} s.");
+        }
+    }
+
+    /// <summary>Deepest element nesting read. A real export page nests a few dozen levels; reading recurses per level, and a
+    /// stack overflow cannot be caught, so a deeper page is refused before it is read.</summary>
+    public const int MaxDepth = 256;
+
+    /// <summary>Most cells, and characters in them, a page's tables may spread into once row and column spans are repeated.</summary>
+    public const int MaxCells = 200_000, MaxCellCharacters = 20_000_000;
 
     private static string Export(IHtmlDocument doc, Kind kind)
     {
+        var root = doc.Body ?? (INode)doc;
+        CheckDepth(root);
         var lines = new List<string>();
-        Walk(doc.Body ?? (INode)doc, kind, lines, null);
+        (int Cells, long Characters) spread = (0, 0);
+        Walk(root, kind, lines, null, ref spread);
         return string.Join('\n', lines) + '\n';
     }
 
-    private static void Walk(INode node, Kind kind, List<string> lines, string? heading)
+    private static void CheckDepth(INode root)
+    {
+        var pending = new Stack<(INode Node, int Depth)>();
+        pending.Push((root, 0));
+        while (pending.TryPop(out var at))
+        {
+            if (at.Depth > MaxDepth) throw new FormatException($"The page nests elements deeper than {MaxDepth} levels.");
+            foreach (var child in at.Node.ChildNodes) if (child is IElement) pending.Push((child, at.Depth + 1));
+        }
+    }
+
+    private static void Walk(INode node, Kind kind, List<string> lines, string? heading, ref (int Cells, long Characters) spread)
     {
         foreach (var child in node.ChildNodes)
         {
@@ -52,7 +95,7 @@ public static partial class HtmlExport
                 case IElement e when Hidden(e):
                     break;
                 case IHtmlTableElement table:
-                    Table(table, kind, lines, table.Caption is { } caption && Value(caption) is { Length: > 0 } c ? c : heading);
+                    Table(table, kind, lines, table.Caption is { } caption && Value(caption) is { Length: > 0 } c ? c : heading, ref spread);
                     heading = null;
                     break;
                 case IElement e when e.LocalName is "h1" or "h2" or "h3" or "h4" or "h5" or "h6":
@@ -60,7 +103,7 @@ public static partial class HtmlExport
                     if (kind != Kind.Profile) lines.Add(heading);
                     break;
                 case IElement e when e.QuerySelector("table, h1, h2, h3, h4, h5, h6") is not null:
-                    Walk(e, kind, lines, heading);
+                    Walk(e, kind, lines, heading, ref spread);
                     break;
                 case IElement e when e.LocalName == "dl":
                     foreach (var dt in e.Children.Where(x => x.LocalName == "dt" && !Hidden(x)))
@@ -76,9 +119,9 @@ public static partial class HtmlExport
         }
     }
 
-    private static void Table(IHtmlTableElement table, Kind kind, List<string> lines, string? heading)
+    private static void Table(IHtmlTableElement table, Kind kind, List<string> lines, string? heading, ref (int Cells, long Characters) spread)
     {
-        var grid = Grid(table);
+        var grid = Grid(table, ref spread);
         var isProfileSection = heading is not null && kind == Kind.Profile;
         var isLabelValueForm = !isProfileSection && grid.All(r => r.Count == 2);
         if (isLabelValueForm)
@@ -101,21 +144,30 @@ public static partial class HtmlExport
         }
     }
 
-    private static List<List<string>> Grid(IHtmlTableElement table)
+    // Spans repeat a cell's text; a few kilobytes of colspan and rowspan would otherwise spread into millions of cells.
+    // Both counts run across the page's tables, so many tables under the limits cannot add up past them.
+    private static List<List<string>> Grid(IHtmlTableElement table, ref (int Cells, long Characters) spread)
     {
         var grid = new List<List<string>>();
         var carried = new Dictionary<int, (string Value, int Rows)>();
+        var (count, characters) = spread;
         foreach (var row in table.Rows.Where(r => !Hidden(r)))
         {
             var cells = new List<string>();
             var col = 0;
+            void Add(string value)
+            {
+                if (++count > MaxCells || (characters += value.Length) > MaxCellCharacters)
+                    throw new FormatException($"The page's tables spread into more than {MaxCells} cells or {MaxCellCharacters} characters.");
+                cells.Add(value);
+                col++;
+            }
             void CarryRowSpansDown()
             {
                 while (carried.TryGetValue(col, out var c))
                 {
-                    cells.Add(c.Value);
                     if (c.Rows <= 1) carried.Remove(col); else carried[col] = (c.Value, c.Rows - 1);
-                    col++;
+                    Add(c.Value);
                 }
             }
             foreach (var cell in row.Cells)
@@ -125,13 +177,13 @@ public static partial class HtmlExport
                 for (var i = 0; i < Math.Max(1, cell.ColumnSpan); i++)
                 {
                     if (cell.RowSpan > 1) carried[col] = (value, cell.RowSpan - 1);
-                    cells.Add(value);
-                    col++;
+                    Add(value);
                 }
             }
             CarryRowSpansDown();
             grid.Add(cells);
         }
+        spread = (count, characters);
         return grid;
     }
 

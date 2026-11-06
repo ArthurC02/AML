@@ -32,6 +32,10 @@ public static class SourceValues
     public static string? NullIfPlaceholder(string? s) =>
         string.IsNullOrWhiteSpace(s) || IsPlaceholder(s) ? null : s.Trim();
 
+    /// <summary>A country field's value, or null when it is a placeholder; a country code comes first, so NA is Namibia.</summary>
+    public static string? NullIfPlaceholderCountry(string? s) =>
+        s is not null && Countries.Lookup(s) is not null ? s.Trim() : NullIfPlaceholder(s);
+
     /// <summary>
     /// Text whose sole meaning is "no data". Only the whole value counts: 「未提供（居住國臺灣）」, 無錫市, 無業 and 無國籍 are values.
     /// </summary>

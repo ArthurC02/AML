@@ -286,7 +286,7 @@ public static partial class TxtCaseReader
         var blockEnd = nextHeading < 0 ? contact.Length : nextHeading;
         var afterAddress = heading + 3;
         var countryLabel = Array.FindIndex(contact, afterAddress, blockEnd - afterAddress, l => l == "國家");
-        return countryLabel >= 0 && countryLabel + 1 < contact.Length ? SourceValues.NullIfPlaceholder(contact[countryLabel + 1]) : null;
+        return countryLabel >= 0 && countryLabel + 1 < contact.Length ? SourceValues.NullIfPlaceholderCountry(contact[countryLabel + 1]) : null;
     }
 
     private static List<string> AddressFindings(List<Address> addresses, bool duplicated, List<string> findings)
@@ -351,7 +351,7 @@ public static partial class TxtCaseReader
 
     private static string? Country(string field, string? raw, List<string> findings)
     {
-        if (SourceValues.NullIfPlaceholder(raw) is not { } value) return null;
+        if (SourceValues.NullIfPlaceholderCountry(raw) is not { } value) return null;
         var code = SourceValues.Country(value);
         if (code is null) findings.Add($"{Ambiguous}:{field}");
         return code;
@@ -608,15 +608,14 @@ public static partial class TxtCaseReader
         PartialDate? published = null;
         if (dateIndex >= 0)
         {
+            // Through the date parser, which half-widths full-width digits and refuses 13月 or 2月30日: an impossible date is no date.
             var g = NewsDate().Match(lines[dateIndex]).Groups;
-            published = new PartialDate(Int(g[1].Value), Int(g[2].Value), Int(g[3].Value));
+            published = PartialDate.Parse($"{g[1].Value}/{g[2].Value}/{g[3].Value}");
         }
         var docId = lines.Select(l => NewsDocument().Match(l)).FirstOrDefault(m => m.Success)?.Groups[1].Value;
         return new NewsItem(profileId, docId, lines.ElementAtOrDefault(2) ?? "",
             dateIndex >= 0 ? lines.ElementAtOrDefault(dateIndex + 1) : null, published, string.Join('\n', lines));
     }
-
-    private static int Int(string s) => int.Parse(s, CultureInfo.InvariantCulture);
 
     [GeneratedRegex("^(\\d{4})\\s*年\\s*(\\d{1,2})\\s*月\\s*(\\d{1,2})\\s*日$")]
     private static partial Regex NewsDate();

@@ -109,7 +109,7 @@ public static class ProfileMerge
     /// </summary>
     private static string? DocumentKey(Document d)
     {
-        var (type, country) = (SourceValues.NullIfPlaceholder(d.Type), SourceValues.NullIfPlaceholder(d.Country));
+        var (type, country) = (SourceValues.NullIfPlaceholder(d.Type), SourceValues.NullIfPlaceholderCountry(d.Country));
         if (type is null || country is null || SourceValues.IsPlaceholder(d.Number)) return null;
         var number = EvidenceBuilder.DocumentNumber(d.Number);
         return IsTooShortOrRepeated(number) ? null : $"{type}|{country}|{number}";

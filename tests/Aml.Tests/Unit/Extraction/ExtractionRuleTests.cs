@@ -106,11 +106,24 @@ public class ExtractionRuleTests
     [InlineData("無國籍")]
     public void Text_with_content_is_a_value(string text) => Assert.Equal(text, SourceValues.NullIfPlaceholder(text));
 
+    [Fact]
+    public void In_a_country_field_NA_is_Namibia_and_other_placeholders_stay_missing()
+    {
+        Assert.Equal("NA", SourceValues.NullIfPlaceholderCountry(" NA "));
+        Assert.Equal("NA", SourceValues.Country(SourceValues.NullIfPlaceholderCountry("NA")!));
+        Assert.Null(SourceValues.NullIfPlaceholderCountry("N/A"));
+        Assert.Null(SourceValues.NullIfPlaceholderCountry("-"));
+        Assert.Null(SourceValues.NullIfPlaceholder("NA")); // elsewhere NA is still a placeholder
+    }
+
     [Theory]
     [InlineData("台中縣大里市中興路二段十二號五樓", "臺中市大里區中興路2段12號5樓")]
     [InlineData("桃園縣中壢市中正路１００號", "桃園市中壢區中正路100號")]
     [InlineData("高雄縣鳳山市光復路一段3號", "高雄市鳳山區光復路1段3號")]
     [InlineData("台南縣永康鄉中華路5號", "臺南市永康區中華路5號")]
+    [InlineData("桃園縣平鎮市中豐路1號", "桃園市平鎮區中豐路1號")]  // townships whose own name holds 市, 鄉 or 鎮
+    [InlineData("臺南縣新市鄉中山路2號", "臺南市新市區中山路2號")]
+    [InlineData("臺南縣左鎮鄉中正路3號", "臺南市左鎮區中正路3號")]
     public void Merged_counties_and_chinese_numerals_normalize(string raw, string expected)
     {
         var (normalized, finding) = TaiwanAddresses.Normalize(raw);
@@ -123,6 +136,10 @@ public class ExtractionRuleTests
         Assert.Equal(("臺北市八德路3段12號", (string?)null), TaiwanAddresses.Normalize("臺北市八德路三段十二號"));
         Assert.Equal(TaiwanAddresses.Key("臺北市中山區中山北路二段5號"), TaiwanAddresses.Key("台北市中山區中山北路2段５號"));
     }
+
+    [Fact]
+    public void A_district_whose_name_holds_a_district_suffix_keys_whole() =>
+        Assert.Equal("桃園市|平鎮區|中豐路||||1號||", TaiwanAddresses.Key("桃園縣平鎮市中豐路1號"));
 
     [Fact]
     public void Same_other_identifier_is_low_support_and_a_different_one_never_conflicts()

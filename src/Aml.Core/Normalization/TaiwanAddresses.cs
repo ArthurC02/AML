@@ -37,7 +37,9 @@ public static partial class TaiwanAddresses
         ["桃園縣"] = "桃園市",
     };
 
-    [GeneratedRegex("(?<county>[台臺]北縣|[台臺]中縣|[台臺]南縣|高雄縣|桃園縣)(?<town>\\p{IsCJKUnifiedIdeographs}{1,3}?)[市鄉鎮]")]
+    // The town is the shortest run before 市, 鄉 or 鎮, except the three townships whose own name holds one of them:
+    // 桃園縣平鎮市, 臺南縣新市鄉 and 臺南縣左鎮鄉 (平鎮區, 新市區, 左鎮區), tried first.
+    [GeneratedRegex("(?<county>[台臺]北縣|[台臺]中縣|[台臺]南縣|高雄縣|桃園縣)(?<town>平鎮|新市|左鎮|\\p{IsCJKUnifiedIdeographs}{1,3}?)[市鄉鎮]")]
     private static partial Regex OldCounty();
 
     [GeneratedRegex("[〇零一二兩三四五六七八九十廿卅百]+(?=[段巷弄號樓鄰])")]
@@ -61,7 +63,7 @@ public static partial class TaiwanAddresses
 
     private static readonly string[] KeyParts = ["city", "district", "road", "section", "lane", "alley", "number", "floor"];
 
-    [GeneratedRegex(@"^\d{0,6}(?<city>\p{IsCJKUnifiedIdeographs}{2}[市縣])(?<district>\p{IsCJKUnifiedIdeographs}{1,3}?[區鄉鎮市])?"
+    [GeneratedRegex(@"^\d{0,6}(?<city>\p{IsCJKUnifiedIdeographs}{2}[市縣])(?<district>(?:平鎮|新市|左鎮)區|\p{IsCJKUnifiedIdeographs}{1,3}?[區鄉鎮市])?"
         + @"(?:\p{IsCJKUnifiedIdeographs}{1,3}?[里村])?(?:\d+鄰)?(?<road>\p{IsCJKUnifiedIdeographs}+?(?:路|街|大道))"
         + @"(?<section>[\d一二三四五六七八九十]+段)?(?<lane>\d+巷)?(?<alley>\d+弄)?(?<number>\d+(?:之\d+)?號)(?<floor>\d+樓(?:之\d+)?)?")]
     private static partial Regex KeyPattern();

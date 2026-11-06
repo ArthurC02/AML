@@ -137,7 +137,7 @@ The ADVERSE_MEDIA stage is read from the attached news by a keyword heuristic, t
 - A judgment (判處, 判刑, 判決有罪, 有罪確定, 定讞 → CONVICTED; acquittal → ACQUITTED) counts only in a sentence naming the Profile person: a co-defendant's sentence is not the subject's (GC-12).
 - A dismissal or indictment counts in a sentence naming the Profile person, or in one that points at nobody else: a subjectless 檢方已起訴 or a collective 起訴七人 (GC-12) is the person's, while 同案, 另一, 另名, 其他, 其餘, 共犯 or 共同被告 mark someone else.
 - 不起訴, 緩起訴 and 撤回起訴 are DISMISSED, never INDICTED.
-- A modal, request or presumption before the keyword in its clause (可, 恐, 求, 最重, 推定) is no stage: 最重可判處, 請求從重判處 and 求刑 state no sentence.
+- A modal, request or presumption before the keyword in its clause (可, 恐, 求, 最重, 推定) is no stage: 最重可判處, 檢方請求法院依法從重判處, 恐遭起訴 and 可能遭到起訴 state no sentence. Words that only hold those characters (恐嚇, 恐怖, 可疑, 許可, 認可, 求償, 要求, 訴求) are not modals, so 因恐嚇取財罪被判處 is a conviction. A name holding 可 or 求 still reads as a modal, so no stage (the safe side).
 - 無罪 is an acquittal only after 判決, 改判 or 宣判 in its clause; 堅稱無罪 is a claim and 無罪推定 a presumption.
 - The last stage in the text wins.
 - With no judicial stage, 偵辦 or 調查 give ALLEGED; otherwise the stage is UNKNOWN.

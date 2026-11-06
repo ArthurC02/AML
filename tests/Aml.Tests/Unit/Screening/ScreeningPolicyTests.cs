@@ -113,6 +113,17 @@ public class ScreeningPolicyTests
     [InlineData("法院判決陳志明無罪定讞。", LegalStage.Acquitted)]
     [InlineData("陳志明遭起訴，一審判處有期徒刑三年。", LegalStage.Convicted)]
     [InlineData("檢方已起訴。", LegalStage.Indicted)]                                 // subjectless: the person's
+    [InlineData("陳志明因恐嚇取財罪被判處有期徒刑一年。", LegalStage.Convicted)]       // 恐嚇 is an offence, not 恐 the modal
+    [InlineData("陳志明涉及恐怖活動遭判處有期徒刑五年。", LegalStage.Convicted)]
+    [InlineData("陳志明要求和解未果，遭判處有期徒刑一年。", LegalStage.Convicted)]     // 求 in another clause
+    [InlineData("陳志明因可疑交易遭檢方起訴。", LegalStage.Indicted)]                  // 可疑 is no modal
+    [InlineData("陳志明要求和解遭判處有期徒刑。", LegalStage.Convicted)]               // nor 要求, 訴求 or 許可 in the same clause
+    [InlineData("陳志明因訴求勞資爭議被起訴。", LegalStage.Indicted)]
+    [InlineData("陳志明未經許可吸金遭起訴。", LegalStage.Indicted)]
+    [InlineData("檢方請求法院依法從重判處陳志明。", LegalStage.Unknown)]               // a request, however far before
+    [InlineData("陳志明恐遭起訴。", LegalStage.Unknown)]                              // still a possibility…
+    [InlineData("陳志明可能遭到起訴。", LegalStage.Unknown)]
+    [InlineData("檢方偵辦後，陳志明可能遭到起訴。", LegalStage.Alleged)]               // …so only the investigation counts
     public void legal_stage_from_news(string news, LegalStage expected) =>
         Assert.Equal(expected, Assert.Single(SourceConditions.Determine(Profile("Adverse Media"), false, news)).LegalStage);
 

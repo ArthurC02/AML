@@ -340,7 +340,8 @@ public static partial class SourceConditions
     //   or a collective 起訴七人 (GC-12) is the person's; 同案, 另一, 其他 … mark someone else. Negation goes first:
     //   不起訴, 緩起訴 and 撤回起訴 are DISMISSED, never INDICTED.
     // - A modal, request or presumption before the keyword in its clause (可, 恐, 求, 最重, 推定) is no stage: 最重可判處,
-    //   請求從重判處, 求刑. 無罪 is an acquittal only after 判決, 改判 or 宣判 in its clause (堅稱無罪 is a claim).
+    //   請求從重判處, 恐遭起訴. Words that only hold those characters (恐嚇, 恐怖, 可疑, 許可, 求償, 要求) are not modals.
+    //   無罪 is an acquittal only after 判決, 改判 or 宣判 in its clause (堅稱無罪 is a claim).
     // - The last stage in the text wins; 偵辦 or 調查 give ALLEGED only when there is no judicial stage.
     private static LegalStage LegalStageFromNews(string? news, IReadOnlyList<string> names)
     {
@@ -376,10 +377,29 @@ public static partial class SourceConditions
     private static void Find(List<(int, LegalStage)> found, string clause, Regex pattern, LegalStage stage)
     {
         foreach (Match m in pattern.Matches(clause))
-            if (!Modals.Any(w => clause.AsSpan(0, m.Index).Contains(w, StringComparison.Ordinal))) found.Add((m.Index + m.Length, stage));
+            if (!ModalBefore(clause, m.Index)) found.Add((m.Index + m.Length, stage));
     }
 
-    private static readonly string[] Modals = ["可", "恐", "求", "最重", "推定"];
+    // A modal anywhere before the keyword in its clause makes it no stage (最重可判處, 恐遭起訴, 檢方請求法院依法從重判處), but
+    // a word that only holds the modal's character is not one: 恐嚇, 恐怖, 可疑, 許可, 求償, 要求 (因恐嚇取財罪被判處 is a conviction).
+    // ponytail: a name holding 可 or 求 (陳可欣遭起訴) still reads as a modal, so no stage: the safe side; exclude the matched
+    // names when that costs real hits.
+    private static bool ModalBefore(string clause, int keyword)
+    {
+        foreach (var (modal, notBefore, notAfter) in Modals)
+            for (var at = clause.IndexOf(modal, 0, keyword, StringComparison.Ordinal); at >= 0;
+                 at = at + 1 < keyword ? clause.IndexOf(modal, at + 1, keyword - at - 1, StringComparison.Ordinal) : -1)
+            {
+                var next = at + modal.Length;
+                if (at > 0 && notBefore.Contains(clause[at - 1], StringComparison.Ordinal)) continue;
+                if (next < clause.Length && notAfter.Contains(clause[next], StringComparison.Ordinal)) continue;
+                return true;
+            }
+        return false;
+    }
+
+    private static readonly (string Modal, string NotBefore, string NotAfter)[] Modals =
+        [("可", "許認核不", "疑"), ("恐", "", "嚇怖慌懼"), ("求", "要訴需追", "償援助職"), ("最重", "", ""), ("推定", "", "")];
 
     private static readonly string[] OtherParty = ["同案", "另一", "另名", "其他", "其餘", "共犯", "共同被告"];
 

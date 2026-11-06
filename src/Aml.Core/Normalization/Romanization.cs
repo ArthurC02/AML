@@ -107,23 +107,30 @@ public static class Romanization
         foreach (var hyphenPart in word.Split('-', StringSplitOptions.RemoveEmptyEntries))
         {
             var key = NameComparison.NameKey(hyphenPart);
-            if (key.Length == 0 || !key.All(char.IsAsciiLetter) || !Split(key, 0, acc)) return null;
+            if (key.Length is 0 or > MaxWordLetters || !key.All(char.IsAsciiLetter) || !Split(key, 0, acc, new bool[key.Length])) return null;
         }
         return acc.Count == 0 ? null : [.. acc];
     }
 
+    /// <summary>Longest word read as syllables: a Chinese given name or surname in letters is far shorter; a longer word is no
+    /// romanized Chinese name, and the split recurses once per syllable.</summary>
+    public const int MaxWordLetters = 48;
+
     // ponytail: longest syllable first with backtracking; a string with two parses (XIAN = XIAN or XI'AN) takes the longest.
-    private static bool Split(string s, int i, List<string> acc)
+    // A position that failed once fails again, so it is not retried: the split is linear, not exponential, in the word length.
+    private static bool Split(string s, int i, List<string> acc, bool[] failed)
     {
         if (i == s.Length) return true;
+        if (failed[i]) return false;
         for (var n = Math.Min(LongestSyllable, s.Length - i); n > 0; n--)
         {
             var candidate = s.AsSpan(i, n);
             if (!PinyinBySpan.TryGetValue(candidate, out var syllable) && !SpellingsBySpan.TryGetValue(candidate, out syllable, out _)) continue;
             acc.Add(syllable);
-            if (Split(s, i + n, acc)) return true;
+            if (Split(s, i + n, acc, failed)) return true;
             acc.RemoveAt(acc.Count - 1);
         }
+        failed[i] = true;
         return false;
     }
 

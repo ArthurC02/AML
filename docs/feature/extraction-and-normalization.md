@@ -51,6 +51,7 @@ In the PoC, `Infra/Html/HtmlExport` covers steps 3 and 4 by converting each page
 - a cell keeps its text and its control values in document order: a checkbox reads 是 or 否, a checked radio its label (else its value), a select its selected options, an input or textarea its value; the label text of a checkbox or radio is not repeated;
 - `<br>` and block elements (`p`, `div`, `li`, table cells …) break lines;
 - colspan repeats the cell across, rowspan carries it down;
+- a page is refused as `MALFORMED` when it does not parse within 3 s (deep nesting parses in quadratic time), nests elements deeper than 256 levels (the read recurses per level, and a stack overflow cannot be caught), or its tables spread into more than 200,000 cells or 20 million characters in one table;
 - hidden content is not read: the `hidden` attribute, an inline `display:none` or `visibility:hidden` style, `script`, `style`, `template`, `noscript`, buttons and hidden inputs; hiding by stylesheet class is not detected;
 - a blank field is written blank, never as `-`, so it is recorded as `FIELD_BLANK`, not `PLACEHOLDER_DASH` ([missing values](#missing-values)).
 
@@ -71,7 +72,7 @@ Customer, related party and Profile data are kept per person; one person's value
 - Customer files (`客戶-背景資料`, `客戶-聯絡資料`): a label line followed by its value line. A value line that is itself one of the known labels means the value was blank (`FIELD_BLANK`).
 - Related-party file: `key ：` or `key :` lines (full- or half-width colon), the value on the following line or lines, joined with a space when it spans several; a key followed directly by the next key has an empty value.
 - Profile file (`名單資料_<id>`): `key:\tvalue` lines, or `key:` followed by a tab-separated table whose numbered rows are read. Row numbers may be full-width. A row with fewer cells than its table needs is left out with an `UNPARSEABLE:<table>` finding (e.g. `UNPARSEABLE:職位`); the rest of the Profile is still read.
-- News file (`新聞資訊_<id>`): the publication date is a line such as `2026 年 9 月 6 日` or `2026年9月6日`, the publisher the line after it, the document ID the `文件 <id>` line.
+- News file (`新聞資訊_<id>`): the publication date is a line such as `2026 年 9 月 6 日` or `2026年9月6日` (full-width digits too), read by the date parser, so an impossible date such as 13月 or 2月30日 leaves the date out; the publisher the line after it, the document ID the `文件 <id>` line.
 
 ## Candidate table
 
@@ -198,7 +199,7 @@ Repeatedly seeing the same country in several roles does not create independent 
 
 Nationality comes only from nationality-labelled fields (nationality, citizenship). Allegation and residence countries are not nationality. Only values that map unambiguously to a country or code are normalized; anything else is `AMBIGUOUS`.
 
-In the PoC, `SourceValues.Country` maps a value to an ISO 3166-1 alpha-2 code after NFKC (full-width letters and brackets) and whitespace collapsing. It accepts the alpha-2 or alpha-3 code (upper case only, so the words "No" or "in" are not codes), the ISO English short name, a controlled list of common English and Chinese names, and the Taiwan aliases (台灣, 臺灣, 中華民國, ROC, Republic of China, Chinese Taipei …). Names that fit more than one country, such as 韓國 or Korea, are not mapped. A value that does not map produces `AMBIGUOUS:<field>` (e.g. `AMBIGUOUS:國籍 1`, `AMBIGUOUS:Citizenship`) and is left out of comparison; placeholders stay missing.
+In the PoC, `SourceValues.Country` maps a value to an ISO 3166-1 alpha-2 code after NFKC (full-width letters and brackets) and whitespace collapsing. It accepts the alpha-2 or alpha-3 code (upper case only, so the words "No" or "in" are not codes), the ISO English short name, a controlled list of common English and Chinese names, and the Taiwan aliases (台灣, 臺灣, 中華民國, ROC, Republic of China, Chinese Taipei …). Names that fit more than one country, such as 韓國 or Korea, are not mapped. A value that does not map produces `AMBIGUOUS:<field>` (e.g. `AMBIGUOUS:國籍 1`, `AMBIGUOUS:Citizenship`) and is left out of comparison; placeholders stay missing. A country code is read before the placeholder check, so `NA` in a country field is Namibia, not "not available".
 
 ## Documents
 
@@ -223,7 +224,7 @@ Handle `台/臺`, full-width digits, Chinese numerals before 段/巷/弄/號/樓
 
 An address line holding only a postal code is `AMBIGUOUS` (`POSTAL_CODE_ONLY`); identical address lines are kept once with a `DUPLICATED_ADDRESS_LINE` finding.
 
-Administrative names from before the 2010 and 2014 county mergers are mapped to current ones (e.g. 台北縣新莊市 → 新北市新莊區) with the versioned table `tw-admin-2014-12-25`; the raw value is kept and a `HISTORICAL_ADMIN_DIVISION` finding is recorded.
+Administrative names from before the 2010 and 2014 county mergers are mapped to current ones (e.g. 台北縣新莊市 → 新北市新莊區, and the townships whose own name holds 市, 鄉 or 鎮: 桃園縣平鎮市 → 桃園市平鎮區, 臺南縣新市鄉 → 臺南市新市區, 臺南縣左鎮鄉 → 臺南市左鎮區) with the versioned table `tw-admin-2014-12-25`; the raw value is kept and a `HISTORICAL_ADMIN_DIVISION` finding is recorded.
 
 An address's country comes from its own block's country field (永久地址(國家), 通訊位址(國家)), else from a Taiwan city or county in the text; otherwise it is unknown. A country-field/address-text inconsistency produces `FIELD_CONFLICT:<address role>`, preserving both source facts. It is a data-quality finding, never identity evidence.
 

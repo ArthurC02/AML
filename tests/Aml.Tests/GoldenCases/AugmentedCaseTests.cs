@@ -559,11 +559,15 @@ public class AugmentedCaseTests
     [Fact]
     public void AUG_01_04_year_only_role_date_downgrades_the_validated_conflict_to_review()
     {
-        var (_, a) = Augment("GC-01", [("名單資料_90000001.txt", "1\t董事長\t宏遠投資股份有限公司\t1990/7\t1995/12", "1\t董事長\t宏遠投資股份有限公司\t1990\t1995/12")]);
+        var (input, a) = Augment("GC-01", [("名單資料_90000001.txt", "1\t董事長\t宏遠投資股份有限公司\t1990/7\t1995/12", "1\t董事長\t宏遠投資股份有限公司\t1990\t1995/12")]);
         var chairman = Identity(a, "DJ:90000001");
         Assert.Equal((ReasonCodes.ImpossibleAgeAtReportedEvent, IdentityDecision.Review), (chairman.HardConflict, chairman.Decision));
         Assert.Equal([ReasonCodes.ImpossibleAgeAtReportedEvent, ReasonCodes.SourceQualityDowngrade], chairman.ReasonCodes);
         Assert.Equal(IdentityDecision.NoMatch, Identity(a, "DJ:90000002").Decision); // the other Profile is unaffected
+        // The explanation says the conflict was held for review, not that it excludes.
+        var gaps = Core.Explanation.ExplanationBuilder.Build(input, a).Hits.Single(h => h.ProfileKey == "DJ:90000001").Summary.KeyEvidenceOrGaps;
+        Assert.StartsWith("硬衝突 IMPOSSIBLE_AGE_AT_REPORTED_EVENT，但來源品質有疑慮", gaps, StringComparison.Ordinal);
+        Assert.DoesNotContain("足以排除", gaps, StringComparison.Ordinal);
     }
 
     [Fact]

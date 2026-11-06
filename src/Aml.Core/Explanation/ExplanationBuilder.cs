@@ -189,7 +189,9 @@ public static class ExplanationBuilder
     {
         var sb = new StringBuilder();
         if (h.Identity.HardConflict is { } hc)
-            sb.Append("硬衝突 " + hc + (HardConflictGate.ValidatedReasonCodes.Contains(hc) ? "，足以排除。" : "，規則尚待驗證，不自動排除。"));
+            sb.Append("硬衝突 " + hc + (!HardConflictGate.ValidatedReasonCodes.Contains(hc) ? "，規則尚待驗證，不自動排除。"
+                : h.Identity.ReasonCodes.Contains(ReasonCodes.SourceQualityDowngrade) ? "，但來源品質有疑慮（SOURCE_QUALITY_DOWNGRADE），維持人工複核，不自動排除。"
+                : "，足以排除。"));
         sb.Append(support.Count == 0
             ? "除姓名、國籍、性別等前提條件外，沒有任何佐證。"
             : "佐證：" + Join(support.Select(v => $"{CaseJson.Code(v.Group)}（{CaseJson.Code(v.Strength)}{(v.Detail is null ? "" : "，" + v.Detail)}）")) + "。");

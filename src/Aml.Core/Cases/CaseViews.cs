@@ -8,7 +8,6 @@ using Aml.Core.Shared;
 
 namespace Aml.Core.Cases;
 
-/// <summary>One hit in a Case summary.</summary>
 public sealed record HitLine(
     [property: Description("hit 編號")] int HitNumber,
     [property: Description("名單編號（/api/profiles 路由使用）")] string ProfileId,
@@ -19,13 +18,11 @@ public sealed record HitLine(
     [property: Description("系統身分判斷")] IdentityDecision IdentityDecision,
     [property: Description("此 revision 的 hit 摘要連結")] string Link);
 
-/// <summary>A Case with the full record of its effective revision.</summary>
 public sealed record CaseDetail(
     [property: Description("案件")] CaseRecord Case,
     [property: Description("生效 revision 的完整紀錄；尚無生效 revision 時為 null")] AnalysisRecord? Effective,
     [property: Description("revision 清單的連結")] string Revisions);
 
-/// <summary>What a Case concluded, from its effective revision; the full record is at the revision link.</summary>
 public sealed record CaseSummary(
     [property: Description("案件編號")] string CaseId,
     [property: Description("受檢對象參考碼：呼叫端的不透明參考，不得為客戶編號或證件號碼")] string SubjectRef,
@@ -43,14 +40,12 @@ public sealed record CaseSummary(
     [property: Description("完整紀錄：生效 revision，沒有時為最新 revision")] string? Revision,
     [property: Description("revision 清單的連結")] string Revisions);
 
-/// <summary>A piece of evidence without its values.</summary>
 public sealed record EvidenceLine(
     [property: Description("證據群組")] EvidenceGroup Group,
     [property: Description("比對狀態")] ComparisonStatus Status,
     [property: Description("強度")] Strength Strength,
     [property: Description("細節代碼，見 /api/codes")] string? Detail);
 
-/// <summary>Why one hit was raised and decided, without the compared values; the full hit is at the detail link.</summary>
 public sealed record HitSummary(
     [property: Description("hit 編號")] int HitNumber,
     [property: Description("所屬 revision")] int Revision,
@@ -69,7 +64,6 @@ public sealed record HitSummary(
     [property: Description("對比式解釋，見 hit 明細")] IReadOnlyList<WouldChangeIf>? WouldChangeIf,
     [property: Description("hit 明細的連結")] string Detail);
 
-/// <summary>One revision of a Case.</summary>
 public sealed record RevisionLine(
     [property: Description("revision 編號")] int Revision,
     [property: Description("分析時間")] DateTimeOffset CreatedAt,
@@ -78,16 +72,17 @@ public sealed record RevisionLine(
     [property: Description("是否為生效 revision")] bool Effective,
     [property: Description("與前一個生效 revision 的變更數；第一次分析或沒有解釋的 revision 為 null")] int? Changes);
 
-/// <summary>One page of Cases and the token for the next.</summary>
 public sealed record CasePage(
     [property: Description("Case，依建立時間再依案件編號")] IReadOnlyList<CaseRecord> Items,
     [property: Description("下一頁的 pageToken；最後一頁為 null")] string? NextPageToken);
 
-/// <summary>Summaries over the stored records: they leave detail out and never add any. Identifier fields are never included.</summary>
+// A summary only leaves detail out, never adds any, and never includes an Identifier field.
 public static class CaseViews
 {
     public const int MaxHits = 10;
     public const int MaxEvidence = 3;
+
+    private const int PrerequisitesOnlyRow = 6;
 
     public static string HitLink(string caseId, int hit, int revision) => $"/api/cases/{caseId}/hits/{hit}?revision={revision}&view=summary";
 
@@ -97,47 +92,63 @@ public static class CaseViews
 
     private static IReadOnlyList<T>? NullIfEmpty<T>(IReadOnlyList<T> items) => items.Count == 0 ? null : items;
 
-    /// <summary>The Case and its effective revision (null when it has none).</summary>
     public static CaseSummary Summary(CaseRecord c, AnalysisRecord? effective)
     {
-        var revisions = RevisionsLink(c.CaseId);
-        var newer = c.EffectiveRevision is { } e && c.CurrentRevision > e;
-        if (effective is null)
-            return new(c.CaseId, c.SubjectRef, c.TriggerEventId, c.Status, c.CurrentRevision, null, null, false, null,
-                c.CurrentRevision == 0 ? "尚未分析" : $"尚無生效的分析結果：最新 revision {c.CurrentRevision} 未完成",
-                null, null, null, c.CurrentRevision == 0 ? null : RevisionLink(c.CaseId, c.CurrentRevision), revisions);
+        if (effective is null) return SummaryWithoutEffective(c);
 
         var hits = effective.Explanation?.Hits ?? [];
-        var lines = hits.OrderBy(h => h.ReviewPriority ?? (ReviewPriority)int.MaxValue).ThenBy(h => h.HitNumber)
-            .Select(h => new HitLine(h.HitNumber, ProfileKeys.IdOf(h.ProfileKey), h.ProfileKey, h.ProfileName, h.PairResult, h.ReviewPriority, h.IdentityDecision, HitLink(c.CaseId, h.HitNumber, effective.Revision)))
-            .ToList();
-        var toReview = hits.Count(h => h.PairResult is ScreeningAssessment.Hit or ScreeningAssessment.Review);
-        var conclusion = $"案件結果 {CaseJson.Code(effective.CaseResult)}（revision {effective.Revision}）：{hits.Count} 個 hit，{toReview} 個需複核"
-            + (newer ? $"；revision {c.CurrentRevision} 未完成，未取代此結果" : "");
+        var lines = HitLinesByPriority(c.CaseId, effective.Revision, hits);
+        var newer = c.EffectiveRevision is { } e && c.CurrentRevision > e;
         return new(c.CaseId, c.SubjectRef, c.TriggerEventId, c.Status, c.CurrentRevision, effective.Revision, effective.CreatedAt, newer,
-            effective.CaseResult, conclusion, NullIfEmpty(lines.Take(MaxHits).ToList()), lines.Count > MaxHits ? lines.Count - MaxHits : null,
-            NullIfEmpty(effective.Result.NotEvaluatedProfiles), RevisionLink(c.CaseId, effective.Revision), revisions);
+            effective.CaseResult, Conclusion(c, effective, hits, newer), NullIfEmpty(lines.Take(MaxHits).ToList()), lines.Count > MaxHits ? lines.Count - MaxHits : null,
+            NullIfEmpty(effective.Result.NotEvaluatedProfiles), RevisionLink(c.CaseId, effective.Revision), RevisionsLink(c.CaseId));
     }
 
-    /// <summary>
-    /// One hit without its compared values. The decisive evidence is what decided it: on stage 3 rows 2 to 5 the strongest
-    /// support; otherwise (row 1, row 6, a hard conflict, a non-Person rule) the conflicts whose code is one of the reason
-    /// codes, in reason-code order, so the deciding conflict comes first. A rule with no evidence of its own (a death before
-    /// the subject's birth, a non-Person subject) has none; the reason codes say which rule decided.
-    /// </summary>
+    private static CaseSummary SummaryWithoutEffective(CaseRecord c)
+    {
+        var neverAnalyzed = c.CurrentRevision == 0;
+        return new(c.CaseId, c.SubjectRef, c.TriggerEventId, c.Status, c.CurrentRevision, null, null, false, null,
+            neverAnalyzed ? "尚未分析" : $"尚無生效的分析結果：最新 revision {c.CurrentRevision} 未完成",
+            null, null, null, neverAnalyzed ? null : RevisionLink(c.CaseId, c.CurrentRevision), RevisionsLink(c.CaseId));
+    }
+
+    private static List<HitLine> HitLinesByPriority(string caseId, int revision, IReadOnlyList<HitExplanation> hits) =>
+        hits.OrderBy(h => h.ReviewPriority ?? (ReviewPriority)int.MaxValue).ThenBy(h => h.HitNumber)
+            .Select(h => new HitLine(h.HitNumber, ProfileKeys.IdOf(h.ProfileKey), h.ProfileKey, h.ProfileName, h.PairResult, h.ReviewPriority, h.IdentityDecision, HitLink(caseId, h.HitNumber, revision)))
+            .ToList();
+
+    private static string Conclusion(CaseRecord c, AnalysisRecord effective, IReadOnlyList<HitExplanation> hits, bool newerRevisionIncomplete)
+    {
+        var toReview = hits.Count(h => h.PairResult is ScreeningAssessment.Hit or ScreeningAssessment.Review);
+        return $"案件結果 {CaseJson.Code(effective.CaseResult)}（revision {effective.Revision}）：{hits.Count} 個 hit，{toReview} 個需複核"
+            + (newerRevisionIncomplete ? $"；revision {c.CurrentRevision} 未完成，未取代此結果" : "");
+    }
+
     public static HitSummary Hit(string caseId, int revision, HitExplanation h)
     {
-        static EvidenceLine Line(Evidence e) => new(e.Group, e.Status, e.Strength, e.Detail);
-        var codes = h.ReasonCodes.ToList();
-        // A hard conflict, or a non-Person record without comparable entity identifiers, leaves the stage 3 row empty.
-        var decisive = h.Stage3Row is >= 2 and <= 5
-            ? h.Support.OrderByDescending(e => e.Strength).Take(MaxEvidence).Select(Line).ToList()
-            : h.Conflicts.Select(e => (e, Rank: e.Detail is { } d ? codes.IndexOf(CodeCatalog.Key(d)) : -1))
-                .Where(x => x.Rank >= 0).OrderBy(x => x.Rank).Take(MaxEvidence).Select(x => Line(x.e)).ToList();
+        var decisive = DecisiveEvidence(h);
         return new(h.HitNumber, revision, ProfileKeys.IdOf(h.ProfileKey), h.ProfileKey, h.ProfileName,
             NullIfEmpty(h.SourceConditions.Where(s => s.Status == ConditionStatus.Hit).Select(s => s.Type).ToList()),
             h.IdentityDecision, h.HardConflict, h.Stage3Row, h.PairResult, h.ReviewPriority, NullIfEmpty(h.ReasonCodes), NullIfEmpty(decisive),
-            decisive.Count == 0 && h.Stage3Row == 6 ? "僅前提條件相符" : null, NullIfEmpty(h.WouldChangeIf),
+            decisive.Count == 0 && h.Stage3Row == PrerequisitesOnlyRow ? "僅前提條件相符" : null, NullIfEmpty(h.WouldChangeIf),
             $"/api/cases/{caseId}/hits/{h.HitNumber}?view=detail&revision={revision}");
     }
+
+    // A hard conflict or a non-Person rule leaves no stage 3 row; a rule with no evidence of its own (death before birth) yields none.
+    private static List<EvidenceLine> DecisiveEvidence(HitExplanation h) =>
+        IsDecidedBySupport(h.Stage3Row) ? StrongestSupport(h) : ConflictsInReasonCodeOrder(h);
+
+    private static bool IsDecidedBySupport(int? stage3Row) => stage3Row is >= 2 and <= 5;
+
+    private static List<EvidenceLine> StrongestSupport(HitExplanation h) =>
+        h.Support.OrderByDescending(e => e.Strength).Take(MaxEvidence).Select(Line).ToList();
+
+    private static List<EvidenceLine> ConflictsInReasonCodeOrder(HitExplanation h)
+    {
+        var codes = h.ReasonCodes.ToList();
+        return h.Conflicts.Select(e => (e, Rank: e.Detail is { } d ? codes.IndexOf(CodeCatalog.Key(d)) : -1))
+            .Where(x => x.Rank >= 0).OrderBy(x => x.Rank).Take(MaxEvidence).Select(x => Line(x.e)).ToList();
+    }
+
+    private static EvidenceLine Line(Evidence e) => new(e.Group, e.Status, e.Strength, e.Detail);
 }

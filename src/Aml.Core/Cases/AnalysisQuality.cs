@@ -5,7 +5,6 @@ using Aml.Core.Shared;
 
 namespace Aml.Core.Cases;
 
-/// <summary>Data quality of one revision: comparison cells by status, findings by code, Profiles not evaluated.</summary>
 public sealed record AnalysisQuality(
     [property: Description("hit 數")] int Hits,
     [property: Description("比對格數（每個 hit 9 格）")] int ComparisonCells,
@@ -18,19 +17,23 @@ public sealed record AnalysisQuality(
     [property: Description("無法評估的名單數")] int NotEvaluatedProfiles,
     [property: Description("資料品質 finding 依代碼計數（每個 hit 計一次）")] IReadOnlyDictionary<string, int> FindingCounts)
 {
-    /// <summary>
-    /// Counts over the given hits; each finding is counted once per hit (subject findings once more when there are no hits),
-    /// by its catalog key.
-    /// </summary>
     public static AnalysisQuality Of(IReadOnlyList<HitExplanation> hits, IEnumerable<string> subjectFindings, int notEvaluated)
     {
         var cells = hits.SelectMany(h => h.Comparison).ToList();
         int Count(params ComparisonStatus[] s) => cells.Count(c => s.Contains(c.Status));
         double? Rate(int n) => cells.Count == 0 ? null : (double)n / cells.Count;
-        var (missing, uncertain, conflict) = (Count(ComparisonStatus.SubjectMissing, ComparisonStatus.ProfileMissing), Count(ComparisonStatus.Uncertain), Count(ComparisonStatus.Conflict));
-        var findings = (hits.Count == 0 ? [subjectFindings.ToList()] : hits.Select(h => h.DataQualityFindings))
-            .SelectMany(f => f.Select(CodeCatalog.Key).Distinct())
-            .GroupBy(k => k, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        var missing = Count(ComparisonStatus.SubjectMissing, ComparisonStatus.ProfileMissing);
+        var uncertain = Count(ComparisonStatus.Uncertain);
+        var conflict = Count(ComparisonStatus.Conflict);
+        var findings = CountHitsPerFindingKey(FindingsPerHit(hits, subjectFindings));
         return new(hits.Count, cells.Count, missing, uncertain, conflict, Rate(missing), Rate(uncertain), Rate(conflict), notEvaluated, findings);
     }
+
+    private static IEnumerable<IReadOnlyList<string>> FindingsPerHit(IReadOnlyList<HitExplanation> hits, IEnumerable<string> subjectFindings) =>
+        hits.Count == 0 ? [subjectFindings.ToList()] : hits.Select(h => h.DataQualityFindings);
+
+    private static Dictionary<string, int> CountHitsPerFindingKey(IEnumerable<IReadOnlyList<string>> findingsPerHit) =>
+        findingsPerHit
+            .SelectMany(findings => findings.Select(CodeCatalog.Key).Distinct())
+            .GroupBy(k => k, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
 }

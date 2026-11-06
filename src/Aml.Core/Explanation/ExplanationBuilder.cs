@@ -12,7 +12,9 @@ namespace Aml.Core.Explanation;
 /// <summary>Builds the reviewer and audit view (pipeline-api-and-batch.md, explanation contents).</summary>
 public static class ExplanationBuilder
 {
-    /// <param name="changes">Differences from the previous revision; null on the first analysis.</param>
+    private const int MaskKeptPrefix = 3;
+    private const int MaskKeptSuffix = 2;
+
     public static CaseExplanation Build(CaseInput input, CaseAnalysis analysis, IReadOnlyList<PairChange>? changes = null) =>
         new(CaseLifecycle.Aggregate(analysis),
             analysis.Hits.Select((h, i) => Hit(i + 1, input, h)).ToList(),
@@ -26,56 +28,103 @@ public static class ExplanationBuilder
         var p = h.Profile;
         var e = h.Identity.Evidence;
         var rows = Comparison(s, p, e);
-        var subjectLabel = s.Role == SubjectRole.Customer ? "客戶" : $"關聯人（{s.Relationship}）";
-        var subject = $"{subjectLabel} {string.Join(" / ", s.Names)}";
-        var matched = input.Rows.Where(r => ProfileKeys.KeyOf(r.ProfileId) == p.ProfileKey).Select(r => r.MatchedName).Distinct().ToList();
+        var subject = ScreenedSubjectLabel(s);
+        var candidateRows = input.Rows.Where(r => ProfileKeys.KeyOf(r.ProfileId) == p.ProfileKey).ToList();
         var categories = p.Categories.Select(c => c.Subcategory is null ? c.Category : $"{c.Category} / {c.Subcategory}").ToList();
-
         var support = e.Values.Where(v => v.IsSupport).ToList();
-        var conflicts = e.Values.Where(v => v.Status == ComparisonStatus.Conflict).ToList();
-        var unknown = rows.Where(r => r.Status is ComparisonStatus.SubjectMissing or ComparisonStatus.ProfileMissing or ComparisonStatus.Uncertain)
-            .Select(r => r.Field).ToList();
-        var findings = s.Findings.Concat(s.Addresses.Select(a => a.Detail).OfType<string>()).Concat(p.Findings).Distinct().ToList();
+        var unknown = rows.Where(r => IsUnknown(r.Status)).Select(r => r.Field).ToList();
         var news = input.NewsByProfileId.GetValueOrDefault(ProfileKeys.IdOf(p.ProfileKey));
-        var hasNews = news is not null;
+        var sources = Sources(p, news, h.Conditions);
+
+        return new HitExplanation(
+            HitNumber: number,
+            ScreenedSubject: subject,
+            ProfileId: ProfileKeys.IdOf(p.ProfileKey),
+            ProfileKey: p.ProfileKey,
+            ProfileName: p.Names.Count > 0 ? p.Names[0] : null,
+            MatchedNames: candidateRows.Select(r => r.MatchedName).Distinct().ToList(),
+            IsRca: candidateRows.Any(r => r.IsRca),
+            SourceCategories: categories,
+            SourceConditions: h.Conditions,
+            AttachedNews: news is not null,
+            Comparison: rows,
+            RelatedParties: RelatedParties(s, p),
+            Support: support,
+            Conflicts: e.Values.Where(v => v.Status == ComparisonStatus.Conflict).ToList(),
+            UnknownFields: unknown,
+            HardConflict: h.Identity.HardConflict,
+            Stage3Row: h.Identity.Stage3Row,
+            WouldChangeIf: IdentityDecisionPolicy.Contrast(h.Identity),
+            IdentityDecision: h.Identity.Decision,
+            PairResult: h.PairResult,
+            ReviewPriority: h.ReviewPriority,
+            PairReasonCodes: h.PairReasonCodes,
+            Disposition: h.Disposition,
+            ReasonCodes: h.Identity.ReasonCodes,
+            DataQualityFindings: DataQualityFindings(s, p),
+            Sources: sources,
+            Summary: new ExplanationSummary(
+                InternalData: InternalData(s, subject),
+                ExternalData: ExternalData(h, categories, sources, hasNews: news is not null),
+                AgreementsAndDifferences: AgreementsAndDifferences(rows, unknown),
+                KeyEvidenceOrGaps: KeyEvidence(h, support),
+                Conclusion: Conclusion(h)));
+    }
+
+    private static string ScreenedSubjectLabel(ScreenedSubject s)
+    {
+        var role = s.Role == SubjectRole.Customer ? "客戶" : $"關聯人（{s.Relationship}）";
+        return $"{role} {string.Join(" / ", s.Names)}";
+    }
+
+    private static bool IsUnknown(ComparisonStatus status) =>
+        status is ComparisonStatus.SubjectMissing or ComparisonStatus.ProfileMissing or ComparisonStatus.Uncertain;
+
+    private static List<string> DataQualityFindings(ScreenedSubject s, SourceProfile p) =>
+        s.Findings.Concat(s.Addresses.Select(a => a.Detail).OfType<string>()).Concat(p.Findings).Distinct().ToList();
+
+    private static List<RelatedParty> RelatedParties(ScreenedSubject s, SourceProfile p) =>
+        (s.Relatives ?? []).Select(r => new RelatedParty("SUBJECT", r.Name, r.Relation, r.IsEntity))
+            .Concat(p.Relationships.Select(r => new RelatedParty("PROFILE", r.Name, r.Relation, r.IsEntity, r.ProfileId))).ToList();
+
+    private static List<ExplanationSource> Sources(SourceProfile p, NewsItem? news, IReadOnlyList<SourceCondition> conditions)
+    {
         var sources = p.Sources.Select((x, i) => new ExplanationSource($"S{i + 1}", x.Id, x.Name, x.Url, x.PublishedOn, x.RetrievedOn, SourceUse.ProfileRecord, true)).ToList();
         if (news is not null)
             sources.Add(new ExplanationSource($"S{sources.Count + 1}", news.DocumentId ?? $"{p.ProfileKey}#news", $"{news.Publisher}：{news.Title}", null,
                 news.PublishedOn?.ToString(), null,
-                h.Conditions.Any(c => c.Type == ListType.AdverseMedia) ? SourceUse.LegalStage : SourceUse.Context, true));
-
-        var summary = new ExplanationSummary(
-            InternalData: $"受檢對象為{subject}；出生日期 {OrMissing(s.DateOfBirth?.ToString())}；國籍 {OrMissing(Join(s.Nationalities))}；性別 {OrMissing(Gender(s.Gender))}；證件 {(s.Document is null ? "未提供" : "已提供")}。",
-            ExternalData: $"名單 {p.ProfileKey}（{Join(categories)}）{Cite(sources.Where(x => x.UsedFor == SourceUse.ProfileRecord))}判定為 {Join(h.Conditions.Select(Condition))}；"
-                + $"出生日期 {OrMissing(Join(p.DatesOfBirth.Select(d => d.ToString())))}；國籍 {OrMissing(Join(p.Citizenship))}；性別 {OrMissing(Gender(p.Gender))}；"
-                + $"附加新聞{(hasNews ? "有" + Cite(sources.Where(x => x.UsedFor != SourceUse.ProfileRecord)) : "無")}。",
-            AgreementsAndDifferences: $"相符：{OrMissing(Join(rows.Where(r => r.Status is ComparisonStatus.Exact or ComparisonStatus.Partial).Select(r => r.Field)), "無")}；"
-                + $"衝突：{OrMissing(Join(rows.Where(r => r.Status == ComparisonStatus.Conflict).Select(r => r.Field)), "無")}；"
-                + $"無法比對：{OrMissing(Join(unknown), "無")}。",
-            KeyEvidenceOrGaps: KeyEvidence(h, support),
-            Conclusion: $"系統身分判斷 {CaseJson.Code(h.Identity.Decision)}"
-                + (h.Identity.HardConflict is { } hc ? $"（第一階段硬衝突 {hc}）"
-                    : h.Identity.Stage3Row is { } row ? $"（第三階段第 {row} 列）" : $"（{h.Identity.ReasonCodes[0]}）")
-                + $"；對外結果 {CaseJson.Code(h.PairResult)}" + (h.ReviewPriority is { } pr ? $"（複核優先序 {CaseJson.Code(pr)}）" : "")
-                + $"；理由碼 {Join(h.Identity.ReasonCodes.Concat(h.PairReasonCodes))}。名單條件與身分判斷各自獨立。"
-                + Disposition(h.Disposition));
-
-        var related = (s.Relatives ?? []).Select(r => new RelatedParty("SUBJECT", r.Name, r.Relation, r.IsEntity))
-            .Concat(p.Relationships.Select(r => new RelatedParty("PROFILE", r.Name, r.Relation, r.IsEntity, r.ProfileId))).ToList();
-
-        return new HitExplanation(number, subject, ProfileKeys.IdOf(p.ProfileKey), p.ProfileKey, p.Names.Count > 0 ? p.Names[0] : null, matched, input.Rows.Any(r => ProfileKeys.KeyOf(r.ProfileId) == p.ProfileKey && r.IsRca),
-            categories, h.Conditions, hasNews, rows, related, support, conflicts, unknown, h.Identity.HardConflict, h.Identity.Stage3Row,
-            IdentityDecisionPolicy.Contrast(h.Identity), h.Identity.Decision, h.PairResult, h.ReviewPriority, h.PairReasonCodes, h.Disposition, h.Identity.ReasonCodes, findings, sources, summary);
+                conditions.Any(c => c.Type == ListType.AdverseMedia) ? SourceUse.LegalStage : SourceUse.Context, true));
+        return sources;
     }
+
+    private static string InternalData(ScreenedSubject s, string subject) =>
+        $"受檢對象為{subject}；出生日期 {OrMissing(s.DateOfBirth?.ToString())}；國籍 {OrMissing(Join(s.Nationalities))}；性別 {OrMissing(Gender(s.Gender))}；證件 {(s.Document is null ? "未提供" : "已提供")}。";
+
+    private static string ExternalData(HitResult h, List<string> categories, List<ExplanationSource> sources, bool hasNews)
+    {
+        var p = h.Profile;
+        return $"名單 {p.ProfileKey}（{Join(categories)}）{Cite(sources.Where(x => x.UsedFor == SourceUse.ProfileRecord))}判定為 {Join(h.Conditions.Select(Condition))}；"
+            + $"出生日期 {OrMissing(Join(p.DatesOfBirth.Select(d => d.ToString())))}；國籍 {OrMissing(Join(p.Citizenship))}；性別 {OrMissing(Gender(p.Gender))}；"
+            + $"附加新聞{(hasNews ? "有" + Cite(sources.Where(x => x.UsedFor != SourceUse.ProfileRecord)) : "無")}。";
+    }
+
+    private static string AgreementsAndDifferences(List<ComparisonRow> rows, List<string> unknown) =>
+        $"相符：{OrMissing(Join(rows.Where(r => r.Status is ComparisonStatus.Exact or ComparisonStatus.Partial).Select(r => r.Field)), "無")}；"
+        + $"衝突：{OrMissing(Join(rows.Where(r => r.Status == ComparisonStatus.Conflict).Select(r => r.Field)), "無")}；"
+        + $"無法比對：{OrMissing(Join(unknown), "無")}。";
+
+    private static string Conclusion(HitResult h) =>
+        $"系統身分判斷 {CaseJson.Code(h.Identity.Decision)}"
+        + (h.Identity.HardConflict is { } hc ? $"（第一階段硬衝突 {hc}）"
+            : h.Identity.Stage3Row is { } row ? $"（第三階段第 {row} 列）" : $"（{h.Identity.ReasonCodes[0]}）")
+        + $"；對外結果 {CaseJson.Code(h.PairResult)}" + (h.ReviewPriority is { } pr ? $"（複核優先序 {CaseJson.Code(pr)}）" : "")
+        + $"；理由碼 {Join(h.Identity.ReasonCodes.Concat(h.PairReasonCodes))}。名單條件與身分判斷各自獨立。"
+        + Disposition(h.Disposition);
 
     private static List<ComparisonRow> Comparison(ScreenedSubject s, SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence> e)
     {
         ComparisonStatus StatusOf(EvidenceGroup g) => e.TryGetValue(g, out var v) ? v.Status : ComparisonStatus.SubjectMissing;
         string? DetailOf(EvidenceGroup g) => e.TryGetValue(g, out var v) ? v.Detail : null;
-
-        var roles = p.Roles.Select(r => $"{r.Title}，{r.Organization}" + (r.From is { } f ? $"（{f} 起）" : ""))
-            .Concat(p.Relationships.Where(r => EvidenceBuilder.IsEmployer(r.Relation)).Select(r => $"受僱於 {r.Name}"));
-        var addresses = s.Addresses.Select(a => a.State == ValueState.Present ? a.Normalized ?? a.Raw : $"{a.Raw}（{a.Detail}）");
 
         return
         [
@@ -87,17 +136,36 @@ public static class ExplanationBuilder
             new("性別", Gender(s.Gender), Gender(p.Gender), StatusOf(EvidenceGroup.Gender), null),
             new("證件", s.Document is { } d ? $"{d.Type} {Mask(d.Number)}" : null,
                 NullIfEmpty(Join((p.Documents ?? []).Select(x => $"{x.Type} {Mask(x.Number)}"))), StatusOf(EvidenceGroup.Document), DetailOf(EvidenceGroup.Document)),
-            new("地址", NullIfEmpty(Join(addresses)), NullIfEmpty(Join(p.AddressLines is { Count: > 0 } lines ? lines.Count == p.AddressCountries.Count ? lines.Zip(p.AddressCountries, (l, c) => $"{l}（{c}）") : lines : p.AddressCountries)),
+            new("地址", NullIfEmpty(Join(SubjectAddresses(s))), NullIfEmpty(Join(ProfileAddresses(p))),
                 StatusOf(EvidenceGroup.Address), DetailOf(EvidenceGroup.Address)),
-            new("職業／雇主", NullIfEmpty(Join(new[] { s.Occupation }.OfType<string>()
-                    .Concat((s.Employments ?? []).Select(x => $"{x.Title}，{x.Organization}" + (x.From is { } f ? $"（{f} 起）" : ""))))),
-                NullIfEmpty(Join(roles)), StatusOf(EvidenceGroup.Employment), DetailOf(EvidenceGroup.Employment)),
+            new("職業／雇主", NullIfEmpty(Join(SubjectOccupations(s))), NullIfEmpty(Join(ProfileRoles(p))),
+                StatusOf(EvidenceGroup.Employment), DetailOf(EvidenceGroup.Employment)),
             new("其他識別碼", s.ReferenceNumber is { } r ? $"參考號碼 {Mask(r)}" : null, null, StatusOf(EvidenceGroup.OtherIdentifier),
                 s.ReferenceNumber is null ? null : EvidenceDetails.NotADocument),
         ];
     }
 
-    // DOB code, plus the code of any age stated in news (the table's "DOB or age" row); the age itself is the row's Note.
+    private static IEnumerable<string> SubjectAddresses(ScreenedSubject s) =>
+        s.Addresses.Select(a => a.State == ValueState.Present ? a.Normalized ?? a.Raw : $"{a.Raw}（{a.Detail}）");
+
+    private static IEnumerable<string> ProfileAddresses(SourceProfile p)
+    {
+        if (p.AddressLines is not { Count: > 0 } lines) return p.AddressCountries;
+        var oneCountryPerLine = lines.Count == p.AddressCountries.Count;
+        return oneCountryPerLine ? lines.Zip(p.AddressCountries, (l, c) => $"{l}（{c}）") : lines;
+    }
+
+    private static IEnumerable<string> SubjectOccupations(ScreenedSubject s) =>
+        new[] { s.Occupation }.OfType<string>().Concat((s.Employments ?? []).Select(x => Position(x.Title, x.Organization, x.From)));
+
+    private static IEnumerable<string> ProfileRoles(SourceProfile p) =>
+        p.Roles.Select(r => Position(r.Title, r.Organization, r.From))
+            .Concat(p.Relationships.Where(r => EvidenceBuilder.IsEmployer(r.Relation)).Select(r => $"受僱於 {r.Name}"));
+
+    private static string Position(string? title, string organization, PartialDate? from) =>
+        $"{title}，{organization}" + (from is { } f ? $"（{f} 起）" : "");
+
+    // The table's "DOB or age" row: the DOB code, then the code of any age stated in news; the age itself is the row's Note.
     private static string? DobDifference(IReadOnlyDictionary<EvidenceGroup, Evidence> e, SourceProfile p)
     {
         var parts = new List<string>();
@@ -144,9 +212,10 @@ public static class ExplanationBuilder
         return CaseJson.Code(c.Type) + (parts.Count > 0 ? $"（{string.Join("；", parts)}）" : "");
     }
 
-    /// <summary>Keeps the first 3 and last 2 characters: A12*****89.</summary>
     public static string Mask(string value) =>
-        value.Length <= 5 ? new string('*', value.Length) : value[..3] + new string('*', value.Length - 5) + value[^2..];
+        value.Length <= MaskKeptPrefix + MaskKeptSuffix
+            ? new string('*', value.Length)
+            : value[..MaskKeptPrefix] + new string('*', value.Length - MaskKeptPrefix - MaskKeptSuffix) + value[^MaskKeptSuffix..];
 
     private static bool IsCjk(string s) => s.Any(Normalize.IsCjk);
 

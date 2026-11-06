@@ -5,7 +5,6 @@ using Aml.Core.Retrieval;
 
 namespace Aml.Core.Cases;
 
-/// <summary>What a pair looked like in one revision; enough to tell what a re-analysis changed.</summary>
 public sealed record PairSnapshot(string ProfileKey, ScreeningAssessment PairResult, IdentityDecision IdentityDecision, IReadOnlyList<string> ReasonCodes);
 
 public enum PairChangeKind { Added, Removed, ResultChanged, IdentityChanged, ReasonsChanged }
@@ -17,10 +16,7 @@ public sealed record PairChange(
     [property: Description("變更前")] string? From,
     [property: Description("變更後")] string? To);
 
-/// <summary>
-/// Re-adjudication (GC-08 capability): a new revision never silently rewrites the previous one; every difference is listed.
-/// An empty list on a re-analysis with unchanged inputs is the Re-adjudication Stability signal.
-/// </summary>
+// GC-08 Re-adjudication: every difference is listed; none after an unchanged re-analysis is the Stability signal.
 public static class RevisionChanges
 {
     public static IReadOnlyList<PairSnapshot> Snapshot(CaseAnalysis a) =>
@@ -35,11 +31,11 @@ public static class RevisionChanges
 
         foreach (var (key, now) in after)
         {
-            if (!before.TryGetValue(key, out var was)) { changes.Add(new(ProfileKeys.IdOf(key), key, PairChangeKind.Added, null, CaseJson.Code(now.PairResult))); continue; }
-            if (was.PairResult != now.PairResult) changes.Add(new(ProfileKeys.IdOf(key), key, PairChangeKind.ResultChanged, CaseJson.Code(was.PairResult), CaseJson.Code(now.PairResult)));
-            if (was.IdentityDecision != now.IdentityDecision) changes.Add(new(ProfileKeys.IdOf(key), key, PairChangeKind.IdentityChanged, CaseJson.Code(was.IdentityDecision), CaseJson.Code(now.IdentityDecision)));
-            if (!was.ReasonCodes.SequenceEqual(now.ReasonCodes))
-                changes.Add(new(ProfileKeys.IdOf(key), key, PairChangeKind.ReasonsChanged, string.Join(",", was.ReasonCodes), string.Join(",", now.ReasonCodes)));
+            PairChange Change(PairChangeKind kind, string? from, string? to) => new(ProfileKeys.IdOf(key), key, kind, from, to);
+            if (!before.TryGetValue(key, out var was)) { changes.Add(Change(PairChangeKind.Added, null, CaseJson.Code(now.PairResult))); continue; }
+            if (was.PairResult != now.PairResult) changes.Add(Change(PairChangeKind.ResultChanged, CaseJson.Code(was.PairResult), CaseJson.Code(now.PairResult)));
+            if (was.IdentityDecision != now.IdentityDecision) changes.Add(Change(PairChangeKind.IdentityChanged, CaseJson.Code(was.IdentityDecision), CaseJson.Code(now.IdentityDecision)));
+            if (!was.ReasonCodes.SequenceEqual(now.ReasonCodes)) changes.Add(Change(PairChangeKind.ReasonsChanged, string.Join(",", was.ReasonCodes), string.Join(",", now.ReasonCodes)));
         }
         foreach (var (key, was) in before)
             if (!after.ContainsKey(key)) changes.Add(new(ProfileKeys.IdOf(key), key, PairChangeKind.Removed, CaseJson.Code(was.PairResult), null));

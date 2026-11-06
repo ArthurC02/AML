@@ -7,7 +7,6 @@ public sealed record ClaimedJob(string JobId, string JobType, int AttemptCount, 
 /// <summary>A job to queue; the idempotency key is unique across the job table.</summary>
 public sealed record NewJob(string JobId, string JobType, string BatchId, string IdempotencyKey, string Payload);
 
-/// <summary>Progress of one batch item, with lineage to the Case and revision it produced.</summary>
 public sealed record JobItem(string JobId, string IdempotencyKey, JobStatus Status, int AttemptCount,
     string? CaseId, int? AnalysisRevision, string? ErrorCode, DateTimeOffset? CompletedAt, DateTimeOffset CreatedAt);
 
@@ -32,13 +31,13 @@ public interface IJobStore
     /// <summary>Returns RUNNING jobs with an expired lease to the queue, or dead-letters them when the retry budget is spent.</summary>
     Task<int> ReclaimExpiredAsync(int maxAttempts, DateTimeOffset now, CancellationToken ct);
 
-    /// <summary>Items of the batch in the given statuses (all when null), ordered by (created at, id), after the given key.</summary>
+    /// <summary>Null statuses means all; ordered by (created at, id), starting after <paramref name="after"/>.</summary>
     Task<IReadOnlyList<JobItem>> ListItemsAsync(string batchId, CancellationToken ct,
         IReadOnlyCollection<JobStatus>? statuses = null, (DateTimeOffset At, string Id)? after = null, int limit = int.MaxValue);
 
-    /// <summary>Items of the batch per status; empty for an unknown batch.</summary>
+    /// <summary>Empty for an unknown batch.</summary>
     Task<IReadOnlyDictionary<JobStatus, int>> CountsAsync(string batchId, CancellationToken ct);
 
-    /// <summary>Operator re-run: dead-lettered items of the batch get a fresh retry budget.</summary>
+    /// <summary>Gives the batch's dead-lettered items a fresh retry budget.</summary>
     Task<int> RerunAsync(string batchId, DateTimeOffset now, CancellationToken ct);
 }

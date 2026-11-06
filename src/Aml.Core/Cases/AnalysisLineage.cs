@@ -17,10 +17,7 @@ public sealed record ProfileUse(
     [property: Description("相同內容的名單庫版本；只來自案件檔時為 null")] int? ListVersion,
     [property: Description("正規化匯出文字的 SHA-256，與名單庫的內容雜湊同一算法")] string? ContentHash);
 
-/// <summary>
-/// What one revision was computed from: input files, Profile versions and the versions of the rule sets that ran. A model
-/// that does not run in the analysis, such as the Fellegi-Sunter weight, is not recorded (ADR-0025).
-/// </summary>
+// Records only the rule sets that ran; a model outside the analysis, such as the Fellegi-Sunter weight, is not (ADR-0025).
 public sealed record AnalysisLineage(
     [property: Description("輸入檔與其雜湊")] IReadOnlyList<InputFile> InputFiles,
     [property: Description("分析用到的每一筆名單與其來源版本")] IReadOnlyList<ProfileUse> Profiles,
@@ -36,6 +33,8 @@ public sealed record AnalysisLineage(
         typeof(AnalysisLineage).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "unknown";
 
     public static AnalysisLineage Of(CaseInput input, IReadOnlyList<ProfileUse> profiles) => new(
-        (input.SourceHashes ?? new Dictionary<string, string>()).OrderBy(f => f.Key, StringComparer.Ordinal).Select(f => new InputFile(f.Key, f.Value)).ToList(),
-        profiles, SourceConditions.PolicyVersion, CodeCatalog.Version, CaseJson.SchemaVersion, CurrentAppVersion);
+        InputFilesByName(input), profiles, SourceConditions.PolicyVersion, CodeCatalog.Version, CaseJson.SchemaVersion, CurrentAppVersion);
+
+    private static List<InputFile> InputFilesByName(CaseInput input) =>
+        (input.SourceHashes ?? new Dictionary<string, string>()).OrderBy(f => f.Key, StringComparer.Ordinal).Select(f => new InputFile(f.Key, f.Value)).ToList();
 }

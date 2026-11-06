@@ -11,23 +11,23 @@ public sealed record Address(string Role, string Raw, string? Normalized, string
     public bool Conflict { get; init; }
 }
 
-/// <summary>An identity document. A Taiwan document type implies issuing country TW.</summary>
 public sealed record Document(
     [property: Description("證件類型，例如 TW_NATIONAL_ID、PASSPORT")] string? Type,
     [property: Description("證件號碼")][property: Sensitivity(Sensitivity.Identifier)] string Number,
     [property: Description("發證國（ISO 3166-1 alpha-2）")] string? IssuingCountry = null)
 {
+    private const string TaiwanTypePrefix = "TW_";
+    private const string Taiwan = "TW";
+
     [property: Description("發證國；台灣證件類型隱含 TW")]
-    public string? Country => IssuingCountry ?? (Type?.StartsWith("TW_", StringComparison.Ordinal) == true ? "TW" : null);
+    public string? Country => IssuingCountry ?? (Type?.StartsWith(TaiwanTypePrefix, StringComparison.Ordinal) == true ? Taiwan : null);
 }
 
-/// <summary>An employment with its organization and, when the source states it, its period.</summary>
 public sealed record Employment(string Organization, string? Title, PartialDate? From, PartialDate? To);
 
-/// <summary>A person or company related to the screened subject, as named in bank data.</summary>
 public sealed record Relative(string Name, string Relation, bool IsEntity = false);
 
-/// <summary>The customer or related party actually compared with a Profile. Only this person's data is used.</summary>
+// Only this customer's or related party's own data is compared with a Profile.
 public sealed record ScreenedSubject(
     SubjectRole Role,
     string? Relationship,
@@ -45,17 +45,15 @@ public sealed record ScreenedSubject(
     IReadOnlyList<Relative>? Relatives = null,
     string? PartyType = null)
 {
-    /// <summary>
-    /// A legal person or group (客戶類型 法人), compared on entity identifiers, never on DOB or nationality rules.
-    /// A party type containing 個 or 自然人 (個人, 自然人), or exactly Person, Individual or Natural Person, is a natural person;
-    /// no party type means a natural person.
-    /// </summary>
-    public bool IsEntity => PartyType is { } t
-        && !PersonWords.Any(w => t.Contains(w, StringComparison.Ordinal))
-        && !PersonLabels.Contains(t.Trim(), StringComparer.OrdinalIgnoreCase);
+    /// <summary>A legal person or group (客戶類型 法人): compared on entity identifiers, never on DOB or nationality rules.</summary>
+    public bool IsEntity => PartyType is { } t && !IsNaturalPersonType(t);
 
-    private static readonly string[] PersonWords = ["個", "自然人"];
-    private static readonly string[] PersonLabels = ["Person", "Individual", "Natural Person"];
+    private static bool IsNaturalPersonType(string partyType) =>
+        NaturalPersonWords.Any(w => partyType.Contains(w, StringComparison.Ordinal))
+        || NaturalPersonLabels.Contains(partyType.Trim(), StringComparer.OrdinalIgnoreCase);
+
+    private static readonly string[] NaturalPersonWords = ["個", "自然人"];
+    private static readonly string[] NaturalPersonLabels = ["Person", "Individual", "Natural Person"];
 }
 
 public sealed record SourceCategory([property: Description("名單類別")] string Category, [property: Description("名單子類別")] string? Subcategory);
@@ -72,7 +70,6 @@ public sealed record ProfileRelationship(
     [property: Description("關係，依來源原文")] string Relation,
     [property: Description("是否為公司或組織")] bool IsEntity = false);
 
-/// <summary>A labelled identifier that is not an identity document (reference number, registry key).</summary>
 public sealed record OtherIdentifier([property: Description("識別碼名稱")] string Label, [property: Description("號碼")][property: Sensitivity(Sensitivity.Identifier)] string Number);
 
 public sealed record OfficialListEntry(
@@ -102,7 +99,6 @@ public sealed record SourceProfile(
     [property: Description("非證件的識別碼")] IReadOnlyList<OtherIdentifier>? OtherIdentifiers = null,
     [property: Description("指控相關國家")] IReadOnlyList<string>? AllegationCountries = null);
 
-/// <summary>A source the Profile cites. Dates are ISO strings as far as the source states them.</summary>
 public sealed record SourceReference(
     [property: Description("來源編號")] string Id,
     [property: Description("來源名稱")] string Name,
@@ -110,31 +106,30 @@ public sealed record SourceReference(
     [property: Description("發布日期（ISO，依來源精度）")] string? PublishedOn,
     [property: Description("取得日期（ISO）")] string? RetrievedOn);
 
-/// <summary>A news item attached to a Profile in the input.</summary>
 public sealed record NewsItem(string ProfileId, string? DocumentId, string Title, string? Publisher, PartialDate? PublishedOn, string Text);
 
 /// <summary>A source flag exactly as read (extraction-and-normalization.md#source-flags). NO is a value, not unknown.</summary>
 public enum FlagValue { Missing, Yes, No, Unparseable }
 
-/// <summary>The three list flags, plus Is RCA? kept as read so a NO can be told from a blank; Is RCA? is not one of the three.</summary>
+// Is RCA? is kept as read, so a NO can be told from a blank, but it is not one of the three list flags.
 public sealed record ListFlags(FlagValue Pep, FlagValue Blacklist, FlagValue AdverseNews, FlagValue Rca = FlagValue.Missing)
 {
     public static readonly ListFlags None = new(FlagValue.Missing, FlagValue.Missing, FlagValue.Missing);
 
     public bool AllMissing => Pep == FlagValue.Missing && Blacklist == FlagValue.Missing && AdverseNews == FlagValue.Missing;
 
-    /// <summary>Several rows of one Profile: YES wins, then UNPARSEABLE, then NO.</summary>
     public static ListFlags Merge(IEnumerable<ListFlags> rows)
     {
         var list = rows.ToList();
-        static FlagValue One(IEnumerable<FlagValue> v) =>
-            v.Contains(FlagValue.Yes) ? FlagValue.Yes : v.Contains(FlagValue.Unparseable) ? FlagValue.Unparseable
-            : v.Contains(FlagValue.No) ? FlagValue.No : FlagValue.Missing;
-        return new(One(list.Select(f => f.Pep)), One(list.Select(f => f.Blacklist)), One(list.Select(f => f.AdverseNews)), One(list.Select(f => f.Rca)));
+        return new(Strongest(list.Select(f => f.Pep)), Strongest(list.Select(f => f.Blacklist)), Strongest(list.Select(f => f.AdverseNews)), Strongest(list.Select(f => f.Rca)));
     }
+
+    private static FlagValue Strongest(IEnumerable<FlagValue> v) =>
+        v.Contains(FlagValue.Yes) ? FlagValue.Yes : v.Contains(FlagValue.Unparseable) ? FlagValue.Unparseable
+        : v.Contains(FlagValue.No) ? FlagValue.No : FlagValue.Missing;
 }
 
-/// <summary>One row of the candidate table. Legacy columns are ImportedDecision only, never evidence.</summary>
+// Legacy columns become an ImportedDecision only, never evidence.
 public sealed record CandidateRow(string MatchedName, string ProfileId, string? LegacyReason, bool IsRca, ListFlags? Flags = null);
 
 public sealed record ImportedDecision(

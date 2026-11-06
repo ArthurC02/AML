@@ -7,7 +7,6 @@ using Aml.Core.Subjects;
 
 namespace Aml.Core.Explanation;
 
-/// <summary>One row of the fixed-order comparison table. Difference holds codes (joined with "；"); Note holds the reviewer text.</summary>
 public sealed record ComparisonRow(
     [property: Description("比對項目（固定順序：中文姓名、英文姓名／拼音、國籍、出生日期、性別、證件、地址、職業／雇主、其他識別碼）")] string Field,
     [property: Description("受檢對象的值；證件與參考號碼已遮罩")][property: Sensitivity(Sensitivity.Identifier)] string? SubjectValue,
@@ -16,7 +15,6 @@ public sealed record ComparisonRow(
     [property: Description("差異代碼，多個以「；」連接，見 /api/codes")] string? Difference,
     [property: Description("給複核人員的說明文字，例如報導年齡的推算")][property: Sensitivity(Sensitivity.Personal)] string? Note = null);
 
-/// <summary>A relative or related company named by the bank data (SUBJECT) or the Profile (PROFILE).</summary>
 public sealed record RelatedParty(
     [property: Description("SUBJECT：銀行資料記載；PROFILE：名單記載")] string Side,
     [property: Description("關係人姓名或公司名稱")][property: Sensitivity(Sensitivity.Personal)] string Name,
@@ -24,7 +22,7 @@ public sealed record RelatedParty(
     [property: Description("是否為公司或組織")] bool IsEntity,
     [property: Description("名單記載的關係人名單編號")] string? ProfileId = null);
 
-/// <summary>Five-part summary. It restates recorded facts only and adds none.</summary>
+// Restates recorded facts only and adds none.
 public sealed record ExplanationSummary(
     [property: Description("內部資料：受檢對象的姓名、出生日期、國籍、性別與證件是否提供")][property: Sensitivity(Sensitivity.Personal)] string InternalData,
     [property: Description("外部資料：名單類別、條件、出生日期、國籍、性別與新聞，[S#] 引用來源")][property: Sensitivity(Sensitivity.Personal)] string ExternalData,
@@ -61,7 +59,6 @@ public sealed record HitExplanation(
     [property: Description("來源；Ref 在摘要中以 [S#] 引用")] IReadOnlyList<ExplanationSource> Sources,
     [property: Description("五段式摘要")] ExplanationSummary Summary);
 
-/// <summary>A source behind a hit: what it is, where it is and what the system used it for. Ref (S1, S2, …) is cited as [S1] in the summary.</summary>
 public sealed record ExplanationSource(
     [property: Description("摘要中的引用編號（S1、S2…）")] string Ref,
     [property: Description("來源編號")] string Id,
@@ -83,7 +80,6 @@ public sealed record CaseExplanation(
     public int SchemaVersion { get; init; } = CaseJson.SchemaVersion;
 }
 
-/// <summary>What the system used a source for.</summary>
 public static class SourceUse
 {
     public const string ProfileRecord = "PROFILE_RECORD";

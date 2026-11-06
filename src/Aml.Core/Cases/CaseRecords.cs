@@ -19,7 +19,6 @@ public sealed record CaseRecord(
     [property: Description("建立時間")] DateTimeOffset CreatedAt,
     [property: Description("更新時間")] DateTimeOffset UpdatedAt);
 
-/// <summary>One stored revision: the result and explanation as typed records, with the lineage and data quality it was computed with.</summary>
 public sealed record AnalysisRecord(
     [property: Description("案件編號")] string CaseId,
     [property: Description("revision 編號")] int Revision,
@@ -33,23 +32,27 @@ public sealed record AnalysisRecord(
 
 public static class CaseLifecycle
 {
-    /// <summary>Case-level aggregate by precedence NOT_EVALUATED > HIT > REVIEW > NO_HIT > NOT_APPLICABLE; zero hits is NO_HIT.</summary>
+    // ScreeningAssessment is declared in precedence order, so the most severe pair result is the Max.
     public static ScreeningAssessment Aggregate(CaseAnalysis a) =>
-        a.NotEvaluatedProfiles.Count > 0 ? ScreeningAssessment.NotEvaluated
+        IsIncomplete(a) ? ScreeningAssessment.NotEvaluated
         : a.Hits.Count == 0 ? ScreeningAssessment.NoHit
         : a.Hits.Max(h => h.PairResult);
 
-    /// <summary>An incomplete revision is persisted but never published as the effective result.</summary>
     public static ExecutionStatus Execution(CaseAnalysis a) =>
-        a.NotEvaluatedProfiles.Count > 0 ? ExecutionStatus.Partial : ExecutionStatus.Completed;
+        IsIncomplete(a) ? ExecutionStatus.Partial : ExecutionStatus.Completed;
 
     /// <summary>Status after a COMPLETED analysis (case-management.md, lifecycle table).</summary>
     public static CaseStatus AfterAnalysis(CaseAnalysis a, CaseStatus current) => Aggregate(a) switch
     {
         ScreeningAssessment.NotEvaluated => current,
         ScreeningAssessment.Hit or ScreeningAssessment.Review => CaseStatus.InReview,
-        _ when a.Hits.Where(h => h.PairResult == ScreeningAssessment.NoHit)
-                     .All(h => h.Identity.Decision == IdentityDecision.NoMatch && HardConflictGate.Validated.Contains(h.Identity.HardConflict ?? "")) => CaseStatus.Closed,
+        _ when EveryNoHitExcludedByValidatedHardConflict(a) => CaseStatus.Closed,
         _ => CaseStatus.InReview,
     };
+
+    private static bool IsIncomplete(CaseAnalysis a) => a.NotEvaluatedProfiles.Count > 0;
+
+    private static bool EveryNoHitExcludedByValidatedHardConflict(CaseAnalysis a) =>
+        a.Hits.Where(h => h.PairResult == ScreeningAssessment.NoHit)
+            .All(h => h.Identity.Decision == IdentityDecision.NoMatch && HardConflictGate.Validated.Contains(h.Identity.HardConflict ?? ""));
 }

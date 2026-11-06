@@ -47,7 +47,6 @@ public static class ReasonCodes
     public const string EntityIdentifierConflict = "ENTITY_IDENTIFIER_CONFLICT";
 }
 
-/// <summary>Evidence detail codes that are not reason codes.</summary>
 public static class EvidenceDetails
 {
     public const string NotComparable = "NOT_COMPARABLE";
@@ -56,7 +55,7 @@ public static class EvidenceDetails
     public const string DifferentOrganization = "DIFFERENT_ORGANIZATION";
     public const string SameOrganizationSamePeriod = "SAME_ORGANIZATION_SAME_PERIOD";
     public const string SameOrganizationNoCommonPeriod = "SAME_ORGANIZATION_NO_COMMON_PERIOD";
-    /// <summary>Followed by the relation: SAME_NAMED_RELATIVE:SPOUSE.</summary>
+    // Written with the relation: SAME_NAMED_RELATIVE:SPOUSE.
     public const string SameNamedRelative = "SAME_NAMED_RELATIVE";
     public const string SoftDifference = "SOFT_DIFFERENCE";
     public const string SameAddressNoPeriod = "SAME_ADDRESS_NO_PERIOD";
@@ -71,8 +70,8 @@ public static class Findings
     public const string ProfileMultipleDob = "PROFILE_MULTIPLE_DOB";
     public const string VariantCharacters = "VARIANT_CHARACTERS";
     public const string RomanizationVariant = "ROMANIZATION_VARIANT";
-    /// <summary><c>UNPARSEABLE:&lt;field&gt;</c>: a value the reader could not read.</summary>
+    // Written with the field: UNPARSEABLE:<field>.
     public const string Unparseable = "UNPARSEABLE";
-    /// <summary><c>AMBIGUOUS:&lt;field&gt;</c>: a country value that maps to no country unambiguously; it is left out of comparison.</summary>
+    // Written with the field: AMBIGUOUS:<field>. A country value that maps to no single country; left out of comparison.
     public const string Ambiguous = "AMBIGUOUS";
 }

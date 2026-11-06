@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Aml.Core.Normalization;
@@ -21,16 +20,18 @@ public static partial class TxtCaseReader
     private const string RelatedPartyFile = "客戶-關聯人背景資料.txt";
     private const string ContactFile = "客戶-聯絡資料.txt";
     private const string CustomerCategory = "客戶";
-    private const string GoldenCaseLabelFile = "expected.yaml";
     private const int Big5CodePage = 950;
     private const char ByteOrderMark = '\uFEFF';
-    private const int MarkupSniffChars = 256;
 
     public static CaseInput ReadFiles(IReadOnlyDictionary<string, string> files) =>
         ReadFiles(files.ToDictionary(f => f.Key, f => Encoding.UTF8.GetBytes(f.Value)));
 
     public static CaseInput ReadFiles(IReadOnlyDictionary<string, byte[]> files) =>
-        ReadSources(files.Select(f => (Path.GetFileName(f.Key), f.Value)));
+        ReadExport(CaseExport.Of(files.Select(f => (Path.GetFileName(f.Key), f.Value))));
+
+    /// <summary>Reads a case folder; the source folder is never written.</summary>
+    public static CaseInput Read(string folder) =>
+        ReadExport(CaseExport.Of(Directory.GetFiles(folder).Select(f => (Path.GetFileName(f), File.ReadAllBytes(f)))));
 
     /// <summary>A missing Profile file is not a problem here: that candidate is NOT_EVALUATED.</summary>
     public static (string File, string Problem)? RequiredFileProblem(IReadOnlyCollection<string> names, string? subjectCategory)
@@ -44,13 +45,13 @@ public static partial class TxtCaseReader
 
     private static string SubjectFileOf(string subjectCategory) => subjectCategory == CustomerCategory ? CustomerFile : RelatedPartyFile;
 
-    private static void Require(Dictionary<string, string?> export, string? subjectCategory)
+    private static void Require(CaseExport export, string? subjectCategory)
     {
-        if (RequiredFileProblem(export.Keys, subjectCategory) is var (file, problem))
+        if (RequiredFileProblem(export.Names, subjectCategory) is var (file, problem))
             throw new CaseInputException(file, null, problem, $"{file}: {problem}");
     }
 
-    private static T ReadOrMalformed<T>(string file, Func<T> read)
+    internal static T ReadOrMalformed<T>(string file, Func<T> read)
     {
         try
         {
@@ -60,50 +61,6 @@ public static partial class TxtCaseReader
         {
             throw new CaseInputException(file, null, CaseInputException.Malformed, $"{file} is not in the export layout.", e);
         }
-    }
-
-    /// <summary>Reads a case folder; the source folder is never written.</summary>
-    public static CaseInput Read(string folder) =>
-        ReadSources(Directory.GetFiles(folder).Select(f => (Path.GetFileName(f), File.ReadAllBytes(f))));
-
-    // Files are read in name order ignoring case, the order a Windows folder lists them in, and two names that differ only
-    // by case are one file there, so here they are a duplicate on every platform.
-    private static CaseInput ReadSources(IEnumerable<(string Name, byte[] Content)> sources)
-    {
-        var ordered = sources.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase).ToList();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (name, _) in ordered)
-            if (!seen.Add(name)) throw new CaseInputException(name, null, CaseInputException.Duplicate, $"Two input files named {name}");
-        var findings = new List<string>();
-        var export = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-        foreach (var (name, content) in ordered) AddAsExport(name, content, export, findings);
-        return ReadExport(export, findings) with { SourceHashes = ordered.ToDictionary(s => s.Name, s => Convert.ToHexString(SHA256.HashData(s.Content))) };
-    }
-
-    // The export maps each file's export name to its text; an attachment that is not an export file maps to null and is never read.
-    private static void AddAsExport(string name, byte[] content, Dictionary<string, string?> export, List<string> findings)
-    {
-        var known = KnownFile().IsMatch(ExportName(name));
-        var target = known ? ExportName(name) : name;
-        if (export.ContainsKey(target))
-            throw new CaseInputException(target, null, CaseInputException.Duplicate, $"Two input files read as {target}");
-        if (!known) export[target] = null;
-        else if (IsHtmlName(name) || LooksLikeMarkup(content))
-            export[target] = ReadOrMalformed(name, () => HtmlExport.ToExportText(content, HtmlExport.KindOf(Path.GetFileNameWithoutExtension(target)))).TrimStart(ByteOrderMark);
-        else
-        {
-            export[target] = Decode(content, out var fallback);
-            if (fallback) findings.Add($"{EncodingFallback}:{name}");
-        }
-    }
-
-    // Reads lines as File.ReadAllLines does: split on \r\n, \r or \n, with no empty line after a final line break.
-    private static string[] Lines(string text)
-    {
-        var lines = new List<string>();
-        using var reader = new StringReader(text);
-        while (reader.ReadLine() is { } line) lines.Add(line);
-        return [.. lines];
     }
 
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
@@ -122,42 +79,35 @@ public static partial class TxtCaseReader
         }
     }
 
-    private static bool IsHtmlName(string path) => Path.GetExtension(path).ToLowerInvariant() is ".html" or ".htm";
-
-    private static string ExportName(string path) =>
-        IsHtmlName(path) || Path.GetExtension(path).Equals(".txt", StringComparison.OrdinalIgnoreCase)
-            ? Path.GetFileNameWithoutExtension(path) + ".txt"
-            : Path.GetFileName(path);
-
-    private static CaseInput ReadExport(Dictionary<string, string?> export, IEnumerable<string> fileFindings)
+    private static CaseInput ReadExport(CaseExport export)
     {
         Require(export, null);
-        var caseFile = export.Keys.Single(IsCaseInfoFile);
-        var (subjectRow, rows, records, caseFindings) = ReadOrMalformed(caseFile, () => ReadCaseTable(Lines(export[caseFile]!)));
+        var caseFile = export.Names.Single(IsCaseInfoFile);
+        var (subjectRow, rows, records, caseFindings) = ReadOrMalformed(caseFile, () => ReadCaseTable(export.Lines(caseFile)));
         Require(export, subjectRow.Category);
 
         var subject = ReadSubject(export, subjectRow);
-        var caseLevelFindingsShownOnEveryHit = caseFindings.Concat(fileFindings).Concat(UnsupportedAttachments(export));
+        var caseLevelFindingsShownOnEveryHit = caseFindings.Concat(export.Findings).Concat(export.UnsupportedAttachments());
         subject = subject with { Findings = [.. subject.Findings, .. caseLevelFindingsShownOnEveryHit] };
 
         var profileIds = rows.Select(r => r.ProfileId).Distinct().ToList();
-        var profiles = ReadPerProfileFilesPresent(export, profileIds, "名單資料", (_, text) => ParseProfile(text));
-        var news = ReadPerProfileFilesPresent(export, profileIds, "新聞資訊", ReadNews);
-        return new CaseInput(subject, rows, profiles, news, ImportedDecisions(subjectRow, rows, records));
+        var profiles = ReadPerProfileFilesPresent(export, profileIds, "名單資料", (_, file) => ParseProfile(export.Text(file)));
+        var news = ReadPerProfileFilesPresent(export, profileIds, "新聞資訊", (id, file) => ReadNews(id, export.Lines(file)));
+        return new CaseInput(subject, rows, profiles, news, ImportedDecisions(subjectRow, rows, records)) { SourceHashes = export.SourceHashes };
     }
 
     private static bool IsCaseInfoFile(string name) => name.StartsWith(CaseInfoPrefix, StringComparison.Ordinal) && name.EndsWith(".txt", StringComparison.Ordinal);
 
-    private static ScreenedSubject ReadSubject(Dictionary<string, string?> export, SubjectRow subjectRow) =>
+    private static ScreenedSubject ReadSubject(CaseExport export, SubjectRow subjectRow) =>
         subjectRow.Category == CustomerCategory
             ? ReadOrMalformed(CustomerFile, () => ReadCustomer(export))
-            : ReadOrMalformed(RelatedPartyFile, () => ReadRelatedParty(export[RelatedPartyFile]!, subjectRow.Category, subjectRow.ReferenceNumber));
+            : ReadOrMalformed(RelatedPartyFile, () => ReadRelatedParty(export.Lines(RelatedPartyFile), subjectRow.Category, subjectRow.ReferenceNumber));
 
-    private static Dictionary<string, T> ReadPerProfileFilesPresent<T>(Dictionary<string, string?> export, IEnumerable<string> profileIds, string filePrefix, Func<string, string, T> read) =>
+    private static Dictionary<string, T> ReadPerProfileFilesPresent<T>(CaseExport export, IEnumerable<string> profileIds, string filePrefix, Func<string, string, T> read) =>
         profileIds
-            .Select(id => (id, name: $"{filePrefix}_{id}.txt"))
-            .Where(x => export.ContainsKey(x.name))
-            .ToDictionary(x => x.id, x => ReadOrMalformed(x.name, () => read(x.id, export[x.name]!)));
+            .Select(id => (id, file: $"{filePrefix}_{id}.txt"))
+            .Where(x => export.Contains(x.file))
+            .ToDictionary(x => x.id, x => ReadOrMalformed(x.file, () => read(x.id, x.file)));
 
     private static List<ImportedDecision> ImportedDecisions(SubjectRow subjectRow, List<CandidateRow> rows, List<string> records)
     {
@@ -181,23 +131,6 @@ public static partial class TxtCaseReader
     public const string Malformed = "MALFORMED";
     private const string ProcessingRecord = "客戶檢核處理紀錄";
 
-    [GeneratedRegex("^(案件資訊.*|名單資料_\\d+|新聞資訊_\\d+|客戶-背景資料|客戶-聯絡資料|客戶-關聯人背景資料)\\.txt$")]
-    private static partial Regex KnownFile();
-
-    private static IEnumerable<string> UnsupportedAttachments(Dictionary<string, string?> export) =>
-        export.Where(f => f.Key != GoldenCaseLabelFile && (f.Value is null || LooksLikeMarkup(f.Value)))
-            .Select(f => $"{UnsupportedAttachment}:{f.Key}").Order(StringComparer.OrdinalIgnoreCase);
-
-    // Sniffs the head as a StreamReader decodes it: UTF-8 unless a byte order mark says otherwise.
-    private static bool LooksLikeMarkup(byte[] content)
-    {
-        using var reader = new StreamReader(new MemoryStream(content));
-        var head = new char[MarkupSniffChars];
-        return LooksLikeMarkup(new string(head, 0, reader.Read(head, 0, head.Length)));
-    }
-
-    private static bool LooksLikeMarkup(string text) =>
-        text.AsSpan(0, Math.Min(text.Length, MarkupSniffChars)).TrimStart([ByteOrderMark, ' ', '\r', '\n', '\t']).StartsWith('<');
 
     private static readonly string[] CustomerFields = ["本地名稱", "客戶名稱", "性別", "出生日期", "國籍 1", "證件號碼"];
     private static readonly string[] RelatedPartyFields = ["姓名/名稱", "性別", "出生日期", "國籍", "證件號碼"];
@@ -325,9 +258,9 @@ public static partial class TxtCaseReader
     private const int MinTaxIdLength = 8;
 
     // Customer files: label line followed by value line; a blank value shows as the next label.
-    private static ScreenedSubject ReadCustomer(Dictionary<string, string?> export)
+    private static ScreenedSubject ReadCustomer(CaseExport export)
     {
-        var background = Lines(export[CustomerFile]!).Select(l => l.Trim()).ToArray();
+        var background = export.Lines(CustomerFile).Select(l => l.Trim()).ToArray();
         string? RawValue(string label)
         {
             var at = Array.IndexOf(background, label);
@@ -348,7 +281,7 @@ public static partial class TxtCaseReader
             var t => new FieldValue(t, ValueState.Present),
         };
 
-        var addresses = export.TryGetValue(ContactFile, out var contact) ? ReadOrMalformed(ContactFile, () => ReadContactAddresses(contact!, findings)) : [];
+        var addresses = export.Contains(ContactFile) ? ReadOrMalformed(ContactFile, () => ReadContactAddresses(export.Lines(ContactFile), findings)) : [];
 
         var dob = Date("出生日期", Value("出生日期"), findings);
 
@@ -363,9 +296,9 @@ public static partial class TxtCaseReader
     private static bool IsCountryHeading(string line) => line.EndsWith(CountryHeadingSuffix, StringComparison.Ordinal);
 
     // Contact file: a "<role>(國家)" heading, then "地址" and the address, then the block's own "國家" label and value.
-    private static List<Address> ReadContactAddresses(string text, List<string> findings)
+    private static List<Address> ReadContactAddresses(string[] lines, List<string> findings)
     {
-        var contact = Lines(text).Select(l => l.Trim()).ToArray();
+        var contact = lines.Select(l => l.Trim()).ToArray();
         var addresses = new List<Address>();
         for (var i = 0; i + 2 < contact.Length; i++)
             if (IsCountryHeading(contact[i]) && contact[i + 1] == "地址" && SourceValues.NullIfPlaceholder(contact[i + 2]) is { } raw)
@@ -389,9 +322,9 @@ public static partial class TxtCaseReader
         return findings;
     }
 
-    private static ScreenedSubject ReadRelatedParty(string text, string relationship, string? referenceNumber)
+    private static ScreenedSubject ReadRelatedParty(string[] lines, string relationship, string? referenceNumber)
     {
-        var fields = ReadKeyValueLines(text);
+        var fields = ReadKeyValueLines(lines);
         string? Value(string key) => SourceValues.NullIfPlaceholder(fields.FirstOrDefault(f => f.Key == key).Value);
 
         var findings = MissingFieldFindings(RelatedPartyFields
@@ -416,10 +349,10 @@ public static partial class TxtCaseReader
     }
 
     // Related-party file: "key ：" (or "key :") lines, the value on the following line(s) joined with a space; an empty value is followed directly by the next key.
-    private static List<(string Key, string? Value)> ReadKeyValueLines(string text)
+    private static List<(string Key, string? Value)> ReadKeyValueLines(string[] lines)
     {
         var fields = new List<(string Key, string? Value)>();
-        foreach (var line in Lines(text))
+        foreach (var line in lines)
         {
             var trimmed = line.Trim();
             if (trimmed.EndsWith('：') || trimmed.EndsWith(':')) fields.Add((trimmed[..^1].Trim(), null));
@@ -694,9 +627,9 @@ public static partial class TxtCaseReader
     private static partial Regex SourceUrl();
 
     // News export: id line, section, title, reporter, length, "2026 年 9 月 6 日" (or "2026年9月6日"), publisher, …, "文件 <id>".
-    private static NewsItem ReadNews(string profileId, string text)
+    private static NewsItem ReadNews(string profileId, string[] rawLines)
     {
-        var lines = Lines(text).Select(l => l.Trim()).ToArray();
+        var lines = rawLines.Select(l => l.Trim()).ToArray();
         var dateIndex = Array.FindIndex(lines, l => NewsDate().IsMatch(l));
         PartialDate? published = null;
         if (dateIndex >= 0)

@@ -242,6 +242,23 @@ public class CaseReaderTests
     }
 
     [Fact]
+    public void A_case_table_naming_a_file_outside_the_export_layout_still_reads_it()
+    {
+        var files = Directory.GetFiles(GoldenCaseTests.Folder("GC-11")).ToDictionary(f => Path.GetFileName(f), File.ReadAllBytes);
+        var profileFile = files.Keys.First(k => k.StartsWith("名單資料_", StringComparison.Ordinal));
+        var id = profileFile["名單資料_".Length..^".txt".Length];
+        files["名單資料_A" + id + ".txt"] = files[profileFile];
+        files.Remove(profileFile);
+        var caseFile = files.Keys.Single(k => k.StartsWith("案件資訊", StringComparison.Ordinal));
+        files[caseFile] = Encoding.UTF8.GetBytes(Encoding.UTF8.GetString(files[caseFile]).Replace("\t" + id, "\tA" + id, StringComparison.Ordinal));
+
+        var input = TxtCaseReader.ReadFiles(files);
+
+        Assert.Contains("A" + id, input.Profiles.Keys);
+        Assert.Contains($"{TxtCaseReader.UnsupportedAttachment}:名單資料_A{id}.txt", input.Subject.Findings);
+    }
+
+    [Fact]
     public void File_names_that_differ_only_by_case_are_rejected_on_every_platform()
     {
         var files = Directory.GetFiles(GoldenCaseTests.Folder("GC-11")).ToDictionary(f => Path.GetFileName(f), File.ReadAllBytes);

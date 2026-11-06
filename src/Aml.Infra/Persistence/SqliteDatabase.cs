@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Aml.Core.Cases;
+using Aml.Core.Ports;
 using Dapper;
 using DbUp;
 using Microsoft.Data.Sqlite;
@@ -44,12 +45,14 @@ public sealed class SqliteDatabase
     /// single writer: whoever holds the writer slot drains every pending write, so batches grow with load and add no delay
     /// when idle. Each write sees the writes queued before it and is undone alone if it throws; an error after which SQLite
     /// rolls back the whole transaction, or a failed commit, fails every write of its batch with that error. A write must not call back into this method.
+    /// A batch holding a durable write commits with a sync of the log (synchronous = FULL); a batch of replayable writes only
+    /// (<see cref="WriteDurability"/>) commits without one (NORMAL) and may be lost on power loss, newest writes first.
     /// </summary>
     public async Task<T> WriteAsync<T>(Func<SqliteConnection, SqliteTransaction, Task<T>> write, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         T result = default!;
-        var pending = new PendingWrite(async (c, tx) => result = await write(c, tx).ConfigureAwait(false));
+        var pending = new PendingWrite(async (c, tx) => result = await write(c, tx).ConfigureAwait(false), durable: !WriteDurability.IsReplayable);
         _pending.Enqueue(pending);
         // No token: a queued write runs in some batch anyway, so its caller waits for that outcome.
         await _writer.WaitAsync(CancellationToken.None).ConfigureAwait(false);
@@ -65,9 +68,11 @@ public sealed class SqliteDatabase
         return result;
     }
 
-    private sealed class PendingWrite(Func<SqliteConnection, SqliteTransaction, Task> write)
+    private sealed class PendingWrite(Func<SqliteConnection, SqliteTransaction, Task> write, bool durable)
     {
         public Func<SqliteConnection, SqliteTransaction, Task> Write { get; } = write;
+
+        public bool Durable { get; } = durable;
 
         public TaskCompletionSource Done { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
@@ -80,6 +85,8 @@ public sealed class SqliteDatabase
         try
         {
             await using var c = await OpenAsync(CancellationToken.None).ConfigureAwait(false);
+            // Set on every batch: a pooled connection keeps the value of its last batch.
+            await c.ExecuteAsync(batch.Any(w => w.Durable) ? "PRAGMA synchronous = FULL;" : "PRAGMA synchronous = NORMAL;").ConfigureAwait(false);
             await using var tx = (SqliteTransaction)await c.BeginTransactionAsync(CancellationToken.None).ConfigureAwait(false);
             for (var i = 0; i < batch.Count; i++)
             {

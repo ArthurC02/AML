@@ -16,17 +16,20 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
     /// Idempotent on (trigger, subject): an existing Case is returned unchanged, one left at revision 0 by an interrupted attempt
     /// gets its first analysis, and two concurrent creates store one.
     /// </summary>
+    /// <param name="caseId">The id of a new Case; a fresh v7 Guid when null. A batch item passes its job's id, so a re-run of
+    /// the job after a lost write stores the same Case.</param>
     public async Task<CaseRecord> CreateAsync(string subjectRef, string triggerEventId, CaseInput input, CancellationToken ct,
-        IReadOnlyDictionary<string, string>? files = null, Func<Task>? beforeWrite = null) =>
-        (await CreateOrGetAsync(subjectRef, triggerEventId, input, ct, files, beforeWrite).ConfigureAwait(false)).Case;
+        IReadOnlyDictionary<string, string>? files = null, Func<Task>? beforeWrite = null, string? caseId = null) =>
+        (await CreateOrGetAsync(subjectRef, triggerEventId, input, ct, files, beforeWrite, caseId).ConfigureAwait(false)).Case;
 
     public async Task<(CaseRecord Case, bool Inserted)> CreateOrGetAsync(string subjectRef, string triggerEventId, CaseInput input, CancellationToken ct,
-        IReadOnlyDictionary<string, string>? files = null, Func<Task>? beforeWrite = null)
+        IReadOnlyDictionary<string, string>? files = null, Func<Task>? beforeWrite = null, string? caseId = null)
     {
         var now = clock.GetUtcNow();
-        var id = Guid.CreateVersion7().ToString();
-        var created = await store.CreateAsync(new CaseRecord(id, subjectRef, triggerEventId, CaseStatus.Open, 0, null, now, now), ct).ConfigureAwait(false);
-        var inserted = created.CaseId == id;
+        var id = caseId ?? Guid.CreateVersion7().ToString();
+        var record = new CaseRecord(id, subjectRef, triggerEventId, CaseStatus.Open, 0, null, now, now);
+        var created = await store.CreateAsync(record, ct).ConfigureAwait(false);
+        var inserted = created == record; // not the id: a replayed batch item finds its Case stored under the id it passed
         if (created.CurrentRevision > 0) return (created, inserted);
         return (await AnalyzeAsync(created, input, files, beforeWrite, ct, yieldToConcurrentFirstRevision: true).ConfigureAwait(false), inserted);
     }

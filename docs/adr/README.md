@@ -29,6 +29,7 @@ Each record states context, decision and consequences. Records are never edited 
 | [0023](0023-ai-ready-data.md) | AI-ready data | Accepted; API consumers amended by 0024, lineage by 0025 |
 | [0024](0024-business-api.md) | Business API | Accepted |
 | [0025](0025-lineage-records-what-ran.md) | Lineage records what ran | Accepted |
+| [0026](0026-replayable-job-writes-commit-without-sync.md) | Replayable job writes commit without a log sync | Accepted |
 
 Template:
 

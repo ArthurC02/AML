@@ -44,7 +44,9 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
                     tx, cancellationToken: ct)).ConfigureAwait(false);
                 return record;
             }
-            catch (SqliteException e) when (e.SqliteExtendedErrorCode == SqliteDatabase.SqliteUniqueViolation)
+            // The primary key too: a replayed batch item brings its job's id, already stored with the same trigger and subject,
+            // and which constraint SQLite reports first is not specified.
+            catch (SqliteException e) when (e.SqliteExtendedErrorCode is SqliteDatabase.SqliteUniqueViolation or SqliteDatabase.SqlitePrimaryKeyViolation)
             {
                 return await ExistingCaseOfSameTriggerAndSubjectAsync(c, tx, record, ct).ConfigureAwait(false);
             }

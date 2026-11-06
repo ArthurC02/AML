@@ -82,8 +82,12 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
 
     public void Dispose() => _slots.Dispose();
 
+    // Every write of a job (claim, lease, Case, outcome) is replayable (ADR-0026): if a power loss takes the newest of them,
+    // the job is still queued or its lease expires, and it runs again; a batch item's Case takes the job's id, so the re-run
+    // stores the same Case. The task started for each job inherits the scope.
     private async Task<IReadOnlyList<Task>> StartAsync(CancellationToken ct)
     {
+        using var replayable = WriteDurability.Replayable();
         var free = await TakeEveryFreeSlotAsync(ct).ConfigureAwait(false);
         IReadOnlyList<ClaimedJob> jobs;
         try
@@ -181,7 +185,7 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
     private Task<CaseRecord> AnalyzeOrReanalyzeAsync(ClaimedJob job, BatchItemRequest? item, CaseInput? input, ReanalysisJob? reanalysis,
         CancellationToken deadline, CancellationToken ct) =>
         item is not null
-            ? cases.CreateAsync(item.SubjectRef, item.TriggerEventId, input!, deadline, item.Files, () => RenewLeaseBeforeWriteAsync(job, ct))
+            ? cases.CreateAsync(item.SubjectRef, item.TriggerEventId, input!, deadline, item.Files, () => RenewLeaseBeforeWriteAsync(job, ct), caseId: job.JobId)
             : (lists ?? throw new InvalidOperationException("REANALYZE_CASE needs the list service"))
                 .ReanalyzeWithLatestProfilesAsync(reanalysis!.CaseId, deadline, () => RenewLeaseBeforeWriteAsync(job, ct));
 

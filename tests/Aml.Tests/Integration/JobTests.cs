@@ -47,6 +47,66 @@ public sealed class JobTests : ServiceTestBase
     }
 
     [Fact]
+    public async Task A_batch_items_Case_takes_its_jobs_id_so_a_replay_stores_the_same_Case()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var batch = Batch();
+        var b = await batch.SubmitAsync([new BatchItemRequest("subject-12", "event-12", CaseFiles())], ct);
+        await batch.RunOnceAsync(ct);
+        var first = (await batch.GetAsync(b.BatchId, ct))!.Items[0];
+        Assert.Equal((JobStatus.Succeeded, first.JobId), (first.Status, first.CaseId));
+
+        // A power loss took the job's outcome but kept its Case: the job is due again and runs again.
+        await using (var conn = await _db.OpenAsync(ct))
+            await conn.ExecuteAsync("UPDATE job SET status = 'PENDING', case_id = NULL, analysis_revision = NULL, completed_at = NULL WHERE job_id = @id", new { id = first.JobId });
+        await batch.RunOnceAsync(ct);
+
+        var replayed = (await batch.GetAsync(b.BatchId, ct))!.Items[0];
+        Assert.Equal((JobStatus.Succeeded, first.JobId, 1), (replayed.Status, replayed.CaseId, replayed.AnalysisRevision));
+        await using var check = await _db.OpenAsync(ct);
+        Assert.Equal(1, await check.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM aml_case"));
+    }
+
+    [Fact]
+    public async Task Every_write_a_job_makes_is_replayable()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var seen = new System.Collections.Concurrent.ConcurrentBag<(string Call, bool Replayable)>();
+        var queue = Record<IJobStore>(_jobs, seen);
+        using var batch = new BatchService(queue, new CaseService(Record<ICaseStore>(_cases, seen), TimeProvider.System),
+            TxtCaseReader.ReadFiles, new BatchOptions(), TimeProvider.System);
+        await batch.SubmitAsync([new BatchItemRequest("subject-13", "event-13", CaseFiles())], ct);
+        seen.Clear();
+        await batch.RunOnceAsync(ct);
+
+        Assert.Contains(seen, s => s.Call == nameof(ICaseStore.AcceptAnalysisAsync));
+        Assert.Contains(seen, s => s.Call == nameof(IJobStore.CompleteAsync));
+        Assert.All(seen, s => Assert.True(s.Replayable, s.Call));
+    }
+
+    private static T Record<T>(T inner, System.Collections.Concurrent.ConcurrentBag<(string, bool)> seen) where T : class
+    {
+        var proxy = System.Reflection.DispatchProxy.Create<T, Recording<T>>();
+        ((Recording<T>)(object)proxy).Attach(inner, seen);
+        return proxy;
+    }
+
+    /// <summary>Records, for each call, whether it was made in a replayable flow.</summary>
+    public class Recording<T> : System.Reflection.DispatchProxy where T : class
+    {
+        private T _inner = null!;
+        private System.Collections.Concurrent.ConcurrentBag<(string, bool)> _seen = null!;
+
+        internal void Attach(T inner, System.Collections.Concurrent.ConcurrentBag<(string, bool)> seen) => (_inner, _seen) = (inner, seen);
+
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args)
+        {
+            _seen.Add((targetMethod!.Name, WriteDurability.IsReplayable));
+            return targetMethod.Invoke(_inner, args);
+        }
+    }
+
+    [Fact]
     public async Task Batch_items_page_oldest_first_and_filter_by_view_or_status()
     {
         var ct = TestContext.Current.CancellationToken;

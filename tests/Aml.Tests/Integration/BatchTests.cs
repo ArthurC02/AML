@@ -88,6 +88,26 @@ public sealed class BatchTests : IDisposable
         Assert.Equal(["d2"], queued); // writes run in the order they were queued: j0 already holds k0, and dk is queued once
     }
 
+    [Fact]
+    public async Task Replayable_writes_alone_commit_without_a_log_sync_and_a_durable_write_syncs_its_whole_batch()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        const long Full = 2, Normal = 1;
+        Task<long> SyncMode() => _db.WriteAsync((c, tx) => c.ExecuteScalarAsync<long>(new CommandDefinition("PRAGMA synchronous", transaction: tx, cancellationToken: ct)), ct);
+
+        Assert.Equal(Full, await SyncMode());
+        using (WriteDurability.Replayable()) Assert.Equal(Normal, await SyncMode());
+
+        var release = new TaskCompletionSource();
+        var holding = _db.WriteAsync(async (c, tx) => { await release.Task; return 0L; }, ct);
+        Task<long> replayable;
+        using (WriteDurability.Replayable()) replayable = SyncMode();
+        var durable = SyncMode();
+        release.SetResult();
+        await holding;
+        Assert.Equal((Full, Full), (await replayable, await durable));
+    }
+
     private sealed class UnavailableStore : ICaseStore
     {
         public Task<Aml.Core.Cases.CaseRecord> CreateAsync(Aml.Core.Cases.CaseRecord record, CancellationToken ct) => throw new TimeoutException("database unavailable");

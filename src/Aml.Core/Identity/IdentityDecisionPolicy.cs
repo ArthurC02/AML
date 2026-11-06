@@ -35,7 +35,7 @@ public static class IdentityDecisionPolicy
 
     private static IdentityResult HardConflictDecision(IReadOnlyDictionary<EvidenceGroup, Evidence> e, SourceProfile p, string hard)
     {
-        if (!HardConflictGate.Validated.Contains(hard)) return new IdentityResult(e, hard, null, IdentityDecision.Review, [hard]);
+        if (!HardConflictGate.ValidatedReasonCodes.Contains(hard)) return new IdentityResult(e, hard, null, IdentityDecision.Review, [hard]);
         return HardConflictGate.SourceQualityConcern(p, e)
             ? new IdentityResult(e, hard, null, IdentityDecision.Review, [hard, ReasonCodes.SourceQualityDowngrade])
             : new IdentityResult(e, hard, null, IdentityDecision.NoMatch, [hard]);

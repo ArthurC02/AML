@@ -10,7 +10,7 @@ namespace Aml.Core.Identity;
 /// </summary>
 public static class HardConflictGate
 {
-    public static readonly IReadOnlySet<string> Validated = new HashSet<string> { ReasonCodes.ImpossibleAgeAtReportedEvent };
+    public static readonly IReadOnlySet<string> ValidatedReasonCodes = new HashSet<string> { ReasonCodes.ImpossibleAgeAtReportedEvent };
 
     // ponytail: minimum plausible age for an attributed adult role; pending business calibration (open question).
     public const int MinimumRoleAge = 14;

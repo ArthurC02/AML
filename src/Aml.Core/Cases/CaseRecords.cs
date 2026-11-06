@@ -54,5 +54,5 @@ public static class CaseLifecycle
 
     private static bool EveryNoHitExcludedByValidatedHardConflict(CaseAnalysis a) =>
         a.Hits.Where(h => h.PairResult == ScreeningAssessment.NoHit)
-            .All(h => h.Identity.Decision == IdentityDecision.NoMatch && HardConflictGate.Validated.Contains(h.Identity.HardConflict ?? ""));
+            .All(h => h.Identity.Decision == IdentityDecision.NoMatch && HardConflictGate.ValidatedReasonCodes.Contains(h.Identity.HardConflict ?? ""));
 }

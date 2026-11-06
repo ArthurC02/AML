@@ -44,7 +44,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
                 cancellationToken: ct)).ConfigureAwait(false);
             return record;
         }
-        catch (SqliteException e) when (e.SqliteExtendedErrorCode == SqliteDatabase.ConstraintUnique)
+        catch (SqliteException e) when (e.SqliteExtendedErrorCode == SqliteDatabase.SqliteUniqueViolation)
         {
             return await ExistingCaseOfSameTriggerAndSubjectAsync(c, record, ct).ConfigureAwait(false);
         }
@@ -82,7 +82,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
                 now,
             }, tx, cancellationToken: ct)).ConfigureAwait(false);
         }
-        catch (SqliteException e) when (e.SqliteExtendedErrorCode is SqliteDatabase.ConstraintPrimaryKey or SqliteDatabase.ConstraintUnique)
+        catch (SqliteException e) when (e.SqliteExtendedErrorCode is SqliteDatabase.SqlitePrimaryKeyViolation or SqliteDatabase.SqliteUniqueViolation)
         {
             return false; // another analysis took this revision number; the caller re-reads and retries
         }

@@ -8,8 +8,8 @@ namespace Aml.Infra.Persistence;
 /// <summary>ponytail: concrete SQLite only; extract IDbConnectionFactory / ISqlDialect when SQL Server or Oracle is chosen.</summary>
 public sealed class SqliteDatabase
 {
-    public const int ConstraintUnique = 2067;
-    public const int ConstraintPrimaryKey = 1555;
+    public const int SqliteUniqueViolation = 2067;
+    public const int SqlitePrimaryKeyViolation = 1555;
 
     private readonly string _connectionString;
 

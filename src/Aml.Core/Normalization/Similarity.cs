@@ -24,11 +24,11 @@ public static class Similarity
         var (a, b) = (CodePoints(x), CodePoints(y));
         if (a.Length == 0 || b.Length == 0) return 0;
         var jaro = Jaro(a, b);
-        if (jaro <= BoostThreshold) return jaro;
+        if (jaro <= JaroWinklerBoostThreshold) return jaro;
         return jaro + CommonPrefixLength(a, b) * PrefixScale * (1 - jaro);
     }
 
-    public const double BoostThreshold = 0.7;
+    public const double JaroWinklerBoostThreshold = 0.7;
     private const int MaxPrefixLength = 4;
     private const double PrefixScale = 0.1;
 

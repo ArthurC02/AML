@@ -44,7 +44,7 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
             }, tx, cancellationToken: ct)).ConfigureAwait(false);
             return true;
         }
-        catch (SqliteException e) when (e.SqliteExtendedErrorCode == SqliteDatabase.ConstraintUnique)
+        catch (SqliteException e) when (e.SqliteExtendedErrorCode == SqliteDatabase.SqliteUniqueViolation)
         {
             return false;
         }

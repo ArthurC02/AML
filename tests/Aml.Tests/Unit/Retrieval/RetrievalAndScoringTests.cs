@@ -45,6 +45,7 @@ public class RetrievalAndScoringTests
         var hits = Index.Search("陳志明先生");
         Assert.Equal(["DJ:2", "DJ:3"], hits.Take(2).Select(h => h.ProfileKey)); // 陳志明 shares more characters than 陳志成
         Assert.Single(Index.Search("陳志明先生", top: 1));
+        Assert.Equal(Index.Search("陳志明先生", top: 100), Index.Search("陳志明先生", top: int.MaxValue)); // an unbounded top returns every match
         Assert.All(hits, h => Assert.Equal(RetrievalMode.IndexSearch, h.Mode));
     }
 

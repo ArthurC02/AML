@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -21,18 +22,31 @@ public static partial class NameComparison
     /// </summary>
     public static string NameKey(string name, bool foldVariants = false) => Key(name, foldVariants, keepDiacritics: false);
 
+    private const int MaxStackallocChars = 512;
+
     private static string Key(string name, bool fold, bool keepDiacritics)
     {
         var d = name.Normalize(NormalizationForm.FormKC);
         if (!keepDiacritics) d = FoldDiacritics(d);
-        var sb = new StringBuilder(d.Length);
-        foreach (var r in d.EnumerateRunes())
+        // Each rune (one or two chars) becomes at most one rune of at most two chars: twice the length always fits.
+        var capacity = d.Length * 2;
+        char[]? rented = null;
+        var key = capacity <= MaxStackallocChars ? stackalloc char[capacity] : (rented = ArrayPool<char>.Shared.Rent(capacity));
+        try
         {
-            if (IsUnrenderable(r)) sb.Append(UnknownCharacter);
-            else if (IsKeyCharacter(r, keepDiacritics))
-                sb.Append(fold && CjkVariants.TryGetValue(r.Value, out var v) ? new Rune(v) : Rune.ToUpperInvariant(r));
+            var length = 0;
+            foreach (var r in d.EnumerateRunes())
+            {
+                if (IsUnrenderable(r)) key[length++] = UnknownCharacter;
+                else if (IsKeyCharacter(r, keepDiacritics))
+                    length += (fold && CjkVariants.TryGetValue(r.Value, out var v) ? new Rune(v) : Rune.ToUpperInvariant(r)).EncodeToUtf16(key[length..]);
+            }
+            return new string(key[..length]);
         }
-        return sb.ToString();
+        finally
+        {
+            if (rented is not null) ArrayPool<char>.Shared.Return(rented);
+        }
     }
 
     // đ has no canonical decomposition.

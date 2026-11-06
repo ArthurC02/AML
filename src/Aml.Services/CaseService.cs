@@ -57,12 +57,16 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
     public Task<AnalysisRecord?> GetAnalysisAsync(string caseId, int revision, CancellationToken ct) => store.GetAnalysisAsync(caseId, revision, ct);
 
     /// <summary>The Case with its effective revision summarized; null for an unknown Case.</summary>
-    public async Task<CaseSummary?> GetSummaryAsync(string caseId, CancellationToken ct)
+    public async Task<CaseSummary?> GetSummaryAsync(string caseId, CancellationToken ct) =>
+        await GetDetailAsync(caseId, ct).ConfigureAwait(false) is { } d ? CaseViews.Summary(d.Case, d.Effective) : null;
+
+    /// <summary>The Case with the full record of its effective revision; null for an unknown Case.</summary>
+    public async Task<CaseDetail?> GetDetailAsync(string caseId, CancellationToken ct)
     {
         var c = await store.GetAsync(caseId, ct).ConfigureAwait(false);
         if (c is null) return null;
         var effective = c.EffectiveRevision is { } rev ? await store.GetAnalysisAsync(caseId, rev, ct).ConfigureAwait(false) : null;
-        return CaseViews.Summary(c, effective);
+        return new CaseDetail(c, effective, $"/api/cases/{caseId}/revisions");
     }
 
     /// <summary>One hit of the given revision, or of the effective one; null when the Case, revision or hit does not exist.</summary>

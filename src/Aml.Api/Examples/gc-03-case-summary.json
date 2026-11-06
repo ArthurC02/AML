@@ -18,7 +18,7 @@
       "pairResult": "REVIEW",
       "reviewPriority": "HIGH",
       "identityDecision": "PROBABLE_MATCH",
-      "link": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/hits/1?revision=1"
+      "link": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/hits/1?revision=1&view=summary"
     }
   ],
   "revision": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/revisions/1",

@@ -8,10 +8,10 @@
     "/api/codes": {
       "get": {
         "tags": [
-          "read"
+          "Reference data"
         ],
         "summary": "Every code the system emits: kind, Chinese name, meaning, the rule that emits it and its document section",
-        "description": "Filter with kind (IDENTITY_REASON, EVIDENCE_DETAIL, DATA_QUALITY, PROBLEM, …). A value with detail attached (SOFT_DIFFERENCE（…）, ENCODING_FALLBACK:<file>) is listed under its key. HIT and UNKNOWN serve several kinds and are listed once, under CONDITION_STATUS. To explain one code use getCode instead. Next: getCode.",
+        "description": "Filter with kind (IDENTITY_REASON, EVIDENCE_DETAIL, DATA_QUALITY, PROBLEM, …). A value with detail attached (SOFT_DIFFERENCE（…）, ENCODING_FALLBACK:<file>) is listed under its key. HIT and UNKNOWN serve several kinds and are listed once, under CONDITION_STATUS.",
         "operationId": "listCodes",
         "parameters": [
           {
@@ -39,10 +39,10 @@
     "/api/codes/{code}": {
       "get": {
         "tags": [
-          "read"
+          "Reference data"
         ],
         "summary": "One code; a value with detail attached is looked up by its key",
-        "description": "Use it to explain a code found in a response: its kind, Chinese name, meaning, the rule that emits it and the document section that defines it; to browse every code of a kind use listCodes instead. Next: the document section, for the rule in full.",
+        "description": "The meaning of a code found in a response: its kind, Chinese name, meaning, the rule that emits it and the document section that defines the rule in full.",
         "operationId": "getCode",
         "parameters": [
           {
@@ -74,10 +74,10 @@
     "/api/schemas": {
       "get": {
         "tags": [
-          "read"
+          "Reference data"
         ],
         "summary": "Names of the published JSON Schemas and the schema version",
-        "description": "Use it to find the schema of a record or view and the current schemaVersion; to explain a code value use getCode instead. Next: getSchema.",
+        "description": "The schema names of the stored records and views, and the current schemaVersion.",
         "operationId": "listSchemas",
         "responses": {
           "200": {
@@ -96,10 +96,10 @@
     "/api/schemas/{name}": {
       "get": {
         "tags": [
-          "read"
+          "Reference data"
         ],
         "summary": "JSON Schema of a stored record: field descriptions, and x-sensitivity (PERSONAL, IDENTIFIER) on personal data",
-        "description": "Use it to validate or interpret a stored record or a view; to explain one code value use getCode instead; x-sensitivity (personal data) is published only here, for the schemas listSchemas names. Next: getCode for the codes a field holds.",
+        "description": "Validates or interprets a stored record or a view. x-sensitivity (personal data) is published only here, for the schemas GET /api/schemas names.",
         "operationId": "getSchema",
         "parameters": [
           {
@@ -121,10 +121,10 @@
     "/api/cases": {
       "post": {
         "tags": [
-          "write"
+          "Cases"
         ],
         "summary": "Create a Case from the export files and run the first analysis; 201 when created, 200 when it already existed",
-        "description": "Send multipart form fields subjectRef, triggerEventId and files (案件資訊*.txt, 名單資料_<id>.txt, the customer or related-party files and any 新聞資訊_<id>.txt, or the same pages as HTML), or JSON {subjectRef, triggerEventId, files: {name: text}} as one batch item. Repeating the same triggerEventId and subjectRef returns the existing Case with 200. Returns the Case summary. Use it once per alert (trigger event and subject). For new files of an existing Case use reanalyzeCase; for many Cases use submitBatch. Next: getHit through hits[].link, or getRevision through revision. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.",
+        "description": "Send multipart form fields subjectRef, triggerEventId and files (案件資訊*.txt, 名單資料_<id>.txt, the customer or related-party files and any 新聞資訊_<id>.txt, or the same pages as HTML), or JSON {subjectRef, triggerEventId, files: {name: text}} as one batch item. One Case per alert (trigger event and subject): repeating the same triggerEventId and subjectRef returns the existing Case with 200. Returns the Case summary with links to its hits and its full revision. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.",
         "operationId": "createCase",
         "requestBody": {
           "content": {
@@ -208,7 +208,7 @@
                       "pairResult": "REVIEW",
                       "reviewPriority": "HIGH",
                       "identityDecision": "PROBABLE_MATCH",
-                      "link": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/hits/1?revision=1"
+                      "link": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/hits/1?revision=1&view=summary"
                     }
                   ],
                   "revision": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/revisions/1",
@@ -244,7 +244,7 @@
                       "pairResult": "REVIEW",
                       "reviewPriority": "HIGH",
                       "identityDecision": "PROBABLE_MATCH",
-                      "link": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/hits/1?revision=1"
+                      "link": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/hits/1?revision=1&view=summary"
                     }
                   ],
                   "revision": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/revisions/1",
@@ -257,10 +257,10 @@
       },
       "get": {
         "tags": [
-          "read"
+          "Cases"
         ],
         "summary": "Find Cases by subject and/or trigger event, oldest first, one page at a time",
-        "description": "Use it to find the caseId of a subject or trigger event; give subjectRef, triggerEventId or both. Returns one page of Cases and nextPageToken when more follow; pass it back as pageToken. When the caseId is known, use getCaseSummary instead. Next: getCaseSummary.",
+        "description": "Give subjectRef, triggerEventId or both. Returns one page of Cases and nextPageToken when more follow; pass it back as pageToken.",
         "operationId": "findCases",
         "parameters": [
           {
@@ -314,10 +314,10 @@
     "/api/cases/{caseId}/analyses": {
       "post": {
         "tags": [
-          "write"
+          "Cases"
         ],
         "summary": "Run a new analysis revision with updated input files; returns the Case summary",
-        "description": "Send the full set of export files again, as multipart, as for createCase. Use it when the bank files of an existing Case changed. Do not use it for a changed list Profile: importProfiles queues that re-analysis. A revision that is not complete does not replace the effective result. Next: listRevisions.",
+        "description": "Send the full set of export files again, as multipart, as for POST /api/cases, when the bank files of an existing Case changed. A changed list Profile needs no call: POST /api/profiles/import queues that re-analysis. A revision that is not complete does not replace the effective result.",
         "operationId": "reanalyzeCase",
         "parameters": [
           {
@@ -367,16 +367,23 @@
     "/api/cases/{caseId}": {
       "get": {
         "tags": [
-          "read"
+          "Cases"
         ],
-        "summary": "What the Case concluded: result, conclusion and one line per hit from the effective revision, with links to the hits and the full revision",
-        "description": "Start here to learn what a Case concluded; without a caseId use findCases first. It holds no identifier values and, of personal data, only names. Hits are ordered by review priority; at most 10 are listed and the rest counted in omitted. Next: getHit for why a hit was decided, getRevision for the full record. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.",
-        "operationId": "getCaseSummary",
+        "summary": "One Case: view=full (default) with the full record of its effective revision, view=summary with the result, a conclusion and one line per hit",
+        "description": "view=full returns the Case and the full record of its effective revision: result, explanation, lineage and data quality, with identifier values. view=summary holds no identifier values and, of personal data, only names; hits are ordered by review priority, at most 10 are listed and the rest counted in omitted. Example (view=summary): GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.",
+        "operationId": "getCase",
         "parameters": [
           {
             "name": "caseId",
             "in": "path",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
             "schema": {
               "type": "string"
             }
@@ -391,33 +398,45 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/CaseSummary"
-                },
-                "example": {
-                  "caseId": "0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03",
-                  "subjectRef": "CUST-REF-0003",
-                  "triggerEventId": "ALERT-0003",
-                  "status": "IN_REVIEW",
-                  "currentRevision": 1,
-                  "effectiveRevision": 1,
-                  "effectiveAt": "2026-11-04T00:00:00+00:00",
-                  "newerRevisionIncomplete": false,
-                  "result": "REVIEW",
-                  "conclusion": "案件結果 REVIEW（revision 1）：1 個 hit，1 個需複核",
-                  "hits": [
+                  "oneOf": [
                     {
-                      "hitNumber": 1,
-                      "profileId": "90000031",
-                      "profileKey": "DJ:90000031",
-                      "profileName": "王大明",
-                      "pairResult": "REVIEW",
-                      "reviewPriority": "HIGH",
-                      "identityDecision": "PROBABLE_MATCH",
-                      "link": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/hits/1?revision=1"
+                      "$ref": "#/components/schemas/CaseDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/CaseSummary"
                     }
-                  ],
-                  "revision": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/revisions/1",
-                  "revisions": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/revisions"
+                  ]
+                },
+                "examples": {
+                  "summary": {
+                    "summary": "view=summary",
+                    "value": {
+                      "caseId": "0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03",
+                      "subjectRef": "CUST-REF-0003",
+                      "triggerEventId": "ALERT-0003",
+                      "status": "IN_REVIEW",
+                      "currentRevision": 1,
+                      "effectiveRevision": 1,
+                      "effectiveAt": "2026-11-04T00:00:00+00:00",
+                      "newerRevisionIncomplete": false,
+                      "result": "REVIEW",
+                      "conclusion": "案件結果 REVIEW（revision 1）：1 個 hit，1 個需複核",
+                      "hits": [
+                        {
+                          "hitNumber": 1,
+                          "profileId": "90000031",
+                          "profileKey": "DJ:90000031",
+                          "profileName": "王大明",
+                          "pairResult": "REVIEW",
+                          "reviewPriority": "HIGH",
+                          "identityDecision": "PROBABLE_MATCH",
+                          "link": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/hits/1?revision=1&view=summary"
+                        }
+                      ],
+                      "revision": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/revisions/1",
+                      "revisions": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/revisions"
+                    }
+                  }
                 }
               }
             }
@@ -428,10 +447,10 @@
     "/api/cases/{caseId}/hits/{hit}": {
       "get": {
         "tags": [
-          "read"
+          "Cases"
         ],
-        "summary": "One hit of the effective revision (or ?revision=): view=summary (default) without compared values, view=detail with the full explanation (HitExplanation)",
-        "description": "Use view=summary to learn why the hit was decided: decisive evidence, reason codes and wouldChangeIf. Use view=detail only when the compared subject and Profile values are needed. wouldChangeIf names the stage 3 row a comparable document or full DOB would move the identity decision to; it never states an external result. Example: GC-03 hit 1 has sourceConditions [OFFICIAL_WANTED_LIST], identityDecision PROBABLE_MATCH at stage 3 row 4 and pairResult REVIEW. Next: getCode for any code.",
+        "summary": "One hit of the effective revision (or ?revision=): view=detail (default) with the full explanation, view=summary without compared values",
+        "description": "view=detail returns the hit explanation with the compared subject and Profile values. view=summary gives the decisive evidence, reason codes and wouldChangeIf without values. wouldChangeIf names the stage 3 row a comparable document or full DOB would move the identity decision to; it never states an external result. Codes are explained at /api/codes/{code}. Example (view=summary): GC-03 hit 1 has sourceConditions [OFFICIAL_WANTED_LIST], identityDecision PROBABLE_MATCH at stage 3 row 4 and pairResult REVIEW.",
         "operationId": "getHit",
         "parameters": [
           {
@@ -483,65 +502,70 @@
                 "schema": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/HitSummary"
+                      "$ref": "#/components/schemas/HitExplanation"
                     },
                     {
-                      "$ref": "#/components/schemas/HitExplanation"
+                      "$ref": "#/components/schemas/HitSummary"
                     }
                   ]
                 },
-                "example": {
-                  "hitNumber": 1,
-                  "revision": 1,
-                  "profileId": "90000031",
-                  "profileKey": "DJ:90000031",
-                  "profileName": "王大明",
-                  "sourceConditions": [
-                    "OFFICIAL_WANTED_LIST"
-                  ],
-                  "identityDecision": "PROBABLE_MATCH",
-                  "stage3Row": 4,
-                  "pairResult": "REVIEW",
-                  "reviewPriority": "HIGH",
-                  "reasonCodes": [
-                    "CONSISTENT_AT_AVAILABLE_PRECISION",
-                    "NO_BILATERAL_DIRECT_IDENTIFIER"
-                  ],
-                  "decisiveEvidence": [
-                    {
-                      "group": "DATE_OF_BIRTH",
-                      "status": "PARTIAL",
-                      "strength": "LOW",
-                      "detail": "BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE"
+                "examples": {
+                  "summary": {
+                    "summary": "view=summary",
+                    "value": {
+                      "hitNumber": 1,
+                      "revision": 1,
+                      "profileId": "90000031",
+                      "profileKey": "DJ:90000031",
+                      "profileName": "王大明",
+                      "sourceConditions": [
+                        "OFFICIAL_WANTED_LIST"
+                      ],
+                      "identityDecision": "PROBABLE_MATCH",
+                      "stage3Row": 4,
+                      "pairResult": "REVIEW",
+                      "reviewPriority": "HIGH",
+                      "reasonCodes": [
+                        "CONSISTENT_AT_AVAILABLE_PRECISION",
+                        "NO_BILATERAL_DIRECT_IDENTIFIER"
+                      ],
+                      "decisiveEvidence": [
+                        {
+                          "group": "DATE_OF_BIRTH",
+                          "status": "PARTIAL",
+                          "strength": "LOW",
+                          "detail": "BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE"
+                        }
+                      ],
+                      "wouldChangeIf": [
+                        {
+                          "field": "DOCUMENT",
+                          "assumption": "AGREE",
+                          "stage3Row": 2,
+                          "decision": "PROBABLE_MATCH",
+                          "reasonCode": "UNIQUE_IDENTIFIER_AGREEMENT",
+                          "text": "若同類證件相符：身分判斷移至第三階段第 2 列 UNIQUE_IDENTIFIER_AGREEMENT"
+                        },
+                        {
+                          "field": "DOCUMENT",
+                          "assumption": "CONFLICT",
+                          "stage3Row": 1,
+                          "decision": "REVIEW",
+                          "reasonCode": "DOCUMENT_IDENTITY_CONFLICT",
+                          "text": "若同類證件不符：身分判斷移至第三階段第 1 列 DOCUMENT_IDENTITY_CONFLICT"
+                        },
+                        {
+                          "field": "DATE_OF_BIRTH",
+                          "assumption": "CONFLICT",
+                          "stage3Row": 1,
+                          "decision": "REVIEW",
+                          "reasonCode": "FULL_DOB_CONFLICT",
+                          "text": "若完整出生日期不符：身分判斷移至第三階段第 1 列 FULL_DOB_CONFLICT"
+                        }
+                      ],
+                      "detail": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/hits/1?view=detail&revision=1"
                     }
-                  ],
-                  "wouldChangeIf": [
-                    {
-                      "field": "DOCUMENT",
-                      "assumption": "AGREE",
-                      "stage3Row": 2,
-                      "decision": "PROBABLE_MATCH",
-                      "reasonCode": "UNIQUE_IDENTIFIER_AGREEMENT",
-                      "text": "若同類證件相符：身分判斷移至第三階段第 2 列 UNIQUE_IDENTIFIER_AGREEMENT"
-                    },
-                    {
-                      "field": "DOCUMENT",
-                      "assumption": "CONFLICT",
-                      "stage3Row": 1,
-                      "decision": "REVIEW",
-                      "reasonCode": "DOCUMENT_IDENTITY_CONFLICT",
-                      "text": "若同類證件不符：身分判斷移至第三階段第 1 列 DOCUMENT_IDENTITY_CONFLICT"
-                    },
-                    {
-                      "field": "DATE_OF_BIRTH",
-                      "assumption": "CONFLICT",
-                      "stage3Row": 1,
-                      "decision": "REVIEW",
-                      "reasonCode": "FULL_DOB_CONFLICT",
-                      "text": "若完整出生日期不符：身分判斷移至第三階段第 1 列 FULL_DOB_CONFLICT"
-                    }
-                  ],
-                  "detail": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/hits/1?view=detail&revision=1"
+                  }
                 }
               }
             }
@@ -552,10 +576,10 @@
     "/api/cases/{caseId}/candidates": {
       "get": {
         "tags": [
-          "read"
+          "Cases"
         ],
         "summary": "A Case's candidate Profiles: source=table (CONTROLLED_SET, its own candidate table, the default) or source=previous (PREVIOUS_LINK, the Profiles of its latest input)",
-        "description": "Use it to see which Profiles a Case was screened against; to search the whole list database use searchProfiles. truncated marks a list cut by top. Next: getProfile.",
+        "description": "The Profiles a Case was screened against. truncated marks a list cut by top.",
         "operationId": "listCaseCandidates",
         "parameters": [
           {
@@ -609,10 +633,10 @@
     "/api/cases/{caseId}/revisions": {
       "get": {
         "tags": [
-          "read"
+          "Cases"
         ],
         "summary": "Every analysis revision: time, execution status, result, whether it is effective and how many changes it made",
-        "description": "Use it to see the history of a Case and which revision is effective; for the current result use getCaseSummary instead. Next: getRevision.",
+        "description": "The analysis history of a Case and which revision is effective.",
         "operationId": "listRevisions",
         "parameters": [
           {
@@ -647,10 +671,10 @@
     "/api/cases/{caseId}/revisions/{revision}": {
       "get": {
         "tags": [
-          "read"
+          "Cases"
         ],
         "summary": "The full record of one revision: result, explanation, lineage and data quality",
-        "description": "The audit record: nothing is left out, so it is large and holds identifier values. Prefer getCaseSummary and getHit unless the full record is needed. Lineage gives the input file hashes, the Profile versions and the rule versions. Next: getCode for any code, getSchema (revision) for the meaning of a field.",
+        "description": "The audit record: nothing is left out, so it holds identifier values. Lineage gives the input file hashes, the Profile versions and the rule versions. Field meanings are in /api/schemas/revision, codes at /api/codes/{code}.",
         "operationId": "getRevision",
         "parameters": [
           {
@@ -692,10 +716,10 @@
     "/api/batches": {
       "post": {
         "tags": [
-          "write"
+          "Batches"
         ],
         "summary": "Queue many Cases for analysis",
-        "description": "Each item has subjectRef, triggerEventId and files (file name → text content), the same inputs as POST /api/cases. Items already queued under the same triggerEventId and subjectRef are listed as duplicates and not queued again. Use it for many Cases at once; for one Case use createCase. Returns 202 with batchId. Next: getBatchStatus.",
+        "description": "Each item has subjectRef, triggerEventId and files (file name → text content), the same inputs as POST /api/cases. Items already queued under the same triggerEventId and subjectRef are listed as duplicates and not queued again. Returns 202 with batchId; progress is at GET /api/batches/{batchId}.",
         "operationId": "submitBatch",
         "requestBody": {
           "content": {
@@ -727,10 +751,10 @@
     "/api/batches/{batchId}": {
       "get": {
         "tags": [
-          "operations"
+          "Batches"
         ],
         "summary": "Batch progress: counts per status and one page of items with their Case, revision, attempts and error code",
-        "description": "Use it to follow a submitted batch or the re-analyses a Profile import queued; for one Case's result use getCaseSummary instead. view=summary (default) lists the items not yet succeeded; view=full lists every item; status= lists one status. Items come oldest first, pageSize (default 20, at most 100) at a time, with nextPageToken when more follow. Next: getCaseSummary for a succeeded item, rerunBatch for dead-lettered items once the cause is fixed.",
+        "description": "The progress of a submitted batch or of the re-analyses a Profile import queued. view=summary (default) lists the items not yet succeeded; view=full lists every item; status= lists one status. Items come oldest first, pageSize (default 20, at most 100) at a time, with nextPageToken when more follow.",
         "operationId": "getBatchStatus",
         "parameters": [
           {
@@ -795,10 +819,10 @@
     "/api/batches/{batchId}/rerun": {
       "post": {
         "tags": [
-          "operations"
+          "Batches"
         ],
         "summary": "Operator re-run: dead-lettered items of the batch go back to the queue with a fresh retry budget",
-        "description": "Use it only after fixing the cause of a transient failure (TIMEOUT, LEASE_EXPIRED, EXCEPTION:<type>); every dead-lettered item is requeued, and INVALID_INPUT and INVALID_PAYLOAD fail the same way again; for INVALID_INPUT send the fixed files with createCase instead. Returns how many items were requeued. Next: getBatchStatus; getCode explains an error code.",
+        "description": "For transient failures (TIMEOUT, LEASE_EXPIRED, EXCEPTION:<type>) after their cause is fixed. Every dead-lettered item is requeued; INVALID_INPUT and INVALID_PAYLOAD fail the same way again, so fixed files for INVALID_INPUT go to POST /api/cases. Returns how many items were requeued.",
         "operationId": "rerunBatch",
         "parameters": [
           {
@@ -830,10 +854,10 @@
     "/api/profiles/import": {
       "post": {
         "tags": [
-          "write"
+          "Profiles"
         ],
         "summary": "Capture Profiles into the list database; a changed Profile queues re-analysis of the Cases that used it",
-        "description": "Upload 名單資料_<id>.txt (or .html). An unchanged file keeps its version; a changed one becomes a new version, the old one is kept, and every Case whose latest input used it gets a queued re-analysis job (track it with GET /api/batches/{batchId}). A file whose name and Profile_ID differ, or one Profile in two formats, is rejected. Not for a Case's own files: send those with createCase or reanalyzeCase. Next: getBatchStatus with the returned batchId, when it is not null.",
+        "description": "Upload 名單資料_<id>.txt (or .html). An unchanged file keeps its version; a changed one becomes a new version, the old one is kept, and every Case whose latest input used it gets a queued re-analysis job under the returned batchId (GET /api/batches/{batchId}). A file whose name and Profile_ID differ, or one Profile in two formats, is rejected. A Case's own files are sent with POST /api/cases.",
         "operationId": "importProfiles",
         "requestBody": {
           "content": {
@@ -870,10 +894,10 @@
     "/api/profiles/search": {
       "get": {
         "tags": [
-          "read"
+          "Profiles"
         ],
         "summary": "Search the list database by name (INDEX_SEARCH)",
-        "description": "Counted by Profile, not alias row; exact alias matches come first and are never cut. The score ranks candidates only; it is never an identity probability. Use it to look a name up in the list database; for the Profiles a Case was screened against use listCaseCandidates. Next: getProfile.",
+        "description": "Counted by Profile, not alias row; exact alias matches come first and are never cut. The score ranks candidates only; it is never an identity probability.",
         "operationId": "searchProfiles",
         "parameters": [
           {
@@ -916,10 +940,10 @@
     "/api/profiles/merges": {
       "get": {
         "tags": [
-          "read"
+          "Profiles"
         ],
         "summary": "Profiles that describe the same person: shared document key or recorded source link, never name similarity",
-        "description": "Groups list each accepted merge as an edge with its basis; merges refused for a DOB or gender conflict are listed under rejected. Merges never come from name similarity; to look a name up use searchProfiles instead. Next: getProfile for a Profile of a group.",
+        "description": "Groups list each accepted merge as an edge with its basis; merges refused for a DOB or gender conflict are listed under rejected. Merges never come from name similarity.",
         "operationId": "listProfileMerges",
         "responses": {
           "200": {
@@ -938,10 +962,10 @@
     "/api/profiles/{profileId}": {
       "get": {
         "tags": [
-          "read"
+          "Profiles"
         ],
-        "summary": "One captured Profile (DIRECT_REFERENCE): view=summary (default) without identifier values, view=full as read; the latest version, or ?version=; the ID may carry the DJ: prefix",
-        "description": "Use view=summary to see who a Profile is and why it is listed: names, gender, citizenship, categories, roles and the official-list entry, with its version, latest version and content hash. Use view=full only when dates of birth, documents, addresses or sources are needed. To find a Profile by name use searchProfiles instead. Next: listProfileVersions.",
+        "summary": "One captured Profile (DIRECT_REFERENCE): view=full (default) as read, view=summary without identifier values; the latest version, or ?version=; the ID may carry the DJ: prefix",
+        "description": "view=full returns the Profile as read, with dates of birth, documents, addresses and sources. view=summary gives who a Profile is and why it is listed: names, gender, citizenship, categories, roles and the official-list entry. Both carry the version, latest version and content hash.",
         "operationId": "getProfile",
         "parameters": [
           {
@@ -980,10 +1004,10 @@
                 "schema": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/ProfileSummary"
+                      "$ref": "#/components/schemas/ProfileView"
                     },
                     {
-                      "$ref": "#/components/schemas/ProfileView"
+                      "$ref": "#/components/schemas/ProfileSummary"
                     }
                   ]
                 }
@@ -999,10 +1023,10 @@
     "/api/profiles/{profileId}/versions": {
       "get": {
         "tags": [
-          "read"
+          "Profiles"
         ],
         "summary": "Every captured version of one Profile, with its content hash",
-        "description": "Use it to see when a Profile changed; for the content of a version use getProfile instead. Next: getProfile with ?version=.",
+        "description": "When a Profile changed; the content of a version is at GET /api/profiles/{profileId}?version=.",
         "operationId": "listProfileVersions",
         "parameters": [
           {
@@ -1436,6 +1460,34 @@
             ],
             "description": "儲存格式版本",
             "format": "int32"
+          }
+        }
+      },
+      "CaseDetail": {
+        "required": [
+          "case",
+          "revisions"
+        ],
+        "type": "object",
+        "properties": {
+          "case": {
+            "description": "案件",
+            "$ref": "#/components/schemas/CaseRecord"
+          },
+          "effective": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "生效 revision 的完整紀錄；尚無生效 revision 時為 null",
+                "$ref": "#/components/schemas/AnalysisRecord"
+              }
+            ]
+          },
+          "revisions": {
+            "type": "string",
+            "description": "revision 清單的連結"
           }
         }
       },
@@ -3988,13 +4040,16 @@
   },
   "tags": [
     {
-      "name": "read"
+      "name": "Reference data"
     },
     {
-      "name": "write"
+      "name": "Cases"
     },
     {
-      "name": "operations"
+      "name": "Batches"
+    },
+    {
+      "name": "Profiles"
     }
   ]
 }

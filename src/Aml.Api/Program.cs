@@ -42,6 +42,8 @@ builder.Services.AddOpenApi(o => o.AddSchemaTransformer((schema, ctx, ct) =>
 {
     foreach (var property in ctx.JsonTypeInfo.Properties)
         if (property.IsGetNullable) schema.Required?.Remove(property.Name);
+    // An enum component is shared: a parameter default of whichever record reached it first is not the enum's default.
+    if (ctx.JsonTypeInfo.Type.IsEnum) schema.Default = null;
     return Task.CompletedTask;
 }));
 // Every 4xx and 5xx is application/problem+json; a status without a handler-written problem gets its catalog type here.

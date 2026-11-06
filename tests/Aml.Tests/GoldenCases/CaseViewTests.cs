@@ -24,6 +24,14 @@ public class CaseViewTests
         return (new CaseRecord("c1", "s1", "e1", CaseLifecycle.AfterAnalysis(analysis, CaseStatus.Open), 1, effective, T0, T0), revision);
     }
 
+    [Fact]
+    public void A_case_without_an_effective_revision_leaves_effective_out()
+    {
+        var c = new CaseRecord("c1", "s1", "e1", CaseStatus.Open, 0, null, T0, T0);
+        var json = JsonSerializer.SerializeToElement(new CaseDetail(c, null, "/api/cases/c1/revisions"), CaseJson.Options);
+        Assert.Equal(["case", "revisions"], json.EnumerateObject().Select(p => p.Name));
+    }
+
     [Theory]
     [MemberData(nameof(SchemaTests.Cases), MemberType = typeof(SchemaTests))]
     public void Summaries_restate_the_full_record(string gc)

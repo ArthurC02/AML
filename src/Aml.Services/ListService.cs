@@ -14,7 +14,7 @@ public sealed record ProfileImport(string ProfileId, string ProfileKey, int Vers
 public sealed record ProfileView(string ProfileId, string ProfileKey, int Version, int LatestVersion, string ContentHash, DateTimeOffset CapturedAt, SourceProfile Profile);
 
 /// <summary>
-/// One captured Profile version without identifier values and, of personal data, only names (ADR-0022): no dates of
+/// One captured Profile version without identifier values and, of personal data, only names (ADR-0024): no dates of
 /// birth or death, documents, other identifiers, addresses, relationships or sources. The whole Profile is at the full link.
 /// </summary>
 public sealed record ProfileSummary(

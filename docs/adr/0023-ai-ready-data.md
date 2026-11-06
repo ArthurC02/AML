@@ -1,6 +1,6 @@
 # ADR-0023: AI-ready data
 
-- Status: Accepted
+- Status: Accepted; API consumers amended by ADR-0024
 - Date: 2026-11-04
 
 ## Context

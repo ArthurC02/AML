@@ -32,7 +32,7 @@
 
 ## Looking up a Case
 
-- `GET /api/cases?subjectRef=` or `?triggerEventId=` finds the Case; `GET /api/cases/{caseId}` gives its result, conclusion and hits, with links to each hit and to the full revision.
+- `GET /api/cases?subjectRef=` or `?triggerEventId=` finds the Case; `GET /api/cases/{caseId}` gives the Case with the full record of its effective revision; `?view=summary` gives its result, conclusion and hits, with links to each hit summary and to the full revision.
 - `GET /api/cases/{caseId}/revisions` shows every revision and which one is effective; a PARTIAL latest revision means a Profile file was missing (`notEvaluatedProfiles` in that revision), and the Case keeps its previous result.
 - `GET /api/cases/{caseId}/revisions/{revision}` is the full record: result, explanation, lineage (input hashes, Profile list versions, rule-set versions) and data quality.
 

@@ -10,11 +10,11 @@ namespace Aml.Tests.E2E;
 /// </summary>
 public sealed class ContractTests(ApiHost api) : IClassFixture<ApiHost>
 {
-    private static readonly string[] Tags = ["read", "write", "operations"];
+    private static readonly string[] Tags = ["Cases", "Batches", "Profiles", "Reference data"];
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     [Fact]
-    public async Task The_openapi_document_and_schemas_equal_their_snapshots_and_every_operation_is_a_described_tool()
+    public async Task The_openapi_document_and_schemas_equal_their_snapshots_and_every_operation_is_described_in_one_business_area()
     {
         var ct = TestContext.Current.CancellationToken;
         using var client = api.CreateClient();
@@ -29,8 +29,8 @@ public sealed class ContractTests(ApiHost api) : IClassFixture<ApiHost>
             Assert.True(tags.Count == 1 && Tags.Contains(tags[0]), $"{o.Route} has tags [{string.Join(", ", tags)}]");
         });
         Assert.Equal(operations.Count, operations.Select(o => (string?)o.Op["operationId"]).Distinct().Count());
-        // getHit and getProfile return a summary or the full shape depending on view; both shapes are in the contract.
-        foreach (var (operation, shapes) in new[] { ("getHit", new[] { "HitSummary", "HitExplanation" }), ("getProfile", ["ProfileSummary", "ProfileView"]) })
+        // getCase, getHit and getProfile return the full shape (default) or a summary depending on view; both are in the contract.
+        foreach (var (operation, shapes) in new[] { ("getCase", new[] { "CaseDetail", "CaseSummary" }), ("getHit", ["HitExplanation", "HitSummary"]), ("getProfile", ["ProfileView", "ProfileSummary"]) })
         {
             var oneOf = operations.Single(o => (string?)o.Op["operationId"] == operation).Op["responses"]!["200"]!["content"]!["application/json"]!["schema"]!["oneOf"]!.AsArray();
             Assert.Equal(shapes.Select(s => $"#/components/schemas/{s}"), oneOf.Select(s => (string?)s!["$ref"]));
@@ -38,10 +38,11 @@ public sealed class ContractTests(ApiHost api) : IClassFixture<ApiHost>
         }
 
         // Every response example has each property its schema requires, at every level; oneOf takes the first branch that fits.
-        var examples = operations.SelectMany(o => o.Op["responses"]!.AsObject().Select(r => r.Value!["content"]?["application/json"]))
-            .Where(m => m?["example"] is not null).ToList();
+        var media = operations.SelectMany(o => o.Op["responses"]!.AsObject().Select(r => r.Value!["content"]?["application/json"])).OfType<JsonNode>().ToList();
+        var examples = media.Where(m => m["example"] is not null).Select(m => (Schema: m["schema"]!, Value: m["example"]!))
+            .Concat(media.SelectMany(m => (m["examples"]?.AsObject() ?? []).Select(e => (Schema: m["schema"]!, Value: e.Value!["value"]!)))).ToList();
         Assert.Equal(4, examples.Count);
-        Assert.All(examples, m => Assert.Empty(Missing(openApi, m!["schema"]!, m["example"]!, "$")));
+        Assert.All(examples, e => Assert.Empty(Missing(openApi, e.Schema, e.Value, "$")));
 
         openApi.AsObject().Remove("servers"); // the host the document was served from, not part of the contract
         var snapshots = new Dictionary<string, JsonNode> { ["openapi.json"] = openApi };

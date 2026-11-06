@@ -39,6 +39,7 @@ public static class CaseJson
         ["analysis-quality"] = typeof(AnalysisQuality),
         ["revision"] = typeof(AnalysisRecord),
         ["revision-line"] = typeof(RevisionLine),
+        ["case-detail"] = typeof(CaseDetail),
         ["case-summary"] = typeof(CaseSummary),
         ["hit-summary"] = typeof(HitSummary),
         ["case-page"] = typeof(CasePage),

@@ -66,6 +66,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
 
         var line = summary.GetProperty("hits")[0];
         Assert.Equal(("90000031", "DJ:90000031"), (line.GetProperty("profileId").GetString(), line.GetProperty("profileKey").GetString()));
+        // The summary's hit link reads the hit summary, without the compared values; the full hit is the default view.
         var hit = await client.GetFromJsonAsync<JsonElement>(line.GetProperty("link").GetString(), ct);
         Assert.Equal(4, hit.GetProperty("stage3Row").GetInt32());
         Assert.Equal("90000031", hit.GetProperty("profileId").GetString());
@@ -73,6 +74,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.True(hit.GetProperty("wouldChangeIf").GetArrayLength() > 0);
         var detail = await client.GetFromJsonAsync<JsonElement>(hit.GetProperty("detail").GetString(), ct);
         Assert.Equal(9, detail.GetProperty("comparison").GetArrayLength());
+        Assert.Equal(detail.GetRawText(), (await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/hits/1", ct)).GetRawText());
         using var missing = await client.GetAsync($"/api/cases/{caseId}/hits/99", ct);
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
 
@@ -81,12 +83,17 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         var revisions = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/revisions", ct);
         Assert.Equal(2, revisions.GetArrayLength());
         Assert.True(revisions[1].GetProperty("effective").GetBoolean());
-        Assert.Equal(1, (await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/hits/1?revision=1", ct)).GetProperty("revision").GetInt32());
-        Assert.Equal(2, (await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/hits/1", ct)).GetProperty("revision").GetInt32());
-        var revision = await client.GetFromJsonAsync<JsonElement>((await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}", ct)).GetProperty("revision").GetString(), ct);
+        Assert.Equal(1, (await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/hits/1?revision=1&view=summary", ct)).GetProperty("revision").GetInt32());
+        Assert.Equal(2, (await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/hits/1?view=summary", ct)).GetProperty("revision").GetInt32());
+        var revision = await client.GetFromJsonAsync<JsonElement>((await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}?view=summary", ct)).GetProperty("revision").GetString(), ct);
         Assert.Equal(2, revision.GetProperty("revision").GetInt32());
         Assert.True(revision.GetProperty("lineage").GetProperty("inputFiles").GetArrayLength() > 0);
         Assert.Equal(1, revision.GetProperty("quality").GetProperty("hits").GetInt32());
+        // The Case itself (view=full, the default) carries the full record of its effective revision.
+        var full = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}", ct);
+        Assert.Equal((caseId, 2), (full.GetProperty("case").GetProperty("caseId").GetString(), full.GetProperty("effective").GetProperty("revision").GetInt32()));
+        Assert.Equal(revision.GetRawText(), full.GetProperty("effective").GetRawText());
+        Assert.Equal(full.GetRawText(), (await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}?view=full", ct)).GetRawText());
 
         var found = await client.GetFromJsonAsync<JsonElement>("/api/cases?subjectRef=subject-GC-03", ct);
         Assert.Contains(found.GetProperty("items").EnumerateArray(), i => i.GetProperty("caseId").GetString() == caseId);
@@ -260,6 +267,8 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
     [InlineData("GET", "/api/schemas/no-such-schema", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("GET", "/api/cases/unknown/hits/1", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("GET", "/api/cases/unknown/hits/1?view=table", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
+    [InlineData("GET", "/api/cases/unknown?view=summary", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
+    [InlineData("GET", "/api/cases/unknown?view=table", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
     [InlineData("GET", "/api/cases/unknown/revisions", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("GET", "/api/cases/unknown/revisions/1", "none", HttpStatusCode.NotFound, "NOT_FOUND")]
     [InlineData("GET", "/api/cases", "none", HttpStatusCode.BadRequest, "INVALID_REQUEST")]
@@ -339,7 +348,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         {
             Assert.Equal(1, item.GetProperty("analysisRevision").GetInt32());
             var c = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{item.GetProperty("caseId").GetString()}", ct);
-            Assert.Equal("IN_REVIEW", c.GetProperty("status").GetString());
+            Assert.Equal("IN_REVIEW", c.GetProperty("case").GetProperty("status").GetString());
         }
     }
 

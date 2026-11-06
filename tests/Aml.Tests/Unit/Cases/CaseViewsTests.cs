@@ -42,7 +42,7 @@ public class CaseViewsTests
 
         Assert.Equal([11, 1, 3, 5, 7, 9, 2, 4, 6, 8], s.Hits!.Select(l => l.HitNumber));
         Assert.Equal(1, s.Omitted);
-        Assert.Equal("/api/cases/c1/hits/11?revision=1", s.Hits![0].Link);
+        Assert.Equal("/api/cases/c1/hits/11?revision=1&view=summary", s.Hits![0].Link);
         Assert.Equal("/api/cases/c1/revisions/1", s.Revision);
     }
 

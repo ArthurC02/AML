@@ -40,10 +40,10 @@ internal static class CasesEndpoints
         .Produces<CaseSummary>(StatusCodes.Status201Created)
         .Produces<CaseSummary>()
         .WithSummary("Create a Case from the export files and run the first analysis; 201 when created, 200 when it already existed")
-        .WithDescription("Send multipart form fields subjectRef, triggerEventId and files (案件資訊*.txt, 名單資料_<id>.txt, the customer or related-party files and any 新聞資訊_<id>.txt, or the same pages as HTML), or JSON {subjectRef, triggerEventId, files: {name: text}} as one batch item. Repeating the same triggerEventId and subjectRef returns the existing Case with 200. Returns the Case summary. Use it once per alert (trigger event and subject). For new files of an existing Case use reanalyzeCase; for many Cases use submitBatch. Next: getHit through hits[].link, or getRevision through revision. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.")
+        .WithDescription("Send multipart form fields subjectRef, triggerEventId and files (案件資訊*.txt, 名單資料_<id>.txt, the customer or related-party files and any 新聞資訊_<id>.txt, or the same pages as HTML), or JSON {subjectRef, triggerEventId, files: {name: text}} as one batch item. One Case per alert (trigger event and subject): repeating the same triggerEventId and subjectRef returns the existing Case with 200. Returns the Case summary with links to its hits and its full revision. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.")
         .WithExample(Examples.CaseSummary, "201", "200")
         .WithName("createCase")
-        .WithTags("write");
+        .WithTags(Tags.Cases);
 
         cases.MapPost("/{caseId}/analyses", async Task<Results<JsonHttpResult<CaseSummary>, NotFound, ProblemHttpResult>> (
             string caseId, IFormFileCollection files, CaseService service, CancellationToken ct) =>
@@ -55,9 +55,9 @@ internal static class CasesEndpoints
         })
         .Produces<CaseSummary>()
         .WithSummary("Run a new analysis revision with updated input files; returns the Case summary")
-        .WithDescription("Send the full set of export files again, as multipart, as for createCase. Use it when the bank files of an existing Case changed. Do not use it for a changed list Profile: importProfiles queues that re-analysis. A revision that is not complete does not replace the effective result. Next: listRevisions.")
+        .WithDescription("Send the full set of export files again, as multipart, as for POST /api/cases, when the bank files of an existing Case changed. A changed list Profile needs no call: POST /api/profiles/import queues that re-analysis. A revision that is not complete does not replace the effective result.")
         .WithName("reanalyzeCase")
-        .WithTags("write");
+        .WithTags(Tags.Cases);
 
         cases.MapGet("/", async Task<Results<JsonHttpResult<CasePage>, ProblemHttpResult>> (
             string? subjectRef, string? triggerEventId, int? pageSize, string? pageToken, CaseService service, CancellationToken ct) =>
@@ -78,44 +78,60 @@ internal static class CasesEndpoints
         })
         .Produces<CasePage>()
         .WithSummary("Find Cases by subject and/or trigger event, oldest first, one page at a time")
-        .WithDescription("Use it to find the caseId of a subject or trigger event; give subjectRef, triggerEventId or both. Returns one page of Cases and nextPageToken when more follow; pass it back as pageToken. When the caseId is known, use getCaseSummary instead. Next: getCaseSummary.")
+        .WithDescription("Give subjectRef, triggerEventId or both. Returns one page of Cases and nextPageToken when more follow; pass it back as pageToken.")
         .WithName("findCases")
-        .WithTags("read");
+        .WithTags(Tags.Cases);
 
-        cases.MapGet("/{caseId}", async Task<Results<JsonHttpResult<CaseSummary>, NotFound>> (string caseId, CaseService service, CancellationToken ct) =>
-            await service.GetSummaryAsync(caseId, ct) is { } s ? View(s) : TypedResults.NotFound())
-        .Produces<CaseSummary>()
-        .WithSummary("What the Case concluded: result, conclusion and one line per hit from the effective revision, with links to the hits and the full revision")
-        .WithDescription("Start here to learn what a Case concluded; without a caseId use findCases first. It holds no identifier values and, of personal data, only names. Hits are ordered by review priority; at most 10 are listed and the rest counted in omitted. Next: getHit for why a hit was decided, getRevision for the full record. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.")
-        .WithExample(Examples.CaseSummary, "200")
-        .WithName("getCaseSummary")
-        .WithTags("read");
+        cases.MapGet("/{caseId}", async Task<Results<JsonHttpResult<CaseDetail>, JsonHttpResult<CaseSummary>, NotFound, ProblemHttpResult>> (
+            string caseId, string? view, CaseService service, CancellationToken ct) =>
+        {
+            if (view is not (null or "full" or "summary"))
+                return Problems.Of(Problems.InvalidRequest, $"Unknown view '{view}'.", "Send view=full or view=summary.", new { parameter = "view" });
+            if (view == "summary")
+                return await service.GetSummaryAsync(caseId, ct) is { } s ? View(s) : TypedResults.NotFound();
+            return await service.GetDetailAsync(caseId, ct) is { } d ? View(d) : TypedResults.NotFound();
+        })
+        .Produces<CaseDetail>()
+        // The 200 body depends on view: CaseDetail (full) or CaseSummary (summary, a component through createCase).
+        .AddOpenApiOperationTransformer((op, ctx, ct) =>
+        {
+            op.Responses!["200"].Content!["application/json"].Schema = new OpenApiSchema
+            {
+                OneOf = [new OpenApiSchemaReference(nameof(CaseDetail), ctx.Document), new OpenApiSchemaReference(nameof(CaseSummary), ctx.Document)],
+            };
+            return Task.CompletedTask;
+        })
+        .WithSummary("One Case: view=full (default) with the full record of its effective revision, view=summary with the result, a conclusion and one line per hit")
+        .WithDescription("view=full returns the Case and the full record of its effective revision: result, explanation, lineage and data quality, with identifier values. view=summary holds no identifier values and, of personal data, only names; hits are ordered by review priority, at most 10 are listed and the rest counted in omitted. Example (view=summary): GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.")
+        .WithViewExample(Examples.CaseSummary, "summary")
+        .WithName("getCase")
+        .WithTags(Tags.Cases);
 
-        cases.MapGet("/{caseId}/hits/{hit:int}", async Task<Results<JsonHttpResult<HitSummary>, JsonHttpResult<HitExplanation>, NotFound, ProblemHttpResult>> (
+        cases.MapGet("/{caseId}/hits/{hit:int}", async Task<Results<JsonHttpResult<HitExplanation>, JsonHttpResult<HitSummary>, NotFound, ProblemHttpResult>> (
             string caseId, int hit, string? view, int? revision, CaseService service, CancellationToken ct) =>
         {
-            if (view is not (null or "summary" or "detail"))
-                return Problems.Of(Problems.InvalidRequest, $"Unknown view '{view}'.", "Send view=summary or view=detail.", new { parameter = "view" });
+            if (view is not (null or "detail" or "summary"))
+                return Problems.Of(Problems.InvalidRequest, $"Unknown view '{view}'.", "Send view=detail or view=summary.", new { parameter = "view" });
             if (await service.GetHitAsync(caseId, hit, revision, ct) is not var (rev, h)) return TypedResults.NotFound();
-            return view == "detail" ? View(h) : View(CaseViews.Hit(caseId, rev, h));
+            return view == "summary" ? View(CaseViews.Hit(caseId, rev, h)) : View(h);
         })
         .Produces<HitSummary>()
-        // The 200 body depends on view: HitSummary (summary) or HitExplanation (detail). Both are referenced, not registered:
+        // The 200 body depends on view: HitExplanation (detail) or HitSummary (summary). Both are referenced, not registered:
         // HitExplanation is a component through getRevision's AnalysisRecord (registering it here inlines its nested types).
         // ContractTests fails if either reference dangles.
         .AddOpenApiOperationTransformer((op, ctx, ct) =>
         {
             op.Responses!["200"].Content!["application/json"].Schema = new OpenApiSchema
             {
-                OneOf = [new OpenApiSchemaReference(nameof(HitSummary), ctx.Document), new OpenApiSchemaReference(nameof(HitExplanation), ctx.Document)],
+                OneOf = [new OpenApiSchemaReference(nameof(HitExplanation), ctx.Document), new OpenApiSchemaReference(nameof(HitSummary), ctx.Document)],
             };
             return Task.CompletedTask;
         })
-        .WithSummary("One hit of the effective revision (or ?revision=): view=summary (default) without compared values, view=detail with the full explanation (HitExplanation)")
-        .WithDescription("Use view=summary to learn why the hit was decided: decisive evidence, reason codes and wouldChangeIf. Use view=detail only when the compared subject and Profile values are needed. wouldChangeIf names the stage 3 row a comparable document or full DOB would move the identity decision to; it never states an external result. Example: GC-03 hit 1 has sourceConditions [OFFICIAL_WANTED_LIST], identityDecision PROBABLE_MATCH at stage 3 row 4 and pairResult REVIEW. Next: getCode for any code.")
-        .WithExample(Examples.HitSummary, "200")
+        .WithSummary("One hit of the effective revision (or ?revision=): view=detail (default) with the full explanation, view=summary without compared values")
+        .WithDescription("view=detail returns the hit explanation with the compared subject and Profile values. view=summary gives the decisive evidence, reason codes and wouldChangeIf without values. wouldChangeIf names the stage 3 row a comparable document or full DOB would move the identity decision to; it never states an external result. Codes are explained at /api/codes/{code}. Example (view=summary): GC-03 hit 1 has sourceConditions [OFFICIAL_WANTED_LIST], identityDecision PROBABLE_MATCH at stage 3 row 4 and pairResult REVIEW.")
+        .WithViewExample(Examples.HitSummary, "summary")
         .WithName("getHit")
-        .WithTags("read");
+        .WithTags(Tags.Cases);
 
         cases.MapGet("/{caseId}/candidates", async Task<Results<Ok<IReadOnlyList<RetrievedCandidate>>, NotFound, ProblemHttpResult>> (
             string caseId, string? source, int? top, ListService lists, CancellationToken ct) =>
@@ -128,25 +144,25 @@ internal static class CasesEndpoints
             return found is null ? TypedResults.NotFound() : TypedResults.Ok(found);
         })
         .WithSummary("A Case's candidate Profiles: source=table (CONTROLLED_SET, its own candidate table, the default) or source=previous (PREVIOUS_LINK, the Profiles of its latest input)")
-        .WithDescription("Use it to see which Profiles a Case was screened against; to search the whole list database use searchProfiles. truncated marks a list cut by top. Next: getProfile.")
+        .WithDescription("The Profiles a Case was screened against. truncated marks a list cut by top.")
         .WithName("listCaseCandidates")
-        .WithTags("read");
+        .WithTags(Tags.Cases);
 
         cases.MapGet("/{caseId}/revisions", async Task<Results<JsonHttpResult<IReadOnlyList<RevisionLine>>, NotFound>> (string caseId, CaseService service, CancellationToken ct) =>
             await service.GetRevisionsAsync(caseId, ct) is { } list ? View(list) : TypedResults.NotFound())
         .Produces<IReadOnlyList<RevisionLine>>()
         .WithSummary("Every analysis revision: time, execution status, result, whether it is effective and how many changes it made")
-        .WithDescription("Use it to see the history of a Case and which revision is effective; for the current result use getCaseSummary instead. Next: getRevision.")
+        .WithDescription("The analysis history of a Case and which revision is effective.")
         .WithName("listRevisions")
-        .WithTags("read");
+        .WithTags(Tags.Cases);
 
         cases.MapGet("/{caseId}/revisions/{revision:int}", async Task<Results<JsonHttpResult<AnalysisRecord>, NotFound>> (string caseId, int revision, CaseService service, CancellationToken ct) =>
             await service.GetAnalysisAsync(caseId, revision, ct) is { } a ? View(a) : TypedResults.NotFound())
         .Produces<AnalysisRecord>()
         .WithSummary("The full record of one revision: result, explanation, lineage and data quality")
-        .WithDescription("The audit record: nothing is left out, so it is large and holds identifier values. Prefer getCaseSummary and getHit unless the full record is needed. Lineage gives the input file hashes, the Profile versions and the rule versions. Next: getCode for any code, getSchema (revision) for the meaning of a field.")
+        .WithDescription("The audit record: nothing is left out, so it holds identifier values. Lineage gives the input file hashes, the Profile versions and the rule versions. Field meanings are in /api/schemas/revision, codes at /api/codes/{code}.")
         .WithName("getRevision")
-        .WithTags("read");
+        .WithTags(Tags.Cases);
     }
 
     private static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;

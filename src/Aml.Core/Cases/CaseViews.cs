@@ -23,6 +23,12 @@ public sealed record HitLine(
     [property: Description("系統身分判斷")] IdentityDecision IdentityDecision,
     [property: Description("此 revision 的 hit 摘要連結")] string Link);
 
+/// <summary>A Case with the full record of its effective revision.</summary>
+public sealed record CaseDetail(
+    [property: Description("案件")] CaseRecord Case,
+    [property: Description("生效 revision 的完整紀錄；尚無生效 revision 時為 null")] AnalysisRecord? Effective,
+    [property: Description("revision 清單的連結")] string Revisions);
+
 /// <summary>What a Case concluded, from its effective revision; the full record is at the revision link.</summary>
 public sealed record CaseSummary(
     [property: Description("案件編號")] string CaseId,
@@ -87,7 +93,7 @@ public static class CaseViews
     public const int MaxHits = 10;
     public const int MaxEvidence = 3;
 
-    public static string HitLink(string caseId, int hit, int revision) => $"/api/cases/{caseId}/hits/{hit}?revision={revision}";
+    public static string HitLink(string caseId, int hit, int revision) => $"/api/cases/{caseId}/hits/{hit}?revision={revision}&view=summary";
 
     public static string RevisionLink(string caseId, int revision) => $"/api/cases/{caseId}/revisions/{revision}";
 

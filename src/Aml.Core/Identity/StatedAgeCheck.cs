@@ -9,7 +9,7 @@ namespace Aml.Core.Identity;
 /// Age explicitly stated for the Profile person in attached news (identity-adjudication.md, age stated in a source).
 /// Compared at the report date. Within ±2 years is compatible, never support; beyond is a soft conflict, never hard.
 /// </summary>
-public static class StatedAgeCheck
+public static partial class StatedAgeCheck
 {
     public const int ToleranceYears = 2;
 
@@ -57,25 +57,42 @@ public static class StatedAgeCheck
     private static (int Age, bool StatedAtEventTime)? Find(string text, IEnumerable<string> names)
     {
         var list = names.Where(n => n.Length > 0).ToList();
+        var matchers = list.Select(n => (Name: n, Regex: new Lazy<Regex>(() => AgeNextToName(n), isThreadSafe: false))).ToArray();
         foreach (var sentence in CjkText.Sentences(text))
         {
             if (AgeFromRespectivelyList(sentence, list) is { } each) return (each, false);
-            foreach (var name in list)
-                if (AgeNextToName(sentence, name) is { } found) return found;
+            if (!AgeMarker().IsMatch(sentence)) continue;
+            foreach (var (name, regex) in matchers)
+                if (CanAppearIn(sentence, name) && StatedAge(regex.Value.Match(sentence)) is { } found) return found;
         }
         return null;
     }
 
-    // 時年 states the age at the reported event, not at the report date.
-    private static (int Age, bool StatedAtEventTime)? AgeNextToName(string sentence, string name)
+    // Every form AgeNextToName matches holds one of these, so a sentence without any states no age.
+    [GeneratedRegex("歲|aged|year-old|\\(", RegexOptions.IgnoreCase)]
+    private static partial Regex AgeMarker();
+
+    // Every form holds the name, matched case-insensitively. A name of Chinese ideographs and uncased non-letters matches
+    // only where it appears verbatim; any other name may match under case equivalences an ordinal search misses (İ, ß),
+    // so it is always tried.
+    private static bool CanAppearIn(string sentence, string name) =>
+        !name.All(HasNoCaseEquivalent) || sentence.Contains(name, StringComparison.Ordinal);
+
+    private static bool HasNoCaseEquivalent(char c) =>
+        CjkText.IsCjk(c) || (!char.IsLetter(c) && char.ToUpperInvariant(c) == c && char.ToLowerInvariant(c) == c);
+
+    private static Regex AgeNextToName(string name)
     {
         var n = Regex.Escape(name);
-        var m = Regex.Match(sentence,
+        return new Regex(
             $@"{n}\s?[（(，,]?\s?(?:今年|現年|(?<event>時年))?\s?{AgeNumber}{AgeUnit}|{NotThresholdOrApproximation}{AgeNumber}{AgeUnit}的?{n}"
             + $@"|{n},?\s+aged\s+(?<n>\d{{1,3}})\b|\b(?<n>\d{{1,3}})-year-old\s+{n}|{n}\s?\((?<n>\d{{1,3}})\)",
             RegexOptions.IgnoreCase);
-        return m.Success && ChineseNumerals.Parse(m.Groups["n"].Value) is { } age ? (age, m.Groups["event"].Success) : null;
     }
+
+    // 時年 states the age at the reported event, not at the report date.
+    private static (int Age, bool StatedAtEventTime)? StatedAge(Match m) =>
+        m.Success && ChineseNumerals.Parse(m.Groups["n"].Value) is { } age ? (age, m.Groups["event"].Success) : null;
 
     // "甲、乙分別為44歲、45歲": the names before 分別 pair up in order with the ages after it.
     private static int? AgeFromRespectivelyList(string sentence, IReadOnlyList<string> names)

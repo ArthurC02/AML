@@ -149,15 +149,29 @@ public sealed class ListService(
     }
 
     public async Task<MergeResult> MergesAsync(CancellationToken ct) =>
-        ProfileMerge.Resolve((await lists.LatestAsync(ct).ConfigureAwait(false)).Select(r => parseProfile(r.SourceText)));
+        ProfileMerge.Resolve(ParseInListOrder(await lists.LatestAsync(ct).ConfigureAwait(false)));
 
     private async Task<ProfileIndex> IndexForCurrentListVersionAsync(CancellationToken ct)
     {
         var version = await lists.VersionAsync(ct).ConfigureAwait(false);
         if (_index is { } cached && cached.Version == version) return cached.Index;
-        var index = new ProfileIndex((await lists.LatestAsync(ct).ConfigureAwait(false)).Select(r => parseProfile(r.SourceText)));
+        var index = new ProfileIndex(ParseInListOrder(await lists.LatestAsync(ct).ConfigureAwait(false)));
         _index = new CachedIndex(version, index);
         return index;
+    }
+
+    // Parsing is a pure function of the stored text, so the list parses in parallel. On a failure it parses again in order,
+    // so the first failing record surfaces as itself, the same one every time.
+    private List<SourceProfile> ParseInListOrder(IReadOnlyList<ListProfileRecord> records)
+    {
+        try
+        {
+            return records.AsParallel().AsOrdered().Select(r => parseProfile(r.SourceText)).ToList();
+        }
+        catch (AggregateException)
+        {
+            return records.Select(r => parseProfile(r.SourceText)).ToList();
+        }
     }
 
     private static IEnumerable<KeyValuePair<string, string>> FilesOf(IReadOnlyDictionary<string, string> files, string profileId) =>

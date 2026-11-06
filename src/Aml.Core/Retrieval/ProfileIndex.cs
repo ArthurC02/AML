@@ -1,3 +1,5 @@
+using System.Collections.Frozen;
+using System.Runtime.InteropServices;
 using System.Text;
 using Aml.Core.Identity;
 using Aml.Core.Normalization;
@@ -44,43 +46,82 @@ public sealed class ProfileIndex
     private const string StartMark = "^";
     private const string EndMark = "$";
 
-    private sealed record Alias(string ProfileKey, string Name, string Key, string[] Tokens, HashSet<string> Grams, bool Cjk, HashSet<string> ReadingKeys);
+    // Below this many reached aliases, parallel scoring costs more than it saves.
+    private const int MinAliasesForParallelScoring = 4096;
 
-    private readonly List<Alias> _aliases = [];
-    private readonly Dictionary<string, int> _documentFrequency = new(StringComparer.Ordinal);
-    private readonly Dictionary<bool, double> _averageTokenCountByIsCjk = [];
+    private sealed record Alias(string ProfileKey, string Name, string Key, string[] Tokens, FrozenSet<string> Grams, bool Cjk, FrozenSet<string> ReadingKeys);
+
+    private sealed record FusedProfile(double Rrf, string Route, int MatchedAlias);
+
+    private struct Fusion
+    {
+        public double Rrf;
+        public int BestRank;
+        public string? Route;
+        public int MatchedAlias;
+    }
+
+    // Built once and never changed: concurrent searches share it without locks. Aliases are addressed by position.
+    private readonly Alias[] _aliases;
+    private readonly int[] _profileOf;
+    // Each alias's rank by (name, Profile key): the ordinal tie-break of every ranking, as one integer comparison.
+    private readonly int[] _nameOrder;
+    private readonly FrozenDictionary<string, int> _documentFrequency;
+    private readonly double _averageTokenCountLatin;
+    private readonly double _averageTokenCountCjk;
     // Every route scores 0 on an alias that shares no term with the query, so scoring only the posted aliases loses nothing.
     // ponytail: a very common term (a frequent surname, the "^ch" gram) still reaches a large share of the list; add top-k
     // pruning (WAND / MaxScore) or a stop-term cut-off when list-scale latency demands it.
-    private readonly Dictionary<string, List<int>> _aliasPositionsByKey = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, List<int>> _aliasPositionsByToken = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, List<int>> _aliasPositionsByGram = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, List<int>> _aliasPositionsByReading = new(StringComparer.Ordinal);
+    private readonly FrozenDictionary<string, int[]> _aliasPositionsByKey;
+    private readonly FrozenDictionary<string, int[]> _aliasPositionsByToken;
+    private readonly FrozenDictionary<string, int[]> _aliasPositionsByGram;
+    private readonly FrozenDictionary<string, int[]> _aliasPositionsByReading;
 
     /// <param name="profiles">A ProfileKey given twice keeps its last Profile only, aliases and term counts included.</param>
     public ProfileIndex(IEnumerable<SourceProfile> profiles)
     {
-        foreach (var p in profiles.GroupBy(p => p.ProfileKey, StringComparer.Ordinal).Select(g => g.Last()))
-            foreach (var name in p.Names.Distinct())
-                AddAlias(p.ProfileKey, name);
-        foreach (var cjk in new[] { false, true })
-            _averageTokenCountByIsCjk[cjk] = _aliases.Where(a => a.Cjk == cjk).Select(a => (double)a.Tokens.Length).DefaultIfEmpty(1).Average();
+        _aliases = profiles.GroupBy(p => p.ProfileKey, StringComparer.Ordinal).Select(g => g.Last())
+            .SelectMany(p => p.Names.Distinct().Select(name => (p.ProfileKey, Name: name)))
+            .AsParallel().AsOrdered()
+            .Select(x => ToAlias(x.ProfileKey, x.Name))
+            .OfType<Alias>()
+            .ToArray();
+        _profileOf = ProfileNumbers(_aliases);
+        _nameOrder = NameOrder(_aliases);
+        _aliasPositionsByKey = Postings(_aliases, a => [a.Key]);
+        _aliasPositionsByToken = Postings(_aliases, a => a.Tokens.Distinct());
+        _aliasPositionsByGram = Postings(_aliases, a => a.Grams);
+        _aliasPositionsByReading = Postings(_aliases, a => a.ReadingKeys);
+        _documentFrequency = _aliasPositionsByToken.ToFrozenDictionary(t => t.Key, t => t.Value.Length, StringComparer.Ordinal);
+        _averageTokenCountLatin = AverageTokenCount(cjk: false);
+        _averageTokenCountCjk = AverageTokenCount(cjk: true);
     }
 
-    private void AddAlias(string profileKey, string name)
+    private static Alias? ToAlias(string profileKey, string name)
     {
         var key = NameComparison.NameKey(name, true);
         var punctuationOnly = key.Length == 0;
-        if (punctuationOnly) return;
-        var alias = new Alias(profileKey, name, key, Tokens(name), Grams(key), IsCjk(key), ReadingKeys(name));
-        var at = _aliases.Count;
-        _aliases.Add(alias);
-        Post(_aliasPositionsByKey, [key], at);
-        Post(_aliasPositionsByToken, alias.Tokens.Distinct(), at);
-        Post(_aliasPositionsByGram, alias.Grams, at);
-        Post(_aliasPositionsByReading, alias.ReadingKeys, at);
-        foreach (var t in alias.Tokens.Distinct()) _documentFrequency[t] = _documentFrequency.GetValueOrDefault(t) + 1;
+        return punctuationOnly ? null
+            : new Alias(profileKey, name, key, Tokens(name), Grams(key).ToFrozenSet(StringComparer.Ordinal), IsCjk(key), ReadingKeys(name).ToFrozenSet(StringComparer.Ordinal));
     }
+
+    private static int[] ProfileNumbers(Alias[] aliases)
+    {
+        var numbers = new Dictionary<string, int>(StringComparer.Ordinal);
+        return aliases.Select(a => numbers.TryGetValue(a.ProfileKey, out var n) ? n : numbers[a.ProfileKey] = numbers.Count).ToArray();
+    }
+
+    private static int[] NameOrder(Alias[] aliases)
+    {
+        var byName = Enumerable.Range(0, aliases.Length)
+            .OrderBy(i => aliases[i].Name, StringComparer.Ordinal).ThenBy(i => aliases[i].ProfileKey, StringComparer.Ordinal).ToArray();
+        var order = new int[aliases.Length];
+        for (var rank = 0; rank < byName.Length; rank++) order[byName[rank]] = rank;
+        return order;
+    }
+
+    private double AverageTokenCount(bool cjk) =>
+        _aliases.Where(a => a.Cjk == cjk).Select(a => (double)a.Tokens.Length).DefaultIfEmpty(1).Average();
 
     /// <summary>
     /// Every exact alias match first (never cut, ordered by alias text), then the remaining Profiles by reciprocal rank
@@ -91,65 +132,98 @@ public sealed class ProfileIndex
         var keys = NameComparison.NameKeys(name, true).Where(k => k.Length > 0).ToHashSet(StringComparer.Ordinal);
         if (keys.Count == 0) return [];
 
-        var exact = ExactAliasTier(keys);
-        var exactProfiles = exact.Select(c => c.ProfileKey).ToHashSet(StringComparer.Ordinal);
+        var exactAliases = Lookup(_aliasPositionsByKey, keys).ToArray();
+        var exact = ExactAliasTier(exactAliases);
+        var exactProfiles = exactAliases.Select(at => _profileOf[at]).ToHashSet();
         var fused = FuseRouteRanks(name, exactProfiles);
-        var rest = fused
-            .OrderByDescending(f => f.Value.Rrf).ThenBy(f => f.Value.Name, StringComparer.Ordinal).ThenBy(f => f.Key, StringComparer.Ordinal)
-            .Select(f => new RetrievedCandidate(ProfileKeys.IdOf(f.Key), f.Key, f.Value.Name, f.Value.Route, f.Value.Rrf, RetrievalMode.IndexSearch));
         var truncated = exact.Count + fused.Count > top;
-        return exact.Concat(rest.Take(Math.Max(0, top - exact.Count)))
+        var rest = fused
+            .OrderByDescending(f => f.Rrf).ThenBy(f => _nameOrder[f.MatchedAlias])
+            .Take(Math.Max(0, top - exact.Count))
+            .Select(ToCandidate);
+        return exact.Concat(rest)
             .Select(c => truncated ? c with { Truncated = true } : c)
             .ToList();
     }
 
-    private List<RetrievedCandidate> ExactAliasTier(HashSet<string> keys) =>
-        Lookup(_aliasPositionsByKey, keys).Select(i => _aliases[i])
+    private RetrievedCandidate ToCandidate(FusedProfile f)
+    {
+        var a = _aliases[f.MatchedAlias];
+        return new RetrievedCandidate(ProfileKeys.IdOf(a.ProfileKey), a.ProfileKey, a.Name, f.Route, f.Rrf, RetrievalMode.IndexSearch);
+    }
+
+    private List<RetrievedCandidate> ExactAliasTier(int[] positions) =>
+        positions.Select(at => _aliases[at])
             .GroupBy(a => a.ProfileKey)
             .Select(g => g.MinBy(a => a.Name, StringComparer.Ordinal)!)
             .OrderBy(a => a.Name, StringComparer.Ordinal).ThenBy(a => a.ProfileKey, StringComparer.Ordinal)
             .Select(a => new RetrievedCandidate(ProfileKeys.IdOf(a.ProfileKey), a.ProfileKey, a.Name, ExactAlias, 1, RetrievalMode.IndexSearch))
             .ToList();
 
-    private Dictionary<string, (double Rrf, int BestRank, string Route, string Name)> FuseRouteRanks(string name, HashSet<string> exactProfiles)
+    private List<FusedProfile> FuseRouteRanks(string name, HashSet<int> exactProfiles)
     {
-        var tokens = Tokens(name);
+        var tokens = Tokens(name).Distinct().ToArray();
         var queryKey = NameComparison.NameKey(name, true);
         var grams = Grams(queryKey);
         var readings = ReadingKeys(name);
-        (string Route, Func<Alias, double> Score, double Floor)[] routes =
-        [
-            (Bm25, a => Bm25Score(tokens, a), 0),
-            (NGram, a => Dice(grams, a.Grams), IsCjk(queryKey) ? NGramFloorCjk : NGramFloorLatin),
-            (Reading, a => a.ReadingKeys.Count(readings.Contains), 0),
-        ];
-
         var reached = Lookup(_aliasPositionsByToken, tokens).Concat(Lookup(_aliasPositionsByGram, grams)).Concat(Lookup(_aliasPositionsByReading, readings))
-            .Distinct().Select(i => _aliases[i]).Where(a => !exactProfiles.Contains(a.ProfileKey)).ToList();
-        var fused = new Dictionary<string, (double Rrf, int BestRank, string Route, string Name)>(StringComparer.Ordinal);
-        foreach (var (route, score, floor) in routes)
+            .Distinct().Where(at => !exactProfiles.Contains(_profileOf[at])).ToArray();
+
+        // Every score is a pure function of the query and one immutable alias, and every ranking a pure function of the
+        // scores, so both run in parallel; rankings order by score and then name order, so the result does not depend on it.
+        var parallel = reached.Length >= MinAliasesForParallelScoring;
+        (string Route, double[] Scores, double Floor)[] routes =
+        [
+            (Bm25, new double[reached.Length], 0),
+            (NGram, new double[reached.Length], IsCjk(queryKey) ? NGramFloorCjk : NGramFloorLatin),
+            (Reading, new double[reached.Length], 0),
+        ];
+        ForEachIndex(reached.Length, parallel, i =>
         {
-            var ranked = BestAliasPerProfileByScore(reached, score, floor);
-            for (var i = 0; i < ranked.Count; i++)
+            var a = _aliases[reached[i]];
+            routes[0].Scores[i] = Bm25Score(tokens, a);
+            routes[1].Scores[i] = Dice(grams, a.Grams);
+            routes[2].Scores[i] = a.ReadingKeys.Count(readings.Contains);
+        });
+        var rankings = new int[routes.Length][];
+        ForEachIndex(routes.Length, parallel, r => rankings[r] = BestAliasPerProfileByScore(reached, routes[r].Scores, routes[r].Floor));
+
+        // Fused in route order: on equal rank the earlier route names the match.
+        var fused = new Dictionary<int, Fusion>();
+        for (var r = 0; r < routes.Length; r++)
+            for (var i = 0; i < rankings[r].Length; i++)
             {
-                var (a, rank) = (ranked[i], i + 1);
-                var f = fused.GetValueOrDefault(a.ProfileKey, (0, int.MaxValue, route, a.Name));
-                var best = rank < f.BestRank;
-                fused[a.ProfileKey] = (f.Rrf + 1 / (RrfK + rank), best ? rank : f.BestRank, best ? route : f.Route, best ? a.Name : f.Name);
+                var (at, rank) = (rankings[r][i], i + 1);
+                ref var f = ref CollectionsMarshal.GetValueRefOrAddDefault(fused, _profileOf[at], out var seen);
+                if (!seen) f.BestRank = int.MaxValue;
+                f.Rrf += 1 / (RrfK + rank);
+                if (rank < f.BestRank) (f.BestRank, f.Route, f.MatchedAlias) = (rank, routes[r].Route, at);
             }
-        }
-        return fused;
+        return fused.Values.Select(f => new FusedProfile(f.Rrf, f.Route!, f.MatchedAlias)).ToList();
     }
 
-    private static List<Alias> BestAliasPerProfileByScore(List<Alias> reached, Func<Alias, double> score, double floor) =>
-        reached
-            .Select(a => (Alias: a, Score: score(a)))
-            .Where(x => x.Score > 0 && x.Score >= floor)
-            .GroupBy(x => x.Alias.ProfileKey)
-            .Select(g => g.OrderByDescending(x => x.Score).ThenBy(x => x.Alias.Name, StringComparer.Ordinal).First())
-            .OrderByDescending(x => x.Score).ThenBy(x => x.Alias.Name, StringComparer.Ordinal).ThenBy(x => x.Alias.ProfileKey, StringComparer.Ordinal)
-            .Select(x => x.Alias)
-            .ToList();
+    private static void ForEachIndex(int count, bool parallel, Action<int> body)
+    {
+        if (parallel) Parallel.For(0, count, body);
+        else for (var i = 0; i < count; i++) body(i);
+    }
+
+    /// <summary>Alias positions, one per Profile (its best-scoring alias), by score and then name order.</summary>
+    private int[] BestAliasPerProfileByScore(int[] reached, double[] scores, double floor)
+    {
+        bool Before(int i, int j) => scores[i] > scores[j] || (scores[i] == scores[j] && _nameOrder[reached[i]] < _nameOrder[reached[j]]);
+
+        var bestByProfile = new Dictionary<int, int>();
+        for (var i = 0; i < reached.Length; i++)
+        {
+            if (!(scores[i] > 0 && scores[i] >= floor)) continue;
+            ref var best = ref CollectionsMarshal.GetValueRefOrAddDefault(bestByProfile, _profileOf[reached[i]], out var seen);
+            if (!seen || Before(i, best)) best = i;
+        }
+        var ranked = bestByProfile.Values.ToArray();
+        Array.Sort(ranked, (i, j) => Before(i, j) ? -1 : Before(j, i) ? 1 : 0);
+        return ranked.Select(i => reached[i]).ToArray();
+    }
 
     /// <summary>
     /// Recall@K over labelled queries: the share whose expected Profile is among the first <paramref name="k"/> candidates
@@ -165,36 +239,40 @@ public sealed class ProfileIndex
     /// <summary>Character n-gram Dice coefficient between two names: the score of the NGRAM route.</summary>
     public static double NGramScore(string a, string b) => Dice(Grams(NameComparison.NameKey(a, true)), Grams(NameComparison.NameKey(b, true)));
 
-    private double Bm25Score(string[] query, Alias a)
+    private double Bm25Score(string[] distinctQueryTokens, Alias a)
     {
-        var n = _aliases.Count;
+        var n = _aliases.Length;
+        var averageTokenCount = a.Cjk ? _averageTokenCountCjk : _averageTokenCountLatin;
         var score = 0.0;
-        foreach (var t in query.Distinct())
+        foreach (var t in distinctQueryTokens)
         {
             var tf = a.Tokens.Count(x => x == t);
             if (tf == 0) continue;
             var df = _documentFrequency.GetValueOrDefault(t);
             var idf = Math.Log(1 + (n - df + 0.5) / (df + 0.5));
-            score += idf * tf * (K1 + 1) / (tf + K1 * (1 - B + B * a.Tokens.Length / _averageTokenCountByIsCjk[a.Cjk]));
+            score += idf * tf * (K1 + 1) / (tf + K1 * (1 - B + B * a.Tokens.Length / averageTokenCount));
         }
         return score;
     }
 
-    private static void Post(Dictionary<string, List<int>> postings, IEnumerable<string> terms, int at)
+    private static FrozenDictionary<string, int[]> Postings(Alias[] aliases, Func<Alias, IEnumerable<string>> terms)
     {
-        foreach (var t in terms)
-        {
-            if (!postings.TryGetValue(t, out var list)) postings[t] = list = [];
-            list.Add(at);
-        }
+        var postings = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        for (var at = 0; at < aliases.Length; at++)
+            foreach (var t in terms(aliases[at]))
+            {
+                if (!postings.TryGetValue(t, out var list)) postings[t] = list = [];
+                list.Add(at);
+            }
+        return postings.ToFrozenDictionary(t => t.Key, t => t.Value.ToArray(), StringComparer.Ordinal);
     }
 
-    private static IEnumerable<int> Lookup(Dictionary<string, List<int>> postings, IEnumerable<string> terms) =>
+    private static IEnumerable<int> Lookup(FrozenDictionary<string, int[]> postings, IEnumerable<string> terms) =>
         terms.Distinct().SelectMany(t => postings.GetValueOrDefault(t) ?? []);
 
     private static HashSet<string> ReadingKeys(string name) => Romanization.ReadingKeys(name).ToHashSet(StringComparer.Ordinal);
 
-    private static double Dice(HashSet<string> a, HashSet<string> b) =>
+    private static double Dice(HashSet<string> a, IReadOnlySet<string> b) =>
         a.Count + b.Count == 0 ? 0 : 2.0 * a.Count(b.Contains) / (a.Count + b.Count);
 
     private static string[] Tokens(string name)

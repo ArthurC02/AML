@@ -49,6 +49,18 @@ public class RetrievalAndScoringTests
     }
 
     [Fact]
+    public void A_search_scored_in_parallel_ranks_by_score_then_name_the_same_every_time()
+    {
+        // Every alias shares the surname 陳, so the query reaches all 6000 and takes the parallel path.
+        var index = new ProfileIndex(Enumerable.Range(0, 6000)
+            .Select(i => Profile($"{i}", [$"陳{(char)('一' + i % 50)}{(char)('一' + i / 50 % 50)}"])).ToList());
+        var first = index.Search("陳一明", 25);
+        Assert.Equal(25, first.Count);
+        Assert.Equal(first.OrderByDescending(c => c.Score).ThenBy(c => c.MatchedName, StringComparer.Ordinal).ThenBy(c => c.ProfileKey, StringComparer.Ordinal), first);
+        for (var run = 0; run < 5; run++) Assert.Equal(first, index.Search("陳一明", 25));
+    }
+
+    [Fact]
     public void Profiles_merge_on_a_shared_document_or_a_recorded_link_never_on_name()
     {
         var id = new Document("TW_NATIONAL_ID", "A123456789", "TW");

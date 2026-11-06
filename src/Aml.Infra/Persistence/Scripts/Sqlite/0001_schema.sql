@@ -114,7 +114,6 @@ CREATE TABLE job (
     job_type          TEXT    NOT NULL,
     batch_id          TEXT    NULL,
     idempotency_key   TEXT    NULL,
-    payload           TEXT    NULL,
     case_id           TEXT    NULL,
     analysis_revision INTEGER NULL,
     status            TEXT    NOT NULL,
@@ -125,12 +124,16 @@ CREATE TABLE job (
     lease_expiry      TEXT    NULL,
     created_at        TEXT    NOT NULL,
     completed_at      TEXT    NULL,
-    error_code        TEXT    NULL
+    error_code        TEXT    NULL,
+    -- Last: it holds the case files, and SQLite reads a row's columns in order, so the claim and status queries never
+    -- read past it.
+    payload           TEXT    NULL
 );
 CREATE UNIQUE INDEX uq_job_idempotency ON job (idempotency_key);
 CREATE INDEX ix_job_batch_status ON job (batch_id, status);
--- Claiming reads PENDING jobs that are due, without a full scan.
-CREATE INDEX ix_job_claim ON job (status, next_attempt_at);
+-- Claiming walks PENDING jobs in claim order and stops at the limit: no sort of the whole queue, and a job still waiting
+-- out a retry delay is skipped inside the index.
+CREATE INDEX ix_job_claim ON job (status, priority DESC, created_at, next_attempt_at);
 
 -- List database: every captured Profile version with its content hash; the previous snapshot stays.
 CREATE TABLE list_profile (
@@ -143,4 +146,4 @@ CREATE TABLE list_profile (
 );
 
 -- The format of this file; must equal CaseJson.SchemaVersion (checked at startup and by CaseStoreTests).
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;

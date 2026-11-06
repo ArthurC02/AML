@@ -176,7 +176,7 @@ Jobs are claimed optimistically ([job claim](persistence.md#job-claim)). Control
 
 | Control | How |
 |---|---|
-| bounded workers | `JobWorker` keeps at most `Batch:MaxWorkers` (16) jobs running; a finished job's slot is refilled at once, and an empty queue is polled every `Batch:PollInterval` (2 s) |
+| bounded workers | `JobWorker` keeps at most `Batch:MaxWorkers` (32) jobs running; a finished job's slot is refilled at once, and an empty queue is polled every `Batch:PollInterval` (2 s) |
 | timeout and cancellation | `Batch:Timeout` (2 min) per job; the analysis itself is not interrupted, but a job past its deadline does not write its revision and fails with `TIMEOUT`. Host shutdown leaves the job RUNNING until its `Batch:Lease` (5 min) expires |
 | lease | renewed just before the revision is written; a job that lost its lease stops without writing. Complete and fail change the job only for its lease owner; otherwise a warning is logged and the state is left to the owner |
 | retry budget | `Batch:MaxAttempts` (3); backoff `Batch:RetryDelay` (10 s), doubling per attempt |

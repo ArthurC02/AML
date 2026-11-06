@@ -15,7 +15,7 @@ public sealed record BatchStatus(string BatchId, int Pending, int Running, int S
 
 public sealed record BatchOptions
 {
-    public int MaxWorkers { get; init; } = 16; // analysis is about 0.6 ms of CPU; the jobs mostly wait on commits, which group commit shares
+    public int MaxWorkers { get; init; } = 32; // analysis is about 0.6 ms of CPU; the jobs mostly wait on commits, which group commit shares
     public int MaxAttempts { get; init; } = 3;
     public TimeSpan Timeout { get; init; } = TimeSpan.FromMinutes(2);
     public TimeSpan Lease { get; init; } = TimeSpan.FromMinutes(5);

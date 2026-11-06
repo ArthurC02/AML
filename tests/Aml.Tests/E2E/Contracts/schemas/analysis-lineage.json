@@ -1,5 +1,5 @@
 {
-  "$id": "aml:AnalysisLineage:v3",
+  "$id": "aml:AnalysisLineage:v4",
   "type": [
     "object",
     "null"

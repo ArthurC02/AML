@@ -113,6 +113,36 @@ public class WebTextTests
     }
 
     [Fact]
+    public void Lines_a_pdf_wraps_inside_a_paragraph_are_joined()
+    {
+        const string text =
+            "臺北地檢署偵辦詐欺集團洗錢案，檢察官於本月\n" +
+            "3日指揮調查局搜索被告住處，並向法院聲請\n" +
+            "羈押獲准。\n" +
+            "一、被告甲男自民國114年起擔任集團車手，\n" +
+            "負責提領被害人匯入人頭帳戶之款項共計新臺幣1\n" +
+            "00萬元，再轉交上手。\n" +
+            "發言人：主任檢察官";
+        Assert.Equal(
+            "臺北地檢署偵辦詐欺集團洗錢案，檢察官於本月3日指揮調查局搜索被告住處，並向法院聲請羈押獲准。\n" +
+            "一、被告甲男自民國114年起擔任集團車手，負責提領被害人匯入人頭帳戶之款項共計新臺幣100萬元，再轉交上手。\n" +
+            "發言人：主任檢察官",
+            PdfText.Unwrap(text));
+        Assert.Equal("The suspects were indicted for money laundering under the Act and detained by the court.",
+            PdfText.Unwrap("The suspects were indicted for money\nlaundering under the Act and detained\nby the court."));
+        // A sentence closed by a quote or bracket ends the paragraph; a word and a number join with a space.
+        Assert.Equal("被告於偵查中供稱：「我只是依指示提領款項。」\n檢察官認被告涉犯洗錢防制法，於今日提起公訴並求刑有期徒刑1年。",
+            PdfText.Unwrap("被告於偵查中供稱：「我只是依指示提領款項。」\n檢察官認被告涉犯洗錢防制法，於今日提起公訴並求刑\n有期徒刑1年。"));
+        Assert.Equal("The bank said revenue rose sharply this year in 2026 and it filed its quarterly report with the regulator on time.",
+            PdfText.Unwrap("The bank said revenue rose sharply this year in\n2026 and it filed its quarterly report\nwith the regulator on time."));
+        // Text that is not wrapped (most lines end a sentence, as a web page's) is kept as it is.
+        const string paragraphs = "第一段說明被告擔任車手提領款項之經過。\n第二段說明檢察官偵查之經過與證據\n第三段說明法院審理後判決有罪之理由。\n第四段說明沒收犯罪所得之部分。";
+        Assert.Equal(paragraphs, PdfText.Unwrap(paragraphs));
+        // A short text, or one too short to tell a full line, is kept as it is.
+        Assert.Equal("標題\n內文", PdfText.Unwrap("標題\n內文"));
+    }
+
+    [Fact]
     public void A_sites_template_lines_are_dropped_and_its_documents_kept()
     {
         var docs = Enumerable.Range(1, 10).Select(i =>

@@ -44,6 +44,12 @@ The page is decoded by its meta charset (UTF-8, Big5); a charset given only in t
 - A PDF of more than 200 pages or 2,000,000 characters is refused. So is an unreadable or encrypted one. Every refusal is a `FormatException`.
 - PdfPig has no time or decompression budget of its own; the fetcher's 10 MB cap is the only bound.
 - A PDF whose fonts carry no character map yields no usable text.
+- `PdfText.Unwrap` joins the lines a PDF wraps inside a paragraph, so a sentence or a name is not split across lines. Run it after site templates are removed, because those are compared line by line. A line runs on into the next only when all of these hold:
+  - it is full: at least 80% of the text's usual line width (the 80th percentile of lines at least 10 wide). A Chinese character, a full-width sign or a symbol a Chinese font sets full-width (○ ※ — “”) counts two; digits, Latin and Greek letters and half-width forms count one.
+  - it does not end a sentence: 。！？；：.!?:… optionally followed by closing quotes or brackets (」』”’）)》), or a line ending in 」 or 』.
+  - the next line does not open a list item: 一、, （一） or (1), 1、 1. 1．, ①.
+
+  Chinese joins without a space, and so does a number split across lines (新臺幣1 / 00萬元). A Latin word joins the next word or number with a space. A text left as it is: one with fewer than three lines at least 10 wide, or one where 70% of those lines already end a sentence, as a web page's do.
 
 ## Site templates
 

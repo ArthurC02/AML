@@ -181,7 +181,7 @@ internal static partial class CasesEndpoints
             };
             return Task.CompletedTask;
         })
-        .WithSummary("One revision (the effective one, or ?revision=) as an Excel workbook of seven sheets: 說明, 命中, 比對, 證據, 來源, 變更 and 代碼")
+        .WithSummary("One revision (the effective one, or ?revision=) as an Excel workbook of nine sheets: 說明, 命中, 比對, 證據, 來源, 新聞人物, 新聞事件, 變更 and 代碼")
         .WithDescription("Each sheet is one table with a frozen, filterable header; the hit number joins them. The workbook restates the stored revision and adds nothing. view=summary (default) holds no identifier values, compared values or source titles and, of personal data, only the Profile's main name; view=full adds them, as GET /api/cases/{caseId}/revisions/{revision}. Text is never a formula. The response is not cached (Cache-Control: no-store). Workbooks are built a few at a time (Api:WorkbookConcurrency, default 16, with Api:WorkbookQueue, default 64, waiting); past that the answer is 429 with Retry-After.")
         .WithName("getCaseWorkbook")
         .WithTags(Tags.Cases);

@@ -374,10 +374,10 @@ public static partial class SourceConditions
         return stage == LegalStage.Unknown && underInvestigation ? LegalStage.Alleged : stage;
     }
 
-    private static readonly char[] SentenceEnds = ['。', '！', '？', '\n', '；'], ClauseEnds = ['，', ','];
+    internal static readonly char[] SentenceEnds = ['。', '！', '？', '\n', '；'], ClauseEnds = ['，', ','];
 
     // The (start, length) of each piece of text[from..from+length] between separators, as string.Split cuts it.
-    private static IEnumerable<(int Start, int Length)> Spans(string text, int from, int length, char[] separators)
+    internal static IEnumerable<(int Start, int Length)> Spans(string text, int from, int length, char[] separators)
     {
         var end = from + length;
         for (var start = from; start <= end;)
@@ -423,7 +423,7 @@ public static partial class SourceConditions
     // it no stage (最重可判處, 檢方請求法院依法從重判處), but a word that only holds the modal's characters is not one.
     // ponytail: a name holding 可 or 求 (陳可欣遭起訴) still reads as a modal, so no stage: the safe side; exclude the matched
     // names when that costs real hits.
-    private static int FirstModalEnd(string clause)
+    internal static int FirstModalEnd(string clause)
     {
         var first = int.MaxValue;
         foreach (var (modal, notBefore, notAfter) in Modals)
@@ -440,7 +440,7 @@ public static partial class SourceConditions
     }
 
     // 尚未起訴, 沒有被起訴, 是否遭到起訴: the words just before the keyword, past a passive marker.
-    private static bool Negated(string clause, int keyword)
+    internal static bool Negated(string clause, int keyword)
     {
         var before = clause.AsSpan(0, keyword);
         foreach (var passive in Passives)
@@ -464,7 +464,7 @@ public static partial class SourceConditions
 
     // ponytail: the commonest Taiwanese surnames, enough to tell 李四遭起訴 from 一審遭判處; a person with a rarer surname
     // still reads as the Profile person's clause.
-    private const string CommonSurnames =
+    internal const string CommonSurnames =
         "陳林黃張李王吳劉蔡楊許鄭謝郭洪曾邱廖賴周徐蘇葉莊呂江何蕭羅高潘簡朱鍾鐘游彭詹胡施沈余盧梁趙顏柯翁魏孫戴范方宋鄧杜傅侯曹薛丁卓阮馬董溫唐藍蔣石古紀姚連馮歐程湯田康姜白汪鄒尤巫黎涂龔嚴韓袁金童陸夏柳邵錢伍倪于譚駱熊任甘秦顧毛章史官萬俞雷粘饒";
 
     [GeneratedRegex(@"^\s*(?:而|但|則|另外|另|隨後|其後|後來|至於)?(?<surname>\p{IsCJKUnifiedIdeographs})(?:\p{IsCJKUnifiedIdeographs}{1,2}|姓(?:男子|女子|男|女|嫌犯|被告))(?:也|亦|則|已|均)?(?:遭到|遭|被|獲)")]
@@ -472,17 +472,17 @@ public static partial class SourceConditions
 
     // Non-backtracking: a backtracking engine rescans to the end from every unclosed opening quote (1M 「 is quadratic).
     [GeneratedRegex("「[^」]*」|『[^』]*』|“[^”]*”", RegexOptions.NonBacktracking)]
-    private static partial Regex Quoted();
+    internal static partial Regex Quoted();
 
     [GeneratedRegex("不起訴|緩起訴|撤回起訴|不予起訴|免予起訴")]
-    private static partial Regex Dismissal();
+    internal static partial Regex Dismissal();
 
     [GeneratedRegex("(?<!不|緩|撤回|予)起訴")]
-    private static partial Regex Indictment();
+    internal static partial Regex Indictment();
 
     [GeneratedRegex("判處|判刑|判決有罪|有罪確定|(?<!無罪)定讞")]
-    private static partial Regex Conviction();
+    internal static partial Regex Conviction();
 
     [GeneratedRegex("(判決|改判|宣判)[^，,]{0,10}?無罪(?!推定)")]
-    private static partial Regex Acquittal();
+    internal static partial Regex Acquittal();
 }

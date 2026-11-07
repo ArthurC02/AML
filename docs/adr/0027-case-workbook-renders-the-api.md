@@ -1,6 +1,6 @@
 # ADR-0027: The case workbook renders the API
 
-- Status: Accepted
+- Status: Accepted; sheets amended by [ADR-0028](0028-rule-based-news-digest.md)
 - Date: 2026-11-07
 
 ## Context

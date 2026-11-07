@@ -58,7 +58,7 @@ AML/
 │   │   ├── Persistence/          # see feature/persistence.md
 │   │   ├── Txt/                  # .txt export reader (UTF-8, CP950 fallback), CaseInputException
 │   │   ├── Html/                 # HTML page to export layout (AngleSharp)
-│   │   ├── Excel/                # Xlsx (SpreadsheetML with the standard library), CaseWorkbook (seven sheets)
+│   │   ├── Excel/                # Xlsx (SpreadsheetML with the standard library), CaseWorkbook (nine sheets)
 │   │   └── Jobs/                 # JobStore
 │   └── Aml.Api/                  # composition root
 │       ├── Program.cs            # DI, OpenAPI, OpenTelemetry, health check, endpoint registration

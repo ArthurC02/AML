@@ -22,7 +22,9 @@ public class CodeCatalogTests
     public void Every_source_condition_value_is_in_the_catalog()
     {
         Enum[] values = [.. Enum.GetValues<ListType>().Cast<Enum>(), .. Enum.GetValues<ConditionStatus>().Cast<Enum>(),
-            .. Enum.GetValues<ConditionBasis>().Cast<Enum>(), .. Enum.GetValues<LegalStage>().Cast<Enum>()];
+            .. Enum.GetValues<ConditionBasis>().Cast<Enum>(), .. Enum.GetValues<LegalStage>().Cast<Enum>(),
+            .. Enum.GetValues<Aml.Core.Explanation.NewsEventType>().Cast<Enum>(), .. Enum.GetValues<Aml.Core.Explanation.NewsCertainty>().Cast<Enum>(),
+            .. Enum.GetValues<Aml.Core.Explanation.NewsMatch>().Cast<Enum>()];
         Assert.All(values, v => Assert.NotNull(CodeCatalog.Find(System.Text.Json.JsonSerializer.Serialize(v, v.GetType(), CaseJson.Options).Trim('"'))));
     }
 

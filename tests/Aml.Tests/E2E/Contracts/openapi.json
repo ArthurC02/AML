@@ -718,7 +718,7 @@
         "tags": [
           "Cases"
         ],
-        "summary": "One revision (the effective one, or ?revision=) as an Excel workbook of seven sheets: 說明, 命中, 比對, 證據, 來源, 變更 and 代碼",
+        "summary": "One revision (the effective one, or ?revision=) as an Excel workbook of nine sheets: 說明, 命中, 比對, 證據, 來源, 新聞人物, 新聞事件, 變更 and 代碼",
         "description": "Each sheet is one table with a frozen, filterable header; the hit number joins them. The workbook restates the stored revision and adds nothing. view=summary (default) holds no identifier values, compared values or source titles and, of personal data, only the Profile's main name; view=full adds them, as GET /api/cases/{caseId}/revisions/{revision}. Text is never a formula. The response is not cached (Cache-Control: no-store). Workbooks are built a few at a time (Api:WorkbookConcurrency, default 16, with Api:WorkbookQueue, default 64, waiting); past that the answer is 429 with Retry-After.",
         "operationId": "getCaseWorkbook",
         "parameters": [
@@ -2401,6 +2401,17 @@
           "summary": {
             "description": "五段式摘要",
             "$ref": "#/components/schemas/ExplanationSummary"
+          },
+          "newsDigest": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "附加新聞的人物、事件與固定句型摘要，依規則讀出；不影響任何判斷。沒有附加新聞時為 null",
+                "$ref": "#/components/schemas/NewsDigest"
+              }
+            ]
           }
         }
       },
@@ -2994,6 +3005,183 @@
             "items": {
               "$ref": "#/components/schemas/MergeEdge"
             }
+          }
+        }
+      },
+      "NewsCertainty": {
+        "enum": [
+          "STATED",
+          "NEGATED",
+          "HEDGED"
+        ]
+      },
+      "NewsDigest": {
+        "required": [
+          "sourceRef",
+          "people",
+          "events",
+          "summary"
+        ],
+        "type": "object",
+        "properties": {
+          "sourceRef": {
+            "type": "string",
+            "description": "新聞在來源中的引用編號（S#）"
+          },
+          "people": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NewsPerson"
+            },
+            "description": "報導中的人物；名單人物在前"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NewsEvent"
+            },
+            "description": "報導中的事件，依出現順序"
+          },
+          "summary": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "由人物與事件依固定句型組成的摘要；每句都來自上列人物與事件"
+          }
+        }
+      },
+      "NewsEvent": {
+        "required": [
+          "type",
+          "certainty",
+          "offences",
+          "quote"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "事件類型，見 /api/codes",
+            "$ref": "#/components/schemas/NewsEventType"
+          },
+          "certainty": {
+            "description": "STATED：報導陳述；NEGATED：報導否定（尚未、沒有）；HEDGED：推測、請求或條件（恐、擬、聲請）",
+            "$ref": "#/components/schemas/NewsCertainty"
+          },
+          "actor": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "事件當事人；報導未指明時為 null"
+          },
+          "actorMatch": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "當事人與名單人物的關係；未指明當事人時為 null",
+                "$ref": "#/components/schemas/NewsMatch"
+              }
+            ]
+          },
+          "date": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "日期原文（相對日期不換算）"
+          },
+          "agency": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "機關：地檢署、法院、調查局等"
+          },
+          "offences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "同句提到的罪名或違法類型"
+          },
+          "amount": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "金額原文"
+          },
+          "penalty": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "刑度原文，只用於判決有罪"
+          },
+          "quote": {
+            "type": "string",
+            "description": "事件所在句子的原文，最多 200 字"
+          }
+        }
+      },
+      "NewsEventType": {
+        "enum": [
+          "INVESTIGATION",
+          "SEARCH",
+          "QUESTIONING",
+          "ARREST",
+          "DETENTION",
+          "BAIL",
+          "INDICTMENT",
+          "NON_INDICTMENT",
+          "CONVICTION",
+          "ACQUITTAL",
+          "FINE",
+          "WANTED_NOTICE"
+        ]
+      },
+      "NewsMatch": {
+        "enum": [
+          "PROFILE_NAME",
+          "PROFILE_SURNAME",
+          "OTHER_PERSON"
+        ]
+      },
+      "NewsPerson": {
+        "required": [
+          "name",
+          "match",
+          "roles",
+          "mentions"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "報導中的姓名或匿稱（如 王姓男子、王男）"
+          },
+          "match": {
+            "description": "PROFILE_NAME：與名單姓名相同；PROFILE_SURNAME：與名單人物同姓的匿稱；OTHER_PERSON：其他人",
+            "$ref": "#/components/schemas/NewsMatch"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "報導中緊接在姓名前的身分或職稱，依出現順序"
+          },
+          "mentions": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "出現次數",
+            "format": "int32"
           }
         }
       },

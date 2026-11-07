@@ -42,19 +42,20 @@ public class WorkbookTests
 
     [Theory]
     [MemberData(nameof(SchemaTests.Cases), MemberType = typeof(SchemaTests))]
-    public void The_workbook_has_seven_tables_joined_by_the_hit_number(string gc)
+    public void The_workbook_has_nine_tables_joined_by_the_hit_number(string gc)
     {
         var (_, rev) = CaseViewTests.Stored(gc);
         var hits = rev.Explanation!.Hits;
         var sheets = Read(Bytes(gc, full: true)).ToDictionary(s => s.Name, s => s.Rows);
 
-        Assert.Equal(["說明", "命中", "比對", "證據", "來源", "變更", "代碼"], Read(Bytes(gc, full: false)).Select(s => s.Name));
+        Assert.Equal(["說明", "命中", "比對", "證據", "來源", "新聞人物", "新聞事件", "變更", "代碼"], Read(Bytes(gc, full: false)).Select(s => s.Name));
         Assert.Equal(["類別", "項目", "值"], sheets["說明"][0]);
         Assert.Equal(hits.Count, sheets["命中"].Count - 1);
         Assert.Equal(hits.Sum(h => h.Comparison.Count), sheets["比對"].Count - 1);
         Assert.Equal(hits.Sum(h => h.Support.Count + h.Conflicts.Count), sheets["證據"].Count - 1);
         Assert.Equal(hits.Sum(h => h.Sources.Count), sheets["來源"].Count - 1);
-        foreach (var name in new[] { "命中", "比對", "證據", "來源" })
+        Assert.Equal(hits.Sum(h => h.NewsDigest?.Events.Count ?? 0), sheets["新聞事件"].Count - 1);
+        foreach (var name in new[] { "命中", "比對", "證據", "來源", "新聞人物", "新聞事件" })
             Assert.All(sheets[name].Skip(1), row => Assert.Contains(hits, h => h.HitNumber.ToString(System.Globalization.CultureInfo.InvariantCulture) == row[0]));
         // Every header of the data sheets is explained in the data dictionary, and every code listed is catalogued.
         var dictionary = sheets["說明"].Where(row => row[0] == "欄位").Select(row => row[1]).ToHashSet();

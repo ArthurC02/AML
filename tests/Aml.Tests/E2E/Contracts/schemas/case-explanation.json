@@ -1,5 +1,5 @@
 {
-  "$id": "aml:CaseExplanation:v5",
+  "$id": "aml:CaseExplanation:v6",
   "type": [
     "object",
     "null"
@@ -690,6 +690,189 @@
               "keyEvidenceOrGaps",
               "conclusion"
             ]
+          },
+          "newsDigest": {
+            "description": "附加新聞的人物、事件與固定句型摘要，依規則讀出；不影響任何判斷。沒有附加新聞時為 null",
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "sourceRef": {
+                "description": "新聞在來源中的引用編號（S#）",
+                "type": "string"
+              },
+              "people": {
+                "description": "報導中的人物；名單人物在前",
+                "type": "array",
+                "items": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "name": {
+                      "description": "報導中的姓名或匿稱（如 王姓男子、王男）",
+                      "type": "string",
+                      "x-sensitivity": "PERSONAL"
+                    },
+                    "match": {
+                      "description": "PROFILE_NAME：與名單姓名相同；PROFILE_SURNAME：與名單人物同姓的匿稱；OTHER_PERSON：其他人",
+                      "enum": [
+                        "PROFILE_NAME",
+                        "PROFILE_SURNAME",
+                        "OTHER_PERSON"
+                      ]
+                    },
+                    "roles": {
+                      "description": "報導中緊接在姓名前的身分或職稱，依出現順序",
+                      "type": "array",
+                      "items": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "mentions": {
+                      "description": "出現次數",
+                      "type": [
+                        "string",
+                        "integer"
+                      ],
+                      "pattern": "^-?(?:0|[1-9]\\d*)$"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "match",
+                    "roles",
+                    "mentions"
+                  ]
+                }
+              },
+              "events": {
+                "description": "報導中的事件，依出現順序",
+                "type": "array",
+                "items": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "type": {
+                      "description": "事件類型，見 /api/codes",
+                      "enum": [
+                        "INVESTIGATION",
+                        "SEARCH",
+                        "QUESTIONING",
+                        "ARREST",
+                        "DETENTION",
+                        "BAIL",
+                        "INDICTMENT",
+                        "NON_INDICTMENT",
+                        "CONVICTION",
+                        "ACQUITTAL",
+                        "FINE",
+                        "WANTED_NOTICE"
+                      ]
+                    },
+                    "certainty": {
+                      "description": "STATED：報導陳述；NEGATED：報導否定（尚未、沒有）；HEDGED：推測、請求或條件（恐、擬、聲請）",
+                      "enum": [
+                        "STATED",
+                        "NEGATED",
+                        "HEDGED"
+                      ]
+                    },
+                    "actor": {
+                      "description": "事件當事人；報導未指明時為 null",
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "x-sensitivity": "PERSONAL"
+                    },
+                    "actorMatch": {
+                      "description": "當事人與名單人物的關係；未指明當事人時為 null",
+                      "enum": [
+                        "PROFILE_NAME",
+                        "PROFILE_SURNAME",
+                        "OTHER_PERSON",
+                        null
+                      ]
+                    },
+                    "date": {
+                      "description": "日期原文（相對日期不換算）",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "agency": {
+                      "description": "機關：地檢署、法院、調查局等",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "offences": {
+                      "description": "同句提到的罪名或違法類型",
+                      "type": "array",
+                      "items": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "amount": {
+                      "description": "金額原文",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "penalty": {
+                      "description": "刑度原文，只用於判決有罪",
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "quote": {
+                      "description": "事件所在句子的原文，最多 200 字",
+                      "type": "string",
+                      "x-sensitivity": "PERSONAL"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "certainty",
+                    "offences",
+                    "quote"
+                  ]
+                }
+              },
+              "summary": {
+                "description": "由人物與事件依固定句型組成的摘要；每句都來自上列人物與事件",
+                "type": "array",
+                "items": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "x-sensitivity": "PERSONAL"
+              }
+            },
+            "required": [
+              "sourceRef",
+              "people",
+              "events",
+              "summary"
+            ],
+            "default": null
           }
         },
         "required": [

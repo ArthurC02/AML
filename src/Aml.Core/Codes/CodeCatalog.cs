@@ -8,7 +8,7 @@ public sealed record CodeEntry(string Code, string Kind, string Name, string Des
 /// </summary>
 public static class CodeCatalog
 {
-    public const string Version = "codes-5";
+    public const string Version = "codes-6";
 
     private const string Identity = "docs/feature/identity-adjudication.md";
     private const string Extraction = "docs/feature/extraction-and-normalization.md";
@@ -175,6 +175,24 @@ public static class CodeCatalog
         ("LEGAL_STAGE", "CONVICTED", "有罪判決", "已有罪判決。", "SourceConditions.Determine", Watchlist + "#legalprocedural-stage"),
         ("LEGAL_STAGE", "ACQUITTED", "無罪", "判決無罪。", "SourceConditions.Determine", Watchlist + "#legalprocedural-stage"),
         ("LEGAL_STAGE", "DISMISSED", "不起訴或駁回", "不起訴、撤回或駁回。", "SourceConditions.Determine", Watchlist + "#legalprocedural-stage"),
+        ("NEWS_EVENT", "INVESTIGATION", "偵辦或調查", "報導寫到偵辦、偵查或調查。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_EVENT", "SEARCH", "搜索", "報導寫到搜索或搜查。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_EVENT", "QUESTIONING", "約談", "報導寫到約談、傳喚或到案說明。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_EVENT", "ARREST", "逮捕或移送", "報導寫到逮捕、拘提、拘捕、落網或移送。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_EVENT", "DETENTION", "羈押", "報導寫到羈押、收押或聲押。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_EVENT", "BAIL", "交保或限制出境", "報導寫到交保、具保、責付、限制出境、出海或住居。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_EVENT", "INDICTMENT", "起訴", "報導寫到起訴（不含不起訴、緩起訴、撤回起訴）。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_EVENT", "NON_INDICTMENT", "不起訴", "報導寫到不起訴、緩起訴、撤回起訴、不予或免予起訴。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_EVENT", "CONVICTION", "判決有罪", "報導寫到判處、判刑、判決有罪、有罪確定或定讞。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_EVENT", "ACQUITTAL", "判決無罪", "報導寫到判決、改判或宣判無罪。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_EVENT", "FINE", "裁罰", "報導寫到罰鍰、裁罰或罰款。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_EVENT", "WANTED_NOTICE", "通緝", "報導寫到通緝。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_CERTAINTY", "STATED", "報導陳述", "報導直接陳述此事件。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_CERTAINTY", "NEGATED", "報導否定", "報導說此事件沒有發生（尚未、沒有、是否）。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_CERTAINTY", "HEDGED", "未確定", "推測、請求、計畫或條件（恐、擬、可能、聲請）；不是已發生的事件。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_MATCH", "PROFILE_NAME", "名單人物", "報導中的姓名與名單姓名相同。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_MATCH", "PROFILE_SURNAME", "同姓匿稱", "匿稱（王姓男子、王男）的姓氏與名單人物相同；是否同一人需人工判斷。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_MATCH", "OTHER_PERSON", "其他人", "報導中的其他人物。", "NewsDigests.Build", Watchlist + "#news-digest"),
         ("JOB_ERROR", "INVALID_INPUT", "輸入不可用", "批次項目的檔案不完整或不是匯出版面；重跑會同樣失敗，同一 triggerEventId 與 subjectRef 再送批次也只會列為重複。修正檔案後以 POST /api/cases 建立。", "BatchService", Api + "#durable-batch-execution"),
         ("JOB_ERROR", "INVALID_PAYLOAD", "工作內容無法讀取", "未知的工作類型、無法解析的 JSON 或缺欄位；立即進入 DEAD_LETTER，重跑會同樣失敗。", "BatchService", Api + "#durable-batch-execution"),
         ("JOB_ERROR", "TIMEOUT", "逾時", "工作超過 Batch:Timeout，不寫入 revision；依重試預算重試。", "BatchService", Api + "#durable-batch-execution"),

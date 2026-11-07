@@ -144,6 +144,54 @@ The ADVERSE_MEDIA stage is read from the attached news by a keyword heuristic, t
 - The last stage in the text wins.
 - With no judicial stage, 偵辦 or 調查 give ALLEGED; otherwise the stage is UNKNOWN.
 
+### News digest
+
+Each hit with attached news carries a `newsDigest` in its explanation ([ADR-0028](../adr/0028-rule-based-news-digest.md)): the people and legal events the news names, and a summary in fixed sentence patterns. It is read by rules, restates the news and decides nothing: no condition, stage, relevance, identity or disposition reads it.
+
+- **People.**
+  - Which mentions count:
+    - the Profile's own names (of two or more characters)
+    - a name right after a role word (被告王大明, 董事長李四, 前立委林大同)
+    - a 2 or 3 character name of a common Taiwanese surname that opens a clause before 遭, 遭到, 被, 獲, 涉嫌, 涉及, 坦承, 供稱 or 否認
+    - the anonymised forms 王姓男子, 王男, 王嫌, 王某
+  - A name that runs on into the next word (被告王明涉嫌) is cut to two characters.
+  - Words that only start like a name are not names: a second character that makes a common word (許多, 高層, 林務) or a third that names an organisation (局, 會, 司, 署, 院 …).
+  - Every other occurrence of a found name is a mention, except a 2 character name running into a longer one (王明 in 王明華).
+  - `match` is `PROFILE_NAME` for the Profile's own names only: a name that only starts like one (王明 for 王明華) is `OTHER_PERSON`.
+  - `match` is `PROFILE_SURNAME` for an anonymised form sharing the person's surname, which is left to the reviewer. Anyone else is `OTHER_PERSON`.
+  - The role is the word written just before the name.
+- **Events.**
+  - The event types are investigation, search, questioning, arrest, detention, bail, indictment, non-indictment, conviction, acquittal, fine and wanted notice (`/api/codes`, kind `NEWS_EVENT`).
+  - They are read clause by clause, outside quoted speech, with the legal stage's own keywords for indictment, dismissal, conviction and acquittal.
+  - `certainty` is:
+    - `NEGATED` after a negation (尚未被起訴)
+    - `HEDGED` after a modal, plan or condition (恐遭起訴, 擬起訴), or for a request to the court (聲請羈押, 聲押), unless it was granted (獲准, 裁准)
+    - `STATED` otherwise
+- **Who the event is about.**
+  - The actor is, in order of preference:
+    1. the name nearest before the keyword in its clause
+    2. the first name after it (檢方起訴王大明)
+    3. for a pronoun (他, 她, 其, 該男), the person named last before the clause
+    4. the person named last earlier in the sentence
+  - A person introduced as a prosecutor, judge, lawyer, police officer, witness or victim is the actor only when nobody else is.
+  - Otherwise the actor is null, and the summary says 未指明對象.
+- **Slots.**
+  - The date comes from the event's own clause, as written. Relative dates are not resolved.
+  - The agency, amount and penalty come from the clause, else from the sentence; the offences from the sentence.
+  - The penalty is read for convictions only.
+  - Each event keeps its sentence as the quote, at most 200 characters.
+- **Summary.** The lines are:
+  1. the report (publisher, date, title)
+  2. the people with their roles
+  3. one line per person listing their events (a person past the people cap included), each written as date, agency, event, then offences, amount and penalty; non-stated events are marked
+  4. a last line for events with no person, or 「報導中未讀到偵查、起訴、判決等事件」 when there are none
+  The report line and every event line cite the news source `[S#]`.
+- **Limits** (known, kept on the safe side of reading less):
+  - a rarer surname, a foreign name, or a name not near a role word or clause opening is not found
+  - a pronoun points at the last person named
+  - several cases in one article are not told apart
+- **Caps.** At most 100 Profile names are searched, 500 occurrences of each name and 2,000 mentions kept, 1,000 event keywords looked at, 50 people and 100 events listed. The reading is linear in the text: slots are read once per clause and sentence, and patterns holding an open run (dates, amounts, penalties) are non-backtracking.
+
 ## Policy responsibilities
 
 ### OfficialListPolicy
@@ -186,7 +234,7 @@ A news item attached to a Profile counts as attached news; the Profile's own des
 
 ## Phase 1 constraint
 
-General free-news event understanding is out of scope. Structured Profile fields, bounded Notes sections and explicit citations are used; no LLM is involved ([ADR-0018](../adr/0018-legacy-ai-report-rules-not-adopted.md)).
+General free-news event understanding is out of scope. Structured Profile fields, bounded Notes sections and explicit citations are used; no LLM or other language model is involved ([ADR-0018](../adr/0018-legacy-ai-report-rules-not-adopted.md)). The [news digest](#news-digest) reads people and events from the news by fixed rules for the reviewer and feeds no decision ([ADR-0028](../adr/0028-rule-based-news-digest.md)).
 
 When news content is used:
 

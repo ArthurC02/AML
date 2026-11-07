@@ -68,7 +68,8 @@ public static class ExplanationBuilder
                 ExternalData: ExternalData(h, categories, sources, hasNews: news is not null),
                 AgreementsAndDifferences: AgreementsAndDifferences(rows, unknown),
                 KeyEvidenceOrGaps: KeyEvidence(h, support),
-                Conclusion: Conclusion(h)));
+                Conclusion: Conclusion(h)),
+            NewsDigest: NewsDigests.Build(news, p.Names, sources.LastOrDefault(x => x.UsedFor != SourceUse.ProfileRecord)?.Ref ?? ""));
     }
 
     private static string ScreenedSubjectLabel(ScreenedSubject s)

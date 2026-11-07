@@ -9,8 +9,9 @@ using static Aml.Core.Cases.CaseJson;
 namespace Aml.Infra.Excel;
 
 /// <summary>
-/// One analysis revision of a Case as a workbook of seven sheets, each one table that restates the stored revision and
-/// adds nothing (ADR-0027): 說明 (the Case, lineage, quality and a data dictionary), 命中, 比對, 證據, 來源, 變更 and 代碼.
+/// One analysis revision of a Case as a workbook of nine sheets, each one table that restates the stored revision and
+/// adds nothing (ADR-0027): 說明 (the Case, lineage, quality and a data dictionary), 命中, 比對, 證據, 來源, 新聞人物,
+/// 新聞事件 (the news digest, ADR-0028), 變更 and 代碼.
 /// The hit number joins the sheets. Without identifier values (the default) the workbook follows the summary views: no
 /// IDENTIFIER field, no compared value and, of personal data, only names.
 /// </summary>
@@ -28,7 +29,7 @@ public static class CaseWorkbook
     public static IReadOnlyList<Sheet> Sheets(CaseRecord c, AnalysisRecord r, bool withIdentifierValues)
     {
         var hits = r.Explanation?.Hits ?? [];
-        var tables = new[] { Hits(hits), Comparison(hits), Evidence(hits), Sources(hits), Changes(r.Explanation?.ChangesFromPreviousRevision) }
+        var tables = new[] { Hits(hits), Comparison(hits), Evidence(hits), Sources(hits), NewsPeople(hits), NewsEvents(hits), Changes(r.Explanation?.ChangesFromPreviousRevision) }
             .Select(t => Shown(t, withIdentifierValues)).ToList();
         var codes = Codes(tables);
         var about = About(c, r, withIdentifierValues, tables.Append(codes));
@@ -73,6 +74,7 @@ public static class CaseWorkbook
         new("摘要：相符與差異", "summary.agreementsAndDifferences", "相符、衝突與無法比對的項目"),
         new("摘要：關鍵佐證或缺口", "summary.keyEvidenceOrGaps", "關鍵佐證或缺口"),
         new("摘要：結論", "summary.conclusion", "身分判斷、對外結果、理由碼與第 22 條建議"),
+        new("新聞摘要", "newsDigest.summary", "附加新聞的人物與事件，依固定句型組成，逐句換行；[S#] 引用來源工作表，細節見新聞人物、新聞事件", Identifying: true),
     ], hits.Select(h => (IReadOnlyList<object?>)
     [
         h.HitNumber, h.ScreenedSubject, h.ProfileId, h.ProfileKey, h.ProfileName, Joined(h.MatchedNames), Joined(h.SourceCategories),
@@ -81,7 +83,34 @@ public static class CaseWorkbook
         Joined(h.PairReasonCodes), h.Disposition.Recommendation is { } d ? Code(d) : null, Joined(h.Disposition.ReasonCodes), Joined(h.Disposition.PendingChecks),
         Joined(h.DataQualityFindings), Joined(h.UnknownFields), Joined(h.WouldChangeIf.Select(w => w.Text)),
         h.Summary.InternalData, h.Summary.ExternalData, h.Summary.AgreementsAndDifferences, h.Summary.KeyEvidenceOrGaps, h.Summary.Conclusion,
+        h.NewsDigest is { } n ? string.Join("\n", n.Summary) : null,
     ]));
+
+    private static Table NewsPeople(IReadOnlyList<HitExplanation> hits) => new("新聞人物",
+    [
+        new("命中編號", "hitNumber", "hit 編號"),
+        new("姓名", "newsDigest.people[].name", "報導中的姓名或匿稱", Identifying: true),
+        new("與名單人物", "newsDigest.people[].match", "PROFILE_NAME、PROFILE_SURNAME 或 OTHER_PERSON"),
+        new("身分或職稱", "newsDigest.people[].roles", "報導中緊接在姓名前的身分或職稱"),
+        new("出現次數", "newsDigest.people[].mentions", "出現次數"),
+    ], hits.SelectMany(h => (h.NewsDigest?.People ?? []).Select(p => (IReadOnlyList<object?>)
+        [h.HitNumber, p.Name, Code(p.Match), Joined(p.Roles), p.Mentions])));
+
+    private static Table NewsEvents(IReadOnlyList<HitExplanation> hits) => new("新聞事件",
+    [
+        new("命中編號", "hitNumber", "hit 編號"),
+        new("事件", "newsDigest.events[].type", "事件類型"),
+        new("確定程度", "newsDigest.events[].certainty", "STATED、NEGATED 或 HEDGED"),
+        new("當事人", "newsDigest.events[].actor", "事件當事人；空白為報導未指明", Identifying: true),
+        new("與名單人物", "newsDigest.events[].actorMatch", "當事人與名單人物的關係"),
+        new("日期", "newsDigest.events[].date", "日期原文"),
+        new("機關", "newsDigest.events[].agency", "地檢署、法院、調查局等"),
+        new("罪名", "newsDigest.events[].offences", "同句提到的罪名或違法類型"),
+        new("金額", "newsDigest.events[].amount", "金額原文"),
+        new("刑度", "newsDigest.events[].penalty", "刑度原文"),
+        new("原文", "newsDigest.events[].quote", "事件所在句子的原文", Identifying: true),
+    ], hits.SelectMany(h => (h.NewsDigest?.Events ?? []).Select(e => (IReadOnlyList<object?>)
+        [h.HitNumber, Code(e.Type), Code(e.Certainty), e.Actor, e.ActorMatch is { } m ? Code(m) : null, e.Date, e.Agency, Joined(e.Offences), e.Amount, e.Penalty, e.Quote])));
 
     private static Table Comparison(IReadOnlyList<HitExplanation> hits) => new("比對",
     [

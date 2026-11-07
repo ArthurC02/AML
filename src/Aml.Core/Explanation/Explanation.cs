@@ -57,7 +57,8 @@ public sealed record HitExplanation(
     [property: Description("身分判斷的理由碼")] IReadOnlyList<string> ReasonCodes,
     [property: Description("資料品質 finding，見 /api/codes")] IReadOnlyList<string> DataQualityFindings,
     [property: Description("來源；Ref 在摘要中以 [S#] 引用")] IReadOnlyList<ExplanationSource> Sources,
-    [property: Description("五段式摘要")] ExplanationSummary Summary);
+    [property: Description("五段式摘要")] ExplanationSummary Summary,
+    [property: Description("附加新聞的人物、事件與固定句型摘要，依規則讀出；不影響任何判斷。沒有附加新聞時為 null")] NewsDigest? NewsDigest = null);
 
 public sealed record ExplanationSource(
     [property: Description("摘要中的引用編號（S1、S2…）")] string Ref,

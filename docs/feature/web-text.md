@@ -56,7 +56,7 @@ Only text that may be used to train and evaluate models is gathered ([ADR-0029](
 | Source | Why it may be used |
 |---|---|
 | Government press releases (法務部, 地方檢察署, 金管會) | 著作權法 第 9 條: a 公文, including a 新聞稿 drafted by a public servant in office, is not protected by copyright |
-| Court judgments (司法院資料開放平臺) | 著作權法 第 9 條; the platform's API requires an account and asks that a judgment removed from it be deleted |
+| Court judgments (司法院資料開放平臺; 裁判書查詢 judgment.judicial.gov.tw) | 著作權法 第 9 條. The platform's API and monthly archives require an account, and the platform asks that a judgment removed from it be deleted. The public search site needs none: its result lists and judgment pages are plain GET pages, fetched slowly (3 s apart) |
 | News the bank has licensed | only when the contract allows text and data mining and model training |
 
 Ordinary press articles are not gathered. Only a report of pure fact (著作權法 第 9 條 第 1 項 第 4 款) is outside copyright, and most articles are more than that.

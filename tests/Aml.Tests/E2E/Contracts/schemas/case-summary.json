@@ -1,5 +1,5 @@
 {
-  "$id": "aml:CaseSummary:v6",
+  "$id": "aml:CaseSummary:v7",
   "type": [
     "object",
     "null"

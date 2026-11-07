@@ -93,8 +93,8 @@ The hit views read the effective revision unless `?revision=` names another; any
 | 比對 | one per comparison row: field, status and difference |
 | 證據 | one per support and conflict item: group, direction, status, strength and detail |
 | 來源 | one per source: ref, id, name and URL (full view only), dates, use and whether it is attached to the Profile |
-| 新聞人物 | one per person the [news digest](watchlist-and-adverse-information.md#news-digest) names: name (full view only), match to the Profile person, roles and mentions |
-| 新聞事件 | one per news event: type, certainty, actor (full view only), actor match, date, agency, offences, amount, penalty and the quoted sentence (full view only) |
+| 新聞人物 | one per person the [news digest](watchlist-and-adverse-information.md#news-digest) names: name (full view only), match to the Profile person, roles, party and mentions |
+| 新聞事件 | one per news event: type, certainty, source, actor (full view only), actor match, date as written and resolved, agency, offences and their risk categories, amount, penalty, requested penalty, finality and the quoted sentence (full view only) |
 | 變更 | one per change from the previous effective revision; none for a first analysis, which 說明 says |
 | 代碼 | every catalogued code the other sheets show, with its kind, Chinese name and meaning |
 

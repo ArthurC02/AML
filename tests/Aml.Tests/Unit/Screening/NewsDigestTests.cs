@@ -1,4 +1,5 @@
 using Aml.Core.Explanation;
+using Aml.Core.Shared;
 using Aml.Core.Subjects;
 
 namespace Aml.Tests.Unit.Screening;
@@ -29,7 +30,7 @@ public class NewsDigestTests
         [
             "某報報導「測試新聞」[S2]。",
             "報導人物：王大明（名單人物）。",
-            "王大明：臺北地檢署偵辦或調查（詐欺、洗錢；新台幣300萬元）；2026年5月6日 臺北地檢署起訴（詐欺、洗錢；新台幣300萬元）[S2]。",
+            "王大明：臺北地檢署偵辦或調查（詐欺、洗錢；新台幣300萬元）；2026-05-06 臺北地檢署起訴（詐欺、洗錢；新台幣300萬元）[S2]。",
         ], d.Summary);
     }
 
@@ -63,9 +64,26 @@ public class NewsDigestTests
     [Theory]
     [InlineData("王大明尚未被起訴。", NewsEventType.Indictment, NewsCertainty.Negated)]
     [InlineData("王大明恐遭起訴。", NewsEventType.Indictment, NewsCertainty.Hedged)]
-    [InlineData("檢方向法院聲請羈押王大明。", NewsEventType.Detention, NewsCertainty.Hedged)]
+    [InlineData("檢方向法院聲請羈押王大明。", NewsEventType.Detention, NewsCertainty.Requested)]
     [InlineData("檢方聲請羈押王大明獲准。", NewsEventType.Detention, NewsCertainty.Stated)]
+    [InlineData("檢方聲請羈押王大明遭駁回。", NewsEventType.Detention, NewsCertainty.Negated)]
     [InlineData("王大明遭拘提到案。", NewsEventType.Arrest, NewsCertainty.Stated)]
+    [InlineData("王大明是否遭起訴仍未定。", NewsEventType.Indictment, NewsCertainty.Hedged)]
+    [InlineData("檢方不排除王大明遭羈押。", NewsEventType.Detention, NewsCertainty.Hedged)]
+    [InlineData("一旦罪證確鑿，王大明即遭羈押。", NewsEventType.Detention, NewsCertainty.Hedged)]
+    [InlineData("若無意外，但王大明已遭羈押。", NewsEventType.Detention, NewsCertainty.Stated)]
+    [InlineData("檢方對王大明提起公訴。", NewsEventType.Indictment, NewsCertainty.Stated)]
+    [InlineData("王大明遭金管會裁罰。", NewsEventType.RegulatoryPenalty, NewsCertainty.Stated)]
+    [InlineData("王大明遭判處有期徒刑1年，得易科罰金。", NewsEventType.Conviction, NewsCertainty.Stated)]
+    [InlineData("法院裁定王大明停止羈押。", NewsEventType.Bail, NewsCertainty.Stated)]
+    [InlineData("王大明遭查扣名下帳戶。", NewsEventType.AssetRestraint, NewsCertainty.Stated)]
+    [InlineData("王大明提起上訴。", NewsEventType.Appeal, NewsCertainty.Stated)]
+    [InlineData("王大明從泰國遭遣返。", NewsEventType.Extradition, NewsCertainty.Stated)]
+    [InlineData("假如王大明遭起訴，將面臨重刑。", NewsEventType.Indictment, NewsCertainty.Hedged)]
+    [InlineData("法院裁定王大明不予羈押。", NewsEventType.Detention, NewsCertainty.Negated)]
+    [InlineData("法院駁回檢方羈押王大明的聲請。", NewsEventType.Detention, NewsCertainty.Negated)]
+    [InlineData("王大明全案不得上訴。", NewsEventType.Appeal, NewsCertainty.Negated)]
+    [InlineData("王大明的帳戶遭凍結。", NewsEventType.AssetRestraint, NewsCertainty.Stated)]
     public void Negation_hedging_and_requests_are_kept_apart(string news, NewsEventType type, NewsCertainty certainty)
     {
         var e = Assert.Single(Digest(news).Events, e => e.Type == type);
@@ -137,6 +155,138 @@ public class NewsDigestTests
     {
         var d = Digest(new string('甲', 199) + "𠀀" + "遭起訴。");
         Assert.Equal(new string('甲', 199) + "…", Assert.Single(d.Events).Quote);
+    }
+
+    [Theory]
+    [InlineData("被告歐陽志明涉嫌詐欺遭起訴。", "歐陽志明")]
+    [InlineData("被告約翰·史密斯遭起訴。", "約翰·史密斯")]
+    [InlineData("小美（化名）遭起訴。", "小美")]
+    [InlineData("少年A遭起訴。", "少年A")]
+    public void Compound_dotted_pseudonymous_and_lettered_names_are_people(string news, string name)
+    {
+        var d = Digest(news);
+        Assert.Contains(name, d.People.Select(p => p.Name));
+        Assert.Equal(name, Assert.Single(d.Events, e => e.Type == NewsEventType.Indictment).Actor);
+    }
+
+    [Theory]
+    [InlineData("王品集團遭裁罰。")]
+    [InlineData("林口分局被搜索。")]
+    [InlineData("金融帳戶遭凍結。")]
+    [InlineData("田產遭查封。")]
+    public void An_organisation_is_not_a_person(string news)
+    {
+        var d = Digest(news);
+        Assert.Empty(d.People);
+        Assert.Null(Assert.Single(d.Events).Actor);
+    }
+
+    [Fact]
+    public void An_anonymised_form_is_the_one_full_name_of_its_surname()
+    {
+        var d = Digest("王大明涉嫌詐欺。王男昨遭羈押。");
+        var person = Assert.Single(d.People);
+        Assert.Equal(("王大明", NewsMatch.ProfileName, 2), (person.Name, person.Match, person.Mentions));
+        Assert.Equal(("王大明", NewsMatch.ProfileName), (d.Events[0].Actor, d.Events[0].ActorMatch));
+    }
+
+    [Fact]
+    public void An_anonymised_form_with_two_full_names_of_its_surname_stays_apart()
+    {
+        var d = Digest("被告王大明與被告王小華涉詐欺，王男遭起訴。");
+        Assert.Equal(["王大明", "王男", "王小華"], d.People.Select(p => p.Name));
+        Assert.Equal(NewsMatch.ProfileSurname, d.People[1].Match);
+    }
+
+    [Fact]
+    public void A_role_word_says_the_party()
+    {
+        var d = Digest("被告王明涉嫌背信，檢察官陳志強起訴王明，證人林大同出庭，告訴人李小華到庭。");
+        Assert.Equal([("王明", NewsParty.Suspect), ("陳志強", NewsParty.Official), ("林大同", NewsParty.Witness), ("李小華", NewsParty.Victim)],
+            d.People.Select(p => (p.Name, p.Party!.Value)));
+    }
+
+    [Theory]
+    [InlineData("據了解，王大明已遭約談。", NewsSource.UnnamedSource)]
+    [InlineData("判決指出，王大明判處有期徒刑2年。", NewsSource.Court)]
+    [InlineData("檢方調查，王大明遭約談。", NewsSource.Investigators)]
+    [InlineData("王大明否認遭約談。", NewsSource.Defence)]
+    [InlineData("據了解，案情複雜，但王大明已遭約談。", NewsSource.Media)]
+    [InlineData("王大明遭約談。", NewsSource.Media)]
+    [InlineData("王大明否認犯行，法院仍依詐欺罪判處有期徒刑2年。", NewsSource.Media)]
+    public void Whose_claim_an_event_is_comes_from_the_cue_before_it(string news, NewsSource source) =>
+        Assert.Equal(source, Digest(news).Events[^1].Source);
+
+    [Theory]
+    [InlineData("王大明昨（6）日遭起訴。", "2026-05-06")]
+    [InlineData("王大明昨天遭起訴。", "2026-05-06")]
+    [InlineData("王大明於3日遭起訴。", "2026-05-03")]
+    [InlineData("王大明於12日遭起訴。", "2026-04-12")]
+    [InlineData("王大明於12月3日遭起訴。", "2025-12-03")]
+    [InlineData("王大明於113年5月6日遭起訴。", "2024-05-06")]
+    [InlineData("王大明去年遭起訴。", "2025")]
+    [InlineData("王大明日前遭起訴。", null)]
+    [InlineData("王大明判處有期徒刑3年6月。", null)]
+    [InlineData("王大明判處有期徒刑10年6月。", null)]
+    [InlineData("王大明遭羈押2月。", null)]
+    public void A_date_is_resolved_against_the_publication_date(string news, string? date)
+    {
+        var d = NewsDigests.Build(new NewsItem("1", "d1", "測試新聞", "某報", new PartialDate(2026, 5, 7), news), ["王大明"], "S2")!;
+        Assert.Equal(date, Assert.Single(d.Events).DateValue?.ToString());
+    }
+
+    [Theory]
+    [InlineData(2025, 3, 1, "王大明昨（28）日遭起訴。", "2025-02-28")]
+    [InlineData(2025, 3, 1, "王大明於31日遭起訴。", "2025-01-31")]
+    [InlineData(2025, 3, 2, "王大明於2月29日遭起訴。", "2024-02-29")]
+    [InlineData(2026, 1, 1, "王大明昨天遭起訴。", "2025-12-31")]
+    public void A_date_at_a_month_or_year_edge_is_the_latest_that_exists(int year, int month, int day, string news, string date)
+    {
+        var d = NewsDigests.Build(new NewsItem("1", "d1", "測試新聞", "某報", new PartialDate(year, month, day), news), ["王大明"], "S2")!;
+        Assert.Equal(date, Assert.Single(d.Events).DateValue?.ToString());
+    }
+
+    [Fact]
+    public void Dated_events_of_one_person_are_told_in_date_order()
+    {
+        var d = NewsDigests.Build(new NewsItem("1", "d1", "測試新聞", "某報", new PartialDate(2026, 5, 7),
+            "王大明於5月6日遭起訴。王大明於3月2日遭羈押。"), ["王大明"], "S2")!;
+        Assert.Equal("王大明：2026-03-02 羈押；2026-05-06 起訴[S2]。", d.Summary[^1]);
+    }
+
+    [Fact]
+    public void Offences_carry_risk_categories_and_slots_their_request_and_finality()
+    {
+        var d = Digest("王大明涉嫌內線交易及洗錢遭起訴，檢方具體求刑8年。");
+        var indictment = Assert.Single(d.Events);
+        Assert.Equal(["MARKET_ABUSE", "MONEY_LAUNDERING"], indictment.OffenceCategories);
+        Assert.Equal("8年", indictment.RequestedPenalty);
+        Assert.All(indictment.OffenceCategories, c => Assert.NotNull(Aml.Core.Codes.CodeCatalog.Find(c)));
+
+        var final = Assert.Single(Digest("王大明詐欺案判處有期徒刑3年，緩刑5年，全案定讞。").Events, e => e.Type == NewsEventType.Conviction);
+        Assert.True(final.Final);
+        Assert.Equal("有期徒刑3年，緩刑5年", final.Penalty);
+        Assert.False(Assert.Single(Digest("王大明判處有期徒刑3年，可上訴。").Events, e => e.Type == NewsEventType.Conviction).Final);
+        Assert.False(Assert.Single(Digest("王大明案尚未定讞。").Events).Final);
+        Assert.Equal("有期徒刑8年", Assert.Single(Digest("檢方求處有期徒刑10年，法院判處王大明有期徒刑8年。").Events, e => e.Type == NewsEventType.Conviction).Penalty);
+    }
+
+    [Fact]
+    public void Every_offence_category_is_in_the_catalog()
+    {
+        string[] words = ["違反證券交易法", "洗錢", "詐欺", "違反銀行法", "逃漏稅", "偽造文書", "偽鈔", "背信", "貪污", "收賄", "販毒", "走私", "人口販運",
+            "組織犯罪", "資恐", "槍械", "殺人", "竊盜", "恐嚇", "妨害性自主", "盜採", "違反公司法"];
+        var d = Digest(string.Concat(words.Select(w => $"王大明涉嫌{w}遭起訴。")));
+        var categories = d.Events.SelectMany(e => e.OffenceCategories).ToList();
+        Assert.Equal(words.Length, categories.Count);
+        Assert.All(categories, c => Assert.NotNull(Aml.Core.Codes.CodeCatalog.Find(c)));
+    }
+
+    [Fact]
+    public void A_request_says_so_in_the_summary()
+    {
+        var d = Digest("檢方向法院聲請羈押王大明。");
+        Assert.Equal("王大明：聲請羈押（尚未裁定）[S2]。", d.Summary[^1]);
     }
 
     [Theory]

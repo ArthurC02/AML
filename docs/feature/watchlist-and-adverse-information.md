@@ -105,10 +105,18 @@ WAR_CRIMES
 CYBERCRIME
 ENVIRONMENTAL_CRIME
 CORPORATE_CRIME
+MARKET_ABUSE
+SMUGGLING
+ARMS_TRAFFICKING
+VIOLENT_CRIME
+THEFT
+EXTORTION
+COUNTERFEITING
+SEXUAL_OFFENCE
 OTHER
 ```
 
-A source Profile can carry multiple categories.
+A source Profile can carry multiple categories. MARKET_ABUSE through SEXUAL_OFFENCE are given only to offences read by the [news digest](#news-digest); they follow the FATF designated categories of offences and the predicate offences of 洗錢防制法 第 3 條, and no source condition or risk score reads them.
 
 ## Legal/procedural stage
 
@@ -152,21 +160,26 @@ Each hit with attached news carries a `newsDigest` in its explanation ([ADR-0028
   - Which mentions count:
     - the Profile's own names (of two or more characters)
     - a name right after a role word (被告王大明, 董事長李四, 前立委林大同)
-    - a 2 or 3 character name of a common Taiwanese surname that opens a clause before 遭, 遭到, 被, 獲, 涉嫌, 涉及, 坦承, 供稱 or 否認
-    - the anonymised forms 王姓男子, 王男, 王嫌, 王某
-  - A name that runs on into the next word (被告王明涉嫌) is cut to two characters.
-  - Words that only start like a name are not names: a second character that makes a common word (許多, 高層, 林務) or a third that names an organisation (局, 會, 司, 署, 院 …).
+    - a 2 or 3 character name of a common Taiwanese surname, or a 3 or 4 character name of a compound one (歐陽, 張簡, 范姜 …), that opens a clause before 遭, 遭到, 被, 獲, 涉嫌, 涉及, 坦承, 供稱 or 否認
+    - a dotted foreign or indigenous name (約翰·史密斯, 瓦歷斯·諾幹), its first part starting at a transliteration character
+    - a name marked 化名 (小美（化名）) and a lettered party (少年A, 證人甲)
+    - the anonymised forms 王姓男子, 王姓少女, 王姓業者, 王男, 王嫌, 王董, 王某, also with a compound surname (歐陽姓男子)
+  - A name that runs on into the next word (被告王明涉嫌) is cut a character earlier.
+  - Words that only start like a name are not names: a second character that makes a common word (許多, 高層, 林務), a third that names an organisation (局, 會, 司, 署, 院 …), or an organisation's word starting inside or right after it (王品集團, 林口分局, 國泰銀行, 媽祖廟).
   - Every other occurrence of a found name is a mention, except a 2 character name running into a longer one (王明 in 王明華).
-  - `match` is `PROFILE_NAME` for the Profile's own names only: a name that only starts like one (王明 for 王明華) is `OTHER_PERSON`.
-  - `match` is `PROFILE_SURNAME` for an anonymised form sharing the person's surname, which is left to the reviewer. Anyone else is `OTHER_PERSON`.
-  - The role is the word written just before the name.
+  - An anonymised form is the person named in full with that surname when the news names exactly one (王大明 … 王男); with two or more (王大明 and 王小華) it stays a person of its own.
+  - `match` is `PROFILE_NAME` for the Profile's own names, and for an anonymised form linked so to one; a name that only starts like one (王明 for 王明華) is `OTHER_PERSON`.
+  - `match` is `PROFILE_SURNAME` for an unlinked anonymised form sharing the person's surname, which is left to the reviewer. Anyone else is `OTHER_PERSON`.
+  - The role is the word written just before the name, and `party` follows from it: `SUSPECT` (被告, 嫌犯, 嫌疑人), `VICTIM` (被害人, 告訴人), `WITNESS` (證人) or `OFFICIAL` (檢察官, 法官, 律師, 員警). Without such a word the party is null: nobody is a suspect by default.
 - **Events.**
-  - The event types are investigation, search, questioning, arrest, detention, bail, indictment, non-indictment, conviction, acquittal, fine and wanted notice (`/api/codes`, kind `NEWS_EVENT`).
-  - They are read clause by clause, outside quoted speech, with the legal stage's own keywords for indictment, dismissal, conviction and acquittal.
-  - `certainty` is:
-    - `NEGATED` after a negation (尚未被起訴)
-    - `HEDGED` after a modal, plan or condition (恐遭起訴, 擬起訴), or for a request to the court (聲請羈押, 聲押), unless it was granted (獲准, 裁准)
-    - `STATED` otherwise
+  - The event types (`/api/codes`, kind `NEWS_EVENT`) follow the ACE / Rich ERE Justice events, narrowed to Taiwanese procedure: investigation, search, questioning, arrest, referral (移送, 函送), detention, bail or release (交保, 停止羈押, 釋放), asset restraint (扣押, 凍結, 警示帳戶), indictment (起訴, 提起公訴, 聲請簡易判決處刑), non-indictment, conviction, acquittal, appeal or retrial (上訴, 抗告, 更一審), confiscation (沒收, 追徵), the court's fine (罰金, not 易科罰金), a regulator's penalty (罰鍰, 裁罰, 停止買賣), wanted notice, and extradition or repatriation (引渡, 遣返).
+  - They are read clause by clause, outside quoted speech, with the legal stage's own keywords for indictment, dismissal, conviction and acquittal. 起訴書 is a document, not an indictment.
+  - `certainty` (after NegEx / ConText and FactBank) is:
+    - `NEGATED` after a negation or denial (尚未被起訴, 不予羈押, 不得上訴, 免予), or for a request the court refused (駁回, 未獲准, 無保請回)
+    - `HEDGED` after a modal or plan (恐遭起訴, 擬起訴), a question or open possibility (是否遭起訴, 未必, 不排除), or under a condition: a clause opening with 若, 如果, 倘若, 假如 or 一旦 hedges itself and the clauses after it in its sentence, until one opens with 但, 然而, 不過, 卻, 惟 or 只是
+    - `REQUESTED` for a request to the court not yet decided (聲請羈押, 羈押王大明的聲請, 聲押); granted (獲准, 裁准, 准予) it is `STATED`. These words are looked for within 200 characters of the keyword in its clause.
+    - `STATED` otherwise. 涉嫌 hedges nothing: it is how every report names a charge.
+  - `source` is whose claim the event is: the nearest attribution cue before the keyword in its sentence, within 200 characters, unless a contrast (，但 …) follows the cue; a defence cue counts only in its own clause (王大明否認犯行，法院仍判處 … is the report's). `INVESTIGATORS` (檢方指控, 起訴書指出, 警方調查 …), `COURT` (判決指出, 法院認定, 合議庭), `DEFENCE` (否認, 辯稱, 律師表示), `UNNAMED_SOURCE` (據了解, 據悉, 消息指出), else `MEDIA`.
 - **Who the event is about.**
   - The actor is, in order of preference:
     1. the name nearest before the keyword in its clause
@@ -176,21 +189,32 @@ Each hit with attached news carries a `newsDigest` in its explanation ([ADR-0028
   - A person introduced as a prosecutor, judge, lawyer, police officer, witness or victim is the actor only when nobody else is.
   - Otherwise the actor is null, and the summary says 未指明對象.
 - **Slots.**
-  - The date comes from the event's own clause, as written. Relative dates are not resolved.
-  - The agency, amount and penalty come from the clause, else from the sentence; the offences from the sentence.
-  - The penalty is read for convictions only.
+  - The date comes from the event's own clause, as written, and `dateValue` resolves it against the publication date (TimeML's document time, as HeidelTime does for news):
+    - 2026年5月6日 as written; 民國 and two or three digit years add 1911 (113年 → 2024)
+    - 5月6日, 6日 and 昨（6）日 take the latest such day that exists, not after publication (6日 published on 5 May is 6 April; 31日 published on 1 March is 31 January; 2月29日 is the last leap year's)
+    - a term is not a date: 有期徒刑3年6月, 拘役30日, 羈押2月 and 求處10年6月 give none
+    - 昨天, 今天, 前天, 去年, 今年, 上月 and 本月 count from the publication date
+    - 日前 and 上週 name no day and stay null, as does every relative date when the publication date is unknown
+  - The agency, amount and requested penalty come from the clause, else from the sentence. The offences, the penalty and finality come from the sentence.
+  - The penalty (徒刑, 拘役, 緩刑, 併科罰金, 易科罰金, 褫奪公權) is read for convictions only, the requested penalty (求刑, 求處) for indictments only; a sentencing request is never a sentence, so 求處有期徒刑10年 is left out of the penalty.
+  - `final` is set for a stated judgment or non-indictment whose sentence says 判決確定, 定讞, 全案確定 or 確定在案, and not 可上訴, 未定讞 or 未確定.
+  - The offences found are mapped to risk categories (`offenceCategories`), after the FATF designated categories and 洗錢防制法 第 3 條: 內線交易 → MARKET_ABUSE, 地下匯兌 → FINANCIAL_CRIME, 背信 → BREACH_OF_TRUST, and so on; 公共危險, 賭博 and 傷害 have none.
   - Each event keeps its sentence as the quote, at most 200 characters.
 - **Summary.** The lines are:
   1. the report (publisher, date, title)
   2. the people with their roles
-  3. one line per person listing their events (a person past the people cap included), each written as date, agency, event, then offences, amount and penalty; non-stated events are marked
+  3. one line per person listing their events, one per event type and certainty (a person past the people cap included), in date order when every one is dated, else as reported; each written as date (resolved when it can be), agency, event, then offences, amount, penalty, requested penalty, finality and a source other than the report itself; non-stated events are marked, and a request reads 聲請…（尚未裁定）
   4. a last line for events with no person, or 「報導中未讀到偵查、起訴、判決等事件」 when there are none
-  The report line and every event line cite the news source `[S#]`.
+  The report line and every event line cite the news source `[S#]`. Every phrase is a slot of a cited sentence; nothing is reworded or added.
 - **Limits** (known, kept on the safe side of reading less):
-  - a rarer surname, a foreign name, or a name not near a role word or clause opening is not found
+  - a rarer surname, or a name not near a role word, clause opening, dot or 化名, is not found; a dotted name's first part is cut at the first transliteration character of a seed set
+  - a name ending in a character that usually follows a name (林志和, 陳建一) is cut a character short
+  - asset words opening a clause (金融帳戶, 田產) are kept from being read as names by a fixed list
+  - an anonymised form is linked to a full name only when the news names one person in full with that surname
   - a pronoun points at the last person named
+  - two people sentenced in one sentence share its penalties
   - several cases in one article are not told apart
-- **Caps.** At most 100 Profile names are searched, 500 occurrences of each name and 2,000 mentions kept, 1,000 event keywords looked at, 50 people and 100 events listed. The reading is linear in the text: slots are read once per clause and sentence, and patterns holding an open run (dates, amounts, penalties) are non-backtracking.
+- **Caps.** At most 100 Profile names are searched, 500 occurrences of each name and 2,000 mentions kept, 1,000 event keywords looked at, 50 people and 100 events listed; slots are read from the first 2,000 characters of a sentence or clause. The reading is linear in the text: slots are read once per clause and sentence, and patterns holding an open run (dates, amounts, penalties) are non-backtracking.
 
 ## Policy responsibilities
 

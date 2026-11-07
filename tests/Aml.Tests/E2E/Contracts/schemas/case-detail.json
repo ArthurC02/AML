@@ -1,5 +1,5 @@
 {
-  "$id": "aml:CaseDetail:v6",
+  "$id": "aml:CaseDetail:v7",
   "type": [
     "object",
     "null"
@@ -1627,7 +1627,7 @@
                               "x-sensitivity": "PERSONAL"
                             },
                             "match": {
-                              "description": "PROFILE_NAME：與名單姓名相同；PROFILE_SURNAME：與名單人物同姓的匿稱；OTHER_PERSON：其他人",
+                              "description": "PROFILE_NAME：名單人物（姓名相同，或全文唯一同姓全名的匿稱）；PROFILE_SURNAME：與名單人物同姓的匿稱；OTHER_PERSON：其他人",
                               "enum": [
                                 "PROFILE_NAME",
                                 "PROFILE_SURNAME",
@@ -1643,6 +1643,16 @@
                                   "null"
                                 ]
                               }
+                            },
+                            "party": {
+                              "description": "依身分或職稱歸類：SUSPECT、VICTIM、WITNESS、OFFICIAL；看不出時為 null",
+                              "enum": [
+                                "SUSPECT",
+                                "VICTIM",
+                                "WITNESS",
+                                "OFFICIAL",
+                                null
+                              ]
                             },
                             "mentions": {
                               "description": "出現次數",
@@ -1677,22 +1687,39 @@
                                 "SEARCH",
                                 "QUESTIONING",
                                 "ARREST",
+                                "REFERRAL",
                                 "DETENTION",
                                 "BAIL",
+                                "ASSET_RESTRAINT",
                                 "INDICTMENT",
                                 "NON_INDICTMENT",
                                 "CONVICTION",
                                 "ACQUITTAL",
+                                "APPEAL",
+                                "CONFISCATION",
                                 "FINE",
-                                "WANTED_NOTICE"
+                                "REGULATORY_PENALTY",
+                                "WANTED_NOTICE",
+                                "EXTRADITION"
                               ]
                             },
                             "certainty": {
-                              "description": "STATED：報導陳述；NEGATED：報導否定（尚未、沒有）；HEDGED：推測、請求或條件（恐、擬、聲請）",
+                              "description": "STATED：報導陳述；NEGATED：否定或遭駁回；HEDGED：推測、條件或疑問；REQUESTED：已聲請、尚未裁定",
                               "enum": [
                                 "STATED",
                                 "NEGATED",
-                                "HEDGED"
+                                "HEDGED",
+                                "REQUESTED"
+                              ]
+                            },
+                            "source": {
+                              "description": "說法來源：MEDIA（報導本身）、INVESTIGATORS（檢警調）、COURT（法院）、DEFENCE（被告方）、UNNAMED_SOURCE（不具名消息）",
+                              "enum": [
+                                "MEDIA",
+                                "INVESTIGATORS",
+                                "COURT",
+                                "DEFENCE",
+                                "UNNAMED_SOURCE"
                               ]
                             },
                             "actor": {
@@ -1713,14 +1740,62 @@
                               ]
                             },
                             "date": {
-                              "description": "日期原文（相對日期不換算）",
+                              "description": "日期原文",
                               "type": [
                                 "string",
                                 "null"
                               ]
                             },
+                            "dateValue": {
+                              "description": "以發布日期換算的日期（民國年、相對日期）；無法換算時為 null",
+                              "type": [
+                                "object",
+                                "null"
+                              ],
+                              "properties": {
+                                "year": {
+                                  "description": "年",
+                                  "type": [
+                                    "string",
+                                    "integer"
+                                  ],
+                                  "pattern": "^-?(?:0|[1-9]\\d*)$"
+                                },
+                                "month": {
+                                  "description": "月；只知道年時為 null",
+                                  "type": [
+                                    "string",
+                                    "integer",
+                                    "null"
+                                  ],
+                                  "pattern": "^-?(?:0|[1-9]\\d*)$"
+                                },
+                                "day": {
+                                  "description": "日；只知道年或年月時為 null",
+                                  "type": [
+                                    "string",
+                                    "integer",
+                                    "null"
+                                  ],
+                                  "pattern": "^-?(?:0|[1-9]\\d*)$"
+                                },
+                                "precision": {
+                                  "description": "精度：YEAR、MONTH 或 DAY",
+                                  "enum": [
+                                    "YEAR",
+                                    "MONTH",
+                                    "DAY"
+                                  ]
+                                },
+                                "latestDay": {
+                                  "description": "此日期可能代表的最晚一天",
+                                  "type": "string",
+                                  "format": "date"
+                                }
+                              }
+                            },
                             "agency": {
-                              "description": "機關：地檢署、法院、調查局等",
+                              "description": "機關：地檢署、法院、調查局、金管會等",
                               "type": [
                                 "string",
                                 "null"
@@ -1728,6 +1803,16 @@
                             },
                             "offences": {
                               "description": "同句提到的罪名或違法類型",
+                              "type": "array",
+                              "items": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              }
+                            },
+                            "offenceCategories": {
+                              "description": "罪名對應的風險類別（RISK_CATEGORY，依 FATF 指定犯罪類別與洗錢防制法前置犯罪）",
                               "type": "array",
                               "items": {
                                 "type": [
@@ -1744,11 +1829,22 @@
                               ]
                             },
                             "penalty": {
-                              "description": "刑度原文，只用於判決有罪",
+                              "description": "刑度原文（徒刑、緩刑、併科罰金、易科罰金、褫奪公權），只用於判決有罪",
                               "type": [
                                 "string",
                                 "null"
                               ]
+                            },
+                            "requestedPenalty": {
+                              "description": "檢方求刑原文，只用於起訴",
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "final": {
+                              "description": "報導寫明判決確定或定讞",
+                              "type": "boolean"
                             },
                             "quote": {
                               "description": "事件所在句子的原文，最多 200 字",
@@ -1759,7 +1855,10 @@
                           "required": [
                             "type",
                             "certainty",
+                            "source",
                             "offences",
+                            "offenceCategories",
+                            "final",
                             "quote"
                           ]
                         }

@@ -12,7 +12,7 @@ namespace Aml.Core.Cases;
 public static class CaseJson
 {
     // Bumped on every schema change; the PoC database is then rebuilt, since old formats are never read.
-    public const int SchemaVersion = 6;
+    public const int SchemaVersion = 7;
 
     public static readonly JsonSerializerOptions Options = Create();
 

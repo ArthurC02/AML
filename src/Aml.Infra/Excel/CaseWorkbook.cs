@@ -92,25 +92,32 @@ public static class CaseWorkbook
         new("姓名", "newsDigest.people[].name", "報導中的姓名或匿稱", Identifying: true),
         new("與名單人物", "newsDigest.people[].match", "PROFILE_NAME、PROFILE_SURNAME 或 OTHER_PERSON"),
         new("身分或職稱", "newsDigest.people[].roles", "報導中緊接在姓名前的身分或職稱"),
+        new("角色", "newsDigest.people[].party", "SUSPECT、VICTIM、WITNESS 或 OFFICIAL；空白為看不出"),
         new("出現次數", "newsDigest.people[].mentions", "出現次數"),
     ], hits.SelectMany(h => (h.NewsDigest?.People ?? []).Select(p => (IReadOnlyList<object?>)
-        [h.HitNumber, p.Name, Code(p.Match), Joined(p.Roles), p.Mentions])));
+        [h.HitNumber, p.Name, Code(p.Match), Joined(p.Roles), p.Party is { } party ? Code(party) : null, p.Mentions])));
 
     private static Table NewsEvents(IReadOnlyList<HitExplanation> hits) => new("新聞事件",
     [
         new("命中編號", "hitNumber", "hit 編號"),
         new("事件", "newsDigest.events[].type", "事件類型"),
-        new("確定程度", "newsDigest.events[].certainty", "STATED、NEGATED 或 HEDGED"),
+        new("確定程度", "newsDigest.events[].certainty", "STATED、NEGATED、HEDGED 或 REQUESTED"),
+        new("說法來源", "newsDigest.events[].source", "MEDIA、INVESTIGATORS、COURT、DEFENCE 或 UNNAMED_SOURCE"),
         new("當事人", "newsDigest.events[].actor", "事件當事人；空白為報導未指明", Identifying: true),
         new("與名單人物", "newsDigest.events[].actorMatch", "當事人與名單人物的關係"),
         new("日期", "newsDigest.events[].date", "日期原文"),
-        new("機關", "newsDigest.events[].agency", "地檢署、法院、調查局等"),
+        new("換算日期", "newsDigest.events[].dateValue", "以發布日期換算的日期"),
+        new("機關", "newsDigest.events[].agency", "地檢署、法院、調查局、金管會等"),
         new("罪名", "newsDigest.events[].offences", "同句提到的罪名或違法類型"),
+        new("風險類別", "newsDigest.events[].offenceCategories", "罪名對應的 RISK_CATEGORY"),
         new("金額", "newsDigest.events[].amount", "金額原文"),
         new("刑度", "newsDigest.events[].penalty", "刑度原文"),
+        new("求刑", "newsDigest.events[].requestedPenalty", "檢方求刑原文"),
+        new("判決確定", "newsDigest.events[].final", "報導寫明判決確定或定讞"),
         new("原文", "newsDigest.events[].quote", "事件所在句子的原文", Identifying: true),
     ], hits.SelectMany(h => (h.NewsDigest?.Events ?? []).Select(e => (IReadOnlyList<object?>)
-        [h.HitNumber, Code(e.Type), Code(e.Certainty), e.Actor, e.ActorMatch is { } m ? Code(m) : null, e.Date, e.Agency, Joined(e.Offences), e.Amount, e.Penalty, e.Quote])));
+        [h.HitNumber, Code(e.Type), Code(e.Certainty), Code(e.Source), e.Actor, e.ActorMatch is { } m ? Code(m) : null, e.Date, e.DateValue?.ToString(), e.Agency,
+         Joined(e.Offences), Joined(e.OffenceCategories), e.Amount, e.Penalty, e.RequestedPenalty, YesNo(e.Final), e.Quote])));
 
     private static Table Comparison(IReadOnlyList<HitExplanation> hits) => new("比對",
     [

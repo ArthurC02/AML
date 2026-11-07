@@ -1,6 +1,6 @@
 # ADR-0028: A rule-based news digest for the reviewer
 
-- Status: Accepted
+- Status: Accepted; extended by rules from event-extraction research (ACE / Rich ERE Justice events, NegEx / ConText, FactBank sources, TimeML dates, FATF offence categories) with more event types, a requested certainty, source, party, resolved dates and offence categories; stored format version 7 ([news digest](../feature/watchlist-and-adverse-information.md#news-digest))
 - Date: 2026-11-07
 
 ## Context

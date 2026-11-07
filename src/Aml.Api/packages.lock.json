@@ -120,6 +120,7 @@
           "AngleSharp": "[1.9.0, )",
           "Dapper": "[2.1.89, )",
           "Microsoft.Data.Sqlite": "[10.0.14, )",
+          "PdfPig": "[0.1.16, )",
           "dbup-sqlite": "[6.0.4, )"
         }
       },
@@ -161,6 +162,12 @@
           "SQLitePCLRaw.bundle_e_sqlite3": "2.1.13",
           "SQLitePCLRaw.core": "2.1.13"
         }
+      },
+      "PdfPig": {
+        "type": "CentralTransitive",
+        "requested": "[0.1.16, )",
+        "resolved": "0.1.16",
+        "contentHash": "qQcbsNMYVY+K5ELptax2S8thNMk0+rSQq3H/KdYj3LLcko8yTCz8y5KIvsKxIyAuTN0ZYNnfsZkM+0EvxTwHVA=="
       }
     }
   }

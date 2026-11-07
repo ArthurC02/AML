@@ -32,6 +32,7 @@ Each record states context, decision and consequences. Records are never edited 
 | [0026](0026-replayable-job-writes-commit-without-sync.md) | Replayable job writes commit without a log sync | Accepted |
 | [0027](0027-case-workbook-renders-the-api.md) | The case workbook renders the API | Accepted; sheets amended by 0028 |
 | [0028](0028-rule-based-news-digest.md) | A rule-based news digest for the reviewer | Accepted |
+| [0029](0029-clean-licensed-models-and-text.md) | Models and training text only under clean licences | Accepted |
 
 Template:
 

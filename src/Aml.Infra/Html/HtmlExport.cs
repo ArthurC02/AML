@@ -43,7 +43,7 @@ public static partial class HtmlExport
     // together) would otherwise share the cores and each overrun the budget. Waiting for a turn is not counted.
     private static readonly SemaphoreSlim Parsers = new(Environment.ProcessorCount, Environment.ProcessorCount);
 
-    private static IHtmlDocument Parse(Func<HtmlParser, CancellationToken, Task<IHtmlDocument>> parse)
+    internal static IHtmlDocument Parse(Func<HtmlParser, CancellationToken, Task<IHtmlDocument>> parse)
     {
         Parsers.Wait();
         try
@@ -76,7 +76,7 @@ public static partial class HtmlExport
         return new Reader(doc, kind).Read(root);
     }
 
-    private static void CheckDepth(INode root)
+    internal static void CheckDepth(INode root)
     {
         var pending = new Stack<(INode Node, int Depth)>();
         pending.Push((root, 0));

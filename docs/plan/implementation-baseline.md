@@ -58,6 +58,7 @@ AML/
 │   │   ├── Persistence/          # see feature/persistence.md
 │   │   ├── Txt/                  # .txt export reader (UTF-8, CP950 fallback), CaseInputException
 │   │   ├── Html/                 # HTML page to export layout (AngleSharp)
+│   │   ├── Web/                  # polite fetching (robots.txt, delay), main text of web pages and PDFs
 │   │   ├── Excel/                # Xlsx (SpreadsheetML with the standard library), CaseWorkbook (nine sheets)
 │   │   └── Jobs/                 # JobStore
 │   └── Aml.Api/                  # composition root
@@ -176,7 +177,8 @@ Versions are pinned in `Directory.Packages.props`; this table lists them for rev
 | Infra | Dapper | 2.1.89 | data access |
 | Infra | Microsoft.Data.Sqlite | 10.0.14 | SQLite driver |
 | Infra | dbup-sqlite | 6.0.4 | schema scripts |
-| Infra | AngleSharp | 1.9.0 | HTML parsing (`Infra/Html/HtmlExport`) |
+| Infra | AngleSharp | 1.9.0 | HTML parsing (`Infra/Html/HtmlExport`, `Infra/Web/MainText`) |
+| Infra | PdfPig | 0.1.16 | PDF text (`Infra/Web/PdfText`); Apache-2.0 |
 | Api | Microsoft.AspNetCore.OpenApi | 10.0.14 | OpenAPI document |
 | Api | Swashbuckle.AspNetCore.SwaggerUI | 10.3.1 | Swagger UI only |
 | Api | OpenTelemetry.Extensions.Hosting | 1.20.1 | telemetry host |

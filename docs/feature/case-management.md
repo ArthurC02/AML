@@ -4,7 +4,7 @@
 
 ## Case lifecycle
 
-Case status follows the latest analysis; no person moves a Case ([ADR-0020](../adr/0020-identification-only.md)).
+Case status follows the latest analysis; no person moves a Case ([ADR-0004](../adr/0004-identification-only.md)).
 
 | Status | When |
 |---|---|

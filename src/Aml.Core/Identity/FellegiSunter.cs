@@ -9,9 +9,9 @@ public sealed record GroupWeight(EvidenceGroup Group, double M, double U, double
 public sealed record CalibrationWeight(string ModelVersion, double TotalWeight, IReadOnlyList<GroupWeight> Groups);
 
 /// <summary>
-/// Fellegi-Sunter match weight for Gate D calibration (ADR-0019). It does not run in the analysis, so a revision's lineage
-/// does not name it (ADR-0025); calibration recomputes it from the stored revisions (the hit evidence and the Profile). It never changes a decision, is not
-/// part of the identity result or the explanation, and is never shown as a probability (ADR-0018).
+/// Fellegi-Sunter match weight for Gate D calibration (ADR-0001). It does not run in the analysis, so a revision's lineage
+/// does not name it (ADR-0023); calibration recomputes it from the stored revisions (the hit evidence and the Profile). It never changes a decision, is not
+/// part of the identity result or the explanation, and is never shown as a probability (ADR-0001).
 /// Agreeing with any one of k Profile DOBs is k times as likely by chance, so the DOB u is multiplied by k.
 /// ponytail: m and u are uncalibrated placeholders; estimate them with <see cref="EstimateParameters"/> over representative
 /// pairs, and a threshold with <see cref="Calibrate"/> over labelled ones, before any use at Gate D.

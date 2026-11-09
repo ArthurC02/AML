@@ -110,7 +110,7 @@ program: null             # SANCTION with a confirmed measure: the list name
 jurisdiction: null        # SANCTION with a confirmed measure: the authority
 ```
 
-The record is `SourceCondition`, at `conditions` of each hit. `type` is the bank's list type; `UNKNOWN` is an unmapped source category, left for the reviewer ([ADR-0016](../adr/0016-bank-list-type-vocabulary.md)); `riskCategories` carries what the source alleges ([ADR-0005](../adr/0005-watchlist-model-beyond-fraud.md)). A "Fraud HIT" is therefore an `ADVERSE_MEDIA` SourceConditionResult with `status: HIT` and `FRAUD` in `riskCategories`, not a separate condition type. Category and legal-stage values are listed in [watchlist and adverse information](watchlist-and-adverse-information.md). `amlRelevance` feeds Article 22 ② ([disposition recommendation](review-and-disposition.md#article-22-2-adverse-news-unrelated-to-mltfpf)).
+The record is `SourceCondition`, at `conditions` of each hit. `type` is the bank's list type; `UNKNOWN` is an unmapped source category, left for the reviewer; `riskCategories` carries what the source alleges ([ADR-0005](../adr/0005-list-types-and-risk-categories.md)). A "Fraud HIT" is therefore an `ADVERSE_MEDIA` SourceConditionResult with `status: HIT` and `FRAUD` in `riskCategories`, not a separate condition type. Category and legal-stage values are listed in [watchlist and adverse information](watchlist-and-adverse-information.md). `amlRelevance` feeds Article 22 ② ([disposition recommendation](review-and-disposition.md#article-22-2-adverse-news-unrelated-to-mltfpf)).
 
 ## ScreeningAssessment
 
@@ -120,7 +120,7 @@ HIT | NO_HIT | REVIEW | NOT_APPLICABLE | NOT_EVALUATED
 
 ### Combination matrix
 
-Canonical pair-level matrix ([ADR-0004](../adr/0004-independent-identity-and-source-condition.md)), applied by `AssessmentPolicy` to Sanction, PEP/RCA and watchlist conditions alike.
+Canonical pair-level matrix ([ADR-0004](../adr/0004-identification-only.md)), applied by `AssessmentPolicy` to Sanction, PEP/RCA and watchlist conditions alike.
 
 | Source condition | Identity | Pair result |
 |---|---|---|
@@ -147,11 +147,11 @@ pendingChecks: []         # checks still to run outside the system, with or with
 advisory: true            # always: the final selection happens outside the system
 ```
 
-Never changes the IdentityResult or the SourceConditionResults ([ADR-0017](../adr/0017-article-22-disposition-policy.md)).
+Never changes the IdentityResult or the SourceConditionResults ([ADR-0004](../adr/0004-identification-only.md)).
 
 ## VerificationRecord
 
-The system has no verification-record type. It lists each triggered check as a code in `pendingChecks` of the DispositionRecommendation: `EMPLOYMENT_RELEVANCE`, `FORMER_PEP_INFLUENCE`, `REGION_RELEVANCE`, `IDENTITY_CHECK`, `JUDGMENT_PARTY_IDENTITY`, and `CONFIRM_NATIONALITY` from ①. The checks are performed and recorded outside the system ([ADR-0020](../adr/0020-identification-only.md)); their types, search outcomes, conclusions and rules are in [disposition recommendation](review-and-disposition.md#verification-records).
+The system has no verification-record type. It lists each triggered check as a code in `pendingChecks` of the DispositionRecommendation: `EMPLOYMENT_RELEVANCE`, `FORMER_PEP_INFLUENCE`, `REGION_RELEVANCE`, `IDENTITY_CHECK`, `JUDGMENT_PARTY_IDENTITY`, and `CONFIRM_NATIONALITY` from ①. The checks are performed and recorded outside the system ([ADR-0004](../adr/0004-identification-only.md)); their types, search outcomes, conclusions and rules are in [disposition recommendation](review-and-disposition.md#verification-records).
 
 ## Field value state
 

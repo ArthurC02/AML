@@ -17,7 +17,7 @@ Build a traceable identity adjudication flow for customer and related-party scre
 - source-condition HIT, NOT_HIT and UNKNOWN;
 - the explanation of every system decision: evidence, comparison table, reason codes and a summary restating recorded facts;
 - batch execution, retry, idempotency and analysis revision;
-- API with OpenAPI / Swagger UI ([ADR-0009](../adr/0009-api-only.md)).
+- API with OpenAPI / Swagger UI ([ADR-0006](../adr/0006-one-dotnet-api-application.md)).
 
 ### Excluded for Phase 1
 
@@ -25,12 +25,12 @@ Build a traceable identity adjudication flow for customer and related-party scre
 - OCR where structured HTML is available;
 - universal news event extraction;
 - automatic identity decisions for organization, vessel and other non-person Profiles: they are retrieved, deduplicated and preserved with their source conditions; entity identifiers (registration number with jurisdiction, IMO number) can raise review priority, but the external result stays REVIEW until the entity rules are validated with an entity Golden Case;
-- LLM-based identity or legal adjudication, and AI-assigned match probabilities ([ADR-0018](../adr/0018-legacy-ai-report-rules-not-adopted.md));
+- LLM-based identity or legal adjudication, and AI-assigned match probabilities ([ADR-0001](../adr/0001-identity-adjudication.md));
 - photo or face comparison;
 - unapproved AML scoring weights;
 - automatic confirmation for all PEP or Sanction cases;
 - any UI;
-- the human workflow: reviewer and approver roles, human decisions, approvals, final disposition, close and reopen. The system does identification only ([ADR-0020](../adr/0020-identification-only.md)); Golden Case human results are labels for measurement.
+- the human workflow: reviewer and approver roles, human decisions, approvals, final disposition, close and reopen. The system does identification only ([ADR-0004](../adr/0004-identification-only.md)); Golden Case human results are labels for measurement.
 
 ## Capability exposure policy
 
@@ -52,7 +52,7 @@ Rules and algorithms only, no LLM. It has two halves split by personal data.
 |---|---|---|---|---|
 | 1 Acquisition and pre-processing | Data Processing | fetch files or data (PDF / HTML / API), clean and convert formats, parse structure (person, event, role, legal status) | Extraction and Data Quality ([extraction](extraction-and-normalization.md#sources-and-refresh)) | `.txt` export reader (strict UTF-8, else CP950 / Big5 with `ENCODING_FALLBACK`); HTML pages converted to the export layout (encoding from BOM or meta charset, form-control values, hidden elements skipped), with labels assumed until HTML samples arrive; no PDF or API adapter |
 | 2 Normalization | Data Processing | text (case, full/half width, Traditional/Simplified, romanization), date precision, fields (country, document, address) | Extraction and Data Quality ([extraction](extraction-and-normalization.md#name-normalization)) | built; Simplified to Traditional by the OpenCC one-to-one table plus a controlled variant list; romanization by the MOFA table (Hanyu Pinyin, Wade-Giles, Tongyong) plus controlled passport spellings, and Chinese characters by Unihan readings ([third-party data](../plan/implementation-baseline.md#third-party-data)); countries to ISO 3166-1; ROC years only with an explicit 民國 |
-| 3 List index and Profile | Data Processing | list database of structured Profiles, search index (BM25 / n-gram / alias), Profile deduplication (merge the same person) | Candidate and Identity Adjudication ([identity](identity-adjudication.md#retrieval-modes)) | built ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)): `list_profile` versions with the SHA-256 of the export text (an HTML page and its `.txt` export are one version); exact-alias / BM25 / n-gram / reading-key index, the reading key (shared Pinyin) giving cross-script retrieval between Chinese characters and romanizations; merge on a shared comparable document or a recorded link, refused when DOBs or genders contradict; a changed Profile queues `REANALYZE_CASE` jobs for the Cases that used it |
+| 3 List index and Profile | Data Processing | list database of structured Profiles, search index (BM25 / n-gram / alias), Profile deduplication (merge the same person) | Candidate and Identity Adjudication ([identity](identity-adjudication.md#retrieval-modes)) | built ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md)): `list_profile` versions with the SHA-256 of the export text (an HTML page and its `.txt` export are one version); exact-alias / BM25 / n-gram / reading-key index, the reading key (shared Pinyin) giving cross-script retrieval between Chinese characters and romanizations; merge on a shared comparable document or a recorded link, refused when DOBs or genders contradict; a changed Profile queues `REANALYZE_CASE` jobs for the Cases that used it |
 | 4 Case input | Runtime Query | customer data (name, DOB, document, address, occupation, related parties) and case settings (chosen sources, query conditions) | Case and Adjudication Management ([pipeline](pipeline-api-and-batch.md#rest-resources)) | `POST /api/cases` and `/api/batches`; no case settings: every source in the input is used |
 | 5 Candidate retrieval and deduplication | Runtime Query | name search (exact / BM25 / n-gram), Top N candidate list, merge into one Profile, fetch candidate data (named or automatic) | Candidate and Identity Adjudication ([identity](identity-adjudication.md#profile-level-deduplication)) | case table (CONTROLLED_SET) feeds `POST /api/cases`; INDEX_SEARCH (exact alias matches first and never cut, a cut list marked `truncated`), DIRECT_REFERENCE and PREVIOUS_LINK via `GET /api/profiles/search`, `GET /api/profiles/{profileId}` and `GET /api/cases/{caseId}/candidates`; Profile-level deduplication built |
 | 6 Field comparison and evidence | Runtime Query | name (Jaro-Winkler / Levenshtein), DOB (precision / conflict), document (type / issuer / number), address (structured / Jaccard), occupation (job / company), related parties (spouse / parents / related companies) | Candidate and Identity Adjudication ([identity](identity-adjudication.md#comparison-measures)) | all measures built; employment and relatives have no subject-side data in the bank export yet (an occupation alone is not compared with Profile roles) |
@@ -68,7 +68,7 @@ Rules and algorithms only, no LLM. It has two halves split by personal data.
 
 ## L2 modules
 
-A modular monolith ([ADR-0006](../adr/0006-modular-monolith.md)); the modules are folders and namespaces inside the four projects of [ADR-0013](../adr/0013-four-project-solution.md).
+A modular monolith; the modules are folders and namespaces inside the four projects ([ADR-0006](../adr/0006-one-dotnet-api-application.md)).
 
 ```text
 AML Screening Application

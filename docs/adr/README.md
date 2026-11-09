@@ -1,46 +1,28 @@
 # Architecture Decision Records
 
-Each record states context, decision and consequences. Records are never edited after acceptance except for status; a changed decision gets a new record that supersedes the old one.
+Each record holds the decisions in force on one subject: context, decision and consequences. When a decision changes, its record is edited in place and its date line says when and what; git history keeps the earlier text. A new subject that fits an existing record goes into it, so the set stays small. A part decided but not built yet is named in the status line.
 
 | ADR | Title | Status |
 |---|---|---|
-| [0001](0001-evidence-driven-adjudication.md) | Evidence-driven adjudication | Accepted |
-| [0002](0002-three-stage-identity-policy.md) | Three-stage identity policy | Accepted |
-| [0003](0003-internal-probable-match.md) | Internal PROBABLE_MATCH | Accepted |
-| [0004](0004-independent-identity-and-source-condition.md) | Identity and source conditions remain independent | Accepted |
-| [0005](0005-watchlist-model-beyond-fraud.md) | Watchlist model broader than Fraud | Accepted; source types superseded by 0016 |
-| [0006](0006-modular-monolith.md) | Modular monolith | Accepted |
-| [0007](0007-dotnet-technology-stack.md) | .NET technology stack | Accepted, subject to governance |
-| [0008](0008-validation-backlog-non-blocking.md) | Validation backlog does not block development | Accepted |
-| [0009](0009-api-only.md) | API only | Accepted |
-| [0010](0010-replaceable-persistence.md) | Replaceable persistence | Accepted |
-| [0011](0011-database-job-table-for-batch.md) | Database job table for batch | Accepted |
-| [0012](0012-source-acquisition-behind-ports.md) | Source acquisition behind ports | Accepted |
-| [0013](0013-four-project-solution.md) | Four-project solution | Accepted |
-| [0014](0014-per-provider-xml-sql-catalog.md) | Per-provider XML SQL catalog | Accepted |
-| [0015](0015-no-commercially-licensed-libraries.md) | No commercially licensed libraries by default | Accepted |
-| [0016](0016-bank-list-type-vocabulary.md) | Bank list-type vocabulary and flag-first mapping | Accepted |
-| [0017](0017-article-22-disposition-policy.md) | Article 22 as a disposition policy | Accepted |
-| [0018](0018-legacy-ai-report-rules-not-adopted.md) | Legacy AI-report rules not adopted | Accepted; Excel row amended by 0027; news row amended by 0028 |
-| [0019](0019-strength-decision-table-before-fellegi-sunter.md) | Evidence-strength decision table before Fellegi-Sunter | Accepted |
-| [0020](0020-identification-only.md) | The system does identification only | Accepted |
-| [0021](0021-deferred-capabilities-built-behind-controls.md) | Deferred capabilities built behind the Phase 1 controls | Accepted |
-| [0022](0022-layered-api-views.md) | Layered API views for people and agents | Superseded by 0024 |
-| [0023](0023-ai-ready-data.md) | AI-ready data | Accepted; API consumers amended by 0024, lineage by 0025 |
-| [0024](0024-business-api.md) | Business API | Accepted |
-| [0025](0025-lineage-records-what-ran.md) | Lineage records what ran | Accepted |
-| [0026](0026-replayable-job-writes-commit-without-sync.md) | Replayable job writes commit without a log sync | Accepted |
-| [0027](0027-case-workbook-renders-the-api.md) | The case workbook renders the API | Accepted; sheets amended by 0028 |
-| [0028](0028-rule-based-news-digest.md) | A rule-based news digest for the reviewer | Accepted |
-| [0029](0029-clean-licensed-models-and-text.md) | Models and training text only under clean licences | Accepted |
+| [0001](0001-identity-adjudication.md) | Evidence-driven identity adjudication | Accepted |
+| [0004](0004-identification-only.md) | Identification only: identity, source conditions and an advisory Article 22 | Accepted |
+| [0005](0005-list-types-and-risk-categories.md) | Bank list types, flag-first mapping and risk categories | Accepted |
+| [0006](0006-one-dotnet-api-application.md) | One .NET API application in four projects | Accepted, subject to governance |
+| [0008](0008-validation-and-deferred-capabilities.md) | Validation backlog and deferred capabilities behind the Phase 1 controls | Accepted |
+| [0010](0010-persistence-and-batch.md) | Replaceable persistence and a database job table | Accepted |
+| [0012](0012-sources-and-web-information.md) | Sources, web information and the news digest | Accepted; web search and web evidence not built yet |
+| [0015](0015-licences.md) | Clean licences for libraries, models and text | Accepted |
+| [0023](0023-business-api-data-and-workbook.md) | Business API, AI-ready data and the case workbook | Accepted; one fact per sheet not built yet |
+
+The numbers are kept from the records they absorbed (2026-11-09). A former number maps to its record: 0002, 0003, 0018, 0019 → 0001; 0017, 0020 → 0004; 0016 → 0005; 0007, 0009, 0013 → 0006; 0021 → 0008; 0011, 0014, 0026 → 0010; 0028 → 0012; 0029 → 0015; 0022, 0024, 0025, 0027 → 0023.
 
 Template:
 
 ```markdown
 # ADR-NNNN: Title
 
-- Status: Proposed | Accepted | Superseded by ADR-NNNN
-- Date: YYYY-MM-DD
+- Status: Proposed | Accepted
+- Date: YYYY-MM-DD; updated YYYY-MM-DD (what changed)
 
 ## Context
 ## Decision

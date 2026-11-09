@@ -17,7 +17,7 @@ public sealed record ProfileUse(
     [property: Description("相同內容的名單庫版本；只來自案件檔時為 null")] int? ListVersion,
     [property: Description("正規化匯出文字的 SHA-256，與名單庫的內容雜湊同一算法")] string? ContentHash);
 
-// Records only the rule sets that ran; a model outside the analysis, such as the Fellegi-Sunter weight, is not (ADR-0025).
+// Records only the rule sets that ran; a model outside the analysis, such as the Fellegi-Sunter weight, is not (ADR-0023).
 public sealed record AnalysisLineage(
     [property: Description("輸入檔與其雜湊")] IReadOnlyList<InputFile> InputFiles,
     [property: Description("分析用到的每一筆名單與其來源版本")] IReadOnlyList<ProfileUse> Profiles,

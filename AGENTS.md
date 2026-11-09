@@ -8,7 +8,7 @@ AML screening PoC: given a customer (or related party) and candidate list Profil
 2. **Evidence first.** Readers turn inputs into fields with raw value, normalized value, precision and location; comparisons become evidence groups; `HardConflictGate` can only say "different person" on validated rules; `IdentityDecisionPolicy` decides the rest. Missing or unparseable data becomes a finding (`MISSING`, `AMBIGUOUS` …), never an invented value.
 3. **Every emitted code is in `Codes/CodeCatalog.cs`** (served by `GET /api/codes`). A new reason code without a catalog entry is a bug.
 4. **Case state is append-only.** A re-analysis creates a new revision; `CaseService` is the only writer of Case state (through `ICaseStore`). Other modules return typed results.
-5. **The system identifies; humans decide.** No reviewer workflow, approvals or final disposition (ADR-0020). Article 22 output is advisory.
+5. **The system identifies; humans decide.** No reviewer workflow, approvals or final disposition (ADR-0004). Article 22 output is advisory.
 
 ## Projects and dependency rules
 
@@ -57,7 +57,7 @@ CI (`.github/workflows/ci.yml`) restores with `--locked-mode`, so a package chan
 
 - **Tests:** lowest layer that can show the behaviour; `TestPyramidTests` fails if Integration < 2 × E2E or in-process < 3 × Integration. Expected values come from the feature docs, not from running the code; assert exact values. Decision tables are one `[Theory]` with a row per cell. Time via `ManualTimeProvider`, never sleeps.
 - **Contracts:** `E2E/Contracts` snapshots guard the OpenAPI document and JSON Schemas; every operation needs an `operationId`, tag and description.
-- **Docs describe the current state.** Update the feature/plan doc in the same change as the code. ADRs are never edited after acceptance except the status line; a changed decision is a new ADR that supersedes the old one.
-- **Licences:** no commercially licensed packages (ADR-0015); models and training text only under clean licences allowing commercial use (ADR-0029). Embedded third-party data needs an entry in `THIRD-PARTY-NOTICES.md` and `licenses/`.
+- **Docs describe the current state.** Update the feature/plan doc in the same change as the code. ADRs hold the decisions in force, one record per subject (9 records): a changed or new decision edits the record it belongs to, with its date line updated; add a record only for a subject none covers.
+- **Licences:** no commercially licensed packages; models and training text only under clean licences allowing commercial use (ADR-0015). Embedded third-party data needs an entry in `THIRD-PARTY-NOTICES.md` and `licenses/`.
 - **Personal data:** `samples/` is supplied material, read-only; do not open its files unless the task needs them, and never copy names, ids or quotes from it into code, docs, logs, commit messages or test names. Customer data stays in the Runtime Query half (`docs/feature/security-and-privacy.md`).
 - **Not in Phase 1:** LLM adjudication or AI match probabilities, automatic MATCH, any UI, OCR, unapproved risk weights.

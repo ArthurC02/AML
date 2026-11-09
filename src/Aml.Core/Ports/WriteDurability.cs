@@ -2,7 +2,7 @@ namespace Aml.Core.Ports;
 
 /// <summary>
 /// Whether the writes made in the current flow must survive a power loss once they return (the default), or may be lost
-/// with the newest writes and are then replayed by their job (ADR-0026). The store syncs the log for every durable write,
+/// with the newest writes and are then replayed by their job (ADR-0010). The store syncs the log for every durable write,
 /// and that sync also keeps every write committed before it, since the log is replayed in commit order.
 /// </summary>
 public static class WriteDurability

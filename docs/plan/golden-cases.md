@@ -168,7 +168,7 @@ Real case, anonymized; business label 無法判斷. Inputs and expected results:
 
 ## Validation backlog
 
-GC-04 to GC-10 ([ADR-0008](../adr/0008-validation-backlog-non-blocking.md)):
+GC-04 to GC-10 ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md)):
 
 - GC-04 PEP/RCA
 - GC-05 Sanction

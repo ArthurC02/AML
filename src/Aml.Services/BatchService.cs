@@ -121,7 +121,7 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         _slots.Release(options.MaxWorkers);
     }
 
-    // Every write of a job (claim, lease, Case, outcome) is replayable (ADR-0026): if a power loss takes the newest of them,
+    // Every write of a job (claim, lease, Case, outcome) is replayable (ADR-0010): if a power loss takes the newest of them,
     // the job is still queued or its lease expires, and it runs again; a batch item's Case takes the job's id, so the re-run
     // stores the same Case. The task started for each job inherits the scope.
     private async Task<IReadOnlyList<Task>> StartAsync(CancellationToken ct)

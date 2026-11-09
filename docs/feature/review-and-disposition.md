@@ -1,6 +1,6 @@
 # Disposition Recommendation
 
-> Module: Source Screening and Risk Assessment. Source: bank operating procedure Article 22 and the legacy name-screening rules ([ADR-0017](../adr/0017-article-22-disposition-policy.md)).
+> Module: Source Screening and Risk Assessment. Source: bank operating procedure Article 22 and the legacy name-screening rules ([ADR-0004](../adr/0004-identification-only.md)).
 
 ## Two results, read separately
 
@@ -9,7 +9,7 @@
 | IdentityDecision | Is this the same person? | IdentityDecisionPolicy ([identity adjudication](identity-adjudication.md)) |
 | DispositionRecommendation | What does Article 22 recommend selecting? | DispositionPolicy (this spec) |
 
-The system focuses on identification ([ADR-0020](../adr/0020-identification-only.md)): it produces the identity decision and an advisory recommendation. Final disposition, reviewer actions and approvals happen outside the system and are not modelled.
+The system focuses on identification ([ADR-0004](../adr/0004-identification-only.md)): it produces the identity decision and an advisory recommendation. Final disposition, reviewer actions and approvals happen outside the system and are not modelled.
 
 A NOT_ON_LIST recommendation does not prove a different person, and an ON_LIST presumption does not prove the same person. Neither may be derived from the other.
 
@@ -82,7 +82,7 @@ A side is non-Taiwanese only when every nationality-labelled value maps to a cou
 
 A direct identifier is a full date of birth (DAY precision) or a comparable document key. It counts only when the same identifier is present on both sides; a DOB on one side and a document on the other does not. The absence is recorded as `NO_BILATERAL_DIRECT_IDENTIFIER`.
 
-The bank ruled on 2026-10-14 that, outside Article 22 ①, a hit lacking a bilateral direct identifier with a match likelihood below 65% is not on list. This system has no likelihood ([ADR-0018](../adr/0018-legacy-ai-report-rules-not-adopted.md)); how the ruling applies to REVIEW and PROBABLE_MATCH pairs is an [open question](../plan/open-questions.md#article-22). Until it is answered the ruling is flagged, not applied: a row 6 pair with `NO_BILATERAL_DIRECT_IDENTIFIER` and no other recommendation records `ART22_RULING_20261014_MAY_APPLY` and keeps no recommendation (GC-12).
+The bank ruled on 2026-10-14 that, outside Article 22 ①, a hit lacking a bilateral direct identifier with a match likelihood below 65% is not on list. This system has no likelihood ([ADR-0001](../adr/0001-identity-adjudication.md)); how the ruling applies to REVIEW and PROBABLE_MATCH pairs is an [open question](../plan/open-questions.md#article-22). Until it is answered the ruling is flagged, not applied: a row 6 pair with `NO_BILATERAL_DIRECT_IDENTIFIER` and no other recommendation records `ART22_RULING_20261014_MAY_APPLY` and keeps no recommendation (GC-12).
 
 ## Verification records
 

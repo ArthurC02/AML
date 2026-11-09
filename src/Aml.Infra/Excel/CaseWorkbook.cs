@@ -10,8 +10,8 @@ namespace Aml.Infra.Excel;
 
 /// <summary>
 /// One analysis revision of a Case as a workbook of nine sheets, each one table that restates the stored revision and
-/// adds nothing (ADR-0027): 說明 (the Case, lineage, quality and a data dictionary), 命中, 比對, 證據, 來源, 新聞人物,
-/// 新聞事件 (the news digest, ADR-0028), 變更 and 代碼.
+/// adds nothing (ADR-0023): 說明 (the Case, lineage, quality and a data dictionary), 命中, 比對, 證據, 來源, 新聞人物,
+/// 新聞事件 (the news digest, ADR-0012), 變更 and 代碼.
 /// The hit number joins the sheets. Without identifier values (the default) the workbook follows the summary views: no
 /// IDENTIFIER field, no compared value and, of personal data, only names.
 /// </summary>

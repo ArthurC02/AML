@@ -203,7 +203,7 @@ public static class ExplanationBuilder
         return sb.ToString();
     }
 
-    // Advisory only: the final selection happens outside the system (ADR-0020).
+    // Advisory only: the final selection happens outside the system (ADR-0004).
     private static string Disposition(DispositionRecommendation d) =>
         (d.Recommendation is { } r ? $"第 22 條建議 {CaseJson.Code(r)}（{Join(d.ReasonCodes)}，僅供參考）。" : $"第 22 條無法給建議（{Join(d.ReasonCodes)}）。")
         + (d.PendingChecks.Count > 0 ? $"待查核：{Join(d.PendingChecks)}（尚未執行）。" : "");

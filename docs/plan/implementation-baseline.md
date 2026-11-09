@@ -6,15 +6,15 @@
 
 | Topic | Decision | ADR |
 |---|---|---|
-| Runtime | C#, .NET 10 LTS, ASP.NET Core | [0007](../adr/0007-dotnet-technology-stack.md) |
-| Delivery | API + OpenAPI / Swagger UI, no UI; a case workbook (.xlsx) renders the API | [0009](../adr/0009-api-only.md), [0027](../adr/0027-case-workbook-renders-the-api.md) |
-| Input | supplied `.txt` exports and HTML pages; API or crawler later behind ports | [0012](../adr/0012-source-acquisition-behind-ports.md) |
-| Database | SQLite in the PoC; SQL Server or Oracle for production | [0010](../adr/0010-replaceable-persistence.md) |
-| Data access | Dapper + DbUp; SQL in `Sql.<provider>.xml` | [0010](../adr/0010-replaceable-persistence.md), [0014](../adr/0014-per-provider-xml-sql-catalog.md) |
-| Retrieval | case-table candidates (CONTROLLED_SET) feed Cases; the list database and index serve the other modes on request | [0021](../adr/0021-deferred-capabilities-built-behind-controls.md) |
-| Batch | DB job table + `BackgroundService` | [0011](../adr/0011-database-job-table-for-batch.md) |
-| Structure | Core / Services / Infra / Api | [0013](../adr/0013-four-project-solution.md) |
-| Libraries | no commercially licensed packages | [0015](../adr/0015-no-commercially-licensed-libraries.md) |
+| Runtime | C#, .NET 10 LTS, ASP.NET Core | [0006](../adr/0006-one-dotnet-api-application.md) |
+| Delivery | API + OpenAPI / Swagger UI, no UI; a case workbook (.xlsx) renders the API | [0006](../adr/0006-one-dotnet-api-application.md), [0023](../adr/0023-business-api-data-and-workbook.md) |
+| Input | supplied `.txt` exports and HTML pages; API or crawler later behind ports | [0012](../adr/0012-sources-and-web-information.md) |
+| Database | SQLite in the PoC; SQL Server or Oracle for production | [0010](../adr/0010-persistence-and-batch.md) |
+| Data access | Dapper + DbUp; SQL in `Sql.<provider>.xml` | [0010](../adr/0010-persistence-and-batch.md) |
+| Retrieval | case-table candidates (CONTROLLED_SET) feed Cases; the list database and index serve the other modes on request | [0008](../adr/0008-validation-and-deferred-capabilities.md) |
+| Batch | DB job table + `BackgroundService` | [0010](../adr/0010-persistence-and-batch.md) |
+| Structure | Core / Services / Infra / Api | [0006](../adr/0006-one-dotnet-api-application.md) |
+| Libraries | no commercially licensed packages | [0015](../adr/0015-licences.md) |
 
 ## Solution structure
 
@@ -86,13 +86,13 @@ Implementation notes:
 
 - Api uses minimal APIs, one module per resource in `Endpoints/` (`MapCases`, `MapBatches`, `MapProfiles`, `MapCodes`) with the shared upload reading in `Uploads` and the RFC 9457 responses in `Problems`, registered from `Program.cs`; errors are problems ([errors](../feature/pipeline-api-and-batch.md#errors)); the endpoints are listed in [REST resources](../feature/pipeline-api-and-batch.md#rest-resources), plus `GET /health`. Uploads are `.txt`, `.html` or `.htm` files, as multipart (read as raw bytes) or, for Cases and batches, as JSON text. Multipart files: an export is strict UTF-8, else CP950 (Big5) with an `ENCODING_FALLBACK` finding; an HTML page's encoding is decided by AngleSharp (BOM, then meta charset). A Case keeps the SHA-256 of each uploaded file's bytes, or of the UTF-8 encoding of JSON text, as its source hash.
 - The explanation is built in Core (`Explanation/ExplanationBuilder`) with each revision and stored beside the result; document and reference numbers are masked (first 3 and last 2 characters). The five-part summary is in Traditional Chinese for reviewers. Each hit lists its sources: Profile citations (`PROFILE_RECORD`, with publication and retrieval dates and URL) and attached news (`LEGAL_STAGE` when it set the legal stage of an ADVERSE_MEDIA condition).
-- No human workflow in the PoC ([ADR-0020](../adr/0020-identification-only.md)).
+- No human workflow in the PoC ([ADR-0004](../adr/0004-identification-only.md)).
 - `POST /api/cases` analyzes synchronously; `POST /api/batches` queues items in the job table and `Workers/JobWorker` runs them through `BatchService` ([durable batch execution](../feature/pipeline-api-and-batch.md#durable-batch-execution)). The job store is `Infra/Jobs/JobStore` behind `Core/Ports/IJobStore` (named "Store" because CA1711 rejects a "Queue" suffix).
 - Each revision records source condition status and basis, pair result, review priority, pair reason codes and the changes from the previous revision; a missing Profile makes the revision PARTIAL and keeps the previous effective result.
-- Persistence is SQLite-only (`SqliteDatabase`, `SqlCatalog`, `CaseStore`) with one schema script, `0001_schema.sql`; the PoC database is rebuilt when the schema or stored format changes ([ADR-0023](../adr/0023-ai-ready-data.md)). `IDbConnectionFactory` and `ISqlDialect` are extracted when a second provider is chosen.
+- Persistence is SQLite-only (`SqliteDatabase`, `SqlCatalog`, `CaseStore`) with one schema script, `0001_schema.sql`; the PoC database is rebuilt when the schema or stored format changes ([ADR-0023](../adr/0023-business-api-data-and-workbook.md)). `IDbConnectionFactory` and `ISqlDialect` are extracted when a second provider is chosen.
 - Stored results are Core records, serialized with `CaseJson.Options` and read back into their types; `CaseJson.Schema` generates their JSON Schemas (`GET /api/schemas/{name}`) with field descriptions and `x-sensitivity`. Each revision also stores its lineage, data quality and hit facts ([lineage and quality](../feature/pipeline-api-and-batch.md#lineage-and-quality)).
 - `GET /health` runs `System.Ping`. OpenTelemetry traces, metrics and logs are on (ASP.NET Core plus the `Aml` source and meter: `aml.analyses`, `aml.analysis.duration`, `aml.job.attempts`, `aml.workbooks`, `aml.workbook.duration`, `aml.workbook.size`); OTLP export starts only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set.
-- The list database (`list_profile`) and each revision's input files (`case_input`, decoded text) are stored for retrieval and re-analysis ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)). A Profile version is hashed on its export text, so an HTML page and its `.txt` export are one version. `POST /api/profiles/import` stores a changed Profile as a new version and, in the same transaction, queues a `REANALYZE_CASE` job for every Case whose latest input holds a different version of it; the jobs run through `BatchService` and are tracked as one batch (`GET /api/batches/{batchId}`).
+- The list database (`list_profile`) and each revision's input files (`case_input`, decoded text) are stored for retrieval and re-analysis ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md)). A Profile version is hashed on its export text, so an HTML page and its `.txt` export are one version. `POST /api/profiles/import` stores a changed Profile as a new version and, in the same transaction, queues a `REANALYZE_CASE` job for every Case whose latest input holds a different version of it; the jobs run through `BatchService` and are tracked as one batch (`GET /api/batches/{batchId}`).
 - Authentication is not wired (identity provider pending).
 - Golden Case metrics are computed by `tests/Aml.Tests/GoldenCases/GoldenMetricsTests` ([results](poc-delivery-plan.md#golden-case-results)); its comparison-cell rates come from `AnalysisQuality.Of`, the function each revision's quality is stored with.
 
@@ -198,7 +198,7 @@ Deferred:
 - `Microsoft.Data.SqlClient` + `dbup-sqlserver`, or `Oracle.ManagedDataAccess.Core` + `dbup-oracle`, when the target database is chosen;
 - Quartz.NET only if timed triggers are required.
 
-Not used: MediatR, AutoMapper, FluentAssertions ([ADR-0015](../adr/0015-no-commercially-licensed-libraries.md)); Serilog (built-in JSON logging plus OpenTelemetry suffices); FluentValidation (explicit validation); EF Core ([ADR-0010](../adr/0010-replaceable-persistence.md)).
+Not used: MediatR, AutoMapper, FluentAssertions ([ADR-0015](../adr/0015-licences.md)); Serilog (built-in JSON logging plus OpenTelemetry suffices); FluentValidation (explicit validation); EF Core ([ADR-0010](../adr/0010-persistence-and-batch.md)).
 
 ## Technology summary
 

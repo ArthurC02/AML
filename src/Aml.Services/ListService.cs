@@ -12,7 +12,7 @@ public sealed record ProfileImport(string ProfileId, string ProfileKey, int Vers
 
 public sealed record ProfileView(string ProfileId, string ProfileKey, int Version, int LatestVersion, string ContentHash, DateTimeOffset CapturedAt, SourceProfile Profile);
 
-/// <summary>No identifier values and, of personal data, only names (ADR-0024); the whole Profile is at the full link.</summary>
+/// <summary>No identifier values and, of personal data, only names (ADR-0023); the whole Profile is at the full link.</summary>
 public sealed record ProfileSummary(
     [property: Description("名單編號（不含 DJ: 前綴）")] string ProfileId,
     [property: Description("名單鍵（DJ:<名單編號>）")] string ProfileKey,

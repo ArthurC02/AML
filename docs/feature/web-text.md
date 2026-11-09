@@ -57,7 +57,7 @@ A site prints the same lines on every document: the office's letterhead and Engl
 
 ## Sources whose text may be used
 
-Only text that may be used to train and evaluate models is gathered ([ADR-0029](../adr/0029-clean-licensed-models-and-text.md)):
+Only text that may be used to train and evaluate models is gathered ([ADR-0015](../adr/0015-licences.md)):
 
 | Source | Why it may be used |
 |---|---|

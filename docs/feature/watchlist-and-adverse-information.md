@@ -4,7 +4,7 @@
 
 ## Scope
 
-Covers structured official lists, structured adverse-information Profiles and the list-type determination shared by all source policies. Replaces the narrower Fraud-only design ([ADR-0005](../adr/0005-watchlist-model-beyond-fraud.md)); list types follow the bank's vocabulary ([ADR-0016](../adr/0016-bank-list-type-vocabulary.md)).
+Covers structured official lists, structured adverse-information Profiles and the list-type determination shared by all source policies. Fraud is one risk category among others, and list types follow the bank's vocabulary ([ADR-0005](../adr/0005-list-types-and-risk-categories.md)).
 
 ## List types
 
@@ -64,7 +64,7 @@ Applies to every mapped category whose flag is `MISSING`, and so to all of them 
 
 - Subcategories do not change non-SIP types.
 - An SIP subcategory not in the table, or no subcategory (e.g. Regulatory Enforcement List), is unmapped: `UNKNOWN` with `UNMAPPED_CATEGORY`, never assumed to be adverse media.
-- `BANK_INTERNAL_LIST` is in the bank's vocabulary ([ADR-0016](../adr/0016-bank-list-type-vocabulary.md)) but no mapping produces it: no export field marks a bank-internal list yet ([open questions](../plan/open-questions.md#data-and-source)). A bank-internal category is therefore unmapped, `UNKNOWN` with `UNMAPPED_CATEGORY`, and goes to review.
+- `BANK_INTERNAL_LIST` is in the bank's vocabulary ([ADR-0005](../adr/0005-list-types-and-risk-categories.md)) but no mapping produces it: no export field marks a bank-internal list yet ([open questions](../plan/open-questions.md#data-and-source)). A bank-internal category is therefore unmapped, `UNKNOWN` with `UNMAPPED_CATEGORY`, and goes to review.
 - SIP (Special Interest Person) is not SIE; Dow Jones Special Interest Entity is not SIE either.
 - Unmapped categories are copied verbatim into the explanation and left as UNKNOWN for review.
 
@@ -154,7 +154,7 @@ The ADVERSE_MEDIA stage is read from the attached news by a keyword heuristic, t
 
 ### News digest
 
-Each hit with attached news carries a `newsDigest` in its explanation ([ADR-0028](../adr/0028-rule-based-news-digest.md)): the people and legal events the news names, and a summary in fixed sentence patterns. It is read by rules, restates the news and decides nothing: no condition, stage, relevance, identity or disposition reads it.
+Each hit with attached news carries a `newsDigest` in its explanation ([ADR-0012](../adr/0012-sources-and-web-information.md)): the people and legal events the news names, and a summary in fixed sentence patterns. It is read by rules, restates the news and decides nothing: no condition, stage, relevance, identity or disposition reads it.
 
 - **People.**
   - Which mentions count:
@@ -249,7 +249,7 @@ A news item attached to a Profile counts as attached news; the Profile's own des
 
 ## Risk scoring
 
-`RiskScoring` runs downstream of identity and never feeds back into it ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)). It needs a bank-approved `RiskPolicy`; none ships, so by default no pair is scored. A pair whose identity is NO_MATCH is not scored. Otherwise:
+`RiskScoring` runs downstream of identity and never feeds back into it ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md)). It needs a bank-approved `RiskPolicy`; none ships, so by default no pair is scored. A pair whose identity is NO_MATCH is not scored. Otherwise:
 
 - HIT conditions are scored; an UNKNOWN Sanction or PEP condition scores as a HIT, other UNKNOWN conditions score nothing;
 - an ADVERSE_MEDIA condition set aside by Article 22 ② (`amlRelevance: UNRELATED`) scores nothing;
@@ -258,7 +258,7 @@ A news item attached to a Profile counts as attached news; the Profile's own des
 
 ## Phase 1 constraint
 
-General free-news event understanding is out of scope. Structured Profile fields, bounded Notes sections and explicit citations are used; no LLM or other language model is involved ([ADR-0018](../adr/0018-legacy-ai-report-rules-not-adopted.md)). The [news digest](#news-digest) reads people and events from the news by fixed rules for the reviewer and feeds no decision ([ADR-0028](../adr/0028-rule-based-news-digest.md)).
+General free-news event understanding is out of scope. Structured Profile fields, bounded Notes sections and explicit citations are used; no LLM or other language model is involved ([ADR-0001](../adr/0001-identity-adjudication.md)). The [news digest](#news-digest) reads people and events from the news by fixed rules for the reviewer and feeds no decision ([ADR-0012](../adr/0012-sources-and-web-information.md)).
 
 When news content is used:
 

@@ -9,7 +9,7 @@
 - Identity decision: policy result.
 - AML risk: separate downstream assessment.
 
-BM25 and displayed similarity values are not identity probabilities ([ADR-0001](../adr/0001-evidence-driven-adjudication.md)).
+BM25 and displayed similarity values are not identity probabilities ([ADR-0001](../adr/0001-identity-adjudication.md)).
 
 ## Retrieval modes
 
@@ -20,7 +20,7 @@ BM25 and displayed similarity values are not identity probabilities ([ADR-0001](
 | INDEX_SEARCH | a name query over the list database | large source sets |
 | PREVIOUS_LINK | the Profiles used by the Case's latest input | re-analysis after a source update |
 
-They are served by `GET /api/profiles/search` (INDEX_SEARCH), `GET /api/profiles/{profileId}` (DIRECT_REFERENCE) and `GET /api/cases/{caseId}/candidates?source=table|previous` (CONTROLLED_SET, PREVIOUS_LINK) ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)). INDEX_SEARCH (steps 3 and 5 of the [operating architecture](system-overview.md#operating-architecture)) runs `Core/Retrieval/ProfileIndex` over the structured Profiles of the list database:
+They are served by `GET /api/profiles/search` (INDEX_SEARCH), `GET /api/profiles/{profileId}` (DIRECT_REFERENCE) and `GET /api/cases/{caseId}/candidates?source=table|previous` (CONTROLLED_SET, PREVIOUS_LINK) ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md)). INDEX_SEARCH (steps 3 and 5 of the [operating architecture](system-overview.md#operating-architecture)) runs `Core/Retrieval/ProfileIndex` over the structured Profiles of the list database:
 
 - Exact alias tier: the query key (after controlled variant folding, in source order or with the surname moved to either end) equals an alias key. These Profiles are listed first, ordered by alias text, and never cut by Top N.
 - The other Profiles are ranked by three routes, each on its own scale, and fused by reciprocal rank (k 60):
@@ -71,7 +71,7 @@ Jaro-Winkler, Levenshtein and exact comparison of the same name are correlated f
 
 `OTHER_IDENTIFIER` holds reference numbers and other labelled identifiers that are not identity documents; they keep their source label and never become DOCUMENT evidence, however much they look like one, even when a reference number passes the national-ID checksum (GC-12).
 
-Photos are not evidence: appearance is never used to support or oppose identity or to estimate age, nationality, gender or name. This is the bank's current specification, not an industry rule; adding photo comparison needs a business-rule change, source and quality conditions and human review ([ADR-0018](../adr/0018-legacy-ai-report-rules-not-adopted.md)).
+Photos are not evidence: appearance is never used to support or oppose identity or to estimate age, nationality, gender or name. This is the bank's current specification, not an industry rule; adding photo comparison needs a business-rule change, source and quality conditions and human review ([ADR-0001](../adr/0001-identity-adjudication.md)).
 
 These groups describe natural persons. A customer or related party is a natural person when its 客戶類型 (類型 for a related party) is missing or says 個人, 自然人, Person, Individual or Natural Person (in any case); any other value makes it a legal person or group. Organization, vessel and other Profiles use `ENTITY_IDENTIFIER` instead (registration number with a known, equal jurisdiction; IMO number for vessels, whatever the flag): agreement is `ENTITY_IDENTIFIER_AGREEMENT` (PROBABLE_MATCH, external REVIEW), a different number under the same key is `ENTITY_IDENTIFIER_CONFLICT` (REVIEW); otherwise, and always for a natural-person subject, `NON_PERSON_SUBJECT_REVIEW`. Entity rules are pending an entity Golden Case.
 
@@ -108,7 +108,7 @@ Per evidence group (step 6 of the [operating architecture](system-overview.md#op
 | TEMPORAL_ROLE | age at every dated role start and the report date | yes: `TEMPORALLY_PLAUSIBLE` (neutral, never support) when every age reaches `MinimumRoleAge`; the hard-conflict code when the gate fires |
 | RELATIONSHIP / COMPANY_ASSOCIATION | spouse, parents, related companies named on both sides | yes: same relation and an EXACT name is support (`MEDIUM` for relatives, `LOW` for companies); the employer goes to EMPLOYMENT. Subject-side relatives are not in the bank export yet |
 
-Similarity values only grade `PARTIAL` within a group (placeholder thresholds, pending calibration: Jaro-Winkler 0.90 for names, set separately for Chinese-character and Latin keys, and Jaccard 0.5 for addresses label the detail SIMILAR or DISSIMILAR); they are never summed across groups or turned into a likelihood ([ADR-0001](../adr/0001-evidence-driven-adjudication.md)). Thresholds are set from labelled cases, not by default.
+Similarity values only grade `PARTIAL` within a group (placeholder thresholds, pending calibration: Jaro-Winkler 0.90 for names, set separately for Chinese-character and Latin keys, and Jaccard 0.5 for addresses label the detail SIMILAR or DISSIMILAR); they are never summed across groups or turned into a likelihood ([ADR-0001](../adr/0001-identity-adjudication.md)). Thresholds are set from labelled cases, not by default.
 
 ### Name comparison
 
@@ -160,7 +160,7 @@ Applies only to an age explicitly stated for a named person in a bounded source 
 
 ## Hard conflict gate
 
-Stage 1 of the three-stage policy ([ADR-0002](../adr/0002-three-stage-identity-policy.md)).
+Stage 1 of the three-stage policy ([ADR-0001](../adr/0001-identity-adjudication.md)).
 
 | Rule | Reason code | Validation | Phase 1 effect |
 |---|---|---|---|
@@ -195,7 +195,7 @@ Insufficient or conflicting evidence
     → REVIEW
 ```
 
-Phase 1 has no automatic MATCH: the identity decision is NO_MATCH, REVIEW or PROBABLE_MATCH. PROBABLE_MATCH is internal ([ADR-0003](../adr/0003-internal-probable-match.md)). There is no numeric score ([ADR-0019](../adr/0019-strength-decision-table-before-fellegi-sunter.md)); `FellegiSunter.Score` computes a calibration weight for Gate D only; the analysis does not run it, and it is outside the result and the explanation; agreeing with any one of k Profile DOBs is k times as likely by chance, so the DOB u is multiplied by k. The calibration tools are in place and are not wired to any decision: `FellegiSunter.Pattern` turns a pair's evidence into an agreement pattern (support agrees, conflict disagrees, everything else is missing), `EstimateParameters` estimates m, u per group and the match share from unlabelled patterns by expectation-maximization under conditional independence, `Weight` scores a pattern with the estimate, and `Calibrate` picks the highest weight threshold that keeps a required recall on labelled pairs, with the precision it gives.
+Phase 1 has no automatic MATCH: the identity decision is NO_MATCH, REVIEW or PROBABLE_MATCH. PROBABLE_MATCH is internal ([ADR-0001](../adr/0001-identity-adjudication.md)). There is no numeric score ([ADR-0001](../adr/0001-identity-adjudication.md)); `FellegiSunter.Score` computes a calibration weight for Gate D only; the analysis does not run it, and it is outside the result and the explanation; agreeing with any one of k Profile DOBs is k times as likely by chance, so the DOB u is multiplied by k. The calibration tools are in place and are not wired to any decision: `FellegiSunter.Pattern` turns a pair's evidence into an agreement pattern (support agrees, conflict disagrees, everything else is missing), `EstimateParameters` estimates m, u per group and the match share from unlabelled patterns by expectation-maximization under conditional independence, `Weight` scores a pattern with the estimate, and `Calibrate` picks the highest weight threshold that keeps a required recall on labelled pairs, with the precision it gives.
 
 ### Support strength
 
@@ -307,7 +307,7 @@ Every decision records its evidence per group, its hard-conflict code or stage 3
 - hard conflict and stage 3 row;
 - reason codes.
 
-The revision's lineage records the input file hashes, the list version of each Profile used and the source-condition policy, code catalog, schema and app versions. The Fellegi-Sunter weight does not run in the analysis and so is not recorded ([ADR-0025](../adr/0025-lineage-records-what-ran.md)). The identity rules have no version of their own; the app version identifies them. Retrieval scope is not recorded.
+The revision's lineage records the input file hashes, the list version of each Profile used and the source-condition policy, code catalog, schema and app versions. The Fellegi-Sunter weight does not run in the analysis and so is not recorded ([ADR-0023](../adr/0023-business-api-data-and-workbook.md)). The identity rules have no version of their own; the app version identifies them. Retrieval scope is not recorded.
 
 Every code a decision or explanation emits is in the code catalog, served by `GET /api/codes` with its meaning and the section that defines it.
 

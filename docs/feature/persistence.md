@@ -2,7 +2,7 @@
 
 > Cross-cutting, lives in Aml.Infra.
 
-SQLite for the PoC, replaced later by Microsoft SQL Server or Oracle; Dapper + DbUp, no EF Core ([ADR-0010](../adr/0010-replaceable-persistence.md)).
+SQLite for the PoC, replaced later by Microsoft SQL Server or Oracle; Dapper + DbUp, no EF Core ([ADR-0010](../adr/0010-persistence-and-batch.md)).
 
 ## Structure
 
@@ -26,9 +26,9 @@ When a second provider is chosen, the provider-specific parts of `SqliteDatabase
 | `analysis_quality` | data quality of a revision: comparison cells by status, Profiles not evaluated, findings counted by code |
 | `case_hit`, `hit_evidence`, `hit_reason` | queryable facts of each hit (identity decision, stage 3 row, hard conflict, pair result, priority; each evidence group's direction, status, strength and detail code; identity, pair and disposition reason codes in order); `hit_reason` indexed by `reason_code` |
 | `job` | batch jobs (`ANALYZE_CASE`, `REANALYZE_CASE`) and their payloads; unique on `idempotency_key` (`uq_job_idempotency`), indexed by `(batch_id, status)` and, for claiming, `(status, priority DESC, created_at, next_attempt_at)`; `payload` is the last column |
-| `list_profile` | every captured Profile version with the SHA-256 of its normalized export text ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)); rows are never updated or deleted |
+| `list_profile` | every captured Profile version with the SHA-256 of its normalized export text ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md)); rows are never updated or deleted |
 
-The schema is one DbUp script, `0001_schema.sql`. The PoC database is disposable ([ADR-0023](../adr/0023-ai-ready-data.md)): when the schema or the stored JSON format changes (`CaseJson.SchemaVersion`), the script changes and the database file is deleted and created again. The script records the format as `PRAGMA user_version`, and startup refuses an existing database whose version is not `CaseJson.SchemaVersion`. Old formats are never read; a stored record that does not read as its type fails. Before a production database exists, an ADR switches to add-only migrations starting from this schema.
+The schema is one DbUp script, `0001_schema.sql`. The PoC database is disposable ([ADR-0023](../adr/0023-business-api-data-and-workbook.md)): when the schema or the stored JSON format changes (`CaseJson.SchemaVersion`), the script changes and the database file is deleted and created again. The script records the format as `PRAGMA user_version`, and startup refuses an existing database whose version is not `CaseJson.SchemaVersion`. Old formats are never read; a stored record that does not read as its type fails. Before a production database exists, an ADR switches to add-only migrations starting from this schema.
 
 The JSON in `case_analysis` is the full record; the fact tables are an index of it for calibration and monitoring queries, written in the same transaction, so they never disagree with it.
 
@@ -79,10 +79,10 @@ Every write goes through `SqliteDatabase.WriteAsync`. Each write runs as its own
 - Writes run in the order they were queued, and each sees the writes before it, as if run one by one.
 - A write that throws is rolled back to its savepoint alone, and only its caller gets the exception.
 - An error after which SQLite rolls back the whole transaction (a full disk, an I/O error), or a failed commit, fails every write of its batch with that error; nothing of the batch is stored.
-- A batch that holds a durable write commits with `synchronous = FULL`, so that write survives a power loss once its call returns. A batch of replayable writes only commits with `NORMAL` and may lose its newest writes on power loss. Replayable writes are the writes a batch job makes, which the job table replays ([ADR-0026](../adr/0026-replayable-job-writes-commit-without-sync.md)). Every other write is durable.
+- A batch that holds a durable write commits with `synchronous = FULL`, so that write survives a power loss once its call returns. A batch of replayable writes only commits with `NORMAL` and may lose its newest writes on power loss. Replayable writes are the writes a batch job makes, which the job table replays ([ADR-0010](../adr/0010-persistence-and-batch.md)). Every other write is durable.
 - A write must not call `WriteAsync` again; reads use their own connections.
 
-Measured on golden cases with a scratch database, before → after: submitting 500 jobs took 1.36 s → 0.15 s, and running them went from about 50 jobs/s at any worker count to about 90 jobs/s with 4 workers and about 230 jobs/s with 16. The analysis itself is about 0.6 ms of CPU per case, so throughput is set by the single writer: its statements plus the batch commits. More workers make larger batches, so each job pays less of a commit: with every commit synced, about 390 jobs/s with 32 workers (the default) and about 470 with 64. Batch jobs commit without a sync ([ADR-0026](../adr/0026-replayable-job-writes-commit-without-sync.md)), which gives about 230 jobs/s with one worker and about 480 with 32 or more. The writer's statements are then the limit.
+Measured on golden cases with a scratch database, before → after: submitting 500 jobs took 1.36 s → 0.15 s, and running them went from about 50 jobs/s at any worker count to about 90 jobs/s with 4 workers and about 230 jobs/s with 16. The analysis itself is about 0.6 ms of CPU per case, so throughput is set by the single writer: its statements plus the batch commits. More workers make larger batches, so each job pays less of a commit: with every commit synced, about 390 jobs/s with 32 workers (the default) and about 470 with 64. Batch jobs commit without a sync ([ADR-0010](../adr/0010-persistence-and-batch.md)), which gives about 230 jobs/s with one worker and about 480 with 32 or more. The writer's statements are then the limit.
 
 Every write runs inside a savepoint, which keeps a sub-journal of the pages it changes. By default SQLite holds that sub-journal in memory up to 64 KiB, then spills it to a temporary file. `temp_store = MEMORY` keeps it in memory for the whole write. That cut storing one analysis (`AcceptAnalysisAsync`) from about 2.4 ms to 1.3 ms without the commit. The sub-journal only undoes a statement or a savepoint and holds nothing durable. It is freed when the write's savepoint is released, so memory peaks at the largest single write. A re-run or lease reclaim of very many jobs is the largest, since every row it updates carries its payload.
 
@@ -116,7 +116,7 @@ Ceiling: many concurrent workers cause wasted attempts; upgrade to `UPDLOCK, REA
 
 ## SQL catalog
 
-All DML lives in XML catalogs, one complete file per provider; the file name selects the provider ([ADR-0014](../adr/0014-per-provider-xml-sql-catalog.md)):
+All DML lives in XML catalogs, one complete file per provider; the file name selects the provider ([ADR-0010](../adr/0010-persistence-and-batch.md)):
 
 ```text
 Aml.Infra/Persistence/Sql/

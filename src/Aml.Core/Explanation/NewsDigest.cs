@@ -50,7 +50,7 @@ public sealed record NewsEvent(
     [property: Description("報導寫明判決確定或定讞")] bool Final,
     [property: Description("事件所在句子的原文，最多 200 字")][property: Sensitivity(Sensitivity.Personal)] string Quote);
 
-// Restates what the attached news says, by fixed rules; it adds no finding and decides nothing (ADR-0028).
+// Restates what the attached news says, by fixed rules; it adds no finding and decides nothing (ADR-0012).
 public sealed record NewsDigest(
     [property: Description("新聞在來源中的引用編號（S#）")] string SourceRef,
     [property: Description("報導中的人物；名單人物在前")] IReadOnlyList<NewsPerson> People,

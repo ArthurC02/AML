@@ -5,7 +5,7 @@ using Aml.Core.Subjects;
 
 namespace Aml.Core.Screening;
 
-/// <summary>Bank list types (ADR-0016). UNKNOWN: an unmapped source category, left for the reviewer.</summary>
+/// <summary>Bank list types (ADR-0005). UNKNOWN: an unmapped source category, left for the reviewer.</summary>
 public enum ListType { Sanction, Pep, Rca, Sie, OfficialWantedList, OtherOfficialList, AdverseMedia, BankInternalList, Unknown }
 
 public enum ConditionStatus { Hit, NotHit, Unknown }
@@ -30,7 +30,7 @@ public sealed record SourceCondition(
     [property: Description("制裁計畫")] string? Program = null,
     [property: Description("管轄地")] string? Jurisdiction = null);
 
-/// <summary>List-type determination and source conditions (ADR-0016).</summary>
+/// <summary>List-type determination and source conditions (ADR-0005).</summary>
 public static partial class SourceConditions
 {
     public const string PolicyVersion = "source-policy-0.2";

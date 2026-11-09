@@ -1,6 +1,6 @@
 namespace Aml.Api.Endpoints;
 
-/// <summary>OpenAPI tags: one per business area (ADR-0024).</summary>
+/// <summary>OpenAPI tags: one per business area (ADR-0023).</summary>
 internal static class Tags
 {
     public const string Cases = "Cases";

@@ -8,7 +8,7 @@ namespace Aml.Core.Screening;
 public enum Recommendation { OnList, NotOnList }
 
 /// <summary>
-/// Advisory Article 22 recommendation (review-and-disposition.md, ADR-0017, ADR-0020). It never changes the identity
+/// Advisory Article 22 recommendation (review-and-disposition.md, ADR-0004). It never changes the identity
 /// decision or the source conditions.
 /// </summary>
 public sealed record DispositionRecommendation(

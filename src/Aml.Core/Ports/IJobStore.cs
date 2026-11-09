@@ -12,7 +12,7 @@ public sealed record JobItem(string JobId, string IdempotencyKey, JobStatus Stat
     string? CaseId, int? AnalysisRevision, string? ErrorCode, DateTimeOffset? CompletedAt, DateTimeOffset CreatedAt);
 
 /// <summary>
-/// Durable job table (ADR-0011). Every state change after the claim requires the caller to own the lease of a RUNNING job. A
+/// Durable job table (ADR-0010). Every state change after the claim requires the caller to own the lease of a RUNNING job. A
 /// caller gives a new lease owner to every claim, so a lease that expired and was claimed again, even by the same process, shuts
 /// out the earlier attempt.
 /// </summary>

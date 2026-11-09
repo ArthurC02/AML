@@ -59,7 +59,7 @@ Questions that need a bank decision. When one is answered, record the answer her
 - Will production use Microsoft SQL Server or Oracle, and which version?
 - Which container platform, identity provider and CI/CD controls are standard?
 - List data refreshes on a schedule or on an event ([operating architecture](../feature/system-overview.md#operating-architecture)). What schedule, and which source events trigger a refresh and re-analysis?
-- Should index search over the list database ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)) feed Cases automatically, and with which Top N?
+- Should index search over the list database ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md)) feed Cases automatically, and with which Top N?
 - Calibrate the Fellegi-Sunter weight (m and u per group, by `FellegiSunter.EstimateParameters` over representative pairs, and a threshold by `Calibrate` over labelled ones) and approve, or not, an AML risk policy; neither affects decisions today.
 - Approve the entity evidence groups (registration number, IMO) with an entity Golden Case.
 - Calibrate the placeholder thresholds from labelled cases. None of them makes evidence support, a conflict or a hit; they grade details, rank candidates or cap groups:
@@ -79,10 +79,10 @@ Questions that need a bank decision. When one is answered, record the answer her
 | UI or API? | API + Swagger only | 2026-11-02 |
 | PoC input format? | supplied HTML files and their `.txt` exports; API or crawler possible later | 2026-11-02 |
 | PoC database? | SQLite until insufficient; later SQL Server or Oracle | 2026-11-02 |
-| Need search index? | not for the PoC input, which uses the case-table candidates; the index is available for the other retrieval modes ([ADR-0021](../adr/0021-deferred-capabilities-built-behind-controls.md)) | 2026-11-02 |
-| Legacy `Rule.md` rules? | merged where evidence-based; probabilities, the legacy Excel report and LLM flow not adopted ([ADR-0018](../adr/0018-legacy-ai-report-rules-not-adopted.md)); a case workbook renders the API instead ([ADR-0027](../adr/0027-case-workbook-renders-the-api.md)) | 2026-11-02 |
-| List-type vocabulary? | bank's seven types plus official wanted list, flags first ([ADR-0016](../adr/0016-bank-list-type-vocabulary.md)) | 2026-11-02 |
+| Need search index? | not for the PoC input, which uses the case-table candidates; the index is available for the other retrieval modes ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md)) | 2026-11-02 |
+| Legacy `Rule.md` rules? | merged where evidence-based; probabilities, the legacy Excel report and LLM flow not adopted ([ADR-0001](../adr/0001-identity-adjudication.md)); a case workbook renders the API instead ([ADR-0023](../adr/0023-business-api-data-and-workbook.md)) | 2026-11-02 |
+| List-type vocabulary? | bank's seven types plus official wanted list, flags first ([ADR-0005](../adr/0005-list-types-and-risk-categories.md)) | 2026-11-02 |
 | Photo comparison? | not used; bank specification | 2026-11-02 |
-| Numeric score or Fellegi-Sunter in Phase 1? | no; evidence-strength decision table, Fellegi-Sunter at Gate D ([ADR-0019](../adr/0019-strength-decision-table-before-fellegi-sunter.md)) | 2026-11-02 |
+| Numeric score or Fellegi-Sunter in Phase 1? | no; evidence-strength decision table, Fellegi-Sunter at Gate D ([ADR-0001](../adr/0001-identity-adjudication.md)) | 2026-11-02 |
 | Weight of nationality and gender? | none; hit prerequisites like name (bank rules) | 2026-11-02 |
 | License of the consular romanization table? | Open Government Data License v1.0 per the Bureau of Consular Affairs' open data announcement: free use without application, attribution required ([third-party data](implementation-baseline.md#third-party-data)) | 2026-11-04 |

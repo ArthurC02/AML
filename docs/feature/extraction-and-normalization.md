@@ -6,7 +6,7 @@
 
 Extractors report what the source states. They do not decide identity or screening outcomes.
 
-Source acquisition sits behind replaceable adapters ([ADR-0012](../adr/0012-source-acquisition-behind-ports.md)). The PoC reads the bank's `.txt` exports and HTML pages of the same files with `Infra/Txt/TxtCaseReader` and `Infra/Html/HtmlExport` (AngleSharp); normalization rules live in Core (`Aml.Core.Normalization`: `NameComparison`, `Romanization`, `SourceValues`, `TaiwanAddresses`, `ChineseNumerals`).
+Source acquisition sits behind replaceable adapters ([ADR-0012](../adr/0012-sources-and-web-information.md)). The PoC reads the bank's `.txt` exports and HTML pages of the same files with `Infra/Txt/TxtCaseReader` and `Infra/Html/HtmlExport` (AngleSharp); normalization rules live in Core (`Aml.Core.Normalization`: `NameComparison`, `Romanization`, `SourceValues`, `TaiwanAddresses`, `ChineseNumerals`).
 
 ## Sources and refresh
 

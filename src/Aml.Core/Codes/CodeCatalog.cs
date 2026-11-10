@@ -8,7 +8,7 @@ public sealed record CodeEntry(string Code, string Kind, string Name, string Des
 /// </summary>
 public static class CodeCatalog
 {
-    public const string Version = "codes-7";
+    public const string Version = "codes-8";
 
     private const string Identity = "docs/feature/identity-adjudication.md";
     private const string Extraction = "docs/feature/extraction-and-normalization.md";
@@ -201,6 +201,7 @@ public static class CodeCatalog
         ("NEWS_EVENT", "REGULATORY_PENALTY", "行政裁罰", "報導寫到主管機關或交易所的罰鍰、裁罰、核處、糾正、違約金、停止買賣、停業、解職或撤銷許可。", "NewsDigests.Build", Watchlist + "#news-digest"),
         ("NEWS_EVENT", "WANTED_NOTICE", "通緝", "報導寫到通緝。", "NewsDigests.Build", Watchlist + "#news-digest"),
         ("NEWS_EVENT", "EXTRADITION", "遣返或引渡", "報導寫到引渡、遣返、遣送或押解回臺。", "NewsDigests.Build", Watchlist + "#news-digest"),
+        ("NEWS_EVENT", "PRIOR_RECORD", "前案紀錄", "報導寫到當事人先前另案受偵審、判刑或執行（前科、累犯）；只由新聞模型讀出。", "NewsModelReading.Read", Watchlist + "#news-models"),
         ("NEWS_CERTAINTY", "STATED", "報導陳述", "報導直接陳述此事件。", "NewsDigests.Build", Watchlist + "#news-digest"),
         ("NEWS_CERTAINTY", "NEGATED", "報導否定", "報導說此事件沒有發生（尚未、沒有），或聲請遭駁回。", "NewsDigests.Build", Watchlist + "#news-digest"),
         ("NEWS_CERTAINTY", "HEDGED", "未確定", "推測、計畫、條件或疑問（恐、擬、可能、若、是否、不排除）；不是已發生的事件。", "NewsDigests.Build", Watchlist + "#news-digest"),

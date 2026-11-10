@@ -8,6 +8,10 @@
     <PackageReference Include="dbup-sqlite" />
     <PackageReference Include="AngleSharp" />
     <PackageReference Include="PdfPig" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Aml.Tests" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="Persistence\Sql\*" LogicalName="Sql.%(Filename)%(Extension)" />

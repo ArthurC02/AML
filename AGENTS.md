@@ -31,7 +31,7 @@ Api ──► Services ──► Core
 | Identity decision | `Core/Identity/EvidenceBuilder.cs`, `HardConflictGate.cs`, `IdentityDecisionPolicy.cs`; spec `docs/feature/identity-adjudication.md` |
 | Source condition / list types | `Core/Screening/SourceConditions.cs`; spec `docs/feature/watchlist-and-adverse-information.md` |
 | Names, dates, addresses | `Core/Normalization/`; spec `docs/feature/extraction-and-normalization.md` |
-| Explanation and news digest | `Core/Explanation/ExplanationBuilder.cs`, `NewsDigest.cs` |
+| Explanation and news digest | `Core/Explanation/ExplanationBuilder.cs`, `NewsDigest.cs`; news models `NewsModelReading.cs`, `Infra/Models/` |
 | REST, batch, job table | `Api/Endpoints/`, `Services/BatchService.cs`, `Infra/Jobs/JobStore.cs`; spec `docs/feature/pipeline-api-and-batch.md` |
 | Storage | `Infra/Persistence/`; spec `docs/feature/persistence.md` |
 | Web text (crawler, PDF) | `Infra/Web/`; spec `docs/feature/web-text.md` |

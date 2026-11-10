@@ -84,4 +84,24 @@ public sealed class AnalysisDataTests : ServiceTestBase
         Assert.Equal(("90000031", AnalysisLineage.ListDatabase, (int?)1), (use.ProfileId, use.Origin, use.ListVersion));
         Assert.NotEqual(lineage.Profiles[0].ContentHash, use.ContentHash);
     }
+
+    [Fact]
+    public async Task Lineage_names_the_news_models_only_when_they_read_an_article_of_a_hit()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var files = Files("GC-03");
+        var input = TxtCaseReader.ReadFiles(files);
+        var news = new Core.Subjects.NewsItem("90000031", "d1", "測試新聞", "某報", null, "王大明遭起訴。");
+        var withNews = input with { NewsByProfileId = new Dictionary<string, Core.Subjects.NewsItem> { ["90000031"] = news } };
+        var model = new Unit.Screening.FakeNewsModel(new Dictionary<string, string> { ["王大明"] = "PER-Suspect" });
+        var service = new Services.CaseService(_cases, TimeProvider.System, newsModel: model);
+
+        var read = await service.CreateAsync("s-n", "e-n", withNews, ct, files);
+        var none = await service.CreateAsync("s-0", "e-0", input with { NewsByProfileId = new Dictionary<string, Core.Subjects.NewsItem>() }, ct, files);
+
+        var revision = (await _cases.GetAnalysisAsync(read.CaseId, 1, ct))!;
+        Assert.Equal("ner:test ev:test", revision.Lineage!.NewsModelVersion);
+        Assert.Equal(["王大明"], revision.Explanation!.Hits.Single().NewsDigest!.Model!.Entities.Select(e => e.Name));
+        Assert.Null((await _cases.GetAnalysisAsync(none.CaseId, 1, ct))!.Lineage!.NewsModelVersion);
+    }
 }

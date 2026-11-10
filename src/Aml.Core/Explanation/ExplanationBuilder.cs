@@ -2,6 +2,7 @@ using System.Text;
 using Aml.Core.Cases;
 using Aml.Core.Identity;
 using Aml.Core.Normalization;
+using Aml.Core.Ports;
 using Aml.Core.Retrieval;
 using Aml.Core.Screening;
 using Aml.Core.Shared;
@@ -15,14 +16,14 @@ public static class ExplanationBuilder
     private const int MaskKeptPrefix = 3;
     private const int MaskKeptSuffix = 2;
 
-    public static CaseExplanation Build(CaseInput input, CaseAnalysis analysis, IReadOnlyList<PairChange>? changes = null) =>
+    public static CaseExplanation Build(CaseInput input, CaseAnalysis analysis, IReadOnlyList<PairChange>? changes = null, INewsModel? newsModel = null) =>
         new(CaseLifecycle.Aggregate(analysis),
-            analysis.Hits.Select((h, i) => Hit(i + 1, input, h)).ToList(),
+            analysis.Hits.Select((h, i) => Hit(i + 1, input, h, newsModel)).ToList(),
             analysis.NotEvaluatedProfiles,
             input.ImportedDecisions,
             changes);
 
-    private static HitExplanation Hit(int number, CaseInput input, HitResult h)
+    private static HitExplanation Hit(int number, CaseInput input, HitResult h, INewsModel? newsModel)
     {
         var s = input.Subject;
         var p = h.Profile;
@@ -69,7 +70,7 @@ public static class ExplanationBuilder
                 AgreementsAndDifferences: AgreementsAndDifferences(rows, unknown),
                 KeyEvidenceOrGaps: KeyEvidence(h, support),
                 Conclusion: Conclusion(h)),
-            NewsDigest: NewsDigests.Build(news, p.Names, sources.LastOrDefault(x => x.UsedFor != SourceUse.ProfileRecord)?.Ref ?? ""));
+            NewsDigest: NewsDigests.Build(news, p.Names, sources.LastOrDefault(x => x.UsedFor != SourceUse.ProfileRecord)?.Ref ?? "", newsModel));
     }
 
     private static string ScreenedSubjectLabel(ScreenedSubject s)

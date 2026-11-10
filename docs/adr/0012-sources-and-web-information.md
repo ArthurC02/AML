@@ -1,7 +1,7 @@
 # ADR-0012: Sources, web information and the news digest
 
-- Status: Accepted. Web search and web identity evidence are decided but not built yet; until they are, the [news digest](../feature/watchlist-and-adverse-information.md#news-digest) reads only the news attached to a Profile and feeds no decision.
-- Date: 2026-11-02; updated 2026-11-09 (merged former ADR-0028; web information added)
+- Status: Accepted. Web search and web identity evidence are decided but not built yet; until they are, the [news digest](../feature/watchlist-and-adverse-information.md#news-digest) and the [news models](../feature/watchlist-and-adverse-information.md#news-models) read only the news attached to a Profile and feed no decision.
+- Date: 2026-11-02; updated 2026-11-10 (the small models read attached news beside the rules)
 
 ## Context
 
@@ -14,6 +14,7 @@ Reviewers read the news and judgments about a listed person to learn who is invo
 - **Ports.** Customer and source data come through `ICustomerSource` and `IProfileSource` in Core. Another acquisition path is a new Infra implementation; normalization and adjudication do not change.
 - **Web search starts from list-side data.** The system follows what the Profile already holds to the web: its names and aliases, titles, places and source URLs, searched on public judgment and news sites through the polite crawler ([web text](../feature/web-text.md)). Nothing from the customer side (name, date of birth, identifiers) is sent out.
 - **Reading.** Pages are read by rules and the small models into people, roles and events with their dates, agencies, offences, amounts and penalties, and into identity facts about the listed person (age or birth year, title, place, nationality). Every fact keeps its sentence and source.
+- **Rules and models side by side.** The rule digest and the models' readout are kept apart in the digest, each with its own provenance; neither overrides the other. The models' known errors are corrected by fixed rules only where a correction measurably helped on the annotated documents, and a rule result is not merged into the models' (on judgments and press releases it made them worse). The models are optional: without them the rules read alone.
 - **Web facts are identity evidence.** A fact that fits or contradicts the customer becomes an evidence group with its citation `[S#]`. Until a Golden Case validates it, web evidence cannot close a pair as NO_MATCH or raise it above PROBABLE_MATCH; it supports, conflicts and orders review.
 - **One event, one piece of evidence.** Reports of the same party, event time and charge are one event; the summary lists every source of it. A fact stated by one source is never generalised to all.
 - **Every source used has a summary**: publisher, date, title, then the people and events in fixed sentence patterns, each phrase a slot of a cited sentence. Rewording never swaps actor and object, and the event date is never the publication date.
@@ -23,4 +24,4 @@ Reviewers read the news and judgments about a listed person to learn who is invo
 
 - The news digest, its codes and its known limits are specified in the [feature spec](../feature/watchlist-and-adverse-information.md#news-digest); web identity evidence will add evidence groups and codes there and in [identity adjudication](../feature/identity-adjudication.md).
 - Search queries carry the listed person's name to outside sites; this is public list data, logged per Case.
-- Model accuracy is measured on the bank's annotated judgments and press releases; there is no Golden Case for web evidence yet.
+- Model accuracy is measured on the bank's annotated judgments and press releases, outside the repository, and recorded in the feature spec; there is no Golden Case for web evidence yet.

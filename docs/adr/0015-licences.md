@@ -1,7 +1,7 @@
 # ADR-0015: Clean licences for libraries, models and text
 
 - Status: Accepted
-- Date: 2026-11-02; updated 2026-11-09 (merged former ADR-0029)
+- Date: 2026-11-02; updated 2026-11-10 (models run with ONNX Runtime)
 
 ## Context
 
@@ -11,7 +11,7 @@ MediatR, AutoMapper and FluentAssertions moved to commercial licences in 2025; i
 
 - **Libraries.** No commercially licensed packages: plain handler classes, hand-written mapping, xUnit `Assert`. Built-in .NET capabilities come before new packages; any package goes through the [implementation baseline](../plan/implementation-baseline.md#packages).
 - **Models.** Code and weights are permissive (Apache-2.0, MIT) and every training corpus allows commercial use. CKIP models are not used. The base model is `bert-base-chinese` (Apache-2.0), fine-tuned on court judgments and government press releases (outside copyright under 著作權法 第 9 條) and on news the bank has licensed for training.
-- Training and ONNX export run in Python outside the .NET solution; the system runs the exported models in .NET. Gathered text stays outside the repository.
+- Training and ONNX export run in Python outside the .NET solution; the system runs the exported models in .NET with ONNX Runtime (MIT). Model files and gathered text stay outside the repository.
 
 ## Consequences
 

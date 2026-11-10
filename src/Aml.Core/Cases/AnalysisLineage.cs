@@ -17,7 +17,8 @@ public sealed record ProfileUse(
     [property: Description("相同內容的名單庫版本；只來自案件檔時為 null")] int? ListVersion,
     [property: Description("正規化匯出文字的 SHA-256，與名單庫的內容雜湊同一算法")] string? ContentHash);
 
-// Records only the rule sets that ran; a model outside the analysis, such as the Fellegi-Sunter weight, is not (ADR-0023).
+// Records only what ran: the rule sets, and the news models when they read an attached article; a model outside the
+// analysis, such as the Fellegi-Sunter weight, is not (ADR-0023).
 public sealed record AnalysisLineage(
     [property: Description("輸入檔與其雜湊")] IReadOnlyList<InputFile> InputFiles,
     [property: Description("分析用到的每一筆名單與其來源版本")] IReadOnlyList<ProfileUse> Profiles,
@@ -25,7 +26,8 @@ public sealed record AnalysisLineage(
     [property: Description("代碼字典版本")] string CodeCatalogVersion,
     [property: Description("儲存格式（JSON Schema）版本")] int SchemaVersion,
     [property: Description("應用程式版本（組件 informational version）")] string AppVersion,
-    [property: Description("分析基準日（UTC 日期）：PEP 職務是否都已結束以此日判斷")] DateOnly AsOf)
+    [property: Description("分析基準日（UTC 日期）：PEP 職務是否都已結束以此日判斷")] DateOnly AsOf,
+    [property: Description("讀了附加新聞的新聞模型版本；未設定模型或沒有命中附有新聞時為 null")] string? NewsModelVersion = null)
 {
     public const string ListDatabase = "LIST_DATABASE";
     public const string CaseFiles = "CASE_FILES";

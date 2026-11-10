@@ -6,6 +6,7 @@ using Aml.Core.Ports;
 using Aml.Core.Subjects;
 using Aml.Infra.Html;
 using Aml.Infra.Jobs;
+using Aml.Infra.Models;
 using Aml.Infra.Persistence;
 using Aml.Infra.Persistence.Repositories;
 using Aml.Infra.Txt;
@@ -41,6 +42,9 @@ db.Upgrade();
 builder.Services.AddSingleton(db);
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<ICaseStore, CaseStore>();
+// The news models are optional: without NewsModels:Directory the digest is read by rules alone (ADR-0015).
+if (builder.Configuration["NewsModels:Directory"] is { Length: > 0 } modelDirectory)
+    builder.Services.AddSingleton<INewsModel>(new OnnxNewsModel(modelDirectory));
 builder.Services.AddSingleton<CaseService>();
 builder.Services.AddSingleton<IJobStore, JobStore>();
 var batchOptions = builder.Configuration.GetSection("Batch").Get<BatchOptions>() ?? new BatchOptions();

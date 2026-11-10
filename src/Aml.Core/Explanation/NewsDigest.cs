@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Text.RegularExpressions;
 using Aml.Core.Normalization;
+using Aml.Core.Ports;
 using Aml.Core.Screening;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
@@ -16,6 +17,7 @@ public enum NewsEventType
 {
     Investigation, Search, Questioning, Arrest, Referral, Detention, Bail, AssetRestraint, Indictment, NonIndictment,
     Conviction, Acquittal, Appeal, Confiscation, Fine, RegulatoryPenalty, WantedNotice, Extradition,
+    PriorRecord,
 }
 
 public enum NewsCertainty { Stated, Negated, Hedged, Requested }
@@ -55,7 +57,8 @@ public sealed record NewsDigest(
     [property: Description("新聞在來源中的引用編號（S#）")] string SourceRef,
     [property: Description("報導中的人物；名單人物在前")] IReadOnlyList<NewsPerson> People,
     [property: Description("報導中的事件，依出現順序")] IReadOnlyList<NewsEvent> Events,
-    [property: Description("由人物與事件依固定句型組成的摘要；每句都來自上列人物與事件")][property: Sensitivity(Sensitivity.Personal)] IReadOnlyList<string> Summary);
+    [property: Description("由人物與事件依固定句型組成的摘要；每句都來自上列人物與事件")][property: Sensitivity(Sensitivity.Personal)] IReadOnlyList<string> Summary,
+    [property: Description("新聞模型讀出的人物、機構與事件，與上列規則結果分開，不參與任何判斷；未設定模型時為 null")] NewsModelReadout? Model = null);
 
 /// <summary>
 /// Reads people, their roles and the legal events of one attached news item by rules (watchlist-and-adverse-information.md#news-digest).
@@ -69,7 +72,7 @@ public static partial class NewsDigests
 
     private sealed record Mention(int At, int Length, string Key, string Name, NewsMatch Match, string? Role, bool Anonymous = false);
 
-    public static NewsDigest? Build(NewsItem? news, IReadOnlyList<string> profileNames, string sourceRef)
+    public static NewsDigest? Build(NewsItem? news, IReadOnlyList<string> profileNames, string sourceRef, INewsModel? model = null)
     {
         if (news is null) return null;
         var text = news.Text;
@@ -83,7 +86,8 @@ public static partial class NewsDigests
         var shownAs = mentions.GroupBy(m => m.Key, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => (g.FirstOrDefault(m => !m.Anonymous) ?? g.First()).Name, StringComparer.Ordinal);
         var events = Events(text, blanked, mentions, shownAs, news.PublishedOn);
-        return new NewsDigest(sourceRef, people, events, Summary(news, sourceRef, people, events));
+        return new NewsDigest(sourceRef, people, events, Summary(news, sourceRef, people, events),
+            model is null ? null : NewsModelReading.Read(text, names, model));
     }
 
     // ---- People ------------------------------------------------------------------------------------------------
@@ -833,6 +837,7 @@ public static partial class NewsDigests
         NewsEventType.RegulatoryPenalty => "行政裁罰",
         NewsEventType.WantedNotice => "通緝",
         NewsEventType.Extradition => "遣返或引渡",
+        NewsEventType.PriorRecord => "前案紀錄",
         _ => Code(type),
     };
 }

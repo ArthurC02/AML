@@ -1,0 +1,116 @@
+using Aml.Core.Explanation;
+using Aml.Core.Subjects;
+
+namespace Aml.Tests.Unit.Screening;
+
+/// <summary>
+/// The news models' readout on made-up news (watchlist-and-adverse-information.md#news-models): the fixed corrections of the
+/// tagger's spans, and the events per entity and sentence.
+/// </summary>
+public class NewsModelReadingTests
+{
+    private static NewsModelReadout Read(string text, Dictionary<string, string> roles, string[]? profile = null,
+        params (string, string, string, float)[] events) =>
+        NewsModelReading.Read(text, profile ?? ["王大明"], new FakeNewsModel(roles, events));
+
+    [Fact]
+    public void One_character_fragments_and_accounts_are_dropped()
+    {
+        var r = Read("王大明以人頭戶收款，林也到場。", new() { ["王大明"] = "PER-Suspect", ["人頭戶"] = "ORG-Other", ["林"] = "PER-Other" });
+
+        Assert.Equal(["王大明"], r.Entities.Select(e => e.Name));
+    }
+
+    [Fact]
+    public void A_fragment_or_an_over_long_span_holding_one_well_formed_name_is_that_name()
+    {
+        var r = Read("王大明遭起訴。大明否認，王大明等三人交保。", new() { ["王大明等"] = "PER-Suspect", ["王大明"] = "PER-Suspect", ["大明"] = "PER-Other" });
+
+        var e = Assert.Single(r.Entities);
+        Assert.Equal(("王大明", 3), (e.Name, e.Mentions));
+        Assert.Equal(["大明", "王大明等"], e.OtherForms.Order(StringComparer.Ordinal));
+        Assert.Equal(Core.Explanation.NewsParty.Suspect, e.Party); // two suspect mentions outvote one other
+    }
+
+    [Fact]
+    public void A_fragment_inside_two_names_is_dropped_and_one_with_no_name_is_kept()
+    {
+        var r = Read("王大明與陳大明見面，大明先離開；約翰到場。",
+            new() { ["王大明"] = "PER-Suspect", ["陳大明"] = "PER-Victim", ["大明"] = "PER-Other", ["約翰"] = "PER-Other" });
+
+        Assert.Equal(["王大明", "陳大明", "約翰"], r.Entities.Select(e => e.Name));
+        Assert.Null(r.Entities[2].Party);
+    }
+
+    [Fact]
+    public void A_short_organisation_name_inside_one_longer_one_is_its_abbreviation()
+    {
+        var r = Read("大明公司負責人王大明遭搜索，大明公司與大明營造均遭調查，大明另有子公司。",
+            new() { ["大明公司"] = "ORG-Suspect", ["大明營造"] = "ORG-Other", ["大明"] = "ORG-Other", ["王大明"] = "PER-Suspect" });
+
+        Assert.Equal([("王大明", false), ("大明公司", true), ("大明營造", true), ("大明", true)], r.Entities.Select(e => (e.Name, e.Organisation)));
+        Assert.Equal(Core.Explanation.NewsParty.Suspect, r.Entities[1].Party);
+    }
+
+    [Fact]
+    public void The_profile_person_comes_first_then_by_mentions()
+    {
+        var r = Read("陳小華指稱陳小華與林志強受騙，林志強報案，林志強作證，王大明否認。",
+            new() { ["陳小華"] = "PER-Victim", ["林志強"] = "PER-Victim", ["王大明"] = "PER-Suspect" });
+
+        Assert.Equal([("王大明", true), ("林志強", false), ("陳小華", false)], r.Entities.Select(e => (e.Name, e.ProfileName)));
+        Assert.Equal("ner:test ev:test", r.Version);
+    }
+
+    [Fact]
+    public void Events_keep_the_highest_probability_at_or_above_the_threshold_with_its_sentence()
+    {
+        var r = Read("王大明遭聲押。法院裁定王大明無羈押必要！王大明有詐欺前科",
+            new() { ["王大明"] = "PER-Suspect" }, null,
+            ("王大明", "聲押", "Detention-Requested", 0.62f),
+            ("王大明", "無羈押", "Detention-Negated", 0.914f),
+            ("王大明", "無羈押", "Detention-Requested", 0.40f),
+            ("王大明", "前科", "prior", 0.3f),
+            ("王大明", "前科", "Conviction", 0.29f),
+            ("王大明", "前科", "NotALabel", 0.9f));
+
+        var e = Assert.Single(r.Entities);
+        Assert.Equal(
+        [
+            (NewsEventType.Detention, NewsCertainty.Negated, 0.91, "法院裁定王大明無羈押必要！"),
+            (NewsEventType.Detention, NewsCertainty.Requested, 0.62, "王大明遭聲押。"),
+            (NewsEventType.PriorRecord, NewsCertainty.Stated, 0.3, "王大明有詐欺前科"),
+        ], e.Events.Select(v => (v.Type, v.Certainty, v.Probability, v.Quote)));
+    }
+
+    [Fact]
+    public void A_quote_is_cut_at_200_units_but_never_inside_a_surrogate_pair()
+    {
+        var sentence = "王大明" + new string('甲', 196) + "\U00020000" + "遭起訴";
+        var r = Read(sentence, new() { ["王大明"] = "PER-Suspect" }, null, ("王大明", "起訴", "Indictment", 0.9f));
+
+        Assert.Equal(sentence[..199], Assert.Single(Assert.Single(r.Entities).Events).Quote);
+    }
+
+    [Fact]
+    public void Each_sentence_is_classified_with_the_form_written_in_it()
+    {
+        var model = new FakeNewsModel(new Dictionary<string, string> { ["王大明"] = "PER-Suspect", ["大明"] = "PER-Suspect" },
+            ("大明", "交保", "Bail", 0.8f), ("王大明", "交保", "Bail", 0.1f));
+
+        var r = NewsModelReading.Read("王大明遭起訴；另一句無關。大明交保", ["王大明"], model);
+
+        Assert.Equal(2, model.Classifications); // the unrelated sentence is not classified
+        Assert.Equal([(NewsEventType.Bail, "大明交保")], Assert.Single(r.Entities).Events.Select(v => (v.Type, v.Quote)));
+    }
+
+    [Fact]
+    public void The_digest_carries_the_readout_only_when_a_model_is_given()
+    {
+        var news = new NewsItem("1", "d1", "測試新聞", "某報", null, "王大明遭起訴。");
+        var model = new FakeNewsModel(new Dictionary<string, string> { ["王大明"] = "PER-Suspect" });
+
+        Assert.Null(NewsDigests.Build(news, ["王大明"], "S2")!.Model);
+        Assert.Equal(["王大明"], NewsDigests.Build(news, ["王大明"], "S2", model)!.Model!.Entities.Select(e => e.Name));
+    }
+}

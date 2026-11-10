@@ -154,7 +154,7 @@ The ADVERSE_MEDIA stage is read from the attached news by a keyword heuristic, t
 
 ### News digest
 
-Each hit with attached news carries a `newsDigest` in its explanation ([ADR-0012](../adr/0012-sources-and-web-information.md)): the people and legal events the news names, and a summary in fixed sentence patterns. It is read by rules, restates the news and decides nothing: no condition, stage, relevance, identity or disposition reads it.
+Each hit with attached news carries a `newsDigest` in its explanation ([ADR-0012](../adr/0012-sources-and-web-information.md)): the people and legal events the news names, and a summary in fixed sentence patterns. It is read by rules (with the [news models](#news-models) beside it when configured), restates the news and decides nothing: no condition, stage, relevance, identity or disposition reads it.
 
 - **People.**
   - Which mentions count:
@@ -216,6 +216,32 @@ Each hit with attached news carries a `newsDigest` in its explanation ([ADR-0012
   - several cases in one article are not told apart
 - **Caps.** At most 100 Profile names are searched, 500 occurrences of each name and 2,000 mentions kept, 1,000 event keywords looked at, 50 people and 100 events listed; slots are read from the first 2,000 characters of a sentence or clause. The reading is linear in the text: slots are read once per clause and sentence, and patterns holding an open run (dates, amounts, penalties) are non-backtracking.
 
+### News models
+
+When `NewsModels:Directory` is configured, the digest also carries `model`: what the two small models read from the same news ([ADR-0012](../adr/0012-sources-and-web-information.md), [ADR-0015](../adr/0015-licences.md)). It sits beside the rule results, never mixes with them, and like them feeds no decision. Without the setting `model` is absent and the digest is read by rules alone.
+
+- **Models.** Both are `bert-base-chinese` fine-tuned on the bank's annotated judgments and press releases and exported to ONNX; the directory holds `ner/` and `ev/`, each with `model.onnx`, `config.json` and `vocab.txt`, outside the repository. `Infra/Models/OnnxNewsModel` runs them with ONNX Runtime. Its tokenizer reproduces the training one (Hugging Face BertNormalizer without lower-casing, BertPreTokenizer, WordPiece) and keeps each token's place in the text; each character is first NFKC-normalised when that keeps it one character. The tagger reads the text in windows of 510 tokens every 384, sums each token's label probabilities over the windows holding it, and decodes BIO tags into spans with a role (`PER-` or `ORG-` with `Suspect`, `Victim`, `Official` or `Other`).
+- **Corrections** of the tagger's known errors (`Core/Explanation/NewsModelReading`), each kept only because it helped on the annotated test documents:
+  - a one-character span is dropped, and so is an organisation ending in 戶 (帳戶, 人頭戶: an account, not an organisation)
+  - a well-formed name is two to four ideographs opening with a common surname; one holding exactly one other well-formed name of three or more characters is its form (王大明等 → 王大明), while a two-character name inside a three-character one stays apart (王明, 王明華)
+  - any other personal span inside or around well-formed names that all map to one person is that person's form (大明 → 王大明); one related to two people (大明 with 王大明 and 陳大明) is dropped; one related to none stays itself
+  - a short organisation name inside exactly one longer one is its abbreviation
+  - the role is the majority over all mentions of all forms; party `OTHER` becomes null
+  - tried and left out: joining touching spans (it glued neighbouring names), the rule digest's role word over the tagger's role, the rule events added to the model's, and 前科 / 累犯 / 曾因 patterns for prior records (each made the results worse or found nothing more)
+- **Entities.** Each has its name (the full name when it has several forms), its other forms, whether it is an organisation, its party, whether a form equals a Profile name, and its mentions; the Profile person first, then by mentions, at most 50.
+- **Events.** Each sentence (up to 。！？；!?; or a line break) holding a form of an entity is classified for that entity, with the form as written there, cropped to 150 characters around it as in training; at most 300 classifications per article. The labels are the `NEWS_EVENT` types with `NEGATED` or `REQUESTED` where the label says so, and `PRIOR_RECORD` for a prior case (前科, 累犯), which only the model reads. A label is listed at a probability of 0.3 or more (the best F1 on the test documents), with its highest probability rounded to two places and that sentence, at most 200 characters, ordered by probability.
+- **Time.** On the PoC machine (12 cores, under other load) tagging takes about 1 s per 1,000 characters and each event classification about 65 ms, so a 2,000-character article takes 3 to 5 s and a long judgment up to about 30 s, within a batch job's `Batch:Timeout`; the models rerun on every re-analysis. Measured and left out: int8 quantization (no faster here, and fewer people found) and padded batches of event classifications (slower on a CPU).
+- **Lineage.** `newsModelVersion` in the revision's lineage names both model files by the first 12 hex digits of their SHA-256 when the models read an article of a hit, else it is null.
+- **Measured** on 49 annotated documents never used in training (people per document, events per document, person and label):
+
+| | Found | Role right | Extra names | Events P / R / F1 |
+|---|---|---|---|---|
+| tagger, one-character spans dropped | 382 / 394 (97%) | 371 / 382 (97%) | 111 | 0.82 / 0.83 / 0.83 |
+| with the corrections | 382 / 394 (97%) | 370 / 382 (97%) | 74 | unchanged |
+| rule digest alone, for comparison | 82 / 394 (21%) | 80 / 82 (98%) | 14 | 0.34 / 0.22 / 0.27 |
+
+  The rules were written for news; the test documents are judgments and press releases, so the rule row says little about news. Remaining gaps: organisations missed (10), prior records (7 of 13 found), people tagged as `Other` read as suspects (3 of 6).
+
 ## Policy responsibilities
 
 ### OfficialListPolicy
@@ -258,7 +284,7 @@ A news item attached to a Profile counts as attached news; the Profile's own des
 
 ## Phase 1 constraint
 
-General free-news event understanding is out of scope. Structured Profile fields, bounded Notes sections and explicit citations are used; no LLM or other language model is involved ([ADR-0001](../adr/0001-identity-adjudication.md)). The [news digest](#news-digest) reads people and events from the news by fixed rules for the reviewer and feeds no decision ([ADR-0012](../adr/0012-sources-and-web-information.md)).
+General free-news event understanding is out of scope. Structured Profile fields, bounded Notes sections and explicit citations are used; no LLM is involved, and no model takes part in any decision ([ADR-0001](../adr/0001-identity-adjudication.md)). The [news digest](#news-digest) reads people and events from the news by fixed rules, and the [news models](#news-models) beside it, for the reviewer only ([ADR-0012](../adr/0012-sources-and-web-information.md)).
 
 When news content is used:
 

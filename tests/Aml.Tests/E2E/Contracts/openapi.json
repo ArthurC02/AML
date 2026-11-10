@@ -1175,6 +1175,13 @@
             "type": "string",
             "description": "分析基準日（UTC 日期）：PEP 職務是否都已結束以此日判斷",
             "format": "date"
+          },
+          "newsModelVersion": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "讀了附加新聞的新聞模型版本；未設定模型或沒有命中附有新聞時為 null"
           }
         }
       },
@@ -3049,6 +3056,17 @@
               "type": "string"
             },
             "description": "由人物與事件依固定句型組成的摘要；每句都來自上列人物與事件"
+          },
+          "model": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "新聞模型讀出的人物、機構與事件，與上列規則結果分開，不參與任何判斷；未設定模型時為 null",
+                "$ref": "#/components/schemas/NewsModelReadout"
+              }
+            ]
           }
         }
       },
@@ -3183,7 +3201,8 @@
           "FINE",
           "REGULATORY_PENALTY",
           "WANTED_NOTICE",
-          "EXTRADITION"
+          "EXTRADITION",
+          "PRIOR_RECORD"
         ]
       },
       "NewsMatch": {
@@ -3192,6 +3211,117 @@
           "PROFILE_SURNAME",
           "OTHER_PERSON"
         ]
+      },
+      "NewsModelEntity": {
+        "required": [
+          "name",
+          "otherForms",
+          "organisation",
+          "profileName",
+          "mentions",
+          "events"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "姓名或機構名；同一對象有多種寫法時取完整姓名"
+          },
+          "otherForms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "同一對象在報導中的其他寫法（如只寫名、名字後接「等」）"
+          },
+          "organisation": {
+            "type": "boolean",
+            "description": "true：機構；false：個人"
+          },
+          "party": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "模型判斷的身分：SUSPECT、VICTIM、OFFICIAL；其他或看不出時為 null",
+                "$ref": "#/components/schemas/NewsParty"
+              }
+            ]
+          },
+          "profileName": {
+            "type": "boolean",
+            "description": "姓名或其他寫法與名單人物的姓名相同"
+          },
+          "mentions": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "description": "出現次數",
+            "format": "int32"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NewsModelEvent"
+            },
+            "description": "模型讀出此對象涉及的事件，依機率由高到低"
+          }
+        }
+      },
+      "NewsModelEvent": {
+        "required": [
+          "type",
+          "certainty",
+          "probability",
+          "quote"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "description": "事件類型，見 /api/codes",
+            "$ref": "#/components/schemas/NewsEventType"
+          },
+          "certainty": {
+            "description": "STATED、NEGATED 或 REQUESTED（模型不讀 HEDGED）",
+            "$ref": "#/components/schemas/NewsCertainty"
+          },
+          "probability": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "description": "模型機率（0 至 1，取兩位小數）；列出的事件都至少 0.3",
+            "format": "double"
+          },
+          "quote": {
+            "type": "string",
+            "description": "機率最高的句子原文，最多 200 字"
+          }
+        }
+      },
+      "NewsModelReadout": {
+        "required": [
+          "version",
+          "entities"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "description": "模型版本：人物模型與事件模型的檔案雜湊"
+          },
+          "entities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NewsModelEntity"
+            },
+            "description": "模型找到的人物與機構；名單人物在前，其餘依出現次數"
+          }
+        }
       },
       "NewsParty": {
         "enum": [

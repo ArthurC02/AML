@@ -46,8 +46,8 @@ AML/
 │   │   ├── Screening/            # source-condition policies, combination matrix, DispositionPolicy, risk scoring
 │   │   ├── Retrieval/            # ProfileIndex (alias, BM25, n-gram, reading-key routes), ProfileMerge
 │   │   ├── Cases/                # CaseAnalyzer, Case records, revision changes, lineage, quality, CaseViews and page tokens, CaseJson (JSON form and schemas)
-│   │   ├── Explanation/          # ExplanationBuilder
-│   │   └── Ports/                # ICaseStore, IJobStore, IListStore
+│   │   ├── Explanation/          # ExplanationBuilder, NewsDigest (rules), NewsModelReading (corrections of the news models' output)
+│   │   └── Ports/                # ICaseStore, IJobStore, IListStore, INewsModel
 │   ├── Aml.Services/             # orchestration
 │   │   ├── CaseService.cs        # sole writer of Case state; builds each revision's lineage and quality
 │   │   ├── ProfileFiles.cs       # Profile file names and the list content hash
@@ -59,7 +59,8 @@ AML/
 │   │   ├── Txt/                  # .txt export reader (UTF-8, CP950 fallback), CaseInputException
 │   │   ├── Html/                 # HTML page to export layout (AngleSharp)
 │   │   ├── Web/                  # polite fetching (robots.txt, delay), main text of web pages and PDFs
-│   │   ├── Excel/                # Xlsx (SpreadsheetML with the standard library), CaseWorkbook (nine sheets)
+│   │   ├── Excel/                # Xlsx (SpreadsheetML with the standard library), CaseWorkbook (eleven sheets)
+│   │   ├── Models/               # OnnxNewsModel (ONNX Runtime), BertWordPiece (the training tokenizer, with offsets)
 │   │   └── Jobs/                 # JobStore
 │   └── Aml.Api/                  # composition root
 │       ├── Program.cs            # DI, OpenAPI, OpenTelemetry, health check, endpoint registration
@@ -179,6 +180,7 @@ Versions are pinned in `Directory.Packages.props`; this table lists them for rev
 | Infra | dbup-sqlite | 6.0.4 | schema scripts |
 | Infra | AngleSharp | 1.9.0 | HTML parsing (`Infra/Html/HtmlExport`, `Infra/Web/MainText`) |
 | Infra | PdfPig | 0.1.16 | PDF text (`Infra/Web/PdfText`); Apache-2.0 |
+| Infra | Microsoft.ML.OnnxRuntime | 1.31.1 | runs the news models (`Infra/Models/OnnxNewsModel`); MIT. Microsoft.ML.Tokenizers was tried and left out: it drops characters the training tokenizer keeps (○ in 王○○, ⑴), so `BertWordPiece` reproduces it |
 | Api | Microsoft.AspNetCore.OpenApi | 10.0.14 | OpenAPI document |
 | Api | Swashbuckle.AspNetCore.SwaggerUI | 10.3.1 | Swagger UI only |
 | Api | OpenTelemetry.Extensions.Hosting | 1.20.1 | telemetry host |

@@ -1,7 +1,7 @@
 # ADR-0023: Business API, AI-ready data and the case workbook
 
 - Status: Accepted. "Each fact on one sheet only" is decided but not built yet: the 命中 sheet's summary columns still restate 比對 and 證據.
-- Date: 2026-11-04; updated 2026-11-09 (merged former ADR-0022, 0024, 0025, 0027)
+- Date: 2026-11-04; updated 2026-11-10 (lineage names the news models when they ran)
 
 ## Context
 
@@ -20,7 +20,7 @@ Reviewers also read, filter and file cases in Excel. Spreadsheet practice (Broma
 |---|---|
 | Integration | typed records with published JSON Schemas; every field described; every emitted code in the code catalog |
 | Calibration, monitoring | fact tables (`case_hit`, `hit_evidence`, `hit_reason`) written with the JSON in one transaction rebuild every Golden decision; `analysis_quality` per revision |
-| Audit | `analysis_lineage` names only what ran: input file hashes, each Profile's list version, source-policy, code-catalog, schema and application versions; a model that runs records its version and parameters, its output kept apart from the decision |
+| Audit | `analysis_lineage` names only what ran: input file hashes, each Profile's list version, source-policy, code-catalog, schema and application versions; a model that runs records its version (the news models: `newsModelVersion`), its output kept apart from the decision |
 | Minimization | `x-sensitivity` (`PERSONAL`, `IDENTIFIER`) on schema fields |
 
 - The code catalog (`GET /api/codes`) and schema descriptions (`GET /api/schemas`) are the one source of meaning. **No old formats**: a record change raises `CaseJson.SchemaVersion`, changes the single schema script, and rebuilds the PoC database.

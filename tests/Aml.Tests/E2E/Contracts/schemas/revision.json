@@ -1,5 +1,5 @@
 {
-  "$id": "aml:AnalysisRecord:v7",
+  "$id": "aml:AnalysisRecord:v8",
   "type": [
     "object",
     "null"
@@ -1631,7 +1631,8 @@
                             "FINE",
                             "REGULATORY_PENALTY",
                             "WANTED_NOTICE",
-                            "EXTRADITION"
+                            "EXTRADITION",
+                            "PRIOR_RECORD"
                           ]
                         },
                         "certainty": {
@@ -1804,6 +1805,150 @@
                       ]
                     },
                     "x-sensitivity": "PERSONAL"
+                  },
+                  "model": {
+                    "description": "新聞模型讀出的人物、機構與事件，與上列規則結果分開，不參與任何判斷；未設定模型時為 null",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "version": {
+                        "description": "模型版本：人物模型與事件模型的檔案雜湊",
+                        "type": "string"
+                      },
+                      "entities": {
+                        "description": "模型找到的人物與機構；名單人物在前，其餘依出現次數",
+                        "type": "array",
+                        "items": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "name": {
+                              "description": "姓名或機構名；同一對象有多種寫法時取完整姓名",
+                              "type": "string",
+                              "x-sensitivity": "PERSONAL"
+                            },
+                            "otherForms": {
+                              "description": "同一對象在報導中的其他寫法（如只寫名、名字後接「等」）",
+                              "type": "array",
+                              "items": {
+                                "type": [
+                                  "string",
+                                  "null"
+                                ]
+                              },
+                              "x-sensitivity": "PERSONAL"
+                            },
+                            "organisation": {
+                              "description": "true：機構；false：個人",
+                              "type": "boolean"
+                            },
+                            "party": {
+                              "description": "模型判斷的身分：SUSPECT、VICTIM、OFFICIAL；其他或看不出時為 null",
+                              "enum": [
+                                "SUSPECT",
+                                "VICTIM",
+                                "WITNESS",
+                                "OFFICIAL",
+                                null
+                              ]
+                            },
+                            "profileName": {
+                              "description": "姓名或其他寫法與名單人物的姓名相同",
+                              "type": "boolean"
+                            },
+                            "mentions": {
+                              "description": "出現次數",
+                              "type": [
+                                "string",
+                                "integer"
+                              ],
+                              "pattern": "^-?(?:0|[1-9]\\d*)$"
+                            },
+                            "events": {
+                              "description": "模型讀出此對象涉及的事件，依機率由高到低",
+                              "type": "array",
+                              "items": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "properties": {
+                                  "type": {
+                                    "description": "事件類型，見 /api/codes",
+                                    "enum": [
+                                      "INVESTIGATION",
+                                      "SEARCH",
+                                      "QUESTIONING",
+                                      "ARREST",
+                                      "REFERRAL",
+                                      "DETENTION",
+                                      "BAIL",
+                                      "ASSET_RESTRAINT",
+                                      "INDICTMENT",
+                                      "NON_INDICTMENT",
+                                      "CONVICTION",
+                                      "ACQUITTAL",
+                                      "APPEAL",
+                                      "CONFISCATION",
+                                      "FINE",
+                                      "REGULATORY_PENALTY",
+                                      "WANTED_NOTICE",
+                                      "EXTRADITION",
+                                      "PRIOR_RECORD"
+                                    ]
+                                  },
+                                  "certainty": {
+                                    "description": "STATED、NEGATED 或 REQUESTED（模型不讀 HEDGED）",
+                                    "enum": [
+                                      "STATED",
+                                      "NEGATED",
+                                      "HEDGED",
+                                      "REQUESTED"
+                                    ]
+                                  },
+                                  "probability": {
+                                    "description": "模型機率（0 至 1，取兩位小數）；列出的事件都至少 0.3",
+                                    "type": [
+                                      "string",
+                                      "number"
+                                    ],
+                                    "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$"
+                                  },
+                                  "quote": {
+                                    "description": "機率最高的句子原文，最多 200 字",
+                                    "type": "string",
+                                    "x-sensitivity": "PERSONAL"
+                                  }
+                                },
+                                "required": [
+                                  "type",
+                                  "certainty",
+                                  "probability",
+                                  "quote"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "otherForms",
+                            "organisation",
+                            "profileName",
+                            "mentions",
+                            "events"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "version",
+                      "entities"
+                    ],
+                    "default": null
                   }
                 },
                 "required": [
@@ -2022,6 +2167,14 @@
           "description": "分析基準日（UTC 日期）：PEP 職務是否都已結束以此日判斷",
           "type": "string",
           "format": "date"
+        },
+        "newsModelVersion": {
+          "description": "讀了附加新聞的新聞模型版本；未設定模型或沒有命中附有新聞時為 null",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
         }
       },
       "required": [

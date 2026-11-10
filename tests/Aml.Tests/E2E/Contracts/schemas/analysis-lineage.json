@@ -1,5 +1,5 @@
 {
-  "$id": "aml:AnalysisLineage:v7",
+  "$id": "aml:AnalysisLineage:v8",
   "type": [
     "object",
     "null"
@@ -93,6 +93,14 @@
       "description": "分析基準日（UTC 日期）：PEP 職務是否都已結束以此日判斷",
       "type": "string",
       "format": "date"
+    },
+    "newsModelVersion": {
+      "description": "讀了附加新聞的新聞模型版本；未設定模型或沒有命中附有新聞時為 null",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
     }
   },
   "required": [

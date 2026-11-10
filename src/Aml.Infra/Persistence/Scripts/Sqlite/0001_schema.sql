@@ -47,6 +47,7 @@ CREATE TABLE analysis_lineage (
     as_of                 TEXT    NOT NULL, -- analysis date (UTC, yyyy-MM-dd) the time-dependent rules ran on
     input_files_json      TEXT    NOT NULL,
     profiles_json         TEXT    NOT NULL,
+    news_model_version    TEXT    NULL,     -- the news models that read an attached article; NULL when none ran
     CONSTRAINT pk_analysis_lineage PRIMARY KEY (case_id, revision),
     CONSTRAINT fk_lineage_analysis FOREIGN KEY (case_id, revision) REFERENCES case_analysis (case_id, revision)
 );
@@ -149,4 +150,4 @@ CREATE TABLE list_profile (
 );
 
 -- The format of this file; must equal CaseJson.SchemaVersion (checked at startup and by CaseStoreTests).
-PRAGMA user_version = 7;
+PRAGMA user_version = 8;

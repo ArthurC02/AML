@@ -8,7 +8,8 @@ namespace Aml.Services;
 
 /// <summary>Sole writer of Case state. Runs AnalyzeCase synchronously.</summary>
 /// <remarks>ponytail: POST /api/cases analyzes inline; high-volume callers use POST /api/batches.</remarks>
-public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore? lists = null, Func<string, string>? exportText = null)
+public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore? lists = null, Func<string, string>? exportText = null,
+    INewsModel? newsModel = null)
 {
     public const int MaxRevisionAttempts = 3;
 
@@ -110,10 +111,11 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
             var revision = current.CurrentRevision + 1;
             var status = CaseLifecycle.AfterAnalysis(analysis, current.Status);
             var changes = await ChangesSinceEffectiveRevisionAsync(current, analysis, ct).ConfigureAwait(false);
-            var explanation = ExplanationBuilder.Build(input, analysis, changes);
+            var explanation = ExplanationBuilder.Build(input, analysis, changes, newsModel);
             var quality = AnalysisQuality.Of(explanation.Hits, input.Subject.Findings, analysis.NotEvaluatedProfiles.Count);
+            var modelRan = explanation.Hits.Any(h => h.NewsDigest?.Model is not null);
             var record = new AnalysisRecord(current.CaseId, revision, execution, CaseLifecycle.Aggregate(analysis),
-                analysis, explanation, lineage, quality, clock.GetUtcNow());
+                analysis, explanation, lineage with { NewsModelVersion = modelRan ? newsModel!.Version : null }, quality, clock.GetUtcNow());
 
             // CaseAnalyzer is CPU-bound and ignores the token: a run that overran its deadline is not written.
             ct.ThrowIfCancellationRequested();

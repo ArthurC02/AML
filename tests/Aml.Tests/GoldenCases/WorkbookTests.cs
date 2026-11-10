@@ -5,15 +5,24 @@ using Aml.Infra.Excel;
 
 namespace Aml.Tests.GoldenCases;
 
-/// <summary>The case workbook of every Golden Case: seven plain tables that restate the revision, and in the default view no identifier values.</summary>
+/// <summary>The case workbook of every Golden Case: plain tables that restate the revision, and in the default view no identifier values.</summary>
 public class WorkbookTests
 {
     private static readonly XNamespace Main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
     private static readonly XNamespace R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
-    private static byte[] Bytes(string gc, bool full)
+    // Tags the first three characters of a news text as a suspect and reads one indictment wherever they are written.
+    private sealed class FirstWordsModel : Core.Ports.INewsModel
     {
-        var (c, rev) = CaseViewTests.Stored(gc);
+        public string Version => "ner:test ev:test";
+        public IReadOnlyList<Core.Ports.TaggedSpan> Tag(string text) => text.Length >= 3 ? [new(0, 3, "PER-Suspect")] : [];
+        public IReadOnlyList<IReadOnlyDictionary<string, float>> Events(IReadOnlyList<(string Mention, string Sentence)> pairs) =>
+            [.. pairs.Select(_ => new Dictionary<string, float> { ["Indictment"] = 0.5f })];
+    }
+
+    private static byte[] Bytes(string gc, bool full, Core.Ports.INewsModel? model = null)
+    {
+        var (c, rev) = CaseViewTests.Stored(gc, model);
         using var output = new MemoryStream();
         CaseWorkbook.Write(output, c, rev, full);
         return output.ToArray();
@@ -42,20 +51,23 @@ public class WorkbookTests
 
     [Theory]
     [MemberData(nameof(SchemaTests.Cases), MemberType = typeof(SchemaTests))]
-    public void The_workbook_has_nine_tables_joined_by_the_hit_number(string gc)
+    public void The_workbook_has_eleven_tables_joined_by_the_hit_number(string gc)
     {
-        var (_, rev) = CaseViewTests.Stored(gc);
+        var model = new FirstWordsModel();
+        var (_, rev) = CaseViewTests.Stored(gc, model);
         var hits = rev.Explanation!.Hits;
-        var sheets = Read(Bytes(gc, full: true)).ToDictionary(s => s.Name, s => s.Rows);
+        var sheets = Read(Bytes(gc, full: true, model)).ToDictionary(s => s.Name, s => s.Rows);
 
-        Assert.Equal(["說明", "命中", "比對", "證據", "來源", "新聞人物", "新聞事件", "變更", "代碼"], Read(Bytes(gc, full: false)).Select(s => s.Name));
+        Assert.Equal(["說明", "命中", "比對", "證據", "來源", "新聞人物", "新聞事件", "模型人物", "模型事件", "變更", "代碼"], Read(Bytes(gc, full: false)).Select(s => s.Name));
+        Assert.Equal(hits.Sum(h => h.NewsDigest?.Model?.Entities.Count ?? 0), sheets["模型人物"].Count - 1);
+        Assert.Equal(hits.Sum(h => h.NewsDigest?.Model?.Entities.Sum(e => e.Events.Count) ?? 0), sheets["模型事件"].Count - 1);
         Assert.Equal(["類別", "項目", "值"], sheets["說明"][0]);
         Assert.Equal(hits.Count, sheets["命中"].Count - 1);
         Assert.Equal(hits.Sum(h => h.Comparison.Count), sheets["比對"].Count - 1);
         Assert.Equal(hits.Sum(h => h.Support.Count + h.Conflicts.Count), sheets["證據"].Count - 1);
         Assert.Equal(hits.Sum(h => h.Sources.Count), sheets["來源"].Count - 1);
         Assert.Equal(hits.Sum(h => h.NewsDigest?.Events.Count ?? 0), sheets["新聞事件"].Count - 1);
-        foreach (var name in new[] { "命中", "比對", "證據", "來源", "新聞人物", "新聞事件" })
+        foreach (var name in new[] { "命中", "比對", "證據", "來源", "新聞人物", "新聞事件", "模型人物", "模型事件" })
             Assert.All(sheets[name].Skip(1), row => Assert.Contains(hits, h => h.HitNumber.ToString(System.Globalization.CultureInfo.InvariantCulture) == row[0]));
         // Every header of the data sheets is explained in the data dictionary, and every code listed is catalogued.
         var dictionary = sheets["說明"].Where(row => row[0] == "欄位").Select(row => row[1]).ToHashSet();

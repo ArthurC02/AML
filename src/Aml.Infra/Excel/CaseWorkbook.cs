@@ -29,7 +29,7 @@ public static class CaseWorkbook
     public static IReadOnlyList<Sheet> Sheets(CaseRecord c, AnalysisRecord r, bool withIdentifierValues)
     {
         var hits = r.Explanation?.Hits ?? [];
-        var tables = new[] { Hits(hits), Comparison(hits), Evidence(hits), Sources(hits), NewsPeople(hits), NewsEvents(hits), Changes(r.Explanation?.ChangesFromPreviousRevision) }
+        var tables = new[] { Hits(hits), Comparison(hits), Evidence(hits), Sources(hits), NewsPeople(hits), NewsEvents(hits), ModelEntities(hits), ModelEvents(hits), Changes(r.Explanation?.ChangesFromPreviousRevision) }
             .Select(t => Shown(t, withIdentifierValues)).ToList();
         var codes = Codes(tables);
         var about = About(c, r, withIdentifierValues, tables.Append(codes));
@@ -118,6 +118,30 @@ public static class CaseWorkbook
     ], hits.SelectMany(h => (h.NewsDigest?.Events ?? []).Select(e => (IReadOnlyList<object?>)
         [h.HitNumber, Code(e.Type), Code(e.Certainty), Code(e.Source), e.Actor, e.ActorMatch is { } m ? Code(m) : null, e.Date, e.DateValue?.ToString(), e.Agency,
          Joined(e.Offences), Joined(e.OffenceCategories), e.Amount, e.Penalty, e.RequestedPenalty, YesNo(e.Final), e.Quote])));
+
+    private static Table ModelEntities(IReadOnlyList<HitExplanation> hits) => new("模型人物",
+    [
+        new("命中編號", "hitNumber", "hit 編號"),
+        new("名稱", "newsDigest.model.entities[].name", "新聞模型找到的姓名或機構名", Identifying: true),
+        new("其他寫法", "newsDigest.model.entities[].otherForms", "同一對象在報導中的其他寫法", Identifying: true),
+        new("機構", "newsDigest.model.entities[].organisation", "是：機構；否：個人"),
+        new("角色", "newsDigest.model.entities[].party", "SUSPECT、VICTIM 或 OFFICIAL；空白為其他或看不出"),
+        new("名單人物", "newsDigest.model.entities[].profileName", "姓名與名單人物相同"),
+        new("出現次數", "newsDigest.model.entities[].mentions", "出現次數"),
+        new("模型版本", "newsDigest.model.version", "人物模型與事件模型的檔案雜湊"),
+    ], hits.SelectMany(h => h.NewsDigest?.Model is { } m ? m.Entities.Select(e => (IReadOnlyList<object?>)
+        [h.HitNumber, e.Name, Joined(e.OtherForms), YesNo(e.Organisation), e.Party is { } p ? Code(p) : null, YesNo(e.ProfileName), e.Mentions, m.Version]) : []));
+
+    private static Table ModelEvents(IReadOnlyList<HitExplanation> hits) => new("模型事件",
+    [
+        new("命中編號", "hitNumber", "hit 編號"),
+        new("名稱", "newsDigest.model.entities[].name", "事件當事人，對應模型人物", Identifying: true),
+        new("事件", "newsDigest.model.entities[].events[].type", "事件類型"),
+        new("確定程度", "newsDigest.model.entities[].events[].certainty", "STATED、NEGATED 或 REQUESTED"),
+        new("機率", "newsDigest.model.entities[].events[].probability", "模型機率，至少 0.3"),
+        new("原文", "newsDigest.model.entities[].events[].quote", "機率最高的句子原文", Identifying: true),
+    ], hits.SelectMany(h => (h.NewsDigest?.Model?.Entities ?? []).SelectMany(e => e.Events.Select(v => (IReadOnlyList<object?>)
+        [h.HitNumber, e.Name, Code(v.Type), Code(v.Certainty), v.Probability, v.Quote]))));
 
     private static Table Comparison(IReadOnlyList<HitExplanation> hits) => new("比對",
     [
@@ -213,6 +237,7 @@ public static class CaseWorkbook
             rows.Add(Item("沿革", "儲存格式版本", l.SchemaVersion));
             rows.Add(Item("沿革", "應用程式版本", l.AppVersion));
             rows.Add(Item("沿革", "分析基準日", l.AsOf.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+            if (l.NewsModelVersion is { } model) rows.Add(Item("沿革", "新聞模型版本", model));
         }
         if (r.Quality is { } q)
         {

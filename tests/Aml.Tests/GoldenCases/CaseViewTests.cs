@@ -13,11 +13,11 @@ public class CaseViewTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 11, 4, 0, 0, 0, TimeSpan.Zero);
 
-    internal static (CaseRecord Case, AnalysisRecord Revision) Stored(string gc)
+    internal static (CaseRecord Case, AnalysisRecord Revision) Stored(string gc, Core.Ports.INewsModel? newsModel = null)
     {
         var input = TxtCaseReader.Read(GoldenCaseTests.Folder(gc));
         var analysis = CaseAnalyzer.Analyze(input);
-        var explanation = ExplanationBuilder.Build(input, analysis);
+        var explanation = ExplanationBuilder.Build(input, analysis, newsModel: newsModel);
         var revision = new AnalysisRecord("c1", 1, CaseLifecycle.Execution(analysis), CaseLifecycle.Aggregate(analysis), analysis, explanation,
             AnalysisLineage.Of(input, [], DateOnly.FromDateTime(T0.UtcDateTime)), AnalysisQuality.Of(explanation.Hits, input.Subject.Findings, analysis.NotEvaluatedProfiles.Count), T0);
         var effective = revision.ExecutionStatus == ExecutionStatus.Completed ? 1 : (int?)null;

@@ -20,7 +20,8 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
 
     private sealed record AnalysisRow(string CaseId, long Revision, string ExecutionStatus, string CaseResult, string ResultJson, string? ExplanationJson, string CreatedAt);
 
-    private sealed record LineageRow(string InputFilesJson, string ProfilesJson, string SourcePolicyVersion, string CodeCatalogVersion, long SchemaVersion, string AppVersion, string AsOf);
+    private sealed record LineageRow(string InputFilesJson, string ProfilesJson, string SourcePolicyVersion, string CodeCatalogVersion, long SchemaVersion, string AppVersion, string AsOf,
+        string? NewsModelVersion);
 
     // Settable properties, not a constructor: the change count is NULL on a first revision, which a constructor match cannot type.
     private sealed class RevisionRow
@@ -126,7 +127,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
             Read<CaseAnalysis>(row.ResultJson), row.ExplanationJson is null ? null : Read<CaseExplanation>(row.ExplanationJson),
             lineage is null ? null : new AnalysisLineage(Read<List<InputFile>>(lineage.InputFilesJson), Read<List<ProfileUse>>(lineage.ProfilesJson),
                 lineage.SourcePolicyVersion, lineage.CodeCatalogVersion, (int)lineage.SchemaVersion, lineage.AppVersion,
-                DateOnly.ParseExact(lineage.AsOf, "yyyy-MM-dd", CultureInfo.InvariantCulture)),
+                DateOnly.ParseExact(lineage.AsOf, "yyyy-MM-dd", CultureInfo.InvariantCulture), lineage.NewsModelVersion),
             quality is null ? null : ToQuality(quality),
             ParseTime(row.CreatedAt));
     }
@@ -175,6 +176,7 @@ public sealed class CaseStore(SqliteDatabase db) : ICaseStore
                 asOf = l.AsOf.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 inputFilesJson = JsonSerializer.Serialize(l.InputFiles, CaseJson.Options),
                 profilesJson = JsonSerializer.Serialize(l.Profiles, CaseJson.Options),
+                newsModelVersion = l.NewsModelVersion,
             }).ConfigureAwait(false);
         if (a.Quality is { } q)
             await Run("Case.InsertQuality", new

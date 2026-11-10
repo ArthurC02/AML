@@ -119,7 +119,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.True(workbook.Headers.CacheControl?.NoStore);
         Assert.Equal(["nosniff"], workbook.Headers.GetValues("X-Content-Type-Options"));
         var sheets = GoldenCases.WorkbookTests.Read(await workbook.Content.ReadAsByteArrayAsync(ct));
-        Assert.Equal(9, sheets.Count);
+        Assert.Equal(11, sheets.Count);
         var fullBook = GoldenCases.WorkbookTests.Read(await client.GetByteArrayAsync($"/api/cases/{caseId}/workbook?view=full", ct));
         Assert.Contains("受檢對象的值", fullBook.Single(s => s.Name == "比對").Rows[0]);
         Assert.DoesNotContain("受檢對象的值", sheets.Single(s => s.Name == "比對").Rows[0]);

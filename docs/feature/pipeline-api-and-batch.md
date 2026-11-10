@@ -84,17 +84,19 @@ The hit views read the effective revision unless `?revision=` names another; any
 
 ## Case workbook
 
-`GET /api/cases/{caseId}/workbook` returns the effective revision, or `?revision=`, as an Excel workbook (`Infra/Excel/CaseWorkbook`, written by `Infra/Excel/Xlsx` with the standard library; [ADR-0023](../adr/0023-business-api-data-and-workbook.md)). It restates the stored revision and adds nothing. Its nine sheets are each one table with a bold, frozen and filterable header row, and the hit number joins them:
+`GET /api/cases/{caseId}/workbook` returns the effective revision, or `?revision=`, as an Excel workbook (`Infra/Excel/CaseWorkbook`, written by `Infra/Excel/Xlsx` with the standard library; [ADR-0023](../adr/0023-business-api-data-and-workbook.md)). It restates the stored revision and adds nothing. Its eleven sheets are each one table with a bold, frozen and filterable header row, and the hit number joins them:
 
 | Sheet | Rows |
 |---|---|
-| 說明 | the Case (ids, status, revision, execution status, analysis time in UTC, case result, conclusion, changes), lineage (input file hashes, Profile versions, rule versions), quality counts and rates, and a data dictionary naming the field and meaning of every column |
+| 說明 | the Case (ids, status, revision, execution status, analysis time in UTC, case result, conclusion, changes), lineage (input file hashes, Profile versions, rule versions, the news model version when the models ran), quality counts and rates, and a data dictionary naming the field and meaning of every column |
 | 命中 | one per hit: Profile, list categories, HIT conditions, identity decision, stage 3 row, hard conflict, reason codes, pair result, review priority, Article 22 recommendation, findings, unknown fields, `wouldChangeIf`, the summary sentences and the news summary (full view only) |
 | 比對 | one per comparison row: field, status and difference |
 | 證據 | one per support and conflict item: group, direction, status, strength and detail |
 | 來源 | one per source: ref, id, name and URL (full view only), dates, use and whether it is attached to the Profile |
 | 新聞人物 | one per person the [news digest](watchlist-and-adverse-information.md#news-digest) names: name (full view only), match to the Profile person, roles, party and mentions |
 | 新聞事件 | one per news event: type, certainty, source, actor (full view only), actor match, date as written and resolved, agency, offences and their risk categories, amount, penalty, requested penalty, finality and the quoted sentence (full view only) |
+| 模型人物 | one per person or organisation the [news models](watchlist-and-adverse-information.md#news-models) found: name and other forms (full view only), organisation or not, party, whether it is the Profile person, mentions and model version; empty without the models |
+| 模型事件 | one per event the news models read: name (full view only), type, certainty, probability and the sentence (full view only) |
 | 變更 | one per change from the previous effective revision; none for a first analysis, which 說明 says |
 | 代碼 | every catalogued code the other sheets show, with its kind, Chinese name and meaning |
 

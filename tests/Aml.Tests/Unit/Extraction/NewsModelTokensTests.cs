@@ -72,6 +72,16 @@ public sealed class NewsModelTokensTests : IDisposable
         Assert.Equal(expected, string.Join(" ", OnnxNewsModel.Windows(tokens).Select(w => $"{w.Start}-{w.End}")));
 
     [Fact]
+    public void Decoding_never_puts_an_I_after_O_or_after_another_role()
+    {
+        string[] tags = ["O", "B-PER-Suspect", "I-PER-Suspect", "B-ORG-Other", "I-ORG-Other"];
+        // Per token the most probable tags are O then I-PER-Suspect, which no valid sequence has.
+        var probs = new float[,] { { 0.55f, 0.45f, 0, 0, 0 }, { 0.01f, 0.05f, 0.9f, 0.02f, 0.02f }, { 0.3f, 0.1f, 0.1f, 0.1f, 0.4f } };
+
+        Assert.Equal(["B-PER-Suspect", "I-PER-Suspect", "O"], OnnxNewsModel.Decode(probs, tags));
+    }
+
+    [Fact]
     public void A_span_opens_at_B_or_at_an_I_with_none_open_and_continues_over_I_of_its_role() =>
         Assert.Equal([(0, 2, "PER-Suspect"), (3, 5, "ORG-Other"), (5, 6, "PER-Victim"), (6, 7, "PER-Suspect")],
             OnnxNewsModel.Spans(["B-PER-Suspect", "I-PER-Suspect", "O", "I-ORG-Other", "I-ORG-Other", "B-PER-Victim", "I-PER-Suspect"]));

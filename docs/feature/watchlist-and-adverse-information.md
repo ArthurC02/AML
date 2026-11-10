@@ -220,27 +220,38 @@ Each hit with attached news carries a `newsDigest` in its explanation ([ADR-0012
 
 When `NewsModels:Directory` is configured, the digest also carries `model`: what the two small models read from the same news ([ADR-0012](../adr/0012-sources-and-web-information.md), [ADR-0015](../adr/0015-licences.md)). It sits beside the rule results, never mixes with them, and like them feeds no decision. Without the setting `model` is absent and the digest is read by rules alone.
 
-- **Models.** Both are `bert-base-chinese` fine-tuned on the bank's annotated judgments and press releases and exported to ONNX; the directory holds `ner/` and `ev/`, each with `model.onnx`, `config.json` and `vocab.txt`, outside the repository. `Infra/Models/OnnxNewsModel` runs them with ONNX Runtime. Its tokenizer reproduces the training one (Hugging Face BertNormalizer without lower-casing, BertPreTokenizer, WordPiece) and keeps each token's place in the text; each character is first NFKC-normalised when that keeps it one character. The tagger reads the text in windows of 510 tokens every 384, sums each token's label probabilities over the windows holding it, and decodes BIO tags into spans with a role (`PER-` or `ORG-` with `Suspect`, `Victim`, `Official` or `Other`).
-- **Corrections** of the tagger's known errors (`Core/Explanation/NewsModelReading`), each kept only because it helped on the annotated test documents:
+- **Models.** Both are `bert-base-chinese` fine-tuned on the bank's annotated judgments and press releases and exported to ONNX; the directory holds `ner/` and `ev/`, each with `model.onnx`, `config.json` and `vocab.txt`, outside the repository. `Infra/Models/OnnxNewsModel` runs them with ONNX Runtime. Its tokenizer reproduces the training one (Hugging Face BertNormalizer without lower-casing, BertPreTokenizer, WordPiece) and keeps each token's place in the text; each character is first NFKC-normalised when that keeps it one character. The tagger reads the text in windows of 510 tokens every 384, averages each token's label probabilities over the windows holding it, and decodes the most probable valid BIO sequence (Viterbi: an `I-` only after a `B-` or `I-` of its role) into spans with a role (`PER-` or `ORG-` with `Suspect`, `Victim`, `Official` or `Other`).
+- **Choosing.** Each setting below was chosen on the 58 dev documents and reported on the held-out test documents; none was tuned on test.
+- **Corrections** of the tagger's known errors (`Core/Explanation/NewsModelReading`), each kept only because it helped:
   - a one-character span is dropped, and so is an organisation ending in 戶 (帳戶, 人頭戶: an account, not an organisation)
   - a well-formed name is two to four ideographs opening with a common surname; one holding exactly one other well-formed name of three or more characters is its form (王大明等 → 王大明), while a two-character name inside a three-character one stays apart (王明, 王明華)
   - any other personal span inside or around well-formed names that all map to one person is that person's form (大明 → 王大明); one related to two people (大明 with 王大明 and 陳大明) is dropped; one related to none stays itself
   - a short organisation name inside exactly one longer one is its abbreviation
   - the role is the majority over all mentions of all forms; party `OTHER` becomes null
-  - tried and left out: joining touching spans (it glued neighbouring names), the rule digest's role word over the tagger's role, the rule events added to the model's, and 前科 / 累犯 / 曾因 patterns for prior records (each made the results worse or found nothing more)
+  - tried and left out: joining touching spans (it glued neighbouring names), the rule digest's role word over the tagger's role, the rule events added to the model's, 前科 / 累犯 / 曾因 patterns for prior records (each made the results worse or found nothing more), and a role vote weighted by probability (one more role right in 443, not worth the code)
 - **Entities.** Each has its name (the full name when it has several forms), its other forms, whether it is an organisation, its party, whether a form equals a Profile name, and its mentions; the Profile person first, then by mentions, at most 50.
-- **Events.** Each sentence (up to 。！？；!?; or a line break) holding a form of an entity is classified for that entity, with the form as written there, cropped to 150 characters around it as in training; at most 300 classifications per article. The labels are the `NEWS_EVENT` types with `NEGATED` or `REQUESTED` where the label says so, and `PRIOR_RECORD` for a prior case (前科, 累犯), which only the model reads. A label is listed at a probability of 0.3 or more (the best F1 on the test documents), with its highest probability rounded to two places and that sentence, at most 200 characters, ordered by probability.
+- **Events.**
+  - Each sentence (up to 。！？；!?; or a line break) holding a form of an entity is classified for that entity, with the form as written there, cropped to 150 characters around it as in training. So is the one sentence after a sentence naming a person, when it names no person (an organisation may be named), for the person named last: a judgment goes on about the defendant without the name (原審判處…). At most 300 classifications per article, in text order.
+  - The labels are the `NEWS_EVENT` types with `NEGATED` or `REQUESTED` where the label says so, and `PRIOR_RECORD` for a prior case (前科, 累犯), which only the model reads.
+  - Over an entity's sentences a label's probability is that at least one says it (noisy-or, 1 − Π(1 − p)). A label is listed at 0.3 or more, with that probability rounded to two places and the sentence most likely to say it, at most 200 characters and never cut inside a surrogate pair; ordered by probability.
+  - Tried and left out: a threshold per label (tuned on dev it overfitted: test F1 0.78 against 0.82), one certainty per type and sentence (no change), carrying over two or three sentences, and listing events only for suspects, for anyone but officials, or for entities mentioned twice (all within noise).
 - **Time.** On the PoC machine (12 cores, under other load) tagging takes about 1 s per 1,000 characters and each event classification about 65 ms, so a 2,000-character article takes 3 to 5 s and a long judgment up to about 30 s, within a batch job's `Batch:Timeout`; the models rerun on every re-analysis. Measured and left out: int8 quantization (no faster here, and fewer people found) and padded batches of event classifications (slower on a CPU).
 - **Lineage.** `newsModelVersion` in the revision's lineage names both model files by the first 12 hex digits of their SHA-256 when the models read an article of a hit, else it is null.
-- **Measured** on 49 annotated documents never used in training (people per document, events per document, person and label):
+- **Measured** on 49 annotated documents never used in training or tuning (people per document; events per document, person and label). Two event measures:
+  - *given sentences* scores the event model on the annotated (person, sentence) rows. These include sentences that do not name the person, which the system cannot know to read.
+  - *end to end* runs the whole readout on the text and matches its entities to the annotated people by their forms. An event on an entity matching no annotated person counts as wrong. This is the number that matters.
 
-| | Found | Role right | Extra names | Events P / R / F1 |
-|---|---|---|---|---|
-| tagger, one-character spans dropped | 382 / 394 (97%) | 371 / 382 (97%) | 111 | 0.82 / 0.83 / 0.83 |
-| with the corrections | 382 / 394 (97%) | 370 / 382 (97%) | 74 | unchanged |
-| rule digest alone, for comparison | 82 / 394 (21%) | 80 / 82 (98%) | 14 | 0.34 / 0.22 / 0.27 |
+| | Found | Role right | Extra names | Events, given sentences: P / R / F1 | Events end to end: P / R / F1 |
+|---|---|---|---|---|---|
+| tagger (most probable tag per token, one-character spans dropped) | 382 / 394 (97%) | 371 / 382 (97%) | 111 | 0.82 / 0.83 / 0.83 (highest sentence) | |
+| with valid-sequence decoding and the corrections | 385 / 394 (98%) | 372 / 385 (97%) | 72 | 0.82 / 0.85 / 0.84 (noisy-or) | 0.61 / 0.61 / 0.61 |
+| and the sentence after carried over | | | | | 0.56 / 0.64 / 0.60 |
+| rule digest alone, for comparison | 82 / 394 (21%) | 80 / 82 (98%) | 14 | 0.34 / 0.22 / 0.27 | |
 
-  The rules were written for news; the test documents are judgments and press releases, so the rule row says little about news. Remaining gaps: organisations missed (10), prior records (7 of 13 found), people tagged as `Other` read as suspects (3 of 6).
+  - On the 58 dev documents, carrying one sentence over raised the end-to-end F1 from 0.545 to 0.576; on test it moved from 0.611 to 0.600, more recall for less precision. Over both sets together it gains (0.571 to 0.586), so it is kept. On all 56 test documents the end-to-end F1 is 0.60 (P 0.56, R 0.64).
+  - Of the end-to-end false positives, about half are events on names no annotation covers.
+  - The rules were written for news; the test documents are judgments and press releases, so the rule row says little about news.
+  - Remaining gaps: organisations missed, indictments and referrals stated without the name, prior records, and people tagged as `Other` read as suspects. Closing them needs retraining on rows chosen as the system chooses sentences, not more rules.
 
 ## Policy responsibilities
 

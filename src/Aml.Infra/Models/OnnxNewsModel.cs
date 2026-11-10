@@ -38,24 +38,53 @@ public sealed class OnnxNewsModel : INewsModel, IDisposable
     {
         var tokens = Tokens(text);
         if (tokens.Count == 0) return [];
-        // Overlapping windows; each token's label probabilities are summed over the windows that hold it.
-        var sums = new float[tokens.Count, tags.Length];
+        // Overlapping windows; each token's label probabilities are averaged over the windows that hold it.
+        var probs = new float[tokens.Count, tags.Length];
+        var windows = new int[tokens.Count];
         foreach (var (s, e) in Windows(tokens.Count))
         {
             var ids = new long[e - s + 2];
             ids[0] = tokenizer.Classification; ids[^1] = tokenizer.Separator;
             for (var i = s; i < e; i++) ids[i - s + 1] = tokens[i].Id;
             var logits = Run(ner, ids, new long[ids.Length]);
-            for (var i = s; i < e; i++) Softmax(logits, (i - s + 1) * tags.Length, tags.Length, sums, i);
+            for (var i = s; i < e; i++) { Softmax(logits, (i - s + 1) * tags.Length, tags.Length, probs, i); windows[i]++; }
         }
-        var best = new string[tokens.Count];
-        for (var i = 0; i < best.Length; i++)
+        for (var i = 0; i < tokens.Count; i++)
+            for (var j = 0; j < tags.Length; j++) probs[i, j] /= windows[i];
+        return Spans(Decode(probs, tags))
+            .Select(x => new TaggedSpan(tokens[x.From].Start, tokens[x.To - 1].End - tokens[x.From].Start, x.Role)).ToList();
+    }
+
+    /// <summary>
+    /// The most probable tag sequence in which every I- follows a B- or I- of its role (Viterbi over log probabilities).
+    /// Measured on the held-out documents: more people found and fewer extra names than the most probable tag per token.
+    /// </summary>
+    internal static string[] Decode(float[,] probs, string[] tags)
+    {
+        int n = probs.GetLength(0), k = tags.Length;
+        bool Allowed(int from, int to) => !tags[to].StartsWith("I-", StringComparison.Ordinal)
+            || (from >= 0 && tags[from] != "O" && tags[from][2..] == tags[to][2..]);
+        var score = new double[k];
+        var back = new int[n, k];
+        for (var j = 0; j < k; j++) score[j] = Allowed(-1, j) ? Math.Log(Math.Max(probs[0, j], 1e-9)) : double.NegativeInfinity;
+        for (var t = 1; t < n; t++)
         {
-            var k = 0;
-            for (var j = 1; j < tags.Length; j++) if (sums[i, j] > sums[i, k]) k = j;
-            best[i] = tags[k];
+            var next = new double[k];
+            for (var j = 0; j < k; j++)
+            {
+                var (best, arg) = (double.NegativeInfinity, 0);
+                for (var i = 0; i < k; i++)
+                    if (Allowed(i, j) && score[i] > best) (best, arg) = (score[i], i);
+                next[j] = best + Math.Log(Math.Max(probs[t, j], 1e-9));
+                back[t, j] = arg;
+            }
+            score = next;
         }
-        return Spans(best).Select(x => new TaggedSpan(tokens[x.From].Start, tokens[x.To - 1].End - tokens[x.From].Start, x.Role)).ToList();
+        var path = new string[n];
+        var last = 0;
+        for (var j = 1; j < k; j++) if (score[j] > score[last]) last = j;
+        for (var t = n - 1; t >= 0; t--) { path[t] = tags[last]; if (t > 0) last = back[t, last]; }
+        return path;
     }
 
     // One pair per run: on a CPU, padded batches measured slower (64 pairs: 7.5 s batched, 4.2 s one at a time).

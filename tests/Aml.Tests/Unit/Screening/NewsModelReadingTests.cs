@@ -63,13 +63,15 @@ public class NewsModelReadingTests
     }
 
     [Fact]
-    public void Events_keep_the_highest_probability_at_or_above_the_threshold_with_its_sentence()
+    public void An_event_is_listed_when_at_least_one_sentence_likely_says_it_with_the_most_likely_sentence()
     {
         var r = Read("王大明遭聲押。法院裁定王大明無羈押必要！王大明有詐欺前科",
             new() { ["王大明"] = "PER-Suspect" }, null,
             ("王大明", "聲押", "Detention-Requested", 0.62f),
             ("王大明", "無羈押", "Detention-Negated", 0.914f),
             ("王大明", "無羈押", "Detention-Requested", 0.40f),
+            ("王大明", "聲押", "Bail", 0.2f),
+            ("王大明", "前科", "Bail", 0.2f),
             ("王大明", "前科", "prior", 0.3f),
             ("王大明", "前科", "Conviction", 0.29f),
             ("王大明", "前科", "NotALabel", 0.9f));
@@ -78,7 +80,8 @@ public class NewsModelReadingTests
         Assert.Equal(
         [
             (NewsEventType.Detention, NewsCertainty.Negated, 0.91, "法院裁定王大明無羈押必要！"),
-            (NewsEventType.Detention, NewsCertainty.Requested, 0.62, "王大明遭聲押。"),
+            (NewsEventType.Detention, NewsCertainty.Requested, 0.77, "王大明遭聲押。"), // 1 − 0.38 × 0.60
+            (NewsEventType.Bail, NewsCertainty.Stated, 0.36, "王大明遭聲押。"),          // 1 − 0.8 × 0.8: two weak sentences
             (NewsEventType.PriorRecord, NewsCertainty.Stated, 0.3, "王大明有詐欺前科"),
         ], e.Events.Select(v => (v.Type, v.Certainty, v.Probability, v.Quote)));
     }
@@ -100,8 +103,32 @@ public class NewsModelReadingTests
 
         var r = NewsModelReading.Read("王大明遭起訴；另一句無關。大明交保", ["王大明"], model);
 
-        Assert.Equal(2, model.Classifications); // the unrelated sentence is not classified
+        Assert.Equal(3, model.Classifications); // the sentence naming nobody is carried over, with the form named before it
         Assert.Equal([(NewsEventType.Bail, "大明交保")], Assert.Single(r.Entities).Events.Select(v => (v.Type, v.Quote)));
+    }
+
+    [Fact]
+    public void One_sentence_naming_no_person_is_read_for_the_person_named_last()
+    {
+        // 判處 is said in the sentence after 王大明, which names only a court; 罰金 two sentences on; 起訴 after 陳小華 is named.
+        var r = Read("王大明遭起訴。地方法院判處有期徒刑3年。併科罰金。陳小華作證。檢方起訴。",
+            new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Other", ["地方法院"] = "ORG-Other" }, null,
+            ("王大明", "判處", "Conviction", 0.9f), ("王大明", "罰金", "Fine", 0.9f), ("陳小華", "檢方起訴", "Indictment", 0.9f),
+            ("王大明", "檢方起訴", "Indictment", 0.9f));
+
+        Assert.Equal([NewsEventType.Conviction], r.Entities.Single(e => e.Name == "王大明").Events.Select(v => v.Type));
+        Assert.Equal([NewsEventType.Indictment], r.Entities.Single(e => e.Name == "陳小華").Events.Select(v => v.Type));
+    }
+
+    [Fact]
+    public void The_person_named_last_is_last_in_the_text_not_first_in_rank()
+    {
+        // 王大明 is the Profile person, so ranked first; 陳小華 is named before him in the sentence.
+        var r = Read("陳小華指控王大明。法院判處有期徒刑。", new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Victim" }, null,
+            ("王大明", "判處", "Conviction", 0.9f), ("陳小華", "判處", "Conviction", 0.9f));
+
+        Assert.Equal([NewsEventType.Conviction], r.Entities.Single(e => e.Name == "王大明").Events.Select(v => v.Type));
+        Assert.Empty(r.Entities.Single(e => e.Name == "陳小華").Events);
     }
 
     [Fact]

@@ -3294,12 +3294,12 @@
               "number",
               "string"
             ],
-            "description": "模型機率（0 至 1，取兩位小數）；列出的事件都至少 0.3",
+            "description": "至少一句說了此事件的模型機率（各句合併：1 − Π(1 − p)，取兩位小數）；列出的事件都至少 0.3",
             "format": "double"
           },
           "quote": {
             "type": "string",
-            "description": "機率最高的句子原文，最多 200 字"
+            "description": "單句機率最高的句子原文，最多 200 字"
           }
         }
       },

@@ -9,8 +9,8 @@ namespace Aml.Core.Explanation;
 public sealed record NewsModelEvent(
     [property: Description("事件類型，見 /api/codes")] NewsEventType Type,
     [property: Description("STATED、NEGATED 或 REQUESTED（模型不讀 HEDGED）")] NewsCertainty Certainty,
-    [property: Description("模型機率（0 至 1，取兩位小數）；列出的事件都至少 0.3")] double Probability,
-    [property: Description("機率最高的句子原文，最多 200 字")][property: Sensitivity(Sensitivity.Personal)] string Quote);
+    [property: Description("至少一句說了此事件的模型機率（各句合併：1 − Π(1 − p)，取兩位小數）；列出的事件都至少 0.3")] double Probability,
+    [property: Description("單句機率最高的句子原文，最多 200 字")][property: Sensitivity(Sensitivity.Personal)] string Quote);
 
 public sealed record NewsModelEntity(
     [property: Description("姓名或機構名；同一對象有多種寫法時取完整姓名")][property: Sensitivity(Sensitivity.Personal)] string Name,
@@ -45,23 +45,50 @@ public static class NewsModelReading
         var entities = Entities(text, model.Tag(text))
             .Select(e => (e, Profile: e.Forms.Any(f => profileNames.Contains(f, StringComparer.OrdinalIgnoreCase))))
             .OrderByDescending(x => x.Profile).ThenByDescending(x => x.e.Mentions).Take(MaxEntities).ToList();
-        // Each sentence holding a form of an entity is one classification, with the form written there; one batch per article.
-        var sentences = Sentences(text);
-        var asked = entities.SelectMany((x, i) => sentences
-                .Select(s => (Entity: i, Form: x.e.Forms.FirstOrDefault(f => s.Contains(f, StringComparison.Ordinal)), Sentence: s))
-                .Where(q => q.Form is not null))
-            .Take(MaxClassifications).ToList();
+        var asked = Asked(Sentences(text), entities.Select(x => x.e).ToList()).Take(MaxClassifications).ToList();
         var answers = asked.Count == 0 ? [] : model.Events([.. asked.Select(q => (q.Form!, q.Sentence))]);
-        var best = entities.Select(_ => new Dictionary<(NewsEventType, NewsCertainty), (double P, string Quote)>()).ToList();
+        // Over an entity's sentences a label's probability is that at least one says it (noisy-or: 1 − Π(1 − p)); the
+        // quote is the sentence most likely to. Measured on the held-out documents: higher F1 than the highest sentence alone.
+        var found = entities.Select(_ => new Dictionary<(NewsEventType, NewsCertainty), (double None, double Top, string Quote)>()).ToList();
         foreach (var (q, labels) in asked.Zip(answers))
             foreach (var (label, p) in labels)
-                if (p >= EventThreshold && Label(label) is { } key && (!best[q.Entity].TryGetValue(key, out var b) || p > b.P))
-                    best[q.Entity][key] = (p, Quote(q.Sentence));
+                if (Label(label) is { } key)
+                {
+                    var (none, top, quote) = found[q.Entity].TryGetValue(key, out var f) ? f : (1.0, -1.0, "");
+                    found[q.Entity][key] = (none * (1 - p), Math.Max(top, p), p > top ? Quote(q.Sentence) : quote);
+                }
+        var best = found.Select(d => d.Where(x => 1 - x.Value.None >= EventThreshold)
+            .ToDictionary(x => x.Key, x => (P: 1 - x.Value.None, x.Value.Quote))).ToList();
 
         return new NewsModelReadout(model.Version, entities.Select((x, i) => new NewsModelEntity(x.e.Name, x.e.Forms.Where(f => f != x.e.Name).ToList(),
             IsOrganisation(x.e.Role), Party(x.e.Role), x.Profile, x.e.Mentions,
             best[i].OrderByDescending(v => v.Value.P).ThenBy(v => v.Key)
                 .Select(v => new NewsModelEvent(v.Key.Item1, v.Key.Item2, Math.Round(v.Value.P, 2), v.Value.Quote)).ToList())).ToList());
+    }
+
+    // Sentences that name no person (an organisation may be named) after one that names a person are classified for that
+    // person, up to this many. Chosen on the dev documents, end to end: 0 → 0.545 F1, 1 → 0.576, 2 → 0.569, 3 → 0.567.
+    private const int CarryOver = 1;
+
+    // The classifications to run: each sentence holding a form of an entity, with the form written there; and each of the
+    // next CarryOver sentences naming nobody, for the person named last (a judgment goes on about 被告 without the name).
+    private static IEnumerable<(int Entity, string Form, string Sentence)> Asked(List<string> sentences, List<Entity> entities)
+    {
+        (int Entity, string Form)? last = null;
+        var since = 0;
+        foreach (var s in sentences)
+        {
+            var named = entities.Select((e, i) => (i, Form: e.Forms.FirstOrDefault(f => s.Contains(f, StringComparison.Ordinal)), e.Role))
+                .Where(x => x.Form is not null).ToList();
+            foreach (var (i, form, _) in named) yield return (i, form!, s);
+            // The person named last in the sentence's text, with the form written there.
+            var person = named.Where(x => !IsOrganisation(x.Role))
+                .SelectMany(x => entities[x.i].Forms.Where(f => s.Contains(f, StringComparison.Ordinal))
+                    .Select(f => (x.i, Form: f, At: s.LastIndexOf(f, StringComparison.Ordinal) + f.Length)))
+                .OrderByDescending(x => x.At).ThenByDescending(x => x.Form.Length).FirstOrDefault();
+            if (person.Form is not null) { last = (person.i, person.Form); since = 0; }
+            else if (last is { } l && since++ < CarryOver) yield return (l.Entity, l.Form, s);
+        }
     }
 
     internal static IReadOnlyList<Entity> Entities(string text, IReadOnlyList<TaggedSpan> spans)

@@ -1661,13 +1661,59 @@
                                 "integer"
                               ],
                               "pattern": "^-?(?:0|[1-9]\\d*)$"
+                            },
+                            "identifiers": {
+                              "description": "報導緊接姓名寫出的識別資訊（性別、年齡、出生日期、身分證字號、國籍、住居地、職業、任職機構），依出現順序",
+                              "type": "array",
+                              "items": {
+                                "type": [
+                                  "object",
+                                  "null"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "description": "GENDER（性別）、AGE（年齡）、BIRTH_DATE（出生日期或年次）、ID_NUMBER（身分證字號，已遮罩）、NATIONALITY（國籍）、RESIDENCE（住居地或籍貫）、OCCUPATION（職業或職稱）、EMPLOYER（任職機構）",
+                                    "enum": [
+                                      "GENDER",
+                                      "AGE",
+                                      "BIRTH_DATE",
+                                      "ID_NUMBER",
+                                      "NATIONALITY",
+                                      "RESIDENCE",
+                                      "OCCUPATION",
+                                      "EMPLOYER"
+                                    ]
+                                  },
+                                  "text": {
+                                    "description": "報導原文；身分證字號時為 null，見 number",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ],
+                                    "x-sensitivity": "PERSONAL"
+                                  },
+                                  "number": {
+                                    "description": "身分證字號，已遮罩；其他種類時為 null",
+                                    "type": [
+                                      "string",
+                                      "null"
+                                    ],
+                                    "default": null,
+                                    "x-sensitivity": "IDENTIFIER"
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ]
+                              }
                             }
                           },
                           "required": [
                             "name",
                             "match",
                             "roles",
-                            "mentions"
+                            "mentions",
+                            "identifiers"
                           ]
                         }
                       },
@@ -2000,6 +2046,13 @@
                                       "quote"
                                     ]
                                   }
+                                },
+                                "identifiers": {
+                                  "description": "報導緊接此對象的姓名或其他寫法寫出的識別資訊，以規則讀取（同 people 的 identifiers）",
+                                  "type": "array",
+                                  "items": {
+                                    "$ref": "#/properties/effective/properties/explanation/properties/hits/items/properties/newsDigest/properties/people/items/properties/identifiers/items"
+                                  }
                                 }
                               },
                               "required": [
@@ -2008,7 +2061,8 @@
                                 "organisation",
                                 "profileName",
                                 "mentions",
-                                "events"
+                                "events",
+                                "identifiers"
                               ]
                             }
                           }

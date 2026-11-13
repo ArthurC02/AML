@@ -94,8 +94,10 @@ public static class CaseWorkbook
         new("身分或職稱", "newsDigest.people[].roles", "報導中緊接在姓名前的身分或職稱"),
         new("角色", "newsDigest.people[].party", "SUSPECT、VICTIM、WITNESS 或 OFFICIAL；空白為看不出"),
         new("出現次數", "newsDigest.people[].mentions", "出現次數"),
+        new("識別資訊", "newsDigest.people[].identifiers", "報導緊接姓名寫出的性別、年齡、出生日期、身分證字號（已遮罩）、國籍、住居地、職業與任職機構", Identifying: true),
     ], hits.SelectMany(h => (h.NewsDigest?.People ?? []).Select(p => (IReadOnlyList<object?>)
-        [h.HitNumber, p.Name, Code(p.Match), Joined(p.Roles), p.Party is { } party ? Code(party) : null, p.Mentions])));
+        [h.HitNumber, p.Name, Code(p.Match), Joined(p.Roles), p.Party is { } party ? Code(party) : null, p.Mentions,
+         Joined(p.Identifiers.Select(i => $"{Code(i.Kind)} {i.Text ?? i.Number}"))])));
 
     private static Table NewsEvents(IReadOnlyList<HitExplanation> hits) => new("新聞事件",
     [

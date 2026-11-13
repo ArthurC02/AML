@@ -33,7 +33,8 @@ public sealed record NewsPerson(
     [property: Description("PROFILE_NAME：名單人物（姓名相同，或全文唯一同姓全名的匿稱）；PROFILE_SURNAME：與名單人物同姓的匿稱；OTHER_PERSON：其他人")] NewsMatch Match,
     [property: Description("報導中緊接在姓名前的身分或職稱，依出現順序")] IReadOnlyList<string> Roles,
     [property: Description("依身分或職稱歸類：SUSPECT、VICTIM、WITNESS、OFFICIAL；看不出時為 null")] NewsParty? Party,
-    [property: Description("出現次數")] int Mentions);
+    [property: Description("出現次數")] int Mentions,
+    [property: Description("報導緊接姓名寫出的識別資訊（性別、年齡、出生日期、身分證字號、國籍、住居地、職業、任職機構），依出現順序")] IReadOnlyList<NewsIdentifier> Identifiers);
 
 public sealed record NewsEvent(
     [property: Description("事件類型，見 /api/codes")] NewsEventType Type,
@@ -81,7 +82,7 @@ public static partial class NewsDigests
         var mentions = Mentions(text, names, surnames);
         // Quoted speech is a claim: no event is read inside it (as for the legal stage), but names are.
         var blanked = SourceConditions.Quoted().Replace(text, m => new string('　', m.Length));
-        var people = People(mentions);
+        var people = People(text, mentions);
         // An event names its person as the people list does: by the first full name, else the first form.
         var shownAs = mentions.GroupBy(m => m.Key, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => (g.FirstOrDefault(m => !m.Anonymous) ?? g.First()).Name, StringComparer.Ordinal);
@@ -317,14 +318,17 @@ public static partial class NewsDigests
     [GeneratedRegex(@"(?:少年|少女|男童|女童|被害人|告訴人|證人|被告|嫌犯)[A-ZＡ-Ｚ甲乙丙丁]")]
     private static partial Regex LetteredParty();
 
-    private static List<NewsPerson> People(List<Mention> mentions) =>
+    private static List<NewsPerson> People(string text, List<Mention> mentions) =>
         mentions.GroupBy(m => m.Key, StringComparer.Ordinal)
             .OrderBy(g => g.Key == ProfileKey ? 0 : g.First().Match == NewsMatch.ProfileSurname ? 1 : 2).ThenBy(g => g.First().At)
             .Take(MaxPeople)
             .Select(g =>
             {
                 var roles = g.Select(m => m.Role).OfType<string>().Distinct(StringComparer.Ordinal).ToList();
-                return new NewsPerson((g.FirstOrDefault(m => !m.Anonymous) ?? g.First()).Name, g.First().Match, roles, Party(roles), g.Count());
+                // An occupation the roles already list (董事長王大明) is not repeated.
+                var identifiers = NewsIdentifiers.Read(text, g.Select(m => m.Name))
+                    .Where(i => i.Kind != NewsIdentifierKind.Occupation || !roles.Contains(i.Text!, StringComparer.Ordinal)).ToList();
+                return new NewsPerson((g.FirstOrDefault(m => !m.Anonymous) ?? g.First()).Name, g.First().Match, roles, Party(roles), g.Count(), identifiers);
             })
             .ToList();
 

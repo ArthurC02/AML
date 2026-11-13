@@ -43,6 +43,45 @@ public class NewsModelReadingTests
     }
 
     [Fact]
+    public void Quote_marks_and_a_role_word_taken_in_by_the_tagger_are_not_the_name()
+    {
+        var r = Read("「王大明」遭起訴，被告王大明否認。", new() { ["「王大明」"] = "PER-Suspect", ["被告王大明"] = "PER-Suspect" });
+
+        var e = Assert.Single(r.Entities);
+        Assert.Equal(("王大明", 2, 0), (e.Name, e.Mentions, e.OtherForms.Count));
+    }
+
+    [Fact]
+    public void A_longer_role_word_is_taken_off_whole()
+    {
+        var r = Read("被告人王大明遭起訴，上訴人王大明否認。", new() { ["被告人王大明"] = "PER-Suspect", ["上訴人王大明"] = "PER-Suspect" });
+
+        Assert.Equal(("王大明", 2), (Assert.Single(r.Entities).Name, r.Entities[0].Mentions));
+    }
+
+    [Fact]
+    public void A_bare_role_word_is_the_one_person_of_that_party_else_no_one()
+    {
+        var one = Read("被告王大明涉嫌詐欺。被告否認。", new() { ["王大明"] = "PER-Suspect", ["被告"] = "PER-Suspect" });
+        var two = Read("被告王大明、陳小華涉嫌詐欺。被告否認。", new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Suspect", ["被告"] = "PER-Suspect" });
+
+        var e = Assert.Single(one.Entities);
+        Assert.Equal("王大明", e.Name);
+        Assert.Equal(["被告"], e.OtherForms);
+        Assert.Equal(["王大明", "陳小華"], two.Entities.Select(x => x.Name).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void A_fragment_inside_one_longer_name_of_another_shape_is_that_name()
+    {
+        var r = Read("阿莫伊斯達遭起訴，莫伊否認。", new() { ["阿莫伊斯達"] = "PER-Suspect", ["莫伊"] = "PER-Other" });
+
+        var e = Assert.Single(r.Entities);
+        Assert.Equal(("阿莫伊斯達", 2), (e.Name, e.Mentions));
+        Assert.Equal(["莫伊"], e.OtherForms);
+    }
+
+    [Fact]
     public void A_short_organisation_name_inside_one_longer_one_is_its_abbreviation()
     {
         var r = Read("大明公司負責人王大明遭搜索，大明公司與大明營造均遭調查，大明另有子公司。",
@@ -110,14 +149,15 @@ public class NewsModelReadingTests
     [Fact]
     public void One_sentence_naming_no_person_is_read_for_the_person_named_last()
     {
-        // 判處 is said in the sentence after 王大明, which names only a court; 罰金 two sentences on; 起訴 after 陳小華 is named.
+        // 判處 is said in the sentence after 王大明, which names only a court; 罰金 two sentences on; 起訴 after the witness
+        // 陳小華 is named, so it is read for no one.
         var r = Read("王大明遭起訴。地方法院判處有期徒刑3年。併科罰金。陳小華作證。檢方起訴。",
             new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Other", ["地方法院"] = "ORG-Other" }, null,
             ("王大明", "判處", "Conviction", 0.9f), ("王大明", "罰金", "Fine", 0.9f), ("陳小華", "檢方起訴", "Indictment", 0.9f),
             ("王大明", "檢方起訴", "Indictment", 0.9f));
 
         Assert.Equal([NewsEventType.Conviction], r.Entities.Single(e => e.Name == "王大明").Events.Select(v => v.Type));
-        Assert.Equal([NewsEventType.Indictment], r.Entities.Single(e => e.Name == "陳小華").Events.Select(v => v.Type));
+        Assert.Empty(r.Entities.Single(e => e.Name == "陳小華").Events);
     }
 
     [Fact]
@@ -129,6 +169,27 @@ public class NewsModelReadingTests
 
         Assert.Equal([NewsEventType.Conviction], r.Entities.Single(e => e.Name == "王大明").Events.Select(v => v.Type));
         Assert.Empty(r.Entities.Single(e => e.Name == "陳小華").Events);
+    }
+
+    [Fact]
+    public void Only_a_suspect_is_carried_over_to_the_next_sentence()
+    {
+        // The sentence after the lawyer 陳小華 names no one and is not read for him; after the suspect 王大明 it is.
+        var r = Read("陳小華到場辯護。法院判處有期徒刑。王大明遭起訴。併科罰金。",
+            new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Other" }, null,
+            ("陳小華", "判處", "Conviction", 0.9f), ("王大明", "罰金", "Fine", 0.9f));
+
+        Assert.Empty(r.Entities.Single(e => e.Name == "陳小華").Events);
+        Assert.Equal([NewsEventType.Fine], r.Entities.Single(e => e.Name == "王大明").Events.Select(v => v.Type));
+    }
+
+    [Fact]
+    public void An_organisation_is_not_arrested_or_detained()
+    {
+        var r = Read("大明公司遭搜索並遭羈押。", new() { ["大明公司"] = "ORG-Suspect" }, ["大明公司"],
+            ("大明公司", "搜索", "Search", 0.9f), ("大明公司", "羈押", "Detention", 0.9f), ("大明公司", "羈押", "Arrest", 0.9f));
+
+        Assert.Equal([NewsEventType.Search], Assert.Single(r.Entities).Events.Select(v => v.Type));
     }
 
     [Fact]

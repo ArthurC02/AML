@@ -19,7 +19,8 @@ public sealed record NewsModelEntity(
     [property: Description("模型判斷的身分：SUSPECT、VICTIM、OFFICIAL；其他或看不出時為 null")] NewsParty? Party,
     [property: Description("姓名或其他寫法與名單人物的姓名相同")] bool ProfileName,
     [property: Description("出現次數")] int Mentions,
-    [property: Description("模型讀出此對象涉及的事件，依機率由高到低")] IReadOnlyList<NewsModelEvent> Events);
+    [property: Description("模型讀出此對象涉及的事件，依機率由高到低")] IReadOnlyList<NewsModelEvent> Events,
+    [property: Description("報導緊接此對象的姓名或其他寫法寫出的識別資訊，以規則讀取（同 people 的 identifiers）")] IReadOnlyList<NewsIdentifier> Identifiers);
 
 // What the small models read (ADR-0012, ADR-0015). It restates the news for the reviewer and feeds no decision.
 public sealed record NewsModelReadout(
@@ -52,7 +53,7 @@ public static class NewsModelReading
         var found = entities.Select(_ => new Dictionary<(NewsEventType, NewsCertainty), (double None, double Top, string Quote)>()).ToList();
         foreach (var (q, labels) in asked.Zip(answers))
             foreach (var (label, p) in labels)
-                if (Label(label) is { } key)
+                if (Label(label) is { } key && (!IsOrganisation(entities[q.Entity].e.Role) || OrganisationSteps.Contains(key.Item1)))
                 {
                     var (none, top, quote) = found[q.Entity].TryGetValue(key, out var f) ? f : (1.0, -1.0, "");
                     found[q.Entity][key] = (none * (1 - p), Math.Max(top, p), p > top ? Quote(q.Sentence) : quote);
@@ -63,8 +64,17 @@ public static class NewsModelReading
         return new NewsModelReadout(model.Version, entities.Select((x, i) => new NewsModelEntity(x.e.Name, x.e.Forms.Where(f => f != x.e.Name).ToList(),
             IsOrganisation(x.e.Role), Party(x.e.Role), x.Profile, x.e.Mentions,
             best[i].OrderByDescending(v => v.Value.P).ThenBy(v => v.Key)
-                .Select(v => new NewsModelEvent(v.Key.Item1, v.Key.Item2, Math.Round(v.Value.P, 2), v.Value.Quote)).ToList())).ToList());
+                .Select(v => new NewsModelEvent(v.Key.Item1, v.Key.Item2, Math.Round(v.Value.P, 2), v.Value.Quote)).ToList(),
+            IsOrganisation(x.e.Role) ? [] : NewsIdentifiers.Read(text, x.e.Forms))).ToList());
     }
+
+    // An organisation is investigated, searched, charged, convicted, fined, penalised or has assets restrained or confiscated;
+    // it is not arrested, questioned, detained or bailed. Measured end to end on the dev documents: 0.763 → 0.772 F1.
+    private static readonly HashSet<NewsEventType> OrganisationSteps =
+    [
+        NewsEventType.Investigation, NewsEventType.Search, NewsEventType.Indictment, NewsEventType.Conviction, NewsEventType.Fine,
+        NewsEventType.RegulatoryPenalty, NewsEventType.AssetRestraint, NewsEventType.Confiscation,
+    ];
 
     // Sentences that name no person (an organisation may be named) after one that names a person are classified for that
     // person, up to this many. Chosen on the dev documents, end to end: 0 → 0.545 F1, 1 → 0.576, 2 → 0.569, 3 → 0.567.
@@ -86,7 +96,8 @@ public static class NewsModelReading
                 .SelectMany(x => entities[x.i].Forms.Where(f => s.Contains(f, StringComparison.Ordinal))
                     .Select(f => (x.i, Form: f, At: s.LastIndexOf(f, StringComparison.Ordinal) + f.Length)))
                 .OrderByDescending(x => x.At).ThenByDescending(x => x.Form.Length).FirstOrDefault();
-            if (person.Form is not null) { last = (person.i, person.Form); since = 0; }
+            // Only a suspect is carried over: after a lawyer, an official or a victim the next sentence is not about them.
+            if (person.Form is not null) { last = entities[person.i].Role == "PER-Suspect" ? (person.i, person.Form) : null; since = 0; }
             else if (last is { } l && since++ < CarryOver) yield return (l.Entity, l.Form, s);
         }
     }
@@ -94,8 +105,8 @@ public static class NewsModelReading
     internal static IReadOnlyList<Entity> Entities(string text, IReadOnlyList<TaggedSpan> spans)
     {
         var found = spans.Where(s => s.Length > 1 && s.Start >= 0 && s.Start + s.Length <= text.Length)
-            .Select(s => (Name: text.Substring(s.Start, s.Length), s.Role))
-            .Where(s => !(IsOrganisation(s.Role) && s.Name.EndsWith('戶')))
+            .Select(s => (Name: Clean(text.Substring(s.Start, s.Length), IsOrganisation(s.Role)), s.Role))
+            .Where(s => s.Name.Length > 1 && !(IsOrganisation(s.Role) && s.Name.EndsWith('戶')))
             .ToList();
         var names = found.Select(s => s.Name).Distinct(StringComparer.Ordinal).ToList();
         var kind = names.ToDictionary(n => n, n => IsOrganisation(found.First(s => s.Name == n).Role), StringComparer.Ordinal);
@@ -113,11 +124,32 @@ public static class NewsModelReading
         }
         foreach (var n in people.Except(wellFormed))
         {
-            var related = wellFormed.Where(o => o.Contains(n, StringComparison.Ordinal) || n.Contains(o, StringComparison.Ordinal))
+            // A longer span holds a name of three characters or more (王大明等); a two-character piece of it (莫伊 in 阿莫伊斯達)
+            // is not its name.
+            var related = wellFormed.Where(o => o.Contains(n, StringComparison.Ordinal) || (o.Length >= 3 && n.Contains(o, StringComparison.Ordinal)))
                 .Select(o => canonical[o]!).Distinct(StringComparer.Ordinal).ToList();
             canonical[n] = related.Count switch { 0 => n, 1 => related[0], _ => null };
         }
+        // A name of another shape (a transliterated or indigenous name, a lettered party, a Latin name) is anchored by
+        // itself: a shorter span inside exactly one such longer name is its form, unless it is a well-formed name inside a
+        // well-formed one (kept apart above).
+        foreach (var n in people.Where(n => canonical[n] == n).OrderBy(n => n.Length))
+        {
+            var longer = people.Where(o => o.Length > n.Length && !wellFormed.Contains(o) && canonical[o] == o && o.Contains(n, StringComparison.Ordinal)).ToList();
+            if (longer.Count == 1) canonical[n] = longer[0];
+        }
         foreach (var n in names.Where(n => kind[n])) canonical[n] = Organisation(n, names.Where(o => kind[o]).ToList());
+        // A bare role word the tagger took for a name (被告, 告訴人) is no one by itself: it is the one person of that party
+        // when the text has exactly one, else dropped. Measured end to end: dev 0.579 → 0.601, test 0.604 → 0.621 (dropping
+        // it always: 0.588, 0.611).
+        foreach (var n in people.Where(n => BareRoles.TryGetValue(n, out _)))
+        {
+            var party = BareRoles[n];
+            var only = people.Where(o => canonical[o] == o && !BareRoles.ContainsKey(o)
+                    && found.Where(s => s.Name == o).GroupBy(s => s.Role).OrderByDescending(r => r.Count()).First().Key == party)
+                .ToList();
+            canonical[n] = only.Count == 1 ? only[0] : null;
+        }
 
         // The role is the majority over all mentions of all forms.
         return found.Where(s => canonical[s.Name] is not null)
@@ -126,6 +158,38 @@ public static class NewsModelReading
                 g.GroupBy(s => s.Role, StringComparer.Ordinal).OrderByDescending(r => r.Count()).First().Key, g.Count()))
             .ToList();
     }
+
+    // Quote marks and brackets the tagger took in at either end are not the name (「王大明」); nor is a role word before a
+    // person's name (被告王大明), when two characters or more remain.
+    private static string Clean(string name, bool organisation)
+    {
+        name = name.Trim().Trim(Enclosing).Trim();
+        if (organisation) return name;
+        foreach (var role in RoleWords)
+            if (name.Length - role.Length >= 2 && name.StartsWith(role, StringComparison.Ordinal)) return name[role.Length..];
+        return name;
+    }
+
+    private static readonly char[] Enclosing = ['「', '」', '『', '』', '“', '”', '"', '\'', '(', ')', '（', '）', '〈', '〉', '《', '》', '[', ']', '【', '】'];
+    private static readonly Dictionary<string, string> BareRoles = new(StringComparer.Ordinal)
+    {
+        ["被告"] = "PER-Suspect",
+        ["被告人"] = "PER-Suspect",
+        ["共同被告"] = "PER-Suspect",
+        ["同案被告"] = "PER-Suspect",
+        ["嫌犯"] = "PER-Suspect",
+        ["犯嫌"] = "PER-Suspect",
+        ["嫌疑人"] = "PER-Suspect",
+        ["上訴人"] = "PER-Suspect",
+        ["受刑人"] = "PER-Suspect",
+        ["抗告人"] = "PER-Suspect",
+        ["再抗告人"] = "PER-Suspect",
+        ["被上訴人"] = "PER-Suspect",
+        ["告訴人"] = "PER-Victim",
+        ["被害人"] = "PER-Victim",
+    };
+
+    private static readonly string[] RoleWords = ["共同被告", "被告人", "上訴人", "被害人", "告訴人", "嫌疑人", "被告", "嫌犯", "犯嫌", "證人"];
 
     // At most 200 UTF-16 units, never ending inside a surrogate pair.
     private static string Quote(string s) =>

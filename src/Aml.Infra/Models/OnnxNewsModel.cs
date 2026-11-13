@@ -15,7 +15,8 @@ namespace Aml.Infra.Models;
 /// </summary>
 public sealed class OnnxNewsModel : INewsModel, IDisposable
 {
-    private const int MaxTokens = 510, Step = 384, EventMaxTokens = 192, EventCrop = 150;
+    private const int MaxTokens = 510, Step = 384, EventMaxTokens = 512, EventCrop = 460;
+    private const long MentionOpen = 1, MentionClose = 2; // [unused1], [unused2]
     private readonly InferenceSession ner, ev;
     private readonly BertWordPiece tokenizer;
     private readonly string[] tags, eventLabels;
@@ -97,19 +98,26 @@ public sealed class OnnxNewsModel : INewsModel, IDisposable
                 .ToDictionary(x => x.l, x => x.q, StringComparer.Ordinal);
         }).ToList();
 
-    // [CLS] mention [SEP] sentence [SEP], the sentence cropped to 150 characters around the mention and the whole cut to 192 tokens.
+    // [CLS] mention [SEP] sentence [SEP]: the sentence cut to 460 characters around the mention, every occurrence of the
+    // mention in it wrapped in two marker tokens (which of the people named the question is about), the whole cut to 512 tokens.
     private (long[] Ids, long[] Types) EventInput(string mention, string sentence)
     {
         mention = Normalize(mention); sentence = Normalize(sentence);
         var at = Math.Max(sentence.IndexOf(mention, StringComparison.Ordinal), 0);
         var from = Math.Max(0, Math.Min(at - EventCrop / 2, sentence.Length - EventCrop));
         var crop = sentence.Substring(from, Math.Min(EventCrop, sentence.Length - from));
-        var first = tokenizer.Encode(mention);
-        var room = Math.Max(0, EventMaxTokens - 3 - first.Count);
+        var first = tokenizer.Encode(mention).Select(t => (long)t.Id).ToList();
+        var second = new List<long>();
+        var pieces = mention.Length == 0 ? [crop] : crop.Split(mention, StringSplitOptions.None);
+        for (var k = 0; k < pieces.Length; k++)
+        {
+            if (k > 0) { second.Add(MentionOpen); second.AddRange(first); second.Add(MentionClose); }
+            second.AddRange(tokenizer.Encode(pieces[k]).Select(t => (long)t.Id));
+        }
         var ids = new List<long>(EventMaxTokens) { tokenizer.Classification };
-        ids.AddRange(first.Select(t => (long)t.Id)); ids.Add(tokenizer.Separator);
+        ids.AddRange(first); ids.Add(tokenizer.Separator);
         var segment = ids.Count;
-        ids.AddRange(tokenizer.Encode(crop).Take(room).Select(t => (long)t.Id)); ids.Add(tokenizer.Separator);
+        ids.AddRange(second.Take(Math.Max(0, EventMaxTokens - 1 - segment))); ids.Add(tokenizer.Separator);
         return ([.. ids], [.. Enumerable.Range(0, ids.Count).Select(i => i < segment ? 0L : 1L)]);
     }
 

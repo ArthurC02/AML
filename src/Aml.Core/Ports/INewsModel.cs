@@ -20,4 +20,7 @@ public interface INewsModel
     /// with the probability that the sentence says it of the mention.
     /// </summary>
     IReadOnlyList<IReadOnlyDictionary<string, float>> Events(IReadOnlyList<(string Mention, string Sentence)> pairs);
+
+    /// <summary>Classifies the pairs with their source document when the model uses document context.</summary>
+    IReadOnlyList<IReadOnlyDictionary<string, float>> Events(string text, IReadOnlyList<(string Mention, string Sentence)> pairs) => Events(pairs);
 }

@@ -64,12 +64,49 @@ public sealed class NewsModelTokensTests : IDisposable
     }
 
     [Theory]
+    [InlineData("法院\n被告甲甲\n主 文\n甲甲與乙乙", "甲甲", 3)]
+    [InlineData("法院\n被告甲甲\n主 文\n甲甲與乙乙", "乙乙", 4)]
+    [InlineData("文內提及判決主文內容。", "甲甲", 5)]
+    [InlineData("法院\n主文\n內容", "", 5)]
+    [InlineData("主文", "甲甲", 5)]
+    [InlineData("😀法院\n被告Ａ０１\n主\r\n文\n內容", "A01", 3)]
+    public void Caption_observations_append_literal_presence_absence_or_unknown_after_the_unchanged_query(string text, string mention, long marker)
+    {
+        long[] ids = [2, 4, 3, 1, 4, 2, 5, 3], types = [0, 0, 0, 1, 1, 1, 1, 1];
+        var (actual, segments) = OnnxNewsModel.CaptionObservation(ids, types, OnnxNewsModel.EventCaption(text), mention);
+        Assert.Equal([.. ids, marker], actual);
+        Assert.Equal([.. types, 1L], segments);
+        Assert.Equal(new long[] { 2, 4, 3, 1, 4, 2, 5, 3 }, ids);
+    }
+
+    [Fact]
+    public void A_full_event_input_keeps_every_original_token_without_a_caption_observation()
+    {
+        var ids = Enumerable.Repeat(7L, 512).ToArray();
+        var types = Enumerable.Repeat(1L, 512).ToArray();
+        var (actual, segments) = OnnxNewsModel.CaptionObservation(ids, types, "甲甲", "甲甲");
+        Assert.Same(ids, actual);
+        Assert.Same(types, segments);
+    }
+
+    [Theory]
     [InlineData(10, "0-10")]
     [InlineData(510, "0-510")]
     [InlineData(511, "0-510 1-511")]
     [InlineData(1000, "0-510 384-894 490-1000")]
     public void Windows_of_510_tokens_start_every_384_and_the_last_ends_at_the_text(int tokens, string expected) =>
         Assert.Equal(expected, string.Join(" ", OnnxNewsModel.Windows(tokens).Select(w => $"{w.Start}-{w.End}")));
+
+    [Fact]
+    public void Optional_ascii_adapter_keeps_party_codes_distinct_and_preserves_original_offsets()
+    {
+        File.WriteAllLines(vocab, ["[PAD]", "[UNK]", "[CLS]", "[SEP]", "a", "b", "##01", "##02"]);
+        var codes = new BertWordPiece(vocab);
+        Assert.Equal([1, 1], codes.Encode(OnnxNewsModel.Normalize("A01 B02")).Select(t => t.Id));
+        Assert.Equal([(4, 0, 1), (6, 1, 3), (5, 4, 5), (7, 5, 7)],
+            codes.Encode(OnnxNewsModel.Normalize("A01 B02", true)).Select(t => (t.Id, t.Start, t.End)));
+        Assert.Equal("\U00020000a01 Éİ", OnnxNewsModel.Normalize("\U00020000\uFF2101 Éİ", true));
+    }
 
     [Fact]
     public void Decoding_never_puts_an_I_after_O_or_after_another_role()
@@ -79,6 +116,63 @@ public sealed class NewsModelTokensTests : IDisposable
         var probs = new float[,] { { 0.55f, 0.45f, 0, 0, 0 }, { 0.01f, 0.05f, 0.9f, 0.02f, 0.02f }, { 0.3f, 0.1f, 0.1f, 0.1f, 0.4f } };
 
         Assert.Equal(["B-PER-Suspect", "I-PER-Suspect", "O"], OnnxNewsModel.Decode(probs, tags));
+    }
+
+    [Fact]
+    public void Document_roles_share_source_forms_and_adjust_B_and_I_without_changing_other_tokens()
+    {
+        string[] roles = ["PER-Suspect", "PER-Victim", "PER-Official", "PER-Other", "ORG-Suspect", "ORG-Victim", "ORG-Other"];
+        string[] labels = ["O", .. roles.SelectMany(r => new[] { "B-" + r, "I-" + r })];
+        var tokens = new List<BertWordPiece.Token> { new(1, 0, 1), new(1, 2, 3), new(1, 4, 5) };
+        var probabilities = new float[3, 15];
+        probabilities[0, 1] = 0.8f; probabilities[0, 3] = 0.2f;
+        probabilities[1, 1] = 0.2f; probabilities[1, 3] = 0.8f;
+        probabilities[2, 0] = 1;
+        var (groups, features, mask) = OnnxNewsModel.RoleGroups("A A B", tokens, probabilities, new float[,] { { 2 }, { 6 }, { 9 } }, labels);
+        Assert.Single(groups);
+        Assert.Equal([(0, 1), (1, 2)], groups[0]);
+        Assert.Equal(2, features[0, 0, 0]); Assert.Equal(6, features[0, 1, 0]);
+        Assert.Equal(0.8f, features[0, 0, 2]); Assert.Equal(0.8f, features[0, 1, 3]);
+        Assert.Equal(1, mask[0, 0]); Assert.Equal(1, mask[0, 1]);
+        var original = (float[,])probabilities.Clone();
+        OnnxNewsModel.ApplyRoleBiases(probabilities, groups, new float[8]);
+        Assert.True(Math.Abs(probabilities[0, 1] - original[0, 1]) < 1e-6);
+        float[] bias = [0, 3, 0, 0, 0, 0, 0, 0];
+        OnnxNewsModel.ApplyRoleBiases(probabilities, groups, bias);
+        Assert.True(probabilities[1, 1] > probabilities[1, 3]);
+        Assert.Equal(1, probabilities[2, 0]);
+    }
+
+    [Fact]
+    public void Event_contexts_include_the_prefix_and_all_requested_form_occurrences_without_NER_predictions()
+    {
+        var tokens = new List<BertWordPiece.Token> { new(1, 0, 1), new(1, 1, 3), new(1, 4, 5), new(1, 6, 7), new(1, 7, 9) };
+        var probabilities = new float[5, 15];
+        for (var i = 0; i < 5; i++) probabilities[i, 0] = 1;
+        var hidden = new float[,] { { 2 }, { 4 }, { 10 }, { 6 }, { 8 } };
+        var found = OnnxNewsModel.EventContexts("A01 X A01", "A01", tokens, probabilities, hidden);
+        Assert.Equal(3, found.GetLength(0));
+        Assert.Equal(6, found[0, 0]); Assert.Equal(3, found[1, 0]); Assert.Equal(7, found[2, 0]);
+        Assert.Equal(1, found[0, 1]);
+        Assert.Equal(1, found[0, 9]); Assert.Equal(0, found[0, 10]);
+        Assert.Equal(0, found[1, 9]); Assert.Equal(1, found[1, 10]);
+        Assert.Equal(1, OnnxNewsModel.EventContexts("A01 X A01", "missing", tokens, probabilities, hidden).GetLength(0));
+        Assert.Equal(1, OnnxNewsModel.EventContexts("A01 X A01", "", tokens, probabilities, hidden).GetLength(0));
+    }
+
+    [Fact]
+    public void Event_query_anchors_follow_the_current_sentence_and_all_repeated_occurrences()
+    {
+        Assert.Equal(new float[] { 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1 },
+            OnnxNewsModel.EventAnchors("A one. A two. A three.", "A", "A two.").Cast<float>());
+        Assert.Equal(new float[] { 0, 0, 0, 0, 1, 0, 0, 0, 1 },
+            OnnxNewsModel.EventAnchors("A one. unnamed. A two.", "A", "unnamed.").Cast<float>());
+        Assert.Equal(new float[] { 0, 0, 0, 1, 0, 0, 0, 1, 1, 1, 0, 0 },
+            OnnxNewsModel.EventAnchors("A one. A two. A one.", "A", "A one.").Cast<float>());
+        Assert.All(OnnxNewsModel.EventAnchors("AB", "AB", "B").Cast<float>(), value => Assert.Equal(0, value));
+        Assert.All(OnnxNewsModel.EventAnchors("A", "A", "missing").Cast<float>(), value => Assert.Equal(0, value));
+        Assert.Equal(1, OnnxNewsModel.EventAnchors("", "", "").GetLength(0));
+        Assert.Equal(1, OnnxNewsModel.EventAnchors("\U00020000 first. \U00020000 next.", "\U00020000", "\U00020000 next.")[2, 0]);
     }
 
     [Fact]

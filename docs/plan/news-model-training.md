@@ -1,186 +1,220 @@
 # News model training
 
-How the two news models that `NewsModelReading` corrects are made, measured and handed to the runtime, and where that work stands. The models and every piece of training data live outside the repository (ADR-0015, [security and privacy](../feature/security-and-privacy.md)); this page is the map to them. The runtime side is described in [watchlist and adverse information](../feature/watchlist-and-adverse-information.md#news-digest).
+This document explains what the news models learn, how their outputs become a document reading, and what evidence permits a model change. Runtime behavior belongs to [news models](../feature/watchlist-and-adverse-information.md#news-models); licensing and data boundaries belong to [ADR-0015](../adr/0015-licences.md) and [security and privacy](../feature/security-and-privacy.md). Training data, model files and detailed experiment records stay outside the repository.
 
-## Mental model
+For an existing checkout, use [taking over an existing checkout](#taking-over-an-existing-checkout) to identify the working changes, frozen data revision and preserved sources before executing tools.
 
-- **Two models, one base.** Both are `bert-base-chinese` (Apache-2.0) fine-tuned; the base must stay a clean-licence model (ADR-0015).
-  - **NER** tags every person and organisation with a role: `PER-`/`ORG-` + `Suspect`, `Victim`, `Witness`, `Official`, `Other`.
-  - **Event model** answers, per (entity form, sentence), which `NEWS_EVENT` labels the sentence states for that entity (multi-label sigmoid, plus `-Negated`, `-Requested` and `prior`).
-- **The runtime decides which pairs are asked**, and training rows are built the same way. A sentence is asked for an entity when it holds one of its forms; one following sentence that names nobody is asked for the last-named person, only when that person is a suspect (`NewsModelReading.Asked`, mirrored in `prep.py`). A gold event whose sentences are never asked gives no row ("unreachable", by design).
-- **Score that matters: end-to-end F1** over (document, gold person, event label). It is measured on whole dev documents through the real .NET code (`OnnxNewsModel` + `NewsModelReading`), not on training rows. The goal is **≥ 0.9 on dev**, not only on test.
-- **Data first.** A found label error stops training: fix all of them, re-run `prep.py`, then retrain. Never train on labels known to be wrong.
+## The system learns answers to two different questions
 
-## Where things are
+The NER model asks **which text spans name people or organisations, and what role each mention has**. The event model asks **which legal events a particular sentence states for the queried entity**. Recognising an event word, finding a name and assigning that event to the right person and case are separate tasks.
 
-| What | Path (outside the repo) |
-|---|---|
-| Texts | `C:\tmp\aml-data\judgments\jd-*.main.txt` (court judgments), `press\*.main.txt / .para.txt` (government press releases), `news\npa-*.main.txt` (police releases) |
-| Gold labels | `C:\tmp\aml-data\labels\v6\ver` (577 judgments and press releases), `v6\npa\fin` (1041 police releases), `v7\ver` (292 judgments, train only) |
-| Guideline, checker, prompts | `C:\tmp\aml-data\labels\tools\`: `guideline.md` (rules 1–44, later readings win; 44am–44at are the newest), `check.py`, `jd7-annotate/verify/sweep-prompt.md`, crawler source `crawl-src\` |
-| Progress log and handoff | `C:\tmp\aml-data\labels\v6\progress.md` (sections HANDOFF and HOW TO TRAIN ON COLAB) |
-| Training code | `C:\tmp\aml-train\`: `prep.py`, `train_ner.py`, `train_ev.py`, `export.py`, venv `.venv` |
-| Training data | `C:\tmp\aml-train\data\`: `split.json`, `ner-{train,dev,test}.jsonl`, `ev-{train,dev,test}.jsonl` |
-| Models | `C:\tmp\aml-train\models\ner`, `models\ev` (current), older ones beside them (`ner-v5prod`, `ev-v5prod` = the last shipped pair, `ev-v9`, …) |
-| End-to-end evaluation | `C:\tmp\aml-eval\` (.NET console referencing `Aml.Core`/`Aml.Infra`; `Program.cs`, `dump_split.py`) |
-| Colab | `C:\tmp\colab\` (Dockerfile, `home\` = the container's home with job folders and scripts) |
+```mermaid
+flowchart LR
+    T[Source document] --> N[NER spans and roles]
+    N --> R[Merge forms and choose entity/sentence questions]
+    T --> R
+    R --> E[Event probabilities for each question]
+    E --> A[Aggregate and filter events per entity]
+    N --> A
+    A --> D[Model reading in the news digest]
+```
 
-## Pipeline
+`OnnxNewsModel` supplies model inference. `NewsModelReading` chooses questions, merges forms and applies the runtime's entity/event rules. The digest is an attributed reading of the source; identity, source-condition and disposition decisions do not consume it.
 
-1. **Crawl.** `crawl-src` (`dotnet run -c Release -- fjud <dir> <query-hash> <total>` for judgments, `npa <dir> <total>` for police releases), 3 s between requests, generic User-Agent. The judgment query hash comes from a keyword search on the public judgment site. Government texts are free under 著作權法 §9; police releases are OGDL-Taiwan 1.0.
-2. **Label.** Annotate → independent verify → targeted sweep, each by a different subagent (a mid-size model is enough), batches of 7–8 documents, every file through `check.py`.
-   - Labels quote exact strings of the text: entities with mentions and party, and events with type, certainty, parties, trigger, sentence, `also`, `prior` and so on.
-   - Disagreements between subagents become new guideline readings, applied by the next pass.
-   - Subagent reports never contain names or quotes.
-3. **Prepare.** `.venv/Scripts/python.exe -I prep.py` writes `data/`.
-   - `split.json` is fixed: dev and test stay the same documents across rounds, and new crawl rounds go to train only.
-   - Prints counts only.
-4. **Train.** `train_ner.py 3`, then `train_ev.py 4` (epochs as the argument). Both use CUDA when present.
-   - Event input: `[CLS] form [SEP] sentence [SEP]`, the sentence cut to 460 characters around the form, every occurrence of the form wrapped in `[unused1]`/`[unused2]`, 512 tokens.
-   - Every negative row is used each epoch, and the best dev threshold is chosen per epoch.
-5. **Export.** `export.py` writes `model.onnx` for both and checks ONNX against torch. Copy `models\bert-base-chinese\vocab.txt` into `ner\` and `ev\` (training saves no vocab).
-6. **Evaluate** in `C:\tmp\aml-eval`:
-   - Run `dotnet run -c Release -- C:/tmp/aml-train/models dev tagcache` after a NER change.
-   - Move `evcache-dev.tsv` aside after an event-model change.
-   - Then run `dotnet run -c Release --no-build -- C:/tmp/aml-train/models dev cached e2e min=0.4`. Options:
-     - `min=` is the event threshold;
-     - `perlabel` prints per-label counts;
-     - `dump=<file>` writes error rows; they hold text, so keep the file in a scratch folder;
-     - `evids` checks C#/Python input parity.
-   - After any gold change in dev or test, re-run `prep.py` and `dump_split.py dev` (or `test`).
-   - Use test only for a final check; choose thresholds on dev.
-7. **Ship.** Point `NewsModels:Directory` (`Aml.Api/Program.cs`) at a folder with `ner\` and `ev\`, each holding `model.onnx`, `config.json` and `vocab.txt`. Then update the measured numbers in the feature doc and `NewsModelReading.EventThreshold`.
+The approved base is `bert-base-chinese`. The current NER label map has seven roles: `PER-Suspect`, `PER-Victim`, `PER-Official`, `PER-Other`, `ORG-Suspect`, `ORG-Victim` and `ORG-Other`, represented as BIO tags plus `O`. Canonical `PER-Witness` labels are merged into `PER-Other` by the training reader; a separately learned witness class is not currently available.
 
-## Training on Colab
+NER reads overlapping token windows. The retained candidate also learns document-level role biases from predicted mentions of the same source form. This can use an informative mention elsewhere in the document, but a person's overall role does not determine who owns a particular event or whether that event belongs to another case. Standalone NER acceptance uses final greedy spans with roles; runtime BIO decoding is evaluated through the complete pipeline.
 
-Google Colab T4 GPUs, driven by the `colab` CLI inside Docker.
+The event model is a multi-label classifier. Its supported columns encode event types, certainty variants and `prior`. The ordinary input is `[CLS] form [SEP] marked sentence [SEP]`: crop 460 characters around the form, mark every occurrence of that form with IDs 1 and 2, then retain at most 512 tokens. Current NER inputs lowercase ASCII with an explicit model flag; ordinary event inputs retain their cased normalization. The two input modes must not be conflated.
 
-- **Setup.**
-  - Container `colab` (image `colab-cli` from `C:\tmp\colab\Dockerfile`; mounts `C:\tmp\colab\home` → `/home/colab` and `C:\tmp\aml-train` → `/train`).
-  - The user's Google sign-in is already stored by the container's file keyring under `C:\tmp\colab\home\.local\share\python_keyring\`. Never print, copy or commit it. If it expires, the user signs in again themself; an agent never handles the password.
-- **Command form** (Git Bash):
+### The question boundary controls what can be learned and found
 
-  ```bash
-  export MSYS_NO_PATHCONV=1; docker exec -i -e OAUTHLIB_RELAX_TOKEN_SCOPE=1 -w /home/colab colab sh -c 'colab <cmd> < /dev/null'
-  ```
+Training preparation mirrors `NewsModelReading.Asked`: ask about a sentence containing an entity form; also carry one following sentence naming no person to the last-named person when that person is a suspect. A gold event outside these questions contributes no event-training row. It can still be missed by the whole-document reader.
 
-  - Commands: `new -s NAME --gpu T4`, `upload -s NAME <local> <remote>` (lands at `/` on the VM), `exec -s NAME -f script.py --timeout N`, `download -s NAME <remote> <local>`, `stop -s NAME`, `usage`.
-  - About 1.15 compute units per hour; a NER plus event-model run takes about 1–2 h.
-- **A job** (`C:\tmp\colab\home\jobN\`): `data\`, `models\bert-base-chinese\`, `train_ner.py`, `train_ev.py`, and `run.sh`, which installs `transformers==5.22.2`, trains, tars the models and writes `done.txt`.
-  - Pack it with `tar czf` and `split -b 40m`; larger uploads fail with HTTP 500.
-  - Upload the parts.
-  - `startN.py` joins and unpacks the parts, then starts `run.sh` with nohup.
-  - `peekN.py` shows progress; `watchN.sh` polls every 5 minutes.
-  - To get results back, `pack*.py` splits the models into 40 MB parts on the VM. Download the parts, check the md5, untar them into `C:\tmp\aml-train`, then go on with steps 5–6.
-  - Stop the session when done.
+The runtime also merges forms, limits organisation events to applicable procedures and aggregates sentence probabilities per entity. A correct answer on an annotated row therefore does not guarantee a correct document reading. An extra NER entity can create extra questions and false events; a missed entity can prevent a correct event from being asked at all.
 
-## Where it stands (2026-11-14)
+## Acceptance has three gates
 
-Scores are end-to-end on the fixed dev set (161 documents) and test set (158 documents).
+All three gates must pass for the **same selected NER/event pair** on the fixed dev split. Each F1 must be strictly greater than 0.90.
 
-| Models | dev F1 | test F1 |
+| Gate | Unit being compared with gold | What remains in the denominator |
 |---|---|---|
-| v5 (last shipped pair), threshold 0.3 | 0.615 | 0.660 |
-| v9 NER + v9 event model, 0.45 | 0.695 | 0.690 |
-| v9 NER + v10 event model (460-character crop, mention markers), 0.4 | 0.763 | 0.814 |
-| same, organisations limited to organisation steps, gold fixes | 0.776 (P 0.769, R 0.782) | not yet measured |
+| Primary NER | Exact span boundaries **and role**, using the acceptance scorer's greedy decoding | All 3,031 original gold spans in 161 dev documents |
+| Primary event | Label decisions on prepared entity-form/sentence rows | All 2,642 dev rows and 690 gold labels; unsupported gold labels count as FN |
+| Actual end to end | `(document, gold person, event label)` through `OnnxNewsModel` and `NewsModelReading` | All 418 gold events in 161 documents; events on unlabelled entities count as FP |
 
-- Judgments are the weak part: 0.719 on dev, against about 0.79 for press releases.
-- 72 of the 91 dev misses have a model probability below 0.3. The model needs more and better judgment data more than new rules.
+`F1 = 2TP / (2TP + FP + FN)`. The strict gate is checked with integer counts: `2TP > 9(FP + FN)`. A rounded display of `0.90` is insufficient. Boundary-only NER scores, BIO-constrained diagnostics, training fit and masked-language-model loss answer other questions and cannot replace these gates.
 
-In progress:
-- 292 new judgments (v7) are labelled, verified and swept. With them, train has 1575 documents and 4157 positive event rows (from 2779).
-- Two Colab runs:
-  - `aml4`: NER and event model on the v7 data;
-  - `aml3`: event model, 6 epochs, on the old data, as an epoch check.
-  - When they finish: steps 5–6 above, compared with 0.776.
+The primary event threshold is selected on dev over 0.05–0.95 in 0.025 increments. End-to-end calibration uses the runtime's effective 0.30 floor through 0.95 at the same increments. An outer evaluator threshold below the runtime floor cannot recover already-filtered outputs. Recount a probability dump first, then confirm its selected optimum through the actual .NET evaluator. Calibration is separate from a learned improvement.
 
-### Results of the current models
+Train is used for optimization, dev for checkpoint/threshold selection, and test for final validation. Keep split identities and held-out gold fixed during this improvement loop. Add eligible new sources to train only, excluding duplicate and related held-out material. If train labels change, compare both candidates on the same evaluation revision. Earlier test results belong to their historical model/data revisions; they do not validate the retained candidates. Final test remains reserved until all three dev gates pass together, then uses frozen model identities and dev-selected thresholds.
 
-There are two kinds of score:
-- **Row-level F1** is what `train_ev.py` prints per epoch, over (form, sentence) rows at the chosen threshold. Use it to compare epochs of one run.
-- **End-to-end F1** is what `C:\tmp\aml-eval` prints, over whole documents through the .NET code. Use it to decide.
+## Current candidate choice
 
-They differ a lot; for example, v10 is 0.684 row-level against 0.763 end to end on dev.
+The verified development choice as of 2026-11-15 is **NER20 / event27**. It has not replaced deployed models.
 
-| Model | Measure | dev | test |
-|---|---|---|---|
-| NER v9 (3 epochs) | span F1, role included | 0.849 | 0.861 |
-| event v10 (4 epochs) | row-level F1, threshold 0.3 | 0.684 | 0.819 |
-| v9 + v10 + organisation steps | end-to-end F1, threshold 0.4 | 0.776 (P 0.769, R 0.782; tp 327, fp 98, fn 91) | not yet measured |
+| Measure | Selected candidate | TP / FP / FN | Dev F1 | Threshold | Gate |
+|---|---|---|---|---|---|
+| Primary NER | NER20 with ASCII input mode and document-role head | 2,791 / 265 / 240 | 0.917036 | — | Pass |
+| Primary event | event27, ordinary CLS input/output | 495 / 124 / 195 | 0.756303 | 0.275 | Fail |
+| Actual end to end | NER20 / event27 | 344 / 78 / 74 | 0.819048 | 0.30 | Fail |
 
-NER v9 per role on dev / test:
-- ORG-Other: 0.674 / 0.818.
-- PER-Other: 0.519 / 0.585.
-- ORG-Victim: about 0.2 / 0.0.
-- Suspects, victims and officials are found well. The weak roles are the "other" person and organisation roles, which are rare in the data.
+An overall passing NER score does not establish reliable rare roles: `ORG-Victim` has zero TP on six dev gold spans. The retained pipeline still has 17 FP on unlabelled names and four FN from people without a matched entity. Model-role accuracy and event attribution both matter to the final reading.
 
-End to end on dev by source:
+The latest shared predicate decoder candidate has primary F1 0.754938 and actual pipeline F1 0.812428, so it does not replace the retained pair. The five source-reviewed motivating actor/case errors remain wrong. Current selection and limitation summaries belong here; epoch histories, process IDs, upload progress and individual retry records belong to the external artifacts.
 
-| Source | tp | fp | fn | F1 |
-|---|---|---|---|---|
-| judgments (`jd-`) | 138 | 55 | 53 | 0.719 |
-| police releases (`npa-`) | 108 | 32 | 24 | 0.794 |
-| other press releases (each site) | 4–18 | 0–4 | 0–5 | 0.74–1.0 |
+## Diagnose an error at the boundary where it arises
 
-End to end on dev by label (current pair, threshold 0.4):
+Start with the source and canonical label, then trace the exact runtime question and retained token IDs. The following distinctions determine which correction would address the error.
 
-| Label | tp | fp | fn | Label | tp | fp | fn |
-|---|---|---|---|---|---|---|---|
-| Arrest | 55 | 11 | 10 | Bail | 11 | 5 | 1 |
-| Indictment | 41 | 7 | 10 | Confiscation | 11 | 1 | 4 |
-| Questioning | 33 | 2 | 4 | AssetRestraint | 7 | 4 | 8 |
-| Investigation | 31 | 15 | 8 | Fine | 7 | 0 | 0 |
-| Conviction | 27 | 1 | 8 | WantedNotice | 2 | 0 | 5 |
-| prior | 24 | 11 | 9 | Appeal / Appeal-Negated | 4 / 4 | 4 / 4 | 3 / 0 |
-| Referral | 23 | 7 | 3 | Acquittal | 1 | 2 | 3 |
-| Detention | 21 | 8 | 5 | Confiscation-Negated | 4 | 2 | 2 |
-| Search | 19 | 11 | 4 | Detention-Negated / -Requested | 0 / 0 | 2 / 0 | 2 / 2 |
+| Question | Evidence to inspect | Consequence for a correction |
+|---|---|---|
+| Is the gold statement correct for this person, event, certainty and case? | Canonical annotation and source-reviewed ownership/scope | Correct confirmed label errors before training; a structural checker alone cannot certify semantics |
+| Does the reader ask the necessary question? | `Asked`/`prep.py` parity and entity matching | Missing questions or entities require preparation/runtime or NER work; an event-loss change cannot create them |
+| Does the model receive the distinguishing information? | Actual cropped IDs, segments, markers, normalization and source context | Repair demonstrated information loss while preserving offsets and label alignment |
+| Does available context belong to the queried person and case? | Clause ownership, quoted statements, current/other-case references and retained context | Event-word detection and a global suspect role are insufficient; verify the relation itself |
+| Does the model fit train but fail on dev? | Full-train and dev counts on their recorded revisions; error groups and case coverage | Investigate generalization and supervision coverage before proposing more epochs or a loss weight |
+| Does a new component actually affect served predictions? | Gradients, zero-effect compatibility, controlled interventions and native/ONNX/.NET parity | Establish implementation correctness separately from semantic improvement |
 
-What the errors are. A review of 202 disagreements on dev by subagents gave these causes:
+### What the existing evidence establishes
 
-| Cause | Count |
+**Exact input collisions are a small limit.** Actual encoded ordinary, masked and caption views give an optimistic dev bound of 0.998549. Only four FP and zero FN of retained event27 fall on ambiguous label cells. The bound measures contradictions in identical inputs; it is neither attainable performance nor proof that each input contains sufficient case context.
+
+**The event gap includes generalization.** On its recorded train revision, event26 fits train at F1 0.979608 and `prior` at 412/415 TP, while dev `prior` remains 26/83 TP. This rules out broad failure to fit those training labels, without identifying a unique cause. Negative-label prevalence alone likewise does not establish that loss weighting will repair the errors.
+
+**Case-pattern supervision is sparse in the actual model views.** A bounded literal probe finds no prior-positive train row retaining a named-case alias, compared with 17 such dev positives. A witness-prefix probe finds only two train prior positives and five dev positives. These overlapping lexical groups are inspection aids, not rules for assigning `prior`. Replacing a reviewed other-case alias with an explicit other-case term did not improve full-dev F1. Six non-identical cached but unadopted sources also have no named-case alias probe hits; their eligibility and independent annotation review remain incomplete.
+
+**Connected components can still learn the wrong relations.** Frozen document-context heads use their added inputs, yet retain the reviewed actor/case errors. A source-caption observation also changes probabilities without repairing those cases. Trigger-binding supervision already updated the main encoder; it was not a frozen-encoder bug. Its older event25 experiment saved an epoch-zero selection and did not retain the final trained weights, so inspecting that saved initial head cannot explain its trained-epoch behavior. Sharing predicate-token scores between the primary output and binding loss verifies that the supervised scores are served, but still leaves all five motivating errors wrong. Thus neither adding context nor connecting an auxiliary objective is, by itself, a checked semantic repair.
+
+These findings support continued work on person/event/case relations and train-only coverage. They do not establish that one vocabulary change, wider crop, threshold adjustment or parameter combination is the remaining solution. A proposed correction needs a source-verified failure mechanism and a test that distinguishes repaired behavior from merely changed confidence.
+
+## Treat a candidate as a complete inference contract
+
+A candidate consists of weights, feature configuration, label maps, tokenizer behavior, learned heads, runtime behavior and its evaluation revision. A weights filename alone does not identify the predictions.
+
+| Boundary | Invariant |
 |---|---|
-| model missed a stated step | 88 |
-| right step, wrong party | 42 |
-| event invented where none is stated | 26 |
-| wrong type | 20 |
-| unclear | 15 |
-| unreachable by design | 5 |
-| gold error | 3 (fixed) |
+| Preparation → training | Preserve row identities, labels, order and split provenance. Use every original primary row, including negatives and rows without auxiliary supervision |
+| Feature mode → inference | Normalization, crop, markers and document-derived observations must agree in Python and .NET. An effective input change needs a compatibly trained checkpoint and measured parity; compare actual IDs rather than treating serialization-only JSON differences as a new tokenizer |
+| Training → evaluation | Explicitly enable training/dropout for optimizer batches; preserve mode across dev evaluation. No dev augmentation. Check real finite gradients and parameter updates |
+| Auxiliary supervision → primary task | Unknown/ambiguous trigger ownership supplies no auxiliary target; it does not turn a primary positive into a negative or remove its row |
+| Checkpoint → report | Record the selected epoch, epoch-zero baseline and actual final trained weights separately. Selection of epoch zero is not trained improvement |
+| Native → ONNX → .NET | Compare real short/long inputs, padding and boundary cases, outputs and exact tokenizer IDs. Test the complete runtime path, not only a synthetic export |
+| Model → cache | Bind caches to model/config/feature identity. Document-dependent event modes also require the source-document identity; a pair-only key cannot represent them |
 
-- 72 of the 91 misses have model probability below 0.3, so lowering the threshold cannot recover them.
-- Hard sentences are long multi-step ones, parties named only by code in the operative part or in tables, appeal outcomes, and group references ("the other suspects").
+The retained event model uses ordinary CLS pooling. Experimental contracts are available for document-context heads, literal caption observations and query-conditioned predicate-token pooling. Their flags and graphs describe different computations; the runtime support does not make them selected models. The predicate decoder uses existing BERT/pooler/classifier parameters, excludes query/name/delimiter/padding positions from the predicate pool, and retains a fallback for an empty pool. Its training-only trigger bindings are conservative source alignments, not runtime gold inputs.
 
-Runs in flight (row-level F1 on dev per epoch, when last read):
-- `aml3`, event model, 6 epochs, old data: epoch 1 0.332, epoch 2 0.554, at step 3280 of 8364. Six epochs warm up more slowly, so compare it at the end with v10's 0.684.
-- `aml4`, NER then event model, v7 data: NER at step 580 of 3198, no epoch result yet.
-- On the VM, the logs are `/content/jobN/logs-ner.txt` and `logs-ev.txt`; `peekN.py` prints their epoch lines. Copy them to `C:\tmp\aml-train\logs-*-vN.txt` when you download a run, since logs of older runs are kept there.
+Native event inference goes through `event_pooling.event_logits`, which dispatches the saved pooling mode. Loading ordinary `BertForSequenceClassification` weights and calling its default forward does not automatically apply an AML-specific decoder. `export_one.py` uses the matching export wrapper; the generic .NET graph runner then executes the exported computation.
 
-Model files now:
-- `C:\tmp\aml-train\models\ner` is v9 NER and `models\ev` is the v10 event model (4 epochs), both exported with `model.onnx`. They give the 0.776 above.
-- Move both aside before unpacking a new run, e.g. as `ner-v9` and `ev-v10-4ep`. The eval caches in `C:\tmp\aml-eval` (`tags-dev.jsonl`, `evcache-dev.tsv`) belong to this pair.
+Known unsuccessful mechanisms remain evidence against repeating an unchanged proposal. Preserve their immutable sources and results, and state what new observation would make a materially different experiment informative.
 
-Runs on Colab now (the same sign-in, so the same container sees them):
-- **`aml4`**: VM folder `/content/job4`. Its `run.sh` trains NER (3 epochs), then the event model (4 epochs), then writes `/content/job4/models-out.tar` and `done.txt`.
-  - Progress: `colab exec -s aml4 -f peek4.py` (from `/home/colab`, i.e. `C:\tmp\colab\home`).
-  - To get the models back, write a `pack4.py` like `pack.py` with `job4` in place of `job`. It splits `models/ner models/ev` into `/content/out4.part.NN` and prints the md5.
-  - Download each part, then `cat` the parts and `tar x` into `C:\tmp\aml-train`.
-- **`aml3`**: VM folder `/content/job3`, the event model only, 6 epochs, old data. Its `run.sh` writes no tar, so pack it like `pack2.py` (`models/ev` only).
-- `colab sessions` lists the live sessions and `colab status -s NAME` shows one; `colab usage` gives the balance and active assignments. The session names are kept in `C:\tmp\colab\home\.config\colab-cli\` (the CLI's session state), so a session started here is reachable from the same container by its name. `colab readme` prints the CLI's own manual. A Colab VM is recycled after some idle hours, and what is on it is lost. If a session is gone before its models were downloaded, re-run its job: the job folders and `.tgz` parts are kept in `C:\tmp\colab\home`.
+## From a diagnosis to a reviewable model change
 
-In the repository, `OnnxNewsModel.EventInput` (crop and markers) and `NewsModelReading` (carry-over only after a suspect, organisation steps) are built and unit-tested. The scores above use `min=0.4`; the shipped `NewsModelReading.EventThreshold` is still 0.3, so the code at 0.3 gives other numbers.
+1. **Validate the source and proposed correction.** Annotate → independent verify → targeted sweep use different subagents under the authorized review scope; every label file passes `check.py`. Preserve source fingerprints and resolved disagreements. Apply confirmed train corrections before rebuilding. Reports contain anonymous document/party IDs and counts, never source names or quotations.
+2. **Freeze the comparison.** Record starting weights, exact train/dev inputs, label maps, split and code hashes, settings and the intended failure cases. Reproduce the parent's complete dev counts before optimizer creation. When a feature mode changes, measure its untrained initialization separately from the ordinary parent.
+3. **Exercise the real path.** Check the actual tiny training entry, gradient paths, save/reload, row retention, unsupported-label misses and export/runtime parity. An isolated real-GPU preflight proves finite updates, active training/dropout and unchanged parent/input files before formal optimization. Synthetic learning validates machinery, not task F1.
+4. **Train and preserve artifacts.** Optimize on train and choose on fixed dev. Save per-epoch probabilities with gold/label order, selected and last-trained checkpoints, logs, sources and manifests. Keep exactly one backup watcher covering the job before launch.
+5. **Decide on measured behavior.** Independently reload and score the selected model; compare identical gold arrays, recovered/lost TP and removed/added FP. Export and evaluate the actual paired .NET reader with an isolated cache, then confirm the dev optimum. Revisit the motivating source errors. Retain the better measured candidates, and accept a pair only when all three gates pass. Deployment is a separate action.
 
-Still to do in the repository:
-- `EventThreshold` 0.3 → 0.4 (chosen on dev), with the models;
-- swap in the models;
-- refresh the measured numbers in the feature doc.
+The next experiment follows from unresolved evidence. A low aggregate score or a stagnant sequence of runs does not, on its own, justify another epoch/learning-rate/loss trial.
 
-Known open points:
-- 18 judgments are hard-wrapped (a line break every 20–40 characters), so their sentences are fragments at run time and in training. Fix: join hard-wrapped lines in the text reader and in `prep.raw_text`, together.
-- Guideline readings still split: a company named on forged documents (cover name vs victim), and telecoms and platforms as organisations.
-- Levers not yet tried:
-  - a final model trained on train+dev;
-  - an ensemble;
-  - recall weighting;
-  - a stronger base model, which needs a licence check and the user's decision.
+### Colab is temporary execution, not durable storage
+
+The existing `colab` Docker container mounts `C:\tmp\aml-train` as `/train` and `C:\tmp\colab\home` as `/home/colab`. The launcher stages an immutable job containing only the permitted inputs and pins the tested environment in `run.sh`. No task-test input is uploaded. Credentials stay in the container's existing keyring; agents never print, copy or handle sign-in secrets.
+
+`launch_next.py`, `monitor_training.py` and `backup_remote.py` form the launch/backup protocol. A new trainer must be recognized as a live worker and included in the explicit watch targets and archive contents. Completed artifacts return in 40 MB parts; verify size and SHA-256 before joining/extraction, record local verification, then stop the VM. Inspect selected/last weights, sources and epoch arrays independently. Interrupted snapshots and aborted jobs retain distinct receipts and must not masquerade as completed results.
+
+A local observation timeout is not evidence that training ended. Recheck the same worker/session and advancing steps rather than starting a replacement job. An interim checkpoint backup needs its own identity and must not set the final completion/stop markers. Preserve existing job directories and manifests when preparing another experiment.
+
+## Where the artifacts and entry points live
+
+All paths in this section are outside the repository. They distinguish source truth, derived inputs, candidate artifacts and deployed files; directories named `models\ner` or `models\ev` are not sufficient evidence of which candidate was selected.
+
+| Responsibility | Location |
+|---|---|
+| Source texts | `C:\tmp\aml-data\judgments\`, `press\`, `news\` |
+| Canonical labels | `C:\tmp\aml-data\labels\v6\ver`, `v6\npa\fin`, `v7\ver` |
+| Annotation guideline/checker | `C:\tmp\aml-data\labels\tools\guideline.md`, `check.py` and review prompts |
+| Fixed splits and derived model rows | `C:\tmp\aml-train\data\split.json`, `ner-{train,dev,test}.jsonl`, `ev-{train,dev,test}.jsonl` |
+| Preparation, trainers, native scorers and Python checks | `C:\tmp\aml-train\`; interpreter `.venv\Scripts\python.exe` |
+| Colab staging, launcher and watcher | `C:\tmp\colab\home\`; immutable `jobN\` bundles |
+| Downloaded weights/logs and verification receipts | `C:\tmp\aml-train\downloads\colab-20261114\` |
+| Metrics, diagnostic arrays and isolated runtime pairs | `C:\tmp\aml-train\measurements\` |
+| Immutable executed source snapshots | `C:\tmp\aml-train\snapshots\` |
+| Actual .NET evaluator | `C:\tmp\aml-eval\Program.cs`, `bin\Release\net10.0\aml-eval.dll` |
+
+The retained native NER is `downloads\colab-20261114\aml20\ner\extracted\models\ner`; it requires both its encoder and `document-roles.safetensors`. The retained native event model is `downloads\colab-20261114\aml27\ev\extracted\models\ev`. Their verified ONNX/config/vocab pair and isolated caches are under `measurements\aml27-pair\`. These paths are relative to `C:\tmp\aml-train`.
+
+Deployment supplies the matching `ner/` and `ev/` graphs, configs, vocabularies and required heads at `NewsModels:Directory`. Update the product's measured behavior with the deployed pair. A change to `NewsModelReading.EventThreshold` changes the inference contract and requires actual runtime evaluation as well.
+
+| Task | Existing entry point and boundary |
+|---|---|
+| Rebuild derived inputs | `prep.py`; preserve fixed splits and use guarded train-only rebuilds for train label revisions |
+| Verify a completed download | `verify_completed_run.py <job> <model>`; `--check-only` validates without rewriting a historical receipt |
+| Score native dev models | `measure_dev.py <model> <checkpoint> <out>`; `measure_query_dev.py` supplies the predicate mode's sorted/restored native batching |
+| Export a checkpoint | `export_one.py <checkpoint> <out>`; verify graphs, config and vocabulary together, including required learned heads |
+| Evaluate the whole reader | Release `aml-eval.dll <pair> dev cached e2e min=<threshold> cache=<isolated-cache> idsref=<reference> dump=<file>` |
+| Calibrate the pipeline | `calibrate_e2e.py <pair>`; actual .NET confirmation follows its dump recount |
+| Final per-model test | `measure_dev.py <model> <checkpoint> <out> --split test --dev-metrics <passing-record>`; use only after all three dev gates pass |
+
+Here `<model>` is `ner` or `ev`. Run Python tools from `C:\tmp\aml-train` and the .NET evaluator from `C:\tmp\aml-eval`; the latter uses `dev.jsonl` derived from the same fixed dev revision. Preserve the repository SDK pin when building the external evaluator. Shell commands follow the repository's RTK instruction.
+
+New end-to-end probability dumps contain numeric fields, anonymous IDs and an empty quote column; unknown entity IDs are hashed per document. Working inference caches still contain private input text and stay outside the repository. Reuse a NER cache only under matching NER/input/role-head identities. Event changes start with a fresh isolated cache; document-dependent modes include the document in their key.
+
+## Taking over an existing checkout
+
+The handoff has three parts: the repository implementation and documentation, the machine-local training workspace, and immutable experiment evidence. Preserve all three. A Git clone alone does not reproduce this workspace.
+
+### Implementation map
+
+| Responsibility | Files to inspect | What the next agent must preserve |
+|---|---|---|
+| Forward the source to document-aware models | `src/Aml.Core/Ports/INewsModel.cs`, `src/Aml.Core/Explanation/NewsModelReading.cs` | The document-aware overload and legacy pair-only compatibility; source text is an inference input, not a new decision input |
+| Execute configured feature modes and learned heads | `src/Aml.Infra/Models/OnnxNewsModel.cs` | ASCII normalization/offset parity, document roles, event context/caption contracts, version identity and rejection of invalid combinations |
+| Guard the runtime contracts | `tests/Aml.Tests/Unit/Extraction/NewsModelTokensTests.cs`, `tests/Aml.Tests/Unit/Screening/NewsModelReadingTests.cs` | Token/offset, role adjustment, context/anchor/caption behavior and forwarding the same document |
+| Build and measure candidates | External `train_ner_document.py`, `ner_document.py`, `train_ev_reviewed.py`, `train_query_predicates.py`, `query_predicates.py`, `event_pooling.py`, `measure_dev.py`, `export_one.py` | The selected model's complete native/export/runtime contract and fixed scoring definitions |
+| Preserve results | External Colab launcher/watcher and the .NET evaluator | Verified backups before stopping the VM, separate selected/last checkpoints, source-aware caches and anonymous report output |
+
+The repository files above belong to the handoff commit. Inspect `git log`, `git status` and any remaining diff before editing, and preserve later local changes. Training scripts, data, models and receipts under `C:\tmp\` are outside Git. An agent on another machine needs those workspaces transferred separately; never include credentials in that transfer.
+
+### Frozen state to establish before another experiment
+
+The retained pair is NER20/event27 from the candidate table. The latest completed candidate is event29; its selected checkpoint is trained epoch 2, its final trained checkpoint is epoch 3, and both are preserved. Both event28 and event29 failed to set a new primary or pipeline best. All completed jobs through 29 are locally backed up and stopped; the server had no active Colab session at handoff. Recheck live state before managing sessions. No job30 has been launched and no checked next correction is ready.
+
+Current train data contains 34,593 event rows and 6,182 gold labels. The canonical review of the original 24 judgments, the focused Questioning correction and the additional 21 judgments has been applied and independently verified. The four unresolved `also` groups remain unapplied. These are completed adoption records, not a pending queue to apply again; no further gold error is currently confirmed. Inspect `measurements\review24-inputs\`, `measurements\review21-inputs\` and `C:\tmp\aml-data\labels\review-questioning-20261115\` for the adoption/impact/rebuild proofs. `verify_questioning21_rebuild.py` shows the temporary, train-only guarded reproduction; it writes a validation receipt and must not be mistaken for a tool with no writes. Preserve frozen receipts when reproducing a check.
+
+The current identity anchors are:
+
+| Input | SHA-256 |
+|---|---|
+| `data\ev-train.jsonl` | `5e565a835ab6fa729289640bd93642cea6d9fdb9d1593e1894b21b2986927d70` |
+| `data\ev-dev.jsonl` | `5ac402da9429e565e1eb7b5c22d7327f0c746579b5fe7619d32bbc7a12c581c8` |
+| `data\split.json` | `c43ac736aecd1dd1ddaeb01006adda58fe5fc69218da7befd5a9808e70da6227` |
+
+Paths above are relative to `C:\tmp\aml-train`. Treat old appliers and experiment launchers as historical programs: inspect their side effects and pinned inputs before execution. In particular, generic preparation and older experimental trainers may rebuild held-out files or read test automatically. Resume with identity/receipt checks and source-error diagnosis; a new run needs the correction and validation described above. The small failing-case set and literal coverage groups are in `measurements\aml29-ev\actor-case-diagnostics.json`.
+
+### Reproduce evidence without relying on this conversation
+
+`C:\tmp\aml-train\snapshots\query-predicate-completed-20261115\snapshot.json` indexes 52 preserved executed-source and receipt files with SHA-256, including Python training/scoring/export, Colab scripts and both external .NET checkers. The snapshot's documentation is historical; this repository document supplies the current conceptual guidance. Its completion receipt binds the downloaded models and the actual selected/last/native/ONNX/.NET comparisons. Earlier retained candidates keep their own downloaded sources and receipts.
+
+Python uses `C:\tmp\aml-train\.venv\Scripts\python.exe`; agent shell commands use RTK as specified in `AGENTS.md` and `C:\Users\a8022\.codex\RTK.md`. The repository pins .NET SDK 10.0.303; this host currently has 10.0.301 but not 10.0.303. The external evaluator can be built from `C:\tmp\aml-eval` with the installed SDK without changing `global.json`. A preserved full solution validation records 1,068 passing tests and a zero-warning Release build. Its `dotnet_tests.log` and `release_build.log` are under `measurements\caption-validation\checks\`; their hashes are in `measurements\caption-validation\reviewed-inputs\reviewed-training-validation.json`. These files document that validation; recheck the appropriate tests after code changes.
+
+Continue by validating a concrete correction to the unresolved person/event/case errors, using the evidence below. Preserve the passing NER candidate and the untouched final-test boundary while doing so. Documentation updates replace the current model/decision summary or refine the explanation; execution details remain in their artifacts.
+
+### Evidence index
+
+These are durable references for conclusions above, not a second execution log. Paths below are relative to `C:\tmp\aml-train\measurements` unless stated otherwise.
+
+| Question | Evidence |
+|---|---|
+| Which candidates and actual pipeline are retained? | `aml20-ner\ner-dev-metrics.json`, `aml27-ev\ev-dev-metrics.json`, `aml27-pair\e2e-dev-metrics.json` |
+| Is the event gap mostly identical-input contradictions? | `input-identity-audit\encoded-conflicts.json` |
+| Does the model fit the recorded training revision? | `aml26-ev\train-fit-diagnostic.json` and its probability array |
+| What case-pattern coverage is missing? | `input-identity-audit\case-frame-coverage.json`, `input-identity-audit\named-case-alias-intervention.json`, `input-identity-audit\uncatalogued-literal-coverage.json` |
+| Does adding document context solve attribution? | `aml21-ev\context-head-analysis.json`; context variants in `aml22-ev\` and `aml23-ev\` |
+| Was trigger supervision disconnected or the saved checkpoint actually trained? | `aml25-ev\completion-analysis.json`; archived trainer/logs under `C:\tmp\aml-train\downloads\colab-20261114\aml25\ev\` |
+| Does the literal caption observation repair case relations? | `aml28-ev\completion-analysis.json`, `aml28-last-ev\caption-intervention.json` |
+| Does serving the supervised predicate score repair them? | `aml29-ev\completion-analysis.json`, `aml29-ev\actor-case-diagnostics.json`; implementation checks in `query-predicate-validation\` |
+| Are the model/data/runtime identities reproducible? | Each job's `job.json`, `VERIFIED.json`, `artifact-validation.json`, GPU receipt and per-epoch arrays; executed-source snapshots under `C:\tmp\aml-train\snapshots\` |
+
+The licence review covers both replacement weights and their training corpora. Metadata reviews under `C:\tmp\aml-train\candidate-review\macbert-base\` and `C:\tmp\aml-train\candidate-review\bert-wwm\` do not constitute approval or a base-model replacement; ADR-0015 remains the decision in force.

@@ -43,6 +43,8 @@ Api ──► Services ──► Core
 
 ## Commands
 
+Prefix agent shell commands with `rtk`; use `rtk proxy` for passthrough. The local reference is `C:\Users\a8022\.codex\RTK.md`. Apply that prefix when executing the commands below.
+
 ```bash
 dotnet build Aml.slnx --no-incremental          # must be 0 warnings (TreatWarningsAsErrors)
 dotnet format Aml.slnx --verify-no-changes
@@ -58,7 +60,7 @@ CI (`.github/workflows/ci.yml`) restores with `--locked-mode`, so a package chan
 
 - **Tests:** lowest layer that can show the behaviour; `TestPyramidTests` fails if Integration < 2 × E2E or in-process < 3 × Integration. Expected values come from the feature docs, not from running the code; assert exact values. Decision tables are one `[Theory]` with a row per cell. Time via `ManualTimeProvider`, never sleeps.
 - **Contracts:** `E2E/Contracts` snapshots guard the OpenAPI document and JSON Schemas; every operation needs an `operationId`, tag and description.
-- **Docs describe the current state.** Update the feature/plan doc in the same change as the code. ADRs hold the decisions in force, one record per subject (9 records): a changed or new decision edits the record it belongs to, with its date line updated; add a record only for a subject none covers.
+- **Docs describe the current state and build a mental model.** Organize them around responsibilities, data flow, invariants, decisions and evidence. Keep chronological construction/training logs in experiment artifacts; update conclusions rather than appending each work session. Update the feature/plan doc in the same change as the code. ADRs hold the decisions in force, one record per subject (9 records): a changed or new decision edits the record it belongs to, with its date line updated; add a record only for a subject none covers.
 - **Licences:** no commercially licensed packages; models and training text only under clean licences allowing commercial use (ADR-0015). Embedded third-party data needs an entry in `THIRD-PARTY-NOTICES.md` and `licenses/`.
 - **Personal data:** `samples/` is supplied material, read-only; do not open its files unless the task needs them, and never copy names, ids or quotes from it into code, docs, logs, commit messages or test names. Customer data stays in the Runtime Query half (`docs/feature/security-and-privacy.md`).
 - **Not in Phase 1:** LLM adjudication or AI match probabilities, automatic MATCH, any UI, OCR, unapproved risk weights.

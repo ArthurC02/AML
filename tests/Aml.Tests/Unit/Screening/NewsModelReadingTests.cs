@@ -9,6 +9,31 @@ namespace Aml.Tests.Unit.Screening;
 /// </summary>
 public class NewsModelReadingTests
 {
+    [Fact]
+    public void Document_aware_models_receive_the_same_whole_source_as_the_tagger()
+    {
+        const string text = "ACME event\u3002second sentence\u3002";
+        var model = new DocumentAwareModel();
+        NewsModelReading.Read(text, [], model);
+        Assert.Equal(text, model.Document);
+        Assert.Equal(1, model.Pairs);
+    }
+
+    private sealed class DocumentAwareModel : Aml.Core.Ports.INewsModel
+    {
+        public string Version => "test";
+        public string? Document { get; private set; }
+        public int Pairs { get; private set; }
+        public IReadOnlyList<Aml.Core.Ports.TaggedSpan> Tag(string text) => [new(0, 4, "ORG-Suspect")];
+        public IReadOnlyList<IReadOnlyDictionary<string, float>> Events(IReadOnlyList<(string Mention, string Sentence)> pairs) => throw new InvalidOperationException("Document was omitted");
+        public IReadOnlyList<IReadOnlyDictionary<string, float>> Events(string text, IReadOnlyList<(string Mention, string Sentence)> pairs)
+        {
+            Document = text;
+            Pairs = pairs.Count;
+            return pairs.Select(_ => (IReadOnlyDictionary<string, float>)new Dictionary<string, float>()).ToList();
+        }
+    }
+
     private static NewsModelReadout Read(string text, Dictionary<string, string> roles, string[]? profile = null,
         params (string, string, string, float)[] events) =>
         NewsModelReading.Read(text, profile ?? ["王大明"], new FakeNewsModel(roles, events));

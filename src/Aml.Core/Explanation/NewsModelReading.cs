@@ -47,7 +47,7 @@ public static class NewsModelReading
             .Select(e => (e, Profile: e.Forms.Any(f => profileNames.Contains(f, StringComparer.OrdinalIgnoreCase))))
             .OrderByDescending(x => x.Profile).ThenByDescending(x => x.e.Mentions).Take(MaxEntities).ToList();
         var asked = Asked(Sentences(text), entities.Select(x => x.e).ToList()).Take(MaxClassifications).ToList();
-        var answers = asked.Count == 0 ? [] : model.Events([.. asked.Select(q => (q.Form!, q.Sentence))]);
+        var answers = asked.Count == 0 ? [] : model.Events(text, [.. asked.Select(q => (q.Form!, q.Sentence))]);
         // Over an entity's sentences a label's probability is that at least one says it (noisy-or: 1 − Π(1 − p)); the
         // quote is the sentence most likely to. Measured on the held-out documents: higher F1 than the highest sentence alone.
         var found = entities.Select(_ => new Dictionary<(NewsEventType, NewsCertainty), (double None, double Top, string Quote)>()).ToList();

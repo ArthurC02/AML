@@ -46,13 +46,18 @@ public static class NewsModelReading
         var entities = Entities(text, model.Tag(text))
             .Select(e => (e, Profile: e.Forms.Any(f => profileNames.Contains(f, StringComparer.OrdinalIgnoreCase))))
             .OrderByDescending(x => x.Profile).ThenByDescending(x => x.e.Mentions).Take(MaxEntities).ToList();
-        var asked = Asked(Sentences(text), entities.Select(x => x.e).ToList()).Take(MaxClassifications).ToList();
+        var sentences = Sentences(text);
+        var asked = Asked(sentences, entities.Select(x => x.e).ToList()).Take(MaxClassifications).ToList();
         var answers = asked.Count == 0 ? [] : model.Events(text, [.. asked.Select(q => (q.Form!, q.Sentence))]);
         // Over an entity's sentences a label's probability is that at least one says it (noisy-or: 1 − Π(1 − p)); the
         // quote is the sentence most likely to. Measured on the held-out documents: higher F1 than the highest sentence alone.
         var found = entities.Select(_ => new Dictionary<(NewsEventType, NewsCertainty), (double None, double Top, string Quote)>()).ToList();
         // A whole-case sentence counts only for a suspect some sentence about them already gives an event: a suspect
         // without one (a contact known by a nickname, an accomplice tried elsewhere) is not who the case's steps are about.
+        // A defendant a judgment lists needs none: the case is theirs. Measured against every annotated event: 0.807 →
+        // 0.815 F1 on the dev documents, no change on the second dev set; dropping the condition for every text, or for
+        // texts with few suspects, cost the second set 0.02 (events on people only mentioned).
+        var defendants = Defendants(sentences, entities.Select(x => x.e).ToList());
         var anchored = new List<bool>();
         var many = asked.Where(q => q.Whole).Select(q => q.Entity).Distinct().Count() > ManySuspects;
         foreach (var whole in new[] { false, true })
@@ -65,7 +70,7 @@ public static class NewsModelReading
                         var (none, top, quote) = found[q.Entity].TryGetValue(key, out var f) ? f : (1.0, -1.0, "");
                         found[q.Entity][key] = (none * (1 - p), Math.Max(top, p), p > top ? Quote(q.Sentence) : quote);
                     }
-            if (!whole) anchored = found.Select(d => d.Values.Any(v => 1 - v.None >= EventThreshold)).ToList();
+            if (!whole) anchored = found.Select((d, i) => defendants.Contains(i) || d.Values.Any(v => 1 - v.None >= EventThreshold)).ToList();
         }
         var best = found.Select(d => d.Where(x => 1 - x.Value.None >= EventThreshold)
             .ToDictionary(x => x.Key, x => (P: 1 - x.Value.None, x.Value.Quote))).ToList();
@@ -103,6 +108,15 @@ public static class NewsModelReading
     // above in place: 0.794 → 0.807 F1 on the dev documents, 0.830 → 0.844 on the second dev set.
     private static readonly System.Text.RegularExpressions.Regex Group = new("(?<![平同相對])等共?[0-9０-９一二兩三四五六七八九十百餘多數]*(?:人|名|位|嫌|被告)");
 
+    // A judgment lists its defendants before 主文; the case's steps are theirs, not those of the other suspects it names
+    // (accomplices tried elsewhere). A text without such a list (a press release) has no one to tell apart this way.
+    private static List<int> Defendants(List<string> sentences, List<Entity> entities)
+    {
+        var order = sentences.FindIndex(s => string.Concat(s.Where(c => !char.IsWhiteSpace(c))) == "主文");
+        return [.. Enumerable.Range(0, entities.Count).Where(i => entities[i].Role == "PER-Suspect"
+            && sentences.Take(Math.Max(order, 0)).Any(s => entities[i].Forms.Any(f => s.Contains(f, StringComparison.Ordinal))))];
+    }
+
     // The classifications to run, in this order (the limit cuts the last): each sentence holding a form of an entity, with
     // the form written there, and each of the next CarryOver sentences naming nobody, for the person named last (a judgment
     // goes on about 被告 without the name); then each sentence naming no suspect or naming one for a group, for every
@@ -113,11 +127,7 @@ public static class NewsModelReading
         var since = 0;
         var suspects = Enumerable.Range(0, entities.Count).Where(i => entities[i].Role == "PER-Suspect").ToList();
         var unnamed = new List<(int Entity, string Form, string Sentence, bool Whole)>();
-        // A judgment lists its defendants before 主文; the case's steps are theirs, not those of the other suspects it names
-        // (accomplices tried elsewhere). A text without such a list (a press release) has no one to tell apart this way.
-        var order = sentences.FindIndex(s => string.Concat(s.Where(c => !char.IsWhiteSpace(c))) == "主文");
-        var defendants = suspects.Where(i => sentences.Take(Math.Max(order, 0)).Any(s => entities[i].Forms.Any(f => s.Contains(f, StringComparison.Ordinal)))).ToList();
-        if (defendants.Count > 0) suspects = defendants;
+        if (Defendants(sentences, entities) is { Count: > 0 } defendants) suspects = defendants;
         foreach (var s in sentences)
         {
             int? carried = null;

@@ -250,6 +250,18 @@ public class NewsModelReadingTests
     }
 
     [Fact]
+    public void A_defendant_listed_before_the_order_gets_a_whole_case_sentence_without_an_event_of_their_own()
+    {
+        // No sentence about 陳小華 gives an event; listed as defendant the referral is his, in a text without the list it is not.
+        NewsModelReadout Case(string head) => Read(head + "王大明遭逮捕。全案偵查終結。王大明與陳小華共同詐欺。全案偵查終結。案經警方移送偵辦。",
+            new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Suspect" }, null,
+            ("王大明", "逮捕", "Arrest", 0.9f), ("王大明", "移送", "Referral", 0.9f), ("陳小華", "移送", "Referral", 0.9f));
+
+        Assert.Equal([NewsEventType.Referral], Case("被 告 王大明\n陳小華\n主 文\n").Entities.Single(e => e.Name == "陳小華").Events.Select(v => v.Type));
+        Assert.Empty(Case("").Entities.Single(e => e.Name == "陳小華").Events);
+    }
+
+    [Fact]
     public void The_person_named_last_is_last_in_the_text_not_first_in_rank()
     {
         // 王大明 is the Profile person, so ranked first; 陳小華 is named before him in the sentence.

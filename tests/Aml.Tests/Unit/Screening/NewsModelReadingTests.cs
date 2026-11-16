@@ -172,16 +172,80 @@ public class NewsModelReadingTests
     }
 
     [Fact]
-    public void One_sentence_naming_no_person_is_read_for_the_person_named_last()
+    public void Every_sentence_naming_no_suspect_is_read_for_the_suspect_and_not_for_a_witness()
     {
-        // 判處 is said in the sentence after 王大明, which names only a court; 罰金 two sentences on; 起訴 after the witness
-        // 陳小華 is named, so it is read for no one.
+        // 判處 names only a court, 罰金 nobody, 作證 only the witness 陳小華, 檢方起訴 nobody: all are read for the one suspect,
+        // none for the witness.
         var r = Read("王大明遭起訴。地方法院判處有期徒刑3年。併科罰金。陳小華作證。檢方起訴。",
             new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Other", ["地方法院"] = "ORG-Other" }, null,
             ("王大明", "判處", "Conviction", 0.9f), ("王大明", "罰金", "Fine", 0.9f), ("陳小華", "檢方起訴", "Indictment", 0.9f),
             ("王大明", "檢方起訴", "Indictment", 0.9f));
 
-        Assert.Equal([NewsEventType.Conviction], r.Entities.Single(e => e.Name == "王大明").Events.Select(v => v.Type));
+        Assert.Equal([NewsEventType.Indictment, NewsEventType.Conviction, NewsEventType.Fine],
+            r.Entities.Single(e => e.Name == "王大明").Events.Select(v => v.Type).Order());
+        Assert.Empty(r.Entities.Single(e => e.Name == "陳小華").Events);
+    }
+
+    [Fact]
+    public void A_sentence_naming_no_suspect_gives_two_suspects_every_step_but_six_only_investigation_and_referral()
+    {
+        // The second sentence is carried over to the person named last; the seizure and the referral name nobody.
+        string[] names = ["王大明", "陳小華", "林志強", "張美玲", "李建國", "吳淑芬"];
+        NewsModelReadout Case(string[] suspects) => Read(string.Join("、", suspects) + "遭逮捕。全案偵查終結。警方查扣贓款。案經警方移送偵辦。",
+            suspects.ToDictionary(n => n, _ => "PER-Suspect"), null,
+            [.. suspects.SelectMany(n => new[] { (n, "逮捕", "Arrest", 0.9f), (n, "查扣", "AssetRestraint", 0.9f), (n, "移送", "Referral", 0.9f) })]);
+
+        Assert.All(Case(names[..2]).Entities, e => Assert.Equal(
+            [NewsEventType.Arrest, NewsEventType.Referral, NewsEventType.AssetRestraint], e.Events.Select(v => v.Type).Order()));
+        var six = Case(names);
+        Assert.Equal(6, six.Entities.Count);
+        Assert.All(six.Entities, e => Assert.Equal([NewsEventType.Arrest, NewsEventType.Referral], e.Events.Select(v => v.Type).Order()));
+    }
+
+    // Both are arrested by name; the referral sentence names only 王大明. It is 陳小華's too only when it names him for a group.
+    [Theory]
+    [InlineData("警方將王大明等2人移送偵辦。", true)]
+    [InlineData("警方將王大明等兩人移送偵辦。", true)]
+    [InlineData("警方將王大明等人移送偵辦。", true)]
+    [InlineData("警方將王大明等共5名移送偵辦。", true)]
+    [InlineData("警方將王大明等被告移送偵辦。", true)]
+    [InlineData("警方將王大明移送偵辦。", false)]
+    [InlineData("王大明涉犯詐欺、洗錢等犯罪，警方移送偵辦。", false)]
+    [InlineData("王大明詐騙李小美等被害人，警方移送偵辦。", false)]
+    [InlineData("王大明侵害平等人格，警方移送偵辦。", false)]
+    public void A_sentence_naming_one_suspect_is_read_for_the_other_suspects_only_when_it_names_a_group(string referral, bool group)
+    {
+        var r = Read("王大明遭逮捕。陳小華遭逮捕。" + referral,
+            new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Suspect" }, null,
+            ("王大明", "逮捕", "Arrest", 0.9f), ("陳小華", "逮捕", "Arrest", 0.9f),
+            ("王大明", "移送", "Referral", 0.9f), ("陳小華", "移送", "Referral", 0.9f));
+
+        Assert.Equal(group ? [NewsEventType.Arrest, NewsEventType.Referral] : [NewsEventType.Arrest],
+            r.Entities.Single(e => e.Name == "陳小華").Events.Select(v => v.Type).Order());
+    }
+
+    [Fact]
+    public void In_a_judgment_a_whole_case_sentence_is_read_only_for_the_defendants_listed_before_the_order()
+    {
+        // 陳小華 is an accomplice with a step of his own, but only 王大明 is listed as defendant before 主文.
+        var r = Read("被 告 王大明\n主 文\n王大明犯詐欺罪。全案審結。王大明與陳小華共同詐欺，陳小華另案遭逮捕。全案審結。案經警方移送偵辦。",
+            new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Suspect" }, null,
+            ("王大明", "犯詐欺罪", "Conviction", 0.9f), ("陳小華", "逮捕", "Arrest", 0.9f),
+            ("王大明", "移送", "Referral", 0.9f), ("陳小華", "移送", "Referral", 0.9f));
+
+        Assert.Equal([NewsEventType.Referral, NewsEventType.Conviction], r.Entities.Single(e => e.Name == "王大明").Events.Select(v => v.Type).Order());
+        Assert.Equal([NewsEventType.Arrest], r.Entities.Single(e => e.Name == "陳小華").Events.Select(v => v.Type));
+    }
+
+    [Fact]
+    public void A_whole_case_sentence_counts_only_for_a_suspect_with_an_event_in_a_sentence_about_them()
+    {
+        // 陳小華 is a suspect the text only mentions: no sentence about him gives an event, so the referral is not his.
+        var r = Read("王大明遭逮捕。全案偵查終結。王大明供稱上手為陳小華。全案偵查終結。案經警方移送偵辦。",
+            new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Suspect" }, null,
+            ("王大明", "逮捕", "Arrest", 0.9f), ("王大明", "移送", "Referral", 0.9f), ("陳小華", "移送", "Referral", 0.9f));
+
+        Assert.Equal([NewsEventType.Arrest, NewsEventType.Referral], r.Entities.Single(e => e.Name == "王大明").Events.Select(v => v.Type).Order());
         Assert.Empty(r.Entities.Single(e => e.Name == "陳小華").Events);
     }
 

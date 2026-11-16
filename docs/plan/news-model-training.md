@@ -29,7 +29,7 @@ The event model is a multi-label classifier. Its supported columns encode event 
 
 ### The question boundary controls what can be learned and found
 
-Training preparation mirrors `NewsModelReading.Asked`: ask about a sentence containing an entity form; also carry one following sentence naming no person to the last-named person when that person is a suspect. A gold event outside these questions contributes no event-training row. It can still be missed by the whole-document reader.
+Training preparation mirrors `NewsModelReading.Asked`: ask about a sentence containing an entity form; also carry one following sentence naming no person to the last-named person when that person is a suspect; and ask every suspect about each sentence that names no suspect (whole-case rows; in a judgment only the defendants listed before 主文). In documents with more than five suspects the label-free whole-case rows are sampled, about three per sentence, so they do not swamp training. The runtime also asks the unnamed suspects about a sentence naming one suspect for a group (等N人); no training row mirrors that yet. A gold event outside these questions contributes no event-training row. It can still be missed by the whole-document reader.
 
 The runtime also merges forms, limits organisation events to applicable procedures and aggregates sentence probabilities per entity. A correct answer on an annotated row therefore does not guarantee a correct document reading. An extra NER entity can create extra questions and false events; a missed entity can prevent a correct event from being asked at all.
 

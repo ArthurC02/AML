@@ -36,7 +36,7 @@ public sealed record NewsModelReadout(
 public static class NewsModelReading
 {
     public const double EventThreshold = 0.3;
-    private const int MaxEntities = 50, MaxClassifications = 300, MaxQuote = 200;
+    private const int MaxEntities = 50, MaxClassifications = 1200, MaxQuote = 200;
     private static readonly char[] SentenceEnds = ['。', '！', '？', '；', '!', '?', ';', '\n'];
 
     internal sealed record Entity(string Name, IReadOnlyList<string> Forms, string Role, int Mentions);
@@ -51,13 +51,22 @@ public static class NewsModelReading
         // Over an entity's sentences a label's probability is that at least one says it (noisy-or: 1 − Π(1 − p)); the
         // quote is the sentence most likely to. Measured on the held-out documents: higher F1 than the highest sentence alone.
         var found = entities.Select(_ => new Dictionary<(NewsEventType, NewsCertainty), (double None, double Top, string Quote)>()).ToList();
-        foreach (var (q, labels) in asked.Zip(answers))
-            foreach (var (label, p) in labels)
-                if (Label(label) is { } key && (!IsOrganisation(entities[q.Entity].e.Role) || OrganisationSteps.Contains(key.Item1)))
-                {
-                    var (none, top, quote) = found[q.Entity].TryGetValue(key, out var f) ? f : (1.0, -1.0, "");
-                    found[q.Entity][key] = (none * (1 - p), Math.Max(top, p), p > top ? Quote(q.Sentence) : quote);
-                }
+        // A whole-case sentence counts only for a suspect some sentence about them already gives an event: a suspect
+        // without one (a contact known by a nickname, an accomplice tried elsewhere) is not who the case's steps are about.
+        var anchored = new List<bool>();
+        var many = asked.Where(q => q.Whole).Select(q => q.Entity).Distinct().Count() > ManySuspects;
+        foreach (var whole in new[] { false, true })
+        {
+            foreach (var (q, labels) in asked.Zip(answers).Where(x => x.First.Whole == whole && (!whole || anchored[x.First.Entity])))
+                foreach (var (label, p) in labels)
+                    if (Label(label) is { } key && (!IsOrganisation(entities[q.Entity].e.Role) || OrganisationSteps.Contains(key.Item1))
+                        && (!whole || !many || WholeCaseSteps.Contains(key.Item1)))
+                    {
+                        var (none, top, quote) = found[q.Entity].TryGetValue(key, out var f) ? f : (1.0, -1.0, "");
+                        found[q.Entity][key] = (none * (1 - p), Math.Max(top, p), p > top ? Quote(q.Sentence) : quote);
+                    }
+            if (!whole) anchored = found.Select(d => d.Values.Any(v => 1 - v.None >= EventThreshold)).ToList();
+        }
         var best = found.Select(d => d.Where(x => 1 - x.Value.None >= EventThreshold)
             .ToDictionary(x => x.Key, x => (P: 1 - x.Value.None, x.Value.Quote))).ToList();
 
@@ -80,17 +89,41 @@ public static class NewsModelReading
     // person, up to this many. Chosen on the dev documents, end to end: 0 → 0.545 F1, 1 → 0.576, 2 → 0.569, 3 → 0.567.
     private const int CarryOver = 1;
 
-    // The classifications to run: each sentence holding a form of an entity, with the form written there; and each of the
-    // next CarryOver sentences naming nobody, for the person named last (a judgment goes on about 被告 without the name).
-    private static IEnumerable<(int Entity, string Form, string Sentence)> Asked(List<string> sentences, List<Entity> entities)
+    // A text is also read, for each suspect person, in every sentence that names none of them: a whole-case step
+    // (案經…移送偵辦, 警方循線查獲) is written without the name. With more suspects than this, such a sentence gives only
+    // the steps of the case as a whole (investigation, referral): an unnamed search, arrest or seizure in a large case is
+    // about some of them, and the text does not say which. Measured end to end against every annotated event, compared
+    // with not reading such sentences in a large case: 0.785 → 0.794 F1 on the dev documents, 0.786 → 0.830 on the
+    // second dev set (group cases); without the restriction to these steps the second set falls to 0.773.
+    private const int ManySuspects = 5;
+    private static readonly HashSet<NewsEventType> WholeCaseSteps = [NewsEventType.Investigation, NewsEventType.Referral];
+
+    // A sentence that names one suspect for a group (王○○等5人, 等人, 等被告) states its step for the others too, so it is
+    // read like a sentence naming no suspect for every suspect it does not name. Measured the same way with the rule
+    // above in place: 0.794 → 0.807 F1 on the dev documents, 0.830 → 0.844 on the second dev set.
+    private static readonly System.Text.RegularExpressions.Regex Group = new("(?<![平同相對])等共?[0-9０-９一二兩三四五六七八九十百餘多數]*(?:人|名|位|嫌|被告)");
+
+    // The classifications to run, in this order (the limit cuts the last): each sentence holding a form of an entity, with
+    // the form written there, and each of the next CarryOver sentences naming nobody, for the person named last (a judgment
+    // goes on about 被告 without the name); then each sentence naming no suspect or naming one for a group, for every
+    // suspect it does not name, by name.
+    private static IEnumerable<(int Entity, string Form, string Sentence, bool Whole)> Asked(List<string> sentences, List<Entity> entities)
     {
         (int Entity, string Form)? last = null;
         var since = 0;
+        var suspects = Enumerable.Range(0, entities.Count).Where(i => entities[i].Role == "PER-Suspect").ToList();
+        var unnamed = new List<(int Entity, string Form, string Sentence, bool Whole)>();
+        // A judgment lists its defendants before 主文; the case's steps are theirs, not those of the other suspects it names
+        // (accomplices tried elsewhere). A text without such a list (a press release) has no one to tell apart this way.
+        var order = sentences.FindIndex(s => string.Concat(s.Where(c => !char.IsWhiteSpace(c))) == "主文");
+        var defendants = suspects.Where(i => sentences.Take(Math.Max(order, 0)).Any(s => entities[i].Forms.Any(f => s.Contains(f, StringComparison.Ordinal)))).ToList();
+        if (defendants.Count > 0) suspects = defendants;
         foreach (var s in sentences)
         {
+            int? carried = null;
             var named = entities.Select((e, i) => (i, Form: e.Forms.FirstOrDefault(f => s.Contains(f, StringComparison.Ordinal)), e.Role))
                 .Where(x => x.Form is not null).ToList();
-            foreach (var (i, form, _) in named) yield return (i, form!, s);
+            foreach (var (i, form, _) in named) yield return (i, form!, s, false);
             // The person named last in the sentence's text, with the form written there.
             var person = named.Where(x => !IsOrganisation(x.Role))
                 .SelectMany(x => entities[x.i].Forms.Where(f => s.Contains(f, StringComparison.Ordinal))
@@ -98,8 +131,11 @@ public static class NewsModelReading
                 .OrderByDescending(x => x.At).ThenByDescending(x => x.Form.Length).FirstOrDefault();
             // Only a suspect is carried over: after a lawyer, an official or a victim the next sentence is not about them.
             if (person.Form is not null) { last = entities[person.i].Role == "PER-Suspect" ? (person.i, person.Form) : null; since = 0; }
-            else if (last is { } l && since++ < CarryOver) yield return (l.Entity, l.Form, s);
+            else if (last is { } l && since++ < CarryOver) { carried = l.Entity; yield return (l.Entity, l.Form, s, false); }
+            if (!named.Exists(x => x.Role == "PER-Suspect") || Group.IsMatch(s))
+                unnamed.AddRange(suspects.Where(i => i != carried && !named.Exists(x => x.i == i)).Select(i => (i, entities[i].Name, s, true)));
         }
+        foreach (var q in unnamed) yield return q;
     }
 
     internal static IReadOnlyList<Entity> Entities(string text, IReadOnlyList<TaggedSpan> spans)

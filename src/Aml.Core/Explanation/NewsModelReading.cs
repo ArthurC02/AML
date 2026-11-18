@@ -75,6 +75,10 @@ public static class NewsModelReading
         }
         var best = found.Select(d => d.Where(x => 1 - x.Value.None >= EventThreshold)
             .ToDictionary(x => x.Key, x => (P: 1 - x.Value.None, x.Value.Quote))).ToList();
+        foreach (var (i, steps) in Order(sentences, entities.Select(x => x.e).ToList(), defendants)
+            .Where(x => x.Value.Contains(NewsEventType.Conviction) || x.Value.Contains(NewsEventType.Acquittal)))
+            foreach (var step in new[] { NewsEventType.Fine, NewsEventType.Confiscation }.Where(s => !steps.Contains(s)))
+                best[i].Remove((step, NewsCertainty.Stated));
 
         return new NewsModelReadout(model.Version, entities.Select((x, i) => new NewsModelEntity(x.e.Name, x.e.Forms.Where(f => f != x.e.Name).ToList(),
             IsOrganisation(x.e.Role), Party(x.e.Role), x.Profile, x.e.Mentions,
@@ -122,6 +126,43 @@ public static class NewsModelReading
         var order = sentences.FindIndex(s => string.Concat(s.Where(c => !char.IsWhiteSpace(c))) == "主文");
         return [.. Enumerable.Range(0, entities.Count).Where(i => entities[i].Role == "PER-Suspect"
             && sentences.Take(Math.Max(order, 0)).Any(s => entities[i].Forms.Any(f => s.Contains(f, StringComparison.Ordinal))))];
+    }
+
+    private static readonly (NewsEventType Step, System.Text.RegularExpressions.Regex Words)[] OrderSteps =
+    [
+        (NewsEventType.Conviction, new("處(?:有期徒刑|拘役|罰金|無期徒刑|死刑)|免刑")),
+        (NewsEventType.Fine, new("(?:併科|處|(?<!易)科)[^，。；、]{0,20}?(?<!易科)罰金")),
+        (NewsEventType.Confiscation, new("(?<!不予)(?<!不)(?<!毋庸)(?<!無庸)沒收|追徵")),
+        (NewsEventType.Acquittal, new("無罪")),
+    ];
+    private static readonly System.Text.RegularExpressions.Regex OrderEnd = new("^(?:犯罪)?(?:事實|理由).{0,12}$");
+
+    // A judgment's order (主文 up to the 事實 / 理由 heading) is written to a fixed form, so it is read by rule: the steps
+    // it states, per listed defendant; a sentence of the order naming no defendant goes on about those of the sentence
+    // before. A defendant the order sentences or acquits has the fine and the confiscation the order gives them and no
+    // other: the reasons discuss fines and confiscation of the co-defendants and of the law in general, and the event
+    // model, asked such a sentence for every defendant, gives them to all. Checked against the training labels: of 383
+    // defendants an order sentences or acquits, the labels hold one fine and nine confiscations (earlier cases) the order
+    // does not state, and none the other way round. Measured end to end: 0.851 → 0.854 F1 on the dev documents (five
+    // wrong events removed), 0.881 → 0.884 on the second dev set (three removed); no event lost on either.
+    private static Dictionary<int, HashSet<NewsEventType>> Order(List<string> sentences, List<Entity> entities, List<int> defendants)
+    {
+        var stated = new Dictionary<int, HashSet<NewsEventType>>();
+        static string Compact(string s) => string.Concat(s.Where(c => !char.IsWhiteSpace(c)));
+        var start = sentences.FindIndex(s => Compact(s) == "主文");
+        var end = start < 0 ? -1 : sentences.FindIndex(start + 1, s => OrderEnd.IsMatch(Compact(s)));
+        List<int> last = [];
+        for (var k = start + 1; k < end; k++)
+        {
+            var s = sentences[k];
+            var named = defendants.Where(i => entities[i].Forms.Any(f => s.Contains(f, StringComparison.Ordinal))).ToList();
+            if (named.Count > 0) last = named;
+            foreach (var (step, words) in OrderSteps)
+                if (words.IsMatch(s))
+                    foreach (var i in last)
+                        (stated.TryGetValue(i, out var set) ? set : stated[i] = []).Add(step);
+        }
+        return stated;
     }
 
     // The classifications to run, in this order (the limit cuts the last): each sentence holding a form of an entity, with

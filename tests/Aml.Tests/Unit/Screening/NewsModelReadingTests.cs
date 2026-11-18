@@ -288,6 +288,37 @@ public class NewsModelReadingTests
     }
 
     [Fact]
+    public void A_defendant_the_order_sentences_or_acquits_has_only_the_fine_and_confiscation_the_order_states()
+    {
+        // The reasons speak of fines and confiscation in general; the model gives them to every defendant. The order gives
+        // 王大明 a fine and (the sentence after his, naming nobody) a confiscation, 陳小華 neither (易科罰金 is not a fine, 不予沒收 not a confiscation),
+        // and acquits 林小美.
+        var r = Read("被 告 王大明\n陳小華\n林小美\n主 文\n王大明犯詐欺罪，處有期徒刑一年，併科新臺幣十萬元罰金。扣案手機沒收。"
+            + "陳小華犯詐欺罪，處有期徒刑六月，如易科罰金，以一千元折算一日，扣案現金不予沒收。林小美無罪。\n理 由\n犯罪所得應予沒收並科罰金。",
+            new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Suspect", ["林小美"] = "PER-Suspect" }, null,
+            ("王大明", "應予沒收", "Fine", 0.9f), ("王大明", "應予沒收", "Confiscation", 0.9f),
+            ("陳小華", "應予沒收", "Fine", 0.9f), ("陳小華", "應予沒收", "Confiscation", 0.9f), ("陳小華", "應予沒收", "Detention", 0.9f),
+            ("林小美", "應予沒收", "Fine", 0.9f), ("林小美", "應予沒收", "Confiscation", 0.9f));
+
+        Assert.Equal([NewsEventType.Confiscation, NewsEventType.Fine], r.Entities.Single(e => e.Name == "王大明").Events.Select(v => v.Type).Order());
+        Assert.Equal([NewsEventType.Detention], r.Entities.Single(e => e.Name == "陳小華").Events.Select(v => v.Type));
+        Assert.Empty(r.Entities.Single(e => e.Name == "林小美").Events);
+    }
+
+    [Theory]
+    [InlineData("被 告 王大明\n主 文\n上訴駁回。\n理 由\n")] // the order neither sentences nor acquits him
+    [InlineData("被 告 王大明\n主 文\n王大明犯詐欺罪，處有期徒刑一年。")] // no heading ends the order: not read
+    [InlineData("王大明犯詐欺罪，處有期徒刑一年。\n理 由\n")] // no order
+    public void Without_an_order_that_decides_the_defendant_the_models_fine_and_confiscation_stay(string head)
+    {
+        var r = Read(head + "犯罪所得應予沒收並科罰金。", new() { ["王大明"] = "PER-Suspect" }, null,
+            ("王大明", "犯詐欺罪", "Conviction", 0.9f), ("王大明", "應予沒收", "Fine", 0.9f), ("王大明", "應予沒收", "Confiscation", 0.9f));
+
+        Assert.Equal([NewsEventType.Confiscation, NewsEventType.Fine],
+            r.Entities.Single().Events.Select(v => v.Type).Where(t => t != NewsEventType.Conviction).Order());
+    }
+
+    [Fact]
     public void The_person_named_last_is_last_in_the_text_not_first_in_rank()
     {
         // 王大明 is the Profile person, so ranked first; 陳小華 is named before him in the sentence.

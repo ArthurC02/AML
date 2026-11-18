@@ -202,7 +202,8 @@ public class NewsModelReadingTests
         Assert.All(six.Entities, e => Assert.Equal([NewsEventType.Arrest, NewsEventType.Referral], e.Events.Select(v => v.Type).Order()));
     }
 
-    // Both are arrested by name; the referral sentence names only 王大明. It is 陳小華's too only when it names him for a group.
+    // Both are arrested by name; the last sentence names only 王大明. Its referral (a step of the whole case) is read for
+    // 陳小華 too; its seizure only when the sentence names 王大明 for a group.
     [Theory]
     [InlineData("警方將王大明等2人移送偵辦。", true)]
     [InlineData("警方將王大明等兩人移送偵辦。", true)]
@@ -213,15 +214,40 @@ public class NewsModelReadingTests
     [InlineData("王大明涉犯詐欺、洗錢等犯罪，警方移送偵辦。", false)]
     [InlineData("王大明詐騙李小美等被害人，警方移送偵辦。", false)]
     [InlineData("王大明侵害平等人格，警方移送偵辦。", false)]
-    public void A_sentence_naming_one_suspect_is_read_for_the_other_suspects_only_when_it_names_a_group(string referral, bool group)
+    public void A_sentence_naming_one_suspect_gives_the_others_its_case_steps_and_its_other_steps_only_when_it_names_a_group(string referral, bool group)
     {
         var r = Read("王大明遭逮捕。陳小華遭逮捕。" + referral,
             new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Suspect" }, null,
             ("王大明", "逮捕", "Arrest", 0.9f), ("陳小華", "逮捕", "Arrest", 0.9f),
-            ("王大明", "移送", "Referral", 0.9f), ("陳小華", "移送", "Referral", 0.9f));
+            ("王大明", "移送", "Referral", 0.9f), ("陳小華", "移送", "Referral", 0.9f), ("陳小華", "移送", "AssetRestraint", 0.9f));
 
-        Assert.Equal(group ? [NewsEventType.Arrest, NewsEventType.Referral] : [NewsEventType.Arrest],
+        Assert.Equal(group ? [NewsEventType.Arrest, NewsEventType.Referral, NewsEventType.AssetRestraint] : [NewsEventType.Arrest, NewsEventType.Referral],
             r.Entities.Single(e => e.Name == "陳小華").Events.Select(v => v.Type).Order());
+    }
+
+    [Fact]
+    public void A_sentence_naming_another_suspect_gives_nothing_to_a_suspect_without_an_event_of_their_own()
+    {
+        // 陳小華 is only mentioned: the referral of 王大明 is not read as his.
+        var r = Read("王大明遭逮捕。警方將王大明移送偵辦。陳小華為其友人。",
+            new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Suspect" }, null,
+            ("王大明", "逮捕", "Arrest", 0.9f), ("王大明", "移送", "Referral", 0.9f), ("陳小華", "移送", "Referral", 0.9f));
+
+        Assert.Empty(r.Entities.Single(e => e.Name == "陳小華").Events);
+    }
+
+    [Fact]
+    public void Sentences_naming_another_suspect_do_not_make_a_case_large()
+    {
+        // Six suspects, each arrested by name; the seizure names one for the group, so it is read for the five others:
+        // five, not more than five, and the arrest sentences read for the others do not count, so every step is kept.
+        string[] names = ["王大明", "陳小華", "林志強", "張美玲", "李建國", "吳淑芬"];
+        var r = Read(string.Concat(names.Select(n => n + "遭逮捕。")) + "警方查扣王大明等6人贓款。",
+            names.ToDictionary(n => n, _ => "PER-Suspect"), null,
+            [.. names.SelectMany(n => new[] { (n, "逮捕", "Arrest", 0.9f), (n, "查扣", "AssetRestraint", 0.9f) })]);
+
+        Assert.Equal(6, r.Entities.Count);
+        Assert.All(r.Entities, e => Assert.Equal([NewsEventType.Arrest, NewsEventType.AssetRestraint], e.Events.Select(v => v.Type).Order()));
     }
 
     [Fact]

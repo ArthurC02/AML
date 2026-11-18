@@ -59,13 +59,14 @@ public static class NewsModelReading
         // texts with few suspects, cost the second set 0.02 (events on people only mentioned).
         var defendants = Defendants(sentences, entities.Select(x => x.e).ToList());
         var anchored = new List<bool>();
-        var many = asked.Where(q => q.Whole).Select(q => q.Entity).Distinct().Count() > ManySuspects;
+        var many = asked.Where(q => q.Whole && !q.CaseOnly).Select(q => q.Entity).Distinct().Count() > ManySuspects;
         foreach (var whole in new[] { false, true })
         {
             foreach (var (q, labels) in asked.Zip(answers).Where(x => x.First.Whole == whole && (!whole || anchored[x.First.Entity])))
                 foreach (var (label, p) in labels)
                     if (Label(label) is { } key && (!IsOrganisation(entities[q.Entity].e.Role) || OrganisationSteps.Contains(key.Item1))
-                        && (!whole || !many || WholeCaseSteps.Contains(key.Item1)))
+                        && (!whole || !many || WholeCaseSteps.Contains(key.Item1))
+                        && (!q.CaseOnly || WholeCaseSteps.Contains(key.Item1)))
                     {
                         var (none, top, quote) = found[q.Entity].TryGetValue(key, out var f) ? f : (1.0, -1.0, "");
                         found[q.Entity][key] = (none * (1 - p), Math.Max(top, p), p > top ? Quote(q.Sentence) : quote);
@@ -106,6 +107,12 @@ public static class NewsModelReading
     // A sentence that names one suspect for a group (王○○等5人, 等人, 等被告) states its step for the others too, so it is
     // read like a sentence naming no suspect for every suspect it does not name. Measured the same way with the rule
     // above in place: 0.794 → 0.807 F1 on the dev documents, 0.830 → 0.844 on the second dev set.
+    // A sentence that names a suspect without such wording is read for the suspects it does not name too, but gives them
+    // only the steps of the case as a whole: 警方將王○○移送偵辦 in a text about several suspects is often the referral of
+    // all of them, while its arrest or seizure is the named person's. These questions do not count towards ManySuspects
+    // and are asked last, so the limit cuts them before any other. Measured the same way on top of the rules above:
+    // 0.849 → 0.851 F1 on the dev documents (four more events found, three wrong ones added), 0.877 → 0.881 on the
+    // second dev set (four found, one wrong); it asks 8 % and 23 % more questions on the two sets.
     private static readonly System.Text.RegularExpressions.Regex Group = new("(?<![平同相對])等共?[0-9０-９一二兩三四五六七八九十百餘多數]*(?:人|名|位|嫌|被告)");
 
     // A judgment lists its defendants before 主文; the case's steps are theirs, not those of the other suspects it names
@@ -119,21 +126,22 @@ public static class NewsModelReading
 
     // The classifications to run, in this order (the limit cuts the last): each sentence holding a form of an entity, with
     // the form written there, and each of the next CarryOver sentences naming nobody, for the person named last (a judgment
-    // goes on about 被告 without the name); then each sentence naming no suspect or naming one for a group, for every
-    // suspect it does not name, by name.
-    private static IEnumerable<(int Entity, string Form, string Sentence, bool Whole)> Asked(List<string> sentences, List<Entity> entities)
+    // goes on about 被告 without the name); then each sentence, for every suspect it does not name, by name: for all its
+    // steps when it names no suspect or names one for a group, and after all of those, otherwise (CaseOnly) for the
+    // whole-case steps alone.
+    private static IEnumerable<(int Entity, string Form, string Sentence, bool Whole, bool CaseOnly)> Asked(List<string> sentences, List<Entity> entities)
     {
         (int Entity, string Form)? last = null;
         var since = 0;
         var suspects = Enumerable.Range(0, entities.Count).Where(i => entities[i].Role == "PER-Suspect").ToList();
-        var unnamed = new List<(int Entity, string Form, string Sentence, bool Whole)>();
+        var unnamed = new List<(int Entity, string Form, string Sentence, bool Whole, bool CaseOnly)>();
         if (Defendants(sentences, entities) is { Count: > 0 } defendants) suspects = defendants;
         foreach (var s in sentences)
         {
             int? carried = null;
             var named = entities.Select((e, i) => (i, Form: e.Forms.FirstOrDefault(f => s.Contains(f, StringComparison.Ordinal)), e.Role))
                 .Where(x => x.Form is not null).ToList();
-            foreach (var (i, form, _) in named) yield return (i, form!, s, false);
+            foreach (var (i, form, _) in named) yield return (i, form!, s, false, false);
             // The person named last in the sentence's text, with the form written there.
             var person = named.Where(x => !IsOrganisation(x.Role))
                 .SelectMany(x => entities[x.i].Forms.Where(f => s.Contains(f, StringComparison.Ordinal))
@@ -141,11 +149,11 @@ public static class NewsModelReading
                 .OrderByDescending(x => x.At).ThenByDescending(x => x.Form.Length).FirstOrDefault();
             // Only a suspect is carried over: after a lawyer, an official or a victim the next sentence is not about them.
             if (person.Form is not null) { last = entities[person.i].Role == "PER-Suspect" ? (person.i, person.Form) : null; since = 0; }
-            else if (last is { } l && since++ < CarryOver) { carried = l.Entity; yield return (l.Entity, l.Form, s, false); }
-            if (!named.Exists(x => x.Role == "PER-Suspect") || Group.IsMatch(s))
-                unnamed.AddRange(suspects.Where(i => i != carried && !named.Exists(x => x.i == i)).Select(i => (i, entities[i].Name, s, true)));
+            else if (last is { } l && since++ < CarryOver) { carried = l.Entity; yield return (l.Entity, l.Form, s, false, false); }
+            var caseOnly = named.Exists(x => x.Role == "PER-Suspect") && !Group.IsMatch(s);
+            unnamed.AddRange(suspects.Where(i => i != carried && !named.Exists(x => x.i == i)).Select(i => (i, entities[i].Name, s, true, caseOnly)));
         }
-        foreach (var q in unnamed) yield return q;
+        foreach (var q in unnamed.OrderBy(q => q.CaseOnly)) yield return q; // stable: the limit cuts the case-only questions first
     }
 
     internal static IReadOnlyList<Entity> Entities(string text, IReadOnlyList<TaggedSpan> spans)

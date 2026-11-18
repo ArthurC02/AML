@@ -40,10 +40,17 @@ All three gates must pass for the **same selected NER/event pair** on the fixed 
 | Gate | Unit being compared with gold | What remains in the denominator |
 |---|---|---|
 | Primary NER | Exact span boundaries **and role**, using the acceptance scorer's greedy decoding | All 3,031 original gold spans in 161 dev documents |
-| Primary event | Label decisions on prepared entity-form/sentence rows | All 2,642 dev rows and 690 gold labels; unsupported gold labels count as FN |
-| Actual end to end | `(document, gold person, event label)` through `OnnxNewsModel` and `NewsModelReading` | All 418 gold events in 161 documents; events on unlabelled entities count as FP |
+| Primary event | Label decisions on prepared entity-form/sentence rows | All dev rows the current asking rules produce (8,050 rows, 1,194 gold labels); unsupported gold labels count as FN |
+| Actual end to end | `(document, gold person, event label)` through `OnnxNewsModel` and `NewsModelReading` | All gold events of the 161 dev documents; events on unlabelled entities count as FP |
 
 `F1 = 2TP / (2TP + FP + FN)`. The strict gate is checked with integer counts: `2TP > 9(FP + FN)`. A rounded display of `0.90` is insufficient. Boundary-only NER scores, BIO-constrained diagnostics, training fit and masked-language-model loss answer other questions and cannot replace these gates.
+
+**The unit of the working end-to-end measure is the written name.** Day-to-day comparisons score every annotated event of the dev documents and of the second dev set, at the runtime floor of 0.30. The reader's answer is per written name, so two rules decide who a read name is:
+
+- a read name that is a fragment of exactly one annotated person's written form counts as that person;
+- annotated persons whose written form is identical in the same document (two masked names written alike) are one name, and their gold events are the union. Nothing in the name tells them apart, and scoring them apart counts one unavoidable miss and one unavoidable false positive per event. Persons the text does tell apart, for example by a bracketed role after the same surname, stay separate.
+
+On the pair retained when the rule was introduced this second rule alone moves the working F1 from 0.811 to 0.826 on the dev documents and from 0.854 to 0.859 on the second set. That is a change of measure, not of the models: compare a number only with numbers scored the same way.
 
 The primary event threshold is selected on dev over 0.05–0.95 in 0.025 increments. End-to-end calibration uses the runtime's effective 0.30 floor through 0.95 at the same increments. An outer evaluator threshold below the runtime floor cannot recover already-filtered outputs. Recount a probability dump first, then confirm its selected optimum through the actual .NET evaluator. Calibration is separate from a learned improvement.
 
@@ -51,17 +58,22 @@ Train is used for optimization, dev for checkpoint/threshold selection, and test
 
 ## Current candidate choice
 
-The verified development choice as of 2026-11-15 is **NER20 / event27**. It has not replaced deployed models.
+The verified development choice as of 2026-11-18 is **NER20 / event37**. It has not replaced deployed models.
 
 | Measure | Selected candidate | TP / FP / FN | Dev F1 | Threshold | Gate |
 |---|---|---|---|---|---|
 | Primary NER | NER20 with ASCII input mode and document-role head | 2,791 / 265 / 240 | 0.917036 | — | Pass |
-| Primary event | event27, ordinary CLS input/output | 495 / 124 / 195 | 0.756303 | 0.275 | Fail |
-| Actual end to end | NER20 / event27 | 344 / 78 / 74 | 0.819048 | 0.30 | Fail |
+| Primary event | event37, ordinary CLS input/output | 962 / 255 / 232 | 0.798009 | 0.35 | Fail |
+| Working end to end, dev documents | NER20 / event37 | 497 / 101 / 77 | 0.848123 | 0.30 | Fail |
+| Working end to end, second dev set | NER20 / event37 | 348 / 55 / 43 | 0.876574 | 0.30 | Fail |
 
-An overall passing NER score does not establish reliable rare roles: `ORG-Victim` has zero TP on six dev gold spans. The retained pipeline still has 17 FP on unlabelled names and four FN from people without a matched entity. Model-role accuracy and event attribution both matter to the final reading.
+The event rows are those of the current asking rules (8,050 dev rows), so the primary event counts are not comparable with candidates measured on earlier row sets. The end-to-end rows use the working measure defined above, not the gate's form (one gold person per cell, without the two name rules); the gate form has not been re-measured for event37, and both working rows are already short of 0.90. The second dev set is 29 documents that are never used for training. Thresholds and reader rules were chosen looking at the dev sets, so neither is an untouched estimate; the test split is.
 
-The latest shared predicate decoder candidate has primary F1 0.754938 and actual pipeline F1 0.812428, so it does not replace the retained pair. The five source-reviewed motivating actor/case errors remain wrong. Current selection and limitation summaries belong here; epoch histories, process IDs, upload progress and individual retry records belong to the external artifacts.
+event37 continues the ordinary CLS line: the job35 event model (see the frozen state below) trained for one more epoch at a low learning rate on the same rows. A second arm of that continuation wrapped the other persons of the sentence in a second marker pair; it ended with 271 errors over both sets against 276 for event37 (0.854 / 0.877), one run each. That difference does not show an effect of the markers, the marked input needs a change to the served input, and it was not kept. Both arms improve on their common start (294 errors), which is what one more epoch gave.
+
+An overall passing NER score does not establish reliable rare roles: `ORG-Victim` has zero TP on six dev gold spans. Model-role accuracy and event attribution both matter to the final reading.
+
+Structural candidates measured so far (document-context heads, trigger-binding supervision, caption observation, shared predicate decoder, clause-level rows, other-person markers) did not replace the ordinary CLS line. The five source-reviewed actor/case errors that motivated the earlier structural work have not been re-checked against event37. Current selection and limitation summaries belong here; epoch histories, process IDs, upload progress and individual retry records belong to the external artifacts.
 
 ## Diagnose an error at the boundary where it arises
 
@@ -78,13 +90,19 @@ Start with the source and canonical label, then trace the exact runtime question
 
 ### What the existing evidence establishes
 
-**Exact input collisions are a small limit.** Actual encoded ordinary, masked and caption views give an optimistic dev bound of 0.998549. Only four FP and zero FN of retained event27 fall on ambiguous label cells. The bound measures contradictions in identical inputs; it is neither attainable performance nor proof that each input contains sufficient case context.
+**Exact input collisions are a small limit.** Actual encoded ordinary, masked and caption views give an optimistic dev bound of 0.998549. Only four FP and zero FN of event27, the candidate retained at the time, fall on ambiguous label cells. The bound measures contradictions in identical inputs; it is neither attainable performance nor proof that each input contains sufficient case context.
 
 **The event gap includes generalization.** On its recorded train revision, event26 fits train at F1 0.979608 and `prior` at 412/415 TP, while dev `prior` remains 26/83 TP. This rules out broad failure to fit those training labels, without identifying a unique cause. Negative-label prevalence alone likewise does not establish that loss weighting will repair the errors.
 
 **Case-pattern supervision is sparse in the actual model views.** A bounded literal probe finds no prior-positive train row retaining a named-case alias, compared with 17 such dev positives. A witness-prefix probe finds only two train prior positives and five dev positives. These overlapping lexical groups are inspection aids, not rules for assigning `prior`. Replacing a reviewed other-case alias with an explicit other-case term did not improve full-dev F1. Six non-identical cached but unadopted sources also have no named-case alias probe hits; their eligibility and independent annotation review remain incomplete.
 
 **Connected components can still learn the wrong relations.** Frozen document-context heads use their added inputs, yet retain the reviewed actor/case errors. A source-caption observation also changes probabilities without repairing those cases. Trigger-binding supervision already updated the main encoder; it was not a frozen-encoder bug. Its older event25 experiment saved an epoch-zero selection and did not retain the final trained weights, so inspecting that saved initial head cannot explain its trained-epoch behavior. Sharing predicate-token scores between the primary output and binding loss verifies that the supervised scores are served, but still leaves all five motivating errors wrong. Thus neither adding context nor connecting an auxiliary objective is, by itself, a checked semantic repair.
+
+**The remaining errors are largely the same cells from one candidate to the next.** Comparing event37 with the model it continues, over both dev sets, 256 of 276 errors are the identical person-and-step cells, and 82 of the 142 persistent false positives are above 0.8 in both; the comparison one step earlier in the line looked the same. Retraining, more documents of the same kind and thresholds have moved the low-margin cells only. On the end-to-end predictions of both dev sets, precision is 0.84–0.87 whether the sentence names the person alone, names several suspects or does not name the person, so no single sentence kind holds the gap. Of the false positives, about three in ten are a step of another person named in the same sentence, about one in seven a step given to a person the sentence does not name, and nearly half an extra step type beside the person's own steps in that sentence.
+
+**Ownership inside a sentence looks learnable when the step word's position is given, and not otherwise.** A pilot classifier answers one question per sentence, step type and named suspect, with the person and the gold step words marked. On dev sentences naming several suspects it ranks owners above non-owners with AUC 0.89 (0.86 on the second set, which has only 25 non-owners). Used as a filter on the sentence model's answers at a threshold read off dev, it removes 17 of 23 wrong ownerships and loses 6 of 134 right ones. The same pilot given only the step type, with no position, ranks worse (0.82 / 0.75) and removes almost nothing as a filter. These are oracle-position, dev-tuned figures: using the idea needs a model that finds step words at run time, which does not exist, and its end-to-end reach is bounded by the three-in-ten share above. The pilot's rows match a written form shared by two persons to both; a production version must resolve that first.
+
+**Restated steps are not a systematic label gap.** Of 227 training rows (sentence, step type, named suspect) where the suspect lacks a step that the same text records for that person elsewhere, two independent checks and a source reading led to four label changes. About half of the labelled step owners are not named in the step's sentence; those depend on the asking rules, not on sentence-internal reading.
 
 These findings support continued work on person/event/case relations and train-only coverage. They do not establish that one vocabulary change, wider crop, threshold adjustment or parameter combination is the remaining solution. A proposed correction needs a source-verified failure mechanism and a test that distinguishes repaired behavior from merely changed confidence.
 
@@ -133,17 +151,18 @@ All paths in this section are outside the repository. They distinguish source tr
 | Responsibility | Location |
 |---|---|
 | Source texts | `C:\tmp\aml-data\judgments\`, `press\`, `news\` |
-| Canonical labels | `C:\tmp\aml-data\labels\v6\ver`, `v6\npa\fin`, `v7\ver` |
+| Canonical labels | `C:\tmp\aml-data\labels\v6\ver`, `v6\npa\fin`, `v7\ver`, `v8\ver`, `v9\ver`, `v11\ver` (train only from v7 on), dev corrections in `review-current\fix`; second dev set `v10\ver` |
 | Annotation guideline/checker | `C:\tmp\aml-data\labels\tools\guideline.md`, `check.py` and review prompts |
-| Fixed splits and derived model rows | `C:\tmp\aml-train\data\split.json`, `ner-{train,dev,test}.jsonl`, `ev-{train,dev,test}.jsonl` |
+| Fixed splits and derived model rows | `C:\tmp\aml-train\data-r8\` (`prep_r8.py`: `split.json`, `ner-{train,dev,test}.jsonl`, `ev-{train,dev,test}.jsonl`); second dev set `data-dev2\` (`prep_dev2.py`) |
 | Preparation, trainers, native scorers and Python checks | `C:\tmp\aml-train\`; interpreter `.venv\Scripts\python.exe` |
 | Colab staging, launcher and watcher | `C:\tmp\colab\home\`; immutable `jobN\` bundles |
-| Downloaded weights/logs and verification receipts | `C:\tmp\aml-train\downloads\colab-20261114\` |
+| Downloaded weights/logs and verification receipts | `C:\tmp\aml-train\downloads\colab-20261114\` (jobs through 29), `downloads\amlNN\` (later jobs) |
 | Metrics, diagnostic arrays and isolated runtime pairs | `C:\tmp\aml-train\measurements\` |
 | Immutable executed source snapshots | `C:\tmp\aml-train\snapshots\` |
-| Actual .NET evaluator | `C:\tmp\aml-eval\Program.cs`, `bin\Release\net10.0\aml-eval.dll` |
+| Actual .NET evaluator | `C:\tmp\aml-eval-r4\` (`Program.cs`, `bin\Release\net10.0\aml-eval.dll`, `both.sh`); it compiles the reader from this checkout |
+| Working handoff notes of the labelling and training rounds | `C:\tmp\aml-data\labels\v6\progress.md` |
 
-The retained native NER is `downloads\colab-20261114\aml20\ner\extracted\models\ner`; it requires both its encoder and `document-roles.safetensors`. The retained native event model is `downloads\colab-20261114\aml27\ev\extracted\models\ev`. Their verified ONNX/config/vocab pair and isolated caches are under `measurements\aml27-pair\`. These paths are relative to `C:\tmp\aml-train`.
+The retained native NER is `downloads\colab-20261114\aml20\ner\extracted\models\ner`; it requires both its encoder and `document-roles.safetensors`. The retained native event model is `downloads\aml37\models\ev`. Their ONNX/config/vocab pair and isolated caches are under `measurements\aml37-pair\`. These paths are relative to `C:\tmp\aml-train`.
 
 Deployment supplies the matching `ner/` and `ev/` graphs, configs, vocabularies and required heads at `NewsModels:Directory`. Update the product's measured behavior with the deployed pair. A change to `NewsModelReading.EventThreshold` changes the inference contract and requires actual runtime evaluation as well.
 
@@ -154,10 +173,11 @@ Deployment supplies the matching `ner/` and `ev/` graphs, configs, vocabularies 
 | Score native dev models | `measure_dev.py <model> <checkpoint> <out>`; `measure_query_dev.py` supplies the predicate mode's sorted/restored native batching |
 | Export a checkpoint | `export_one.py <checkpoint> <out>`; verify graphs, config and vocabulary together, including required learned heads |
 | Evaluate the whole reader | Release `aml-eval.dll <pair> dev cached e2e min=<threshold> cache=<isolated-cache> idsref=<reference> dump=<file>` |
+| Working end-to-end measure on both dev sets | `bash C:/tmp/aml-eval-r4/both.sh <tag> <pair>`: builds the evaluator, scores the dev documents and the second dev set at 0.30 and prints the fragment score and the default measure |
 | Calibrate the pipeline | `calibrate_e2e.py <pair>`; actual .NET confirmation follows its dump recount |
 | Final per-model test | `measure_dev.py <model> <checkpoint> <out> --split test --dev-metrics <passing-record>`; use only after all three dev gates pass |
 
-Here `<model>` is `ner` or `ev`. Run Python tools from `C:\tmp\aml-train` and the .NET evaluator from `C:\tmp\aml-eval`; the latter uses `dev.jsonl` derived from the same fixed dev revision. Preserve the repository SDK pin when building the external evaluator. Shell commands follow the repository's RTK instruction.
+Here `<model>` is `ner` or `ev`. Run Python tools from `C:\tmp\aml-train` and the .NET evaluator from `C:\tmp\aml-eval-r4`; the latter uses `dev.jsonl` derived from the same fixed dev revision. Preserve the repository SDK pin when building the external evaluator. Shell commands follow the repository's RTK instruction.
 
 New end-to-end probability dumps contain numeric fields, anonymous IDs and an empty quote column; unknown entity IDs are hashed per document. Working inference caches still contain private input text and stay outside the repository. Reuse a NER cache only under matching NER/input/role-head identities. Event changes start with a fresh isolated cache; document-dependent modes include the document in their key.
 
@@ -179,17 +199,22 @@ The repository files above belong to the handoff commit. Inspect `git log`, `git
 
 ### Frozen state to establish before another experiment
 
-The retained pair is NER20/event27 from the candidate table. The latest completed candidate is event29; its selected checkpoint is trained epoch 2, its final trained checkpoint is epoch 3, and both are preserved. Both event28 and event29 failed to set a new primary or pipeline best. All completed jobs through 29 are locally backed up and stopped; the server had no active Colab session at handoff. Recheck live state before managing sessions. No job30 has been launched and no checked next correction is ready.
+The retained pair is NER20/event37 from the candidate table. event37 is job37: the job35 event model (the rows of `data-r8`, two epochs from event32) continued for one epoch at learning rate 1e-5 with the asked name masked in half of the rows; its trained weights are the last-epoch checkpoint. Jobs 36 (other-person markers), 38 and 39 (ownership pilots) are measured and not retained. All jobs are downloaded, verified and stopped; the server had no active Colab session at handoff. Recheck live state before managing sessions. No checked next correction is ready.
 
-Current train data contains 34,593 event rows and 6,182 gold labels. The canonical review of the original 24 judgments, the focused Questioning correction and the additional 21 judgments has been applied and independently verified. The four unresolved `also` groups remain unapplied. These are completed adoption records, not a pending queue to apply again; no further gold error is currently confirmed. Inspect `measurements\review24-inputs\`, `measurements\review21-inputs\` and `C:\tmp\aml-data\labels\review-questioning-20261115\` for the adoption/impact/rebuild proofs. `verify_questioning21_rebuild.py` shows the temporary, train-only guarded reproduction; it writes a validation receipt and must not be mistaken for a tool with no writes. Preserve frozen receipts when reproducing a check.
+Current train data (`data-r8`) contains 173,941 event rows, 15,683 of them with at least one label (20,183 row labels in all); the rest are label-free questions the reader asks at run time. Four label edits in two training documents (three events, one restating sentence) were made after `data-r8` was built; they enter at the next data build and do not by themselves warrant a retrain. Dev labels are unchanged since the candidate table was measured. Earlier adoption records (`measurements\review24-inputs\`, `measurements\review21-inputs\`, `C:\tmp\aml-data\labels\review-questioning-20261115\`) are completed, not a pending queue. Preserve frozen receipts when reproducing a check.
 
 The current identity anchors are:
 
 | Input | SHA-256 |
 |---|---|
-| `data\ev-train.jsonl` | `5e565a835ab6fa729289640bd93642cea6d9fdb9d1593e1894b21b2986927d70` |
-| `data\ev-dev.jsonl` | `5ac402da9429e565e1eb7b5c22d7327f0c746579b5fe7619d32bbc7a12c581c8` |
-| `data\split.json` | `c43ac736aecd1dd1ddaeb01006adda58fe5fc69218da7befd5a9808e70da6227` |
+| `data-r8\ev-train.jsonl` | `ae2af2841d3e737afdf6144cd4bb2bb4a94b692ee22ccb8a1469fca51f93175f` |
+| `data-r8\ev-dev.jsonl` | `909ba30ba48996a39c4559ec43da19dd2f29fcc3f306fc4c7d37ebf98c6664b4` |
+| `data-r8\split.json` | `ca5d73ccda03f0b18149aeee76c62f04581fbefcbaeb8a2250b0348d522230a9` |
+| `downloads\aml37\models\ev\model.safetensors` | `1b5fb6d8a094c011edb6992e3ce369d53831bf75204b12927963dc5b4c9dee44` |
+| `measurements\aml37-pair\ev\model.onnx` | `fcd73bd774beba11281cdd7ef857f79e91464c29aebbe88447e9465cab323f99` |
+| `measurements\aml37-pair\ner\model.onnx` | `5fe102bb56cb0a5025c334888f178c0f5ab0940dff7134088affb491d90d9df1` |
+
+A job bundle trains on its own copy of the rows, with labels outside the start model's label set removed; its `job.json` records those hashes.
 
 Paths above are relative to `C:\tmp\aml-train`. Treat old appliers and experiment launchers as historical programs: inspect their side effects and pinned inputs before execution. In particular, generic preparation and older experimental trainers may rebuild held-out files or read test automatically. Resume with identity/receipt checks and source-error diagnosis; a new run needs the correction and validation described above. The small failing-case set and literal coverage groups are in `measurements\aml29-ev\actor-case-diagnostics.json`.
 
@@ -207,7 +232,11 @@ These are durable references for conclusions above, not a second execution log. 
 
 | Question | Evidence |
 |---|---|
-| Which candidates and actual pipeline are retained? | `aml20-ner\ner-dev-metrics.json`, `aml27-ev\ev-dev-metrics.json`, `aml27-pair\e2e-dev-metrics.json` |
+| Which candidates and actual pipeline are retained? | `aml20-ner\ner-dev-metrics.json`; `C:\tmp\aml-train\downloads\aml37\logs-ev.txt` and `job.json`; `aml37-pair\` scored with `both.sh` |
+| Did marking the other persons of the sentence help? | `aml36-pair\` against the control `aml37-pair\` (same start, epoch count and settings, no markers) |
+| Which cells stay wrong from one candidate to the next, and in what kind of sentence? | `audit-e2e31\cmp35.py`, `audit-e2e31\kind37.py` on the evaluator's dumps |
+| Can ownership inside a sentence be learned, and what must be given? | `C:\tmp\aml-train\prep_pairs.py`, `pilot_pairs.py`; `downloads\aml38\` (step words marked), `downloads\aml39\` (step type only); `audit-e2e31\pairbase.py` for the sentence model on the same rows |
+| Are restated steps missing from the labels? | `C:\tmp\aml-data\labels\review-20261118q\` (items, two blind checks, applied changes, backups) |
 | Is the event gap mostly identical-input contradictions? | `input-identity-audit\encoded-conflicts.json` |
 | Does the model fit the recorded training revision? | `aml26-ev\train-fit-diagnostic.json` and its probability array |
 | What case-pattern coverage is missing? | `input-identity-audit\case-frame-coverage.json`, `input-identity-audit\named-case-alias-intervention.json`, `input-identity-audit\uncatalogued-literal-coverage.json` |

@@ -66,6 +66,10 @@ The verified development choice as of 2026-11-19 is **NER20 / event37**. It has 
 | Primary event | event37, ordinary CLS input/output | 962 / 255 / 232 | 0.798009 | 0.35 | Fail |
 | Working end to end, dev documents | NER20 / event37 | 501 / 99 / 72 | 0.854220 | 0.30 | Fail |
 | Working end to end, second dev set | NER20 / event37 | 352 / 53 / 39 | 0.884422 | 0.30 | Fail |
+| Profile person, dev documents (176 persons) | NER20 / event37 | 448 / 129 / 52 | 0.831941 | 0.30 | — |
+| Profile person, second dev set (125 persons) | NER20 / event37 | 294 / 76 / 7 | 0.876304 | 0.30 | — |
+
+The two Profile-person rows measure the reading the way the system uses it: one known person per news item. Each labelled suspect person in turn is the Profile person (all their written forms are the Profile's names; persons sharing a form are one), the reader is run with those names, and only the entities it marks as the Profile's are counted. The legal stage those events imply (the highest of convicted, acquitted, not indicted, indicted, wanted, alleged, none; earlier-case, negated and requested steps left out) agrees with the labels for 157 of 176 persons (0.892) and 122 of 125 (0.976); whether the person has any step at all agrees for 168 (0.955) and 125 (1.000). This view has no gate. It is harsher on precision than the working measure (persons with no labelled event are included: 41 and 16) and it rotates only over labelled suspects, so it says nothing about a Profile person the text mentions as a victim or an official.
 
 The event rows are those of the current asking rules (8,050 dev rows), so the primary event counts are not comparable with candidates measured on earlier row sets. The end-to-end rows use the working measure defined above, not the gate's form (one gold person per cell, without the two name rules); the gate form has not been re-measured for event37, and both working rows are already short of 0.90. The second dev set is 29 documents that are never used for training. Thresholds and reader rules were chosen looking at the dev sets, so neither is an untouched estimate; the test split is.
 

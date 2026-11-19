@@ -319,6 +319,41 @@ public class NewsModelReadingTests
     }
 
     [Fact]
+    public void The_one_tagged_person_whose_form_is_part_of_a_written_Profile_name_is_the_Profile_person()
+    {
+        // The tagger cut 歐陽大明 short. The Profile's names written in the text become that person's forms (歐陽小明 is not
+        // written), and the sentence is asked with the full name.
+        var r = Read("陳小華遭逮捕。歐陽大明遭起訴。", new() { ["陳小華"] = "PER-Suspect", ["歐陽大"] = "PER-Suspect" }, ["歐陽大明", "歐陽小明"],
+            ("歐陽大明", "起訴", "Indictment", 0.9f), ("陳小華", "逮捕", "Arrest", 0.9f));
+
+        var profile = r.Entities[0];
+        Assert.Equal(("歐陽大明", true, NewsParty.Suspect), (profile.Name, profile.ProfileName, profile.Party));
+        Assert.Equal(["歐陽大"], profile.OtherForms);
+        Assert.Equal([NewsEventType.Indictment], profile.Events.Select(v => v.Type));
+    }
+
+    [Theory]
+    [InlineData("李明華遭逮捕。", "李明華", "PER-Suspect", "李明")] // a two-character name inside a three-character one is another person
+    [InlineData("王大明遭逮捕。", "大明", "PER-Suspect", "王大明")] // and so the other way round
+    [InlineData("大明公司遭搜索。", "大明公司", "ORG-Suspect", "大明")] // an organisation is not the Profile person
+    [InlineData("歐陽大遭逮捕。", "歐陽大", "PER-Suspect", "歐陽大明")] // the Profile name is not written in the text
+    public void A_tagged_name_that_only_resembles_the_Profile_name_stays_as_it_is(string text, string tagged, string role, string profile)
+    {
+        var e = Read(text, new() { [tagged] = role }, [profile]).Entities.Single();
+
+        Assert.Equal((tagged, false), (e.Name, e.ProfileName));
+        Assert.Empty(e.OtherForms);
+    }
+
+    [Fact]
+    public void With_two_tagged_persons_resembling_the_Profile_name_none_is_taken()
+    {
+        var r = Read("歐陽大遭逮捕。陽大明遭起訴。歐陽大明到案。", new() { ["歐陽大"] = "PER-Suspect", ["陽大明"] = "PER-Suspect" }, ["歐陽大明"]);
+
+        Assert.DoesNotContain(r.Entities, e => e.ProfileName);
+    }
+
+    [Fact]
     public void The_person_named_last_is_last_in_the_text_not_first_in_rank()
     {
         // 王大明 is the Profile person, so ranked first; 陳小華 is named before him in the sentence.

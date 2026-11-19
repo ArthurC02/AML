@@ -43,7 +43,22 @@ public static class NewsModelReading
 
     public static NewsModelReadout Read(string text, IReadOnlyList<string> profileNames, INewsModel model)
     {
-        var entities = Entities(text, model.Tag(text))
+        var tagged = Entities(text, model.Tag(text)).ToList();
+        // The Profile person is who the news is read for, and their names are known. When no tagged person has one of
+        // them as a form, but exactly one has a form that holds or is held by a Profile name written in the text (the
+        // tagger cut the name short or took a word too many), that person is the Profile person and the written names
+        // become their forms, so the sentences with the full name are read for them too. A two-character name inside a
+        // three-character one is another person (李明 in 李明華), as in Entities; with no such person, or several, nothing
+        // changes. Measured with each labelled suspect in turn as the Profile person (see the feature doc).
+        var written = profileNames.Where(n => n.Length > 1 && text.Contains(n, StringComparison.Ordinal)).Distinct().OrderByDescending(n => n.Length).ToList();
+        if (written.Count > 0 && !tagged.Exists(e => e.Forms.Any(f => profileNames.Contains(f, StringComparer.OrdinalIgnoreCase))))
+        {
+            static bool Same(string a, string b) => a.Length <= b.Length ? b.Contains(a, StringComparison.Ordinal) && !(a.Length == 2 && b.Length == 3) : Same(b, a);
+            var close = tagged.Where(e => !IsOrganisation(e.Role) && e.Forms.Any(f => written.Exists(n => Same(f, n)))).ToList();
+            if (close.Count == 1)
+                tagged[tagged.IndexOf(close[0])] = close[0] with { Name = written[0].Length > close[0].Name.Length ? written[0] : close[0].Name, Forms = [.. written.Union(close[0].Forms)] };
+        }
+        var entities = tagged
             .Select(e => (e, Profile: e.Forms.Any(f => profileNames.Contains(f, StringComparer.OrdinalIgnoreCase))))
             .OrderByDescending(x => x.Profile).ThenByDescending(x => x.e.Mentions).Take(MaxEntities).ToList();
         var sentences = Sentences(text);

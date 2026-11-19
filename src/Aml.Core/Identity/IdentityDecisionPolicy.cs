@@ -8,7 +8,8 @@ public static class IdentityDecisionPolicy
 {
     private const int StrongSupportMinimumCount = 2;
 
-    private static readonly EvidenceGroup[] GroupsWithConflictCode = [EvidenceGroup.DateOfBirth, EvidenceGroup.Document, EvidenceGroup.StatedAge, EvidenceGroup.StatedBirthDate];
+    private static readonly EvidenceGroup[] ProfileGroupsWithConflictCode = [EvidenceGroup.DateOfBirth, EvidenceGroup.Document];
+    private static readonly EvidenceGroup[] NewsGroupsWithConflictCode = [EvidenceGroup.StatedAge, EvidenceGroup.StatedBirthDate];
 
     public static IdentityResult Decide(ScreenedSubject s, SourceProfile p, NewsItem? news = null)
     {
@@ -22,6 +23,8 @@ public static class IdentityDecisionPolicy
         var reasons = new List<string> { code };
         if (e[EvidenceGroup.Gender].Status == ComparisonStatus.Conflict) reasons.Add(ReasonCodes.GenderConflict);
         if (e.GetValueOrDefault(EvidenceGroup.StatedGender)?.Status == ComparisonStatus.Conflict) reasons.Add(ReasonCodes.NewsGenderDifference);
+        if (row == Stage3Rows.UniqueIdentifier)
+            reasons.AddRange(NewsGroupsWithConflictCode.Select(g => e.GetValueOrDefault(g)).Where(v => v?.Status == ComparisonStatus.Conflict).Select(v => v!.Detail!));
         if (NoBilateralDirectIdentifier(s, p)) reasons.Add(ReasonCodes.NoBilateralDirectIdentifier);
         return new IdentityResult(e, null, row, decision, reasons);
     }
@@ -115,12 +118,17 @@ public static class IdentityDecisionPolicy
         ComparisonStatus StatusOf(EvidenceGroup g) => e.GetValueOrDefault(g)?.Status ?? ComparisonStatus.ProfileMissing;
         var supports = e.Values.Where(v => v.IsSupport).ToArray();
 
-        var conflict = GroupsWithConflictCode.Select(g => e.GetValueOrDefault(g)).FirstOrDefault(v => v?.Status == ComparisonStatus.Conflict);
-        if (conflict is not null)
-            return (Stage3Rows.Conflict, IdentityDecision.Review, conflict.Detail!); // every DOB, document, stated-age and news birth date conflict carries its code
+        // Every DOB, document, stated-age and news birth date conflict carries its code.
+        Evidence? ConflictIn(EvidenceGroup[] groups) => groups.Select(g => e.GetValueOrDefault(g)).FirstOrDefault(v => v?.Status == ComparisonStatus.Conflict);
+        if (ConflictIn(ProfileGroupsWithConflictCode) is { } conflict)
+            return (Stage3Rows.Conflict, IdentityDecision.Review, conflict.Detail!);
 
+        // An agreeing document outranks what news states next to a name: that conflict is recorded beside row 2.
         if (supports.Any(v => v.Strength == Strength.Unique))
             return (Stage3Rows.UniqueIdentifier, IdentityDecision.ProbableMatch, ReasonCodes.UniqueIdentifierAgreement);
+
+        if (ConflictIn(NewsGroupsWithConflictCode) is { } stated)
+            return (Stage3Rows.Conflict, IdentityDecision.Review, stated.Detail!);
 
         // A gender attached news states for the Profile person that differs from the customer's counts as the Profile's own.
         var oppositeGenders = StatusOf(EvidenceGroup.Gender) == ComparisonStatus.Conflict || e.GetValueOrDefault(EvidenceGroup.StatedGender)?.Status == ComparisonStatus.Conflict;

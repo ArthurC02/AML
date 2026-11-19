@@ -155,7 +155,7 @@ Applies only to an age explicitly stated for a named person in a bounded source 
 - Age at time point = year of time point − birth year, minus 1 if the time point's month/day precedes the birthday. Difference = stated age − age at time point.
 - Requires a full DOB on the subject side; otherwise the result is `AGE_NOT_COMPARABLE`, and with a partial DOB and a report date the note gives the possible age range at the report date (`StatedAgeCheck.AgeRange`, e.g. 45～46 歲 for a birth year only), which is shown, not compared.
 - |difference| ≤ 2 (inclusive) → `AGE_COMPATIBLE_AT_REPORT`, recorded like `TEMPORALLY_PLAUSIBLE`: compatible is not support.
-- |difference| > 2 → `AGE_DIFFERENCE_AT_REPORT`, a soft conflict that keeps the pair in REVIEW; it is never a hard conflict.
+- |difference| > 2 → `AGE_DIFFERENCE_AT_REPORT`, a soft conflict that keeps the pair in REVIEW unless a document agrees ([stage 3](#stage-3-table)); it is never a hard conflict.
 - Without a full subject DOB or a report date the result is `AGE_NOT_COMPARABLE`.
 - An age stated with 時年 is the age when the reported event happened, whose date the text does not give; it is never compared with the report date and gives `AGE_NOT_COMPARABLE`.
 - Phase 1 reads the age only when it is adjacent to the Profile person's name in the same sentence of attached news (e.g. 陳志明（45歲）, 45歲的陳志明).
@@ -180,7 +180,7 @@ Birth date (`STATED_BIRTH_DATE`). A year under 1000 is a ROC year (民國70年1�
 
 - A news birth date is not a direct identifier and never satisfies row 4, which needs the Profile's own DATE_OF_BIRTH; `MEDIUM` is below the `HIGH` row 3 needs. Alone it moves a pair from row 6 to row 5.
 - A coarser news date that a more precise one covers is dropped, as for Profile DOBs.
-- Row 1 comes before row 2, so a news birth date difference keeps even a pair with an agreeing document in REVIEW on the conflict's code, as a stated-age difference does.
+- An agreeing document outranks it: with UNIQUE support a news birth date difference does not make row 1; the pair is row 2 and `NEWS_BIRTH_DATE_DIFFERENCE` is recorded alongside. The same holds for a stated-age difference.
 
 Gender (`STATED_GENDER`). Read only when the customer has a gender and exactly one gender stands next to the names.
 
@@ -255,7 +255,7 @@ Applied only when no hard conflict fired. The first matching row wins. The table
 
 | # | Condition | Decision | Reason code |
 |---|---|---|---|
-| 1 | a `CONFLICT` in DATE_OF_BIRTH or DOCUMENT without a hard rule, `AGE_DIFFERENCE_AT_REPORT`, or a `CONFLICT` in STATED_BIRTH_DATE | REVIEW | the conflict's code, the first of `FULL_DOB_CONFLICT` / `DOB_CONFLICT`, `DOCUMENT_IDENTITY_CONFLICT`, `AGE_DIFFERENCE_AT_REPORT`, `NEWS_BIRTH_DATE_DIFFERENCE` |
+| 1 | a `CONFLICT` in DATE_OF_BIRTH or DOCUMENT without a hard rule; or, without UNIQUE support, `AGE_DIFFERENCE_AT_REPORT` or a `CONFLICT` in STATED_BIRTH_DATE | REVIEW | the conflict's code, the first of `FULL_DOB_CONFLICT` / `DOB_CONFLICT`, `DOCUMENT_IDENTITY_CONFLICT`, `AGE_DIFFERENCE_AT_REPORT`, `NEWS_BIRTH_DATE_DIFFERENCE` |
 | 2 | UNIQUE support | MATCH when the release policy allows; Phase 1: PROBABLE_MATCH | `UNIQUE_IDENTIFIER_AGREEMENT` |
 | 3 | HIGH support plus at least one other non-prerequisite support, and no `GENDER_CONFLICT` or STATED_GENDER conflict | PROBABLE_MATCH | `STRONG_SUPPORT_COMBINATION` |
 | 4 | every hit prerequisite is EXACT (name after normalization and disclosed relaxations, gender, nationality), DATE_OF_BIRTH is support at the finest precision both sides allow, and no DOCUMENT or EMPLOYMENT value is CONFLICT or UNCERTAIN other than `NOT_COMPARABLE` | PROBABLE_MATCH | `CONSISTENT_AT_AVAILABLE_PRECISION` |
@@ -267,6 +267,7 @@ Applied only when no hard conflict fired. The first matching row wins. The table
 - Employment is never a conflict (a different employer is not evidence against identity), so it never triggers row 1; an uncertain employment still blocks row 4.
 - A DOB agreement recorded as `PROFILE_MULTIPLE_DOB` is not support, so it does not satisfy row 4.
 - Opposite genders rule out rows 3 and 4; the pair falls to row 5 or 6 and `GENDER_CONFLICT` is recorded alongside. A gender in attached news that differs from the customer's does the same with `NEWS_GENDER_DIFFERENCE` ([birth date and gender stated in a source](#birth-date-and-gender-stated-in-a-source)).
+- A document number outranks what news states next to a name: with UNIQUE support, a stated-age or news birth date conflict does not make row 1; the pair is row 2 and the conflict's code is recorded alongside. A conflict in the Profile's own DATE_OF_BIRTH or DOCUMENT still comes first.
 - `NO_BILATERAL_DIRECT_IDENTIFIER` is recorded alongside whenever it applies.
 - Review priority follows the row: 2, 3 and 4 first, then 5, then 1 and 6.
 
@@ -306,10 +307,10 @@ Only registered codes may appear in decisions. New codes are added here with the
 | `PARTIAL_SUPPORT_ONLY` | IdentityDecisionPolicy | support exists but below the PROBABLE_MATCH combinations |
 | `NO_NON_PREREQUISITE_SUPPORT` | IdentityDecisionPolicy | only hit prerequisites agree |
 | `AGE_COMPATIBLE_AT_REPORT` | IdentityDecisionPolicy | stated age within ±2 years at the same time point; not support |
-| `AGE_DIFFERENCE_AT_REPORT` | IdentityDecisionPolicy | stated age differs by more than 2 years; soft conflict |
+| `AGE_DIFFERENCE_AT_REPORT` | IdentityDecisionPolicy | stated age differs by more than 2 years; soft conflict (row 1), or recorded alongside row 2 when a document agrees |
 | `AGE_NOT_COMPARABLE` | IdentityDecisionPolicy | stated age found but not comparable: no full subject DOB, no report date, or an age stated with 時年 |
 | `NEWS_BIRTH_DATE_AGREES` | NewsStatedCheck | a birth date next to the Profile person's name in attached news agrees with the customer's; support (`MEDIUM` or `LOW`) only when the Profile's own DOB is not |
-| `NEWS_BIRTH_DATE_DIFFERENCE` | NewsStatedCheck | no such birth date agrees; soft conflict (row 1) unless the Profile's own DOB agrees |
+| `NEWS_BIRTH_DATE_DIFFERENCE` | NewsStatedCheck | no such birth date agrees; soft conflict (row 1) unless the Profile's own DOB agrees, or a document agrees (row 2, code recorded alongside) |
 | `NEWS_BIRTH_DATE_AMBIGUOUS` | NewsStatedCheck | scattered birth dates next to one written name, one of them agreeing; not support |
 | `NEWS_GENDER_AGREES` | NewsStatedCheck | the gender next to the name in attached news is the customer's; shown, not support |
 | `NEWS_GENDER_DIFFERENCE` | NewsStatedCheck | it differs; rules out rows 3 and 4 unless the Profile's own gender agrees |

@@ -81,6 +81,24 @@ public class NewsStatedCheckTests
         Assert.Equal("新聞所載出生日期 1981-01-01；客戶出生日期 1980-05-20", r.Evidence[EvidenceGroup.StatedBirthDate].Note);
     }
 
+    // The same document on both sides: row 2 whatever the news says, with the news conflict's code alongside.
+    // Born 1980-05-20, the news is undated, so only the report date in the second row makes the age comparable.
+    [Theory]
+    [InlineData("陳志明（男，民國70年1月1日生）涉嫌詐欺。", null, ReasonCodes.NewsBirthDateDifference)]
+    [InlineData("陳志明（60歲）涉嫌詐欺。", 2026, ReasonCodes.AgeDifferenceAtReport)]
+    public void An_agreeing_document_outranks_a_news_conflict(string text, int? reportYear, string alongside)
+    {
+        var document = new Document("PASSPORT", "X1234567", "TW");
+        var subject = Subject(Born) with { Document = document };
+        var news = News(text) with { PublishedOn = reportYear is { } y ? new PartialDate(y, 3, 1) : null };
+
+        var r = IdentityDecisionPolicy.Decide(subject, Profile() with { Documents = [document] }, news);
+
+        Assert.Equal((2, IdentityDecision.ProbableMatch), (r.Stage3Row, r.Decision));
+        Assert.Equal([ReasonCodes.UniqueIdentifierAgreement, alongside], r.ReasonCodes);
+        Assert.Equal(1, IdentityDecisionPolicy.Decide(Subject(Born), Profile(), news).Stage3Row); // without the document: row 1
+    }
+
     [Fact]
     public void Without_a_customer_birth_date_the_news_date_is_shown_only()
     {

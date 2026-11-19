@@ -477,7 +477,9 @@ public static partial class SourceConditions
     [GeneratedRegex("另案|該案|他案|前案|前因|前科|規定|條第")]
     private static partial Regex NotThisCase();
 
-    [GeneratedRegex("(?:辯稱|佯稱|謊稱|誆稱|訛稱|詐稱|聲稱|宣稱|供稱|陳稱|堅稱|主張|(?<![下簡名俗職])稱)[^。！？；\n]{0,200}?云云")]
+    // From the verb nearest to 云云, over one comma at most: 號稱投資達人，遭判處有期徒刑二年，他辯稱無辜云云 leaves the
+    // sentence in place, and so does 陳志明稱其無辜，法院仍判處有期徒刑二年，不服上訴云云 (too far to be the same saying).
+    [GeneratedRegex(@"(?:辯稱|佯稱|謊稱|誆稱|訛稱|詐稱|聲稱|宣稱|供稱|陳稱|堅稱|表示|主張|(?<![下簡名俗職號堪又暱人對])稱)(?:(?!辯稱|佯稱|謊稱|誆稱|訛稱|詐稱|聲稱|宣稱|供稱|陳稱|堅稱|表示|主張|稱)[^。！？；\n，,]){0,80}(?:[，,](?:(?!辯稱|佯稱|謊稱|誆稱|訛稱|詐稱|聲稱|宣稱|供稱|陳稱|堅稱|表示|主張|稱)[^。！？；\n，,]){0,80})?云云")]
     private static partial Regex Reported();
 
     [GeneratedRegex("[的之](?:[妻夫女父母兄弟姊姐妹哥岳媳婿姪甥胞兒孫叔伯舅姑嬸]|子(?!公司)|丈夫|先生|太太|老公|老婆|配偶|前妻|前夫|前女友|前男友|男友|友人|助理|秘書|司機|特助|部屬|下屬|員工|同事|合夥人|律師)")]

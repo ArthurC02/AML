@@ -285,6 +285,11 @@ public class ScreeningPolicyTests
     [InlineData("陳志明辯稱已獲不起訴處分云云，惟查陳志明業經檢察官起訴。", LegalStage.Indicted)]
     [InlineData("陳志明遭判刑，辯稱冤枉云云，不服上訴。", LegalStage.Convicted)]            // only what was said is left out
     [InlineData("陳志明遭起訴並辯稱遭人陷害云云。", LegalStage.Indicted)]
+    [InlineData("陳志明號稱投資達人，遭法院判處有期徒刑二年，他辯稱無辜云云。", LegalStage.Convicted)]   // from the nearest verb only
+    [InlineData("陳志明自稱清白，被判處有期徒刑二年，律師表示將上訴云云。", LegalStage.Convicted)]
+    [InlineData("臺北地院稱陳志明犯詐欺罪，判處有期徒刑二年，被告辯稱不知情云云。", LegalStage.Convicted)]
+    [InlineData("陳志明稱其無辜，法院仍判處有期徒刑二年，不服上訴云云。", LegalStage.Convicted)]         // too far to be the same saying
+    [InlineData("陳志明辯稱：檢察官已為不起訴處分，不應再行追訴云云。陳志明業經起訴。", LegalStage.Indicted)]
     // Named as the victim or a witness, the sentence's steps are someone else's.
     [InlineData("李小四等3人涉詐欺，被害人陳志明報案，警方發布通緝。", LegalStage.Unknown)]
     [InlineData("證人陳志明指出，李小四等3人潛逃，法院發布通緝。", LegalStage.Unknown)]

@@ -222,6 +222,12 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-02-12 | GC-02 | customer DOB written 1975年9月2日 | unparseable value | `UNPARSEABLE:出生日期`, DOB SUBJECT_MISSING |
 | AUG-02-13 | GC-02 | category Adverse Media, no keywords, news on drunk driving | Article 22 ② | UNRELATED, set aside, NOT_ON_LIST; identity unchanged |
 | AUG-02-14 | GC-02 | news adds 酒駕 to the fraud report | predicate offence | stays UNCERTAIN |
+| AUG-02-15 | GC-02 | news states 林美玲（女，民國64年9月2日生） | news birth date agrees | `NEWS_BIRTH_DATE_AGREES`, MEDIUM support, row 5 REVIEW (GC-02 is row 6); still no direct identifier |
+| AUG-02-16 | GC-02 | news states a birth date of 民國70年1月1日 | `NEWS_BIRTH_DATE_DIFFERENCE` | soft conflict, row 1 REVIEW, never NO_MATCH |
+| AUG-02-17 | GC-02 | Profile DOB 1975/9/2 and the news states the same date | one fact told twice | news NEUTRAL; row 4 PROBABLE_MATCH, not row 3 |
+| AUG-02-18 | GC-02 | Profile DOB 1975/9/2, the news states 民國70年1月1日 | two sources disagree | news NEUTRAL, UNCERTAIN; row 4 unchanged |
+| AUG-02-19 | GC-02 | news states 林美玲（男）, the Profile's gender agrees | two sources disagree | `NEWS_GENDER_DIFFERENCE` shown, NEUTRAL; row 6 unchanged |
+| AUG-02-20 | GC-02 | same national ID on both sides, the news states 民國70年1月1日 | document outranks news | row 2 PROBABLE_MATCH, `NEWS_BIRTH_DATE_DIFFERENCE` alongside |
 | AUG-03-01 | GC-03 | Profile category → Politically Exposed Person (both sides Vietnamese) | Article 22 ① | ON_LIST presumption, identity unchanged |
 | AUG-03-02 | GC-03 | as AUG-03-01, customer nationality removed | Article 22 ① nationality missing | no recommendation, `CONFIRM_NATIONALITY` pending |
 | AUG-03-03 | GC-03 | Profile category → Politically Exposed Person / Former PEP | former PEP | `FORMER_PEP`, ON_LIST presumption kept |

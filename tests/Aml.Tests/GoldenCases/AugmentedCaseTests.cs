@@ -373,6 +373,76 @@ public class AugmentedCaseTests
         Assert.Equal(ComparisonStatus.SubjectMissing, Hit21(a).Identity.Evidence[EvidenceGroup.DateOfBirth].Status);
     }
 
+    // AUG-02-15 to 20: the news names the Profile person as a judgment does, with gender and birth date in a bracket.
+    // The customer is a woman born 1975/9/2 (民國64年9月2日); GC-02 itself is row 6.
+    private static (string, string, string) Stated(string bracket) => (News21, "負責人林美玲涉嫌", $"負責人林美玲（{bracket}）涉嫌");
+    private static readonly (string, string, string) ProfileBornAsTheCustomer = Before(Profile21, "狀態:\tActive", "日期:\n編號\t類型\t日期\n1\tDate of Birth\t1975/9/2");
+
+    [Fact]
+    public void AUG_02_15_a_birth_date_in_the_news_that_agrees_is_medium_support_row_5()
+    {
+        var (_, a) = Augment("GC-02", [Stated("女，民國64年9月2日生")]);
+        var id = Hit21(a).Identity;
+        var birth = id.Evidence[EvidenceGroup.StatedBirthDate];
+        Assert.Equal((Direction.Support, Exact, Strength.Medium, ReasonCodes.NewsBirthDateAgrees), (birth.Direction, birth.Status, birth.Strength, birth.Detail));
+        Assert.Equal((Direction.Neutral, ReasonCodes.NewsGenderAgrees), (id.Evidence[EvidenceGroup.StatedGender].Direction, id.Evidence[EvidenceGroup.StatedGender].Detail));
+        Assert.Equal((5, IdentityDecision.Review, ReasonCodes.PartialSupportOnly), (id.Stage3Row, id.Decision, id.ReasonCodes[0])); // GC-02 is row 6
+        Assert.Contains(ReasonCodes.NoBilateralDirectIdentifier, id.ReasonCodes); // a news date is no direct identifier
+    }
+
+    [Fact]
+    public void AUG_02_16_a_birth_date_in_the_news_that_differs_is_a_soft_conflict_row_1()
+    {
+        var (_, a) = Augment("GC-02", [Stated("女，民國70年1月1日生")]);
+        var id = Hit21(a).Identity;
+        Assert.Null(id.HardConflict); // soft, never NO_MATCH
+        Assert.Equal((1, IdentityDecision.Review, ReasonCodes.NewsBirthDateDifference), (id.Stage3Row, id.Decision, id.ReasonCodes[0]));
+        Assert.Equal(Direction.Conflict, id.Evidence[EvidenceGroup.StatedBirthDate].Direction);
+        Assert.Equal(ScreeningAssessment.Review, Hit21(a).PairResult);
+    }
+
+    [Fact]
+    public void AUG_02_17_the_profiles_own_birth_date_agreeing_makes_row_4_and_the_news_adds_nothing()
+    {
+        var (_, a) = Augment("GC-02", [ProfileBornAsTheCustomer, Stated("女，民國64年9月2日生")]);
+        var id = Hit21(a).Identity;
+        Assert.Equal((Direction.Neutral, ReasonCodes.NewsBirthDateAgrees), (id.Evidence[EvidenceGroup.StatedBirthDate].Direction, id.Evidence[EvidenceGroup.StatedBirthDate].Detail));
+        Assert.Equal((Direction.Support, Strength.High), (id.Evidence[EvidenceGroup.DateOfBirth].Direction, id.Evidence[EvidenceGroup.DateOfBirth].Strength));
+        Assert.Equal((4, IdentityDecision.ProbableMatch), (id.Stage3Row, id.Decision)); // counted twice it would be row 3
+    }
+
+    [Fact]
+    public void AUG_02_18_a_news_date_against_an_agreeing_profile_date_is_shown_not_a_conflict()
+    {
+        var (_, a) = Augment("GC-02", [ProfileBornAsTheCustomer, Stated("女，民國70年1月1日生")]);
+        var id = Hit21(a).Identity;
+        var birth = id.Evidence[EvidenceGroup.StatedBirthDate];
+        Assert.Equal((Direction.Neutral, Uncertain, ReasonCodes.NewsBirthDateDifference), (birth.Direction, birth.Status, birth.Detail));
+        Assert.Equal((4, IdentityDecision.ProbableMatch), (id.Stage3Row, id.Decision));
+    }
+
+    [Fact]
+    public void AUG_02_19_a_news_gender_against_an_agreeing_profile_gender_is_shown_not_a_conflict()
+    {
+        var (_, a) = Augment("GC-02", [Stated("男")]);
+        var id = Hit21(a).Identity;
+        var gender = id.Evidence[EvidenceGroup.StatedGender];
+        Assert.Equal((Direction.Neutral, Uncertain, ReasonCodes.NewsGenderDifference), (gender.Direction, gender.Status, gender.Detail));
+        Assert.Equal((6, IdentityDecision.Review), (id.Stage3Row, id.Decision)); // unchanged from GC-02
+        Assert.DoesNotContain(ReasonCodes.NewsGenderDifference, id.ReasonCodes);
+    }
+
+    [Fact]
+    public void AUG_02_20_the_same_national_id_outranks_a_news_birth_date_that_differs()
+    {
+        var (_, a) = Augment("GC-02",
+            [Before(Profile21, "狀態:\tActive", "身分證明:\n編號\t類型\t號碼\t國家\n1\tNational ID\tA123456789\tTaiwan"), Stated("女，民國70年1月1日生")],
+            subject: s => s with { Document = new Document("TW_NATIONAL_ID", "A123456789", "TW") });
+        var id = Hit21(a).Identity;
+        Assert.Equal((2, IdentityDecision.ProbableMatch), (id.Stage3Row, id.Decision));
+        Assert.Equal([ReasonCodes.UniqueIdentifierAgreement, ReasonCodes.NewsBirthDateDifference], id.ReasonCodes);
+    }
+
     // GC-03: Vietnamese customer and Profile (citizenship Viet Nam), active official wanted list, PROBABLE_MATCH.
 
     private static readonly (string, string, string) ToPep =

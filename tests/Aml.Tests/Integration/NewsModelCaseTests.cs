@@ -36,6 +36,66 @@ public class NewsModelCaseTests : ServiceTestBase
         return (await _cases.GetAnalysisAsync(created.CaseId, 1, ct))!;
     }
 
+    private const string Judgment = """
+        臺灣臺北地方法院刑事判決
+        被　　告　林美玲
+        被　　告　王大明
+        上列被告因詐欺案件，經檢察官提起公訴，本院判決如下：
+        主　文
+        林美玲犯詐欺取財罪，處有期徒刑一年。
+        王大明無罪。
+        理　由
+        被告林美玲向被害人佯稱投資獲利，致被害人陷於錯誤而匯款。被告王大明被訴部分，不能證明其犯罪。
+        """;
+
+    /// <summary>
+    /// Made-up news of four kinds on GC-02's Case, read by the trained models (AML_NEWS_MODELS; skipped without it). The
+    /// expectations are what the reviewer of a Case on this Profile person needs, not what the models happen to give: the
+    /// person's own stage, nobody else's step, and the rules and the models saying the same. In every row the Case itself
+    /// must stay as it is without the models.
+    /// </summary>
+    [Theory]
+    // A judgment with two defendants: the Profile person is convicted, the co-defendant acquitted. The models read it;
+    // the rules' stage is UNKNOWN, because the stage heuristic does not read a judgment's own wording (提起公訴, 處有期徒刑
+    // in the order) until that is approved on a Golden Case (watchlist-and-adverse-information.md, legal stage).
+    [InlineData("judgment", Judgment, LegalStage.Unknown, NewsParty.Suspect, "Conviction", "Acquittal", "王大明", "Acquittal", "Conviction")]
+    // The Profile person is the victim of someone else's indicted fraud: no step is theirs.
+    [InlineData("victim", "王大明涉嫌以假投資詐騙，檢方已起訴王大明。被害人林美玲表示遭騙新臺幣一百萬元。", LegalStage.Unknown, NewsParty.Victim, "", "Indictment,Conviction,Arrest", "王大明", "Indictment", "Conviction")]
+    // One name stands for a group: the arrest and the referral are the Profile person's too.
+    [InlineData("group", "警方昨日逮捕林美玲等3人，全案依詐欺罪嫌移送臺北地檢署偵辦。", LegalStage.Alleged, NewsParty.Suspect, "Arrest,Referral", "Indictment,Conviction", null, "", "")]
+    // The prosecutor decided not to indict.
+    [InlineData("dismissed", "林美玲涉嫌詐欺一案，檢察官偵查後認罪嫌不足，對林美玲為不起訴處分。", LegalStage.Dismissed, NewsParty.Suspect, "NonIndictment", "Conviction", null, "", "")]
+    public async Task The_trained_models_and_the_rules_read_the_same_case(string key, string text, LegalStage stage, NewsParty party,
+        string stated, string notStated, string? other, string otherStated, string otherNotStated)
+    {
+        var directory = Environment.GetEnvironmentVariable("AML_NEWS_MODELS");
+        Assert.SkipWhen(string.IsNullOrEmpty(directory), "AML_NEWS_MODELS is not set: the trained models are outside the repository");
+        var ct = TestContext.Current.CancellationToken;
+        var files = IndictedCase();
+        var read = TxtCaseReader.ReadFiles(files);
+        var input = read with { NewsByProfileId = read.NewsByProfileId.ToDictionary(n => n.Key, n => n.Value with { Text = text.ReplaceLineEndings("\n") }) };
+        using var model = new OnnxNewsModel(directory!);
+        async Task<AnalysisRecord> Run(INewsModel? m, string k) =>
+            (await _cases.GetAnalysisAsync((await new CaseService(_cases, TimeProvider.System, newsModel: m).CreateAsync($"s-{key}-{k}", $"e-{key}-{k}", input, ct, files)).CaseId, 1, ct))!;
+
+        var rulesOnly = await Run(null, "rules");
+        var withModels = await Run(model, "models");
+
+        AssertSameCase(rulesOnly, withModels);
+        Assert.Equal(stage, Assert.Single(Assert.Single(withModels.Result.Hits).Conditions).LegalStage);
+        var entities = Assert.Single(withModels.Explanation!.Hits).NewsDigest!.Model!.Entities;
+        static string[] Steps(NewsModelEntity e) => [.. e.Events.Where(x => x.Certainty == NewsCertainty.Stated).Select(x => x.Type.ToString())];
+        static string[] List(string csv) => csv.Split(',', StringSplitOptions.RemoveEmptyEntries);
+        Assert.Equal(("林美玲", true, party), (entities[0].Name, entities[0].ProfileName, entities[0].Party));
+        Assert.Empty(List(stated).Except(Steps(entities[0])));
+        Assert.Empty(List(notStated).Intersect(Steps(entities[0])));
+        if (other is null) return;
+        var second = Assert.Single(entities, e => e.Name == other);
+        Assert.False(second.ProfileName);
+        Assert.Empty(List(otherStated).Except(Steps(second)));
+        Assert.Empty(List(otherNotStated).Intersect(Steps(second)));
+    }
+
     /// <summary>Everything a consumer can act on, with the models' own readout taken out.</summary>
     private static string WithoutTheReadout(AnalysisRecord r) => JsonSerializer.Serialize(new
     {

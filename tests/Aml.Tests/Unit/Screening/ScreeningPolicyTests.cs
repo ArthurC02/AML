@@ -136,6 +136,18 @@ public class ScreeningPolicyTests
     [InlineData("陳志明與李四涉詐欺，李四遭起訴。", LegalStage.Unknown)]                // another person's clause
     [InlineData("陳志明涉詐欺；李四遭起訴。", LegalStage.Unknown)]
     [InlineData("陳志明涉詐欺，林姓男子被判處有期徒刑一年。", LegalStage.Unknown)]
+    [InlineData("李小四涉嫌詐騙，檢方已起訴李小四。被害人陳志明表示遭騙。", LegalStage.Unknown)] // another person is the object
+    [InlineData("李小四、王小五涉嫌詐騙。檢方已起訴李小四、王小五。陳志明為本案被害人。", LegalStage.Unknown)]
+    [InlineData("李小四涉嫌詐騙。檢察官對李小四為不起訴處分。陳志明為本案告訴人。", LegalStage.Unknown)]
+    [InlineData("李小四涉嫌詐騙。檢察官對李小四緩起訴。陳志明為本案告訴人。", LegalStage.Unknown)]
+    [InlineData("李小四涉嫌詐騙，檢方已起訴李小四等七人。陳志明亦在其中。", LegalStage.Indicted)] // a group stays collective
+    [InlineData("李小四涉嫌詐騙，檢方已起訴李小四及陳志明。", LegalStage.Indicted)]       // the clause names the person
+    [InlineData("李小四涉嫌詐騙，檢方已起訴李小四、陳男。陳志明到案說明。", LegalStage.Indicted)] // the person's surname is in the clause
+    [InlineData("陳大明涉嫌詐騙，檢方已起訴陳大明。陳志明到案說明。", LegalStage.Indicted)] // the person's own surname: not told apart
+    [InlineData("檢方已起訴李小四。陳志明到案說明。", LegalStage.Indicted)]             // written once: not taken for a name
+    [InlineData("陳志明涉背信。檢方已起訴高層。", LegalStage.Indicted)]                 // 高層, 官員, 金額 are no names
+    [InlineData("陳志明涉貪。檢方已起訴官員。", LegalStage.Indicted)]
+    [InlineData("李四涉嫌詐騙，檢方已起訴李四。陳志明為被害人。", LegalStage.Indicted)]    // a two-character name is not told apart
     [InlineData("陳志明涉詐欺，陳男遭起訴。", LegalStage.Indicted)]                    // the person's own surname: the person
     [InlineData("陳志明涉詐欺，隨後李四也遭起訴。", LegalStage.Unknown)]
     [InlineData("陳志明涉詐欺，施用毒品遭起訴。", LegalStage.Indicted)]                // a clause opening with a word, not a name

@@ -366,7 +366,7 @@ public static partial class SourceConditions
             foreach (var (at, size) in Spans(blanked, start, length, ClauseEnds))
             {
                 var clause = blanked.Substring(at, size);
-                if (!MentionsAnyName(news.Substring(at, size), names) && NamesAnotherPerson(clause, surnames)) continue;
+                if (!MentionsAnyName(news.Substring(at, size), names) && (NamesAnotherPerson(clause, surnames) || IndictsAnotherPerson(clause, surnames, news))) continue;
                 if (LastStageIn(clause, attributable, own) is { } found) stage = found;
             }
         }
@@ -395,6 +395,16 @@ public static partial class SourceConditions
     private static bool NamesAnotherPerson(string clause, HashSet<char> ownSurnames) =>
         OtherPersonOpening().Match(clause) is { Success: true } m && CommonSurnames.Contains(m.Groups["surname"].Value[0], StringComparison.Ordinal)
         && !ownSurnames.Contains(m.Groups["surname"].Value[0]);
+
+    // The clause's indictment or dismissal has another person for its object: 檢方已起訴李小四, 對李小四為不起訴處分.
+    // Losing the Profile person's own indictment is the worse error, so the object must be a three-character name of a
+    // common surname that the text writes at least twice (起訴高層, 起訴官員, 起訴金額 are no names), and the clause must
+    // hold no character of the person's own surname (起訴李小四、王男 may include 王大明). 起訴李小四等七人 stays collective.
+    // ponytail: a two-character name (李四) or one of a rare surname is not told apart; widen when a real case needs it.
+    private static bool IndictsAnotherPerson(string clause, HashSet<char> ownSurnames, string news) =>
+        !clause.Any(ownSurnames.Contains) && OtherPersonObject().Matches(clause).Any(m =>
+            CommonSurnames.Contains(m.Groups["name"].Value[0], StringComparison.Ordinal)
+            && news.IndexOf(m.Groups["name"].Value, StringComparison.Ordinal) != news.LastIndexOf(m.Groups["name"].Value, StringComparison.Ordinal));
 
     private static LegalStage? LastStageIn(string clause, bool attributable, bool own)
     {
@@ -469,6 +479,10 @@ public static partial class SourceConditions
 
     [GeneratedRegex(@"^\s*(?:而|但|則|另外|另|隨後|其後|後來|至於)?(?<surname>\p{IsCJKUnifiedIdeographs})(?:\p{IsCJKUnifiedIdeographs}{1,2}|姓(?:男子|女子|男|女|嫌犯|被告))(?:也|亦|則|已|均)?(?:遭到|遭|被|獲)")]
     private static partial Regex OtherPersonOpening();
+
+    // The name ends the clause or goes on in a list (、及與和); 等 after it makes a group, which is not matched.
+    [GeneratedRegex(@"起訴(?<name>\p{IsCJKUnifiedIdeographs}{3})(?=$|[、及與和\s])|對(?<name>\p{IsCJKUnifiedIdeographs}{3})(?:為|作成|予以)?(?:不|緩)起訴")]
+    private static partial Regex OtherPersonObject();
 
     // Non-backtracking: a backtracking engine rescans to the end from every unclosed opening quote (1M 「 is quadratic).
     [GeneratedRegex("「[^」]*」|『[^』]*』|“[^”]*”", RegexOptions.NonBacktracking)]

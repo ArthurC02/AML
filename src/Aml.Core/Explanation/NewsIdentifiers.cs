@@ -42,6 +42,7 @@ public static partial class NewsIdentifiers
             for (var n = 0; n < MaxPerForm && found.Count < MaxFound && (at = text.IndexOf(form, at, StringComparison.Ordinal)) >= 0; n++, at += form.Length)
             {
                 After(text, at + form.Length, Add);
+                PartyLines(text, at + form.Length, Add);
                 Before(text[Math.Max(0, at - MaxBefore)..at], Add);
                 Engaged(text, at + form.Length, Add);
             }
@@ -81,6 +82,27 @@ public static partial class NewsIdentifiers
         }
         if (AgeRightAfter().Match(rest) is { Success: true } a) add(NewsIdentifierKind.Age, a.Groups["a"].Value);
         else if (OccupationAfter().Match(rest) is { Success: true } o) add(NewsIdentifierKind.Occupation, o.Value);
+        else if (HomeAt().Match(rest) is { Success: true } h && !NotAHome().IsMatch(h.Groups["p"].Value)) add(NewsIdentifierKind.Residence, h.Groups["p"].Value);
+    }
+
+    // A judgment writes a party over several lines: 被告 王大明 男 45歲（民國…生）, then 身分證統一編號：…, then 住…. The
+    // lines right after the name's own, up to the first that is neither an ID number nor a residence, are that party's.
+    private static void PartyLines(string text, int end, Action<NewsIdentifierKind, string> add)
+    {
+        var at = text.IndexOf('\n', end);
+        if (at - end > MaxPartyLine) return;
+        for (var n = 0; n < MaxPartyLines && at >= 0; n++)
+        {
+            var next = text.IndexOf('\n', at + 1);
+            var line = text[(at + 1)..(next < 0 ? text.Length : next)].Trim();
+            // The whole line when it is an item (身分證統一編號 A123456789), else up to what follows the item (住…（另案在押）).
+            if (Kind(line) is null && line.AsSpan().IndexOfAny(PartyLineEnds) is var stop and >= 0) line = line[..stop];
+            var kind = Kind(line);
+            // A bare place on a line of its own is a heading or a dateline, not the party's home.
+            if (kind is not (NewsIdentifierKind.IdNumber or NewsIdentifierKind.Residence) || (kind == NewsIdentifierKind.Residence && !HomeWord().IsMatch(line))) return;
+            add(kind.Value, line);
+            at = next;
+        }
     }
 
     // A judgment's sentencing reasons say what the defendant does: 自陳高職畢業、從事水電工作, 現擔任某公司業務. Read later
@@ -133,6 +155,8 @@ public static partial class NewsIdentifiers
     }
 
     private static readonly SearchValues<char> SentenceEnds = SearchValues.Create("。！？；\n");
+    private static readonly SearchValues<char> PartyLineEnds = SearchValues.Create(" 　\t（(，,。；");
+    private const int MaxPartyLines = 3, MaxPartyLine = 60;
     private static readonly SearchValues<char> EngagedEnds = SearchValues.Create("。！？；\n，,");
     private static readonly SearchValues<char> ListEnds = SearchValues.Create("。！？；\n（(");
     private static readonly char[] ItemSeparators = ['，', ',', '、', '；', ';', '/', '／'];
@@ -216,8 +240,20 @@ public static partial class NewsIdentifiers
     private static partial Regex NationalityItem();
 
     // An address or a place opens with a city or county: 住臺中市西區民生路1號, 設籍桃園市, 高雄市 (not 住院治療, 前往臺北市).
-    [GeneratedRegex($@"^(?:住|居住|住居|設籍|戶籍)?(?:在|於)?(?:{Places})[\p{{IsCJKUnifiedIdeographs}}\d之\-]{{0,30}}$")]
+    // A published judgment masks parts of it (住屏東縣○○鄉○○路0號).
+    [GeneratedRegex($@"^(?:住|居住|住居|設籍|戶籍)?(?:在|於)?(?:{Places})[\p{{IsCJKUnifiedIdeographs}}\d○Ｏ〇之\-]{{0,30}}$")]
     private static partial Regex ResidenceItem();
+
+    [GeneratedRegex("^(?:住|居|設籍|戶籍)")]
+    private static partial Regex HomeWord();
+
+    // 王大明位於臺中市西區民生路1號之住處: the place, when a home is what stands there (not 位於…之公司).
+    [GeneratedRegex($@"^(?:位於|位在)(?<p>(?:{Places})[\p{{IsCJKUnifiedIdeographs}}\d０-９○Ｏ〇之\-]{{0,30}}?)(?:之|的)?(?:住處|住所|居所|住居所|租屋處|戶籍地)")]
+    private static partial Regex HomeAt();
+
+    // 位於臺中市之公司及住處 names two places, the first not a home.
+    [GeneratedRegex("公司|辦公|工廠|銀行|商行|店|及|與|和")]
+    private static partial Regex NotAHome();
 
     // A company, bank, office or association, alone or with the job there (某公司負責人), never a clause about one
     // (涉嫌詐欺某某銀行款項).

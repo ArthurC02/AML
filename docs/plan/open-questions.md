@@ -62,6 +62,8 @@ Questions that need a bank decision. When one is answered, record the answer her
 - Should index search over the list database ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md)) feed Cases automatically, and with which Top N?
 - Calibrate the Fellegi-Sunter weight (m and u per group, by `FellegiSunter.EstimateParameters` over representative pairs, and a threshold by `Calibrate` over labelled ones) and approve, or not, an AML risk policy; neither affects decisions today.
 - Approve the entity evidence groups (registration number, IMO) with an entity Golden Case.
+- Legal persons' senior managers (the ninth comparison field): does the export of a legal person's own Case carry `客戶-關聯人背景資料.txt` with one `姓名/名稱` block per manager, as the reader assumes? Is a same-named manager on both sides enough to raise review priority from LOW to NORMAL (`ENTITY_SENIOR_MANAGER_AGREEMENT`), or should the post or a second field also agree?
+- The specification slide's source list names "網路公開資訊 - 搜尋引擎結果前 10 筆"; which engine, which query and how the ten results reach a Case are not specified and nothing reads them yet.
 - Calibrate the placeholder thresholds from labelled cases. None of them makes evidence support, a conflict or a hit; they grade details, rank candidates or cap groups:
   - name similarity per script (`NameComparison.NameSimilarityThresholdCjk` and `…Latin`, 0.90) and address Jaccard (`AddressCompare.JaccardThreshold`, 0.5), which label a PARTIAL detail;
   - n-gram Dice floors per query script (`ProfileIndex.NGramFloorCjk` 0.3, `NGramFloorLatin` about 0.46), BM25 constants (k1 1.2, b 0.3) and the reciprocal-rank-fusion k (60), from Recall@K;

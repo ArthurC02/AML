@@ -267,7 +267,33 @@ public static partial class TxtCaseReader
         return new ScreenedSubject(
             SubjectRole.Customer, null, names, SourceValues.Gender(Value("性別")), dob,
             nationalities, docNumber is null ? null : new Document(DocumentType(Value("證件種類")), docNumber, IssuingCountry(RawValue("發照地"), findings)),
-            null, taxId, Occupation(Value("職業")), Dedupe(addresses, out var dup), AddressFindings(addresses, dup, findings), PartyType: Value("客戶類型"));
+            null, taxId, Occupation(Value("職業")), Dedupe(addresses, out var dup), AddressFindings(addresses, dup, findings), PartyType: Value("客戶類型"))
+        {
+            Relatives = export.Contains(RelatedPartyFile) ? ReadOrMalformed(RelatedPartyFile, () => RelatedPeople(export.Lines(RelatedPartyFile))) : null,
+        };
+    }
+
+    private const string RelatedPartyName = "姓名/名稱";
+    private const string RelatedPartyRelation = "關聯人";
+
+    // The customer's own Case with the related-party file: each party in it (a legal person's senior managers) is someone
+    // the customer names. The file says no relation, so all carry 關聯人.
+    // ponytail: one block per 姓名/名稱 key is assumed; no sample has a customer Case with this file yet.
+    private static List<Relative> RelatedPeople(string[] lines)
+    {
+        var people = new List<Relative>();
+        var named = false; // a block without a name is no one: its 類型 must not land on the person before it
+        foreach (var (key, value) in ReadKeyValueLines(lines))
+        {
+            if (key == RelatedPartyName)
+            {
+                named = SourceValues.NullIfPlaceholder(value) is not null;
+                if (named) people.Add(new Relative(SourceValues.NullIfPlaceholder(value)!, RelatedPartyRelation));
+            }
+            else if (key == "類型" && named && SourceValues.NullIfPlaceholder(value) is { } type)
+                people[^1] = people[^1] with { IsEntity = !ScreenedSubject.IsNaturalPersonType(type) };
+        }
+        return people;
     }
 
     private const string CountryHeadingSuffix = "(國家)";

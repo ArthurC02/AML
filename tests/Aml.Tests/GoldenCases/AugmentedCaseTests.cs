@@ -204,6 +204,30 @@ public class AugmentedCaseTests
         Assert.Equal(6, id.Stage3Row);
     }
 
+    // A made-up legal person: GC-11's customer turned into a company whose Case carries the related-party file, against
+    // an organization record. No registration number is comparable, so the manager both sides name is what there is.
+    [Theory]
+    [InlineData("陳志明", ReasonCodes.EntitySeniorManagerAgreement, 5, ReviewPriority.Normal)]
+    [InlineData("林美玲", ReasonCodes.NonPersonSubjectReview, null, ReviewPriority.Low)]
+    public void AUG_11_12_a_legal_person_is_compared_on_its_senior_managers(string listedManager, string code, int? row, ReviewPriority priority)
+    {
+        var (input, a) = Augment("GC-11",
+            [
+                ("客戶-背景資料.txt", "客戶類型\n個人", "客戶類型\n法人"),
+                (Profile11, "記錄類型:\tPerson", "記錄類型:\tEntity"),
+                Before(Profile11, "狀態:\tActive", $"關係人:\n編號\tProfile_ID\t姓名\t類型\t關係\n1\t90000099\t{listedManager}\tPerson\tDirector"),
+            ],
+            addFiles: new Dictionary<string, string> { ["客戶-關聯人背景資料.txt"] = "姓名/名稱 ：\n陳志明\n類型 ：\n個人\n姓名/名稱 ：\n類型 ：\n法人\n姓名/名稱 ：\n宏遠投資股份有限公司\n類型 ：\n法人\n" });
+
+        // The nameless block in the middle is no one, and its 類型 does not turn the person before it into a company.
+        Assert.True(input.Subject.IsEntity);
+        Assert.Equal([new Relative("陳志明", "關聯人"), new Relative("宏遠投資股份有限公司", "關聯人", IsEntity: true)], input.Subject.Relatives!);
+        var hit = Assert.Single(a.Hits);
+        Assert.Equal((IdentityDecision.Review, row, priority), (hit.Identity.Decision, hit.Identity.Stage3Row, hit.ReviewPriority));
+        Assert.Equal([code], hit.Identity.ReasonCodes);
+        Assert.Equal(ScreeningAssessment.Review, hit.PairResult);
+    }
+
     [Fact]
     public void AUG_12_03_entity_record_is_non_person_review()
     {

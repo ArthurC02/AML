@@ -65,7 +65,7 @@ No HTML sample exists yet, so the pages are assumed to use the export's own labe
 - An attachment the extractor cannot read (image, Word, unknown format, or a `.txt` holding markup that is not an export page) produces an `UNSUPPORTED_ATTACHMENT:<file>` finding. It is disclosed as unread, never treated as "no data"; opening an image does not mean its text was read.
 - An archive over the file-count or extracted-size limit stops the whole batch; it is never truncated or partially accepted.
 
-Customer, related party and Profile data are kept per person; one person's values are never attributed to another. Related parties arrive in their own file (e.g. `客戶-關聯人背景資料.txt`, `key ：` lines) with their role (e.g. 帳戶持有人的法定代理人) taken from the case table. The account holder's files are still read for a related-party hit and stored as case context, linked to the account holder, not to the related party.
+Customer, related party and Profile data are kept per person; one person's values are never attributed to another. Related parties arrive in their own file (e.g. `客戶-關聯人背景資料.txt`, `key ：` lines) with their role (e.g. 帳戶持有人的法定代理人) taken from the case table. The account holder's files are still read for a related-party hit and stored as case context, linked to the account holder, not to the related party. The other way round, a Case on the customer itself that carries the related-party file names the people the customer is tied to (a legal person's senior managers): each `姓名/名稱` block becomes one related person of the customer, a company when its 類型 is not a natural person, with the relation 關聯人 since the file states none. Only the name is taken; the layout (one block per `姓名/名稱`) is assumed, as no sample has such a Case.
 
 ## File layouts
 

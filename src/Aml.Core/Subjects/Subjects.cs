@@ -48,7 +48,7 @@ public sealed record ScreenedSubject(
     /// <summary>A legal person or group (客戶類型 法人): compared on entity identifiers, never on DOB or nationality rules.</summary>
     public bool IsEntity => PartyType is { } t && !IsNaturalPersonType(t);
 
-    private static bool IsNaturalPersonType(string partyType) =>
+    public static bool IsNaturalPersonType(string partyType) =>
         NaturalPersonWords.Any(w => partyType.Contains(w, StringComparison.Ordinal))
         || NaturalPersonLabels.Contains(partyType.Trim(), StringComparer.OrdinalIgnoreCase);
 

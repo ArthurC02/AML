@@ -257,6 +257,7 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-11-09 | GC-11 | an image file and an unrecognised `.txt` holding page source | attachment inventory | `UNSUPPORTED_ATTACHMENT` for both |
 | AUG-11-10 | GC-11 | 客戶檢核處理紀錄 table appended to 案件資訊 | legacy processing record | ImportedDecision only; no extra candidate row |
 | AUG-11-11 | GC-11 | as AUG-11-10, free text after the table | record boundary | `LEGACY_RECORD_BOUNDARY_UNCLEAR` |
+| AUG-11-12 | GC-11 | customer type 法人 with a related-party file (one person, one company), Profile record type Entity naming a director | legal person's senior managers | same name: `ENTITY_SENIOR_MANAGER_AGREEMENT`, row 5 REVIEW, priority NORMAL; another name: `NON_PERSON_SUBJECT_REVIEW`, priority LOW |
 | AUG-12-01 | GC-12 | subject's spouse named as on the Profile | relationship support | MEDIUM support, row 5 REVIEW |
 | AUG-12-02 | GC-12 | subject employer = Profile employer, undated | employment without period | UNCERTAIN, row 6 |
 | AUG-12-03 | GC-12 | Profile record type Entity | `NON_PERSON_SUBJECT_REVIEW` | REVIEW |

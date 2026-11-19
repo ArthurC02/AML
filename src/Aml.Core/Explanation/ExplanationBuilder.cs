@@ -16,19 +16,20 @@ public static class ExplanationBuilder
     private const int MaskKeptPrefix = 3;
     private const int MaskKeptSuffix = 2;
 
-    public static CaseExplanation Build(CaseInput input, CaseAnalysis analysis, IReadOnlyList<PairChange>? changes = null, INewsModel? newsModel = null) =>
+    /// <param name="asOf">The analysis date: with it the age row also says the age on that day; without it only the birth date.</param>
+    public static CaseExplanation Build(CaseInput input, CaseAnalysis analysis, IReadOnlyList<PairChange>? changes = null, INewsModel? newsModel = null, DateOnly? asOf = null) =>
         new(CaseLifecycle.Aggregate(analysis),
-            analysis.Hits.Select((h, i) => Hit(i + 1, input, h, newsModel)).ToList(),
+            analysis.Hits.Select((h, i) => Hit(i + 1, input, h, newsModel, asOf)).ToList(),
             analysis.NotEvaluatedProfiles,
             input.ImportedDecisions,
             changes);
 
-    private static HitExplanation Hit(int number, CaseInput input, HitResult h, INewsModel? newsModel)
+    private static HitExplanation Hit(int number, CaseInput input, HitResult h, INewsModel? newsModel, DateOnly? asOf)
     {
         var s = input.Subject;
         var p = h.Profile;
         var e = h.Identity.Evidence;
-        var rows = Comparison(s, p, e);
+        var rows = Comparison(s, p, e, asOf);
         var subject = ScreenedSubjectLabel(s);
         var candidateRows = input.Rows.Where(r => ProfileKeys.KeyOf(r.ProfileId) == p.ProfileKey).ToList();
         var categories = p.Categories.Select(c => c.Subcategory is null ? c.Category : $"{c.Category} / {c.Subcategory}").ToList();
@@ -132,28 +133,66 @@ public static class ExplanationBuilder
         + $"；理由碼 {Join(h.Identity.ReasonCodes.Concat(h.PairReasonCodes))}。名單條件與身分判斷各自獨立。"
         + Disposition(h.Disposition);
 
-    private static List<ComparisonRow> Comparison(ScreenedSubject s, SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence> e)
+    /// <summary>The nine comparison fields of the bank's screening specification, in its order.</summary>
+    public static readonly IReadOnlyList<string> ComparisonFields =
+        ["中文姓名", "英文姓名", "國籍／所在地國家", "年齡（出生日期）", "性別", "證件號碼／統編", "地址", "職業／任職機構", "其他可識別身分資訊"];
+
+    // The full list of related people is in RelatedParties; the row names the first few.
+    private const int RelatedShownInRow = 5;
+
+    private static List<ComparisonRow> Comparison(ScreenedSubject s, SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence> e, DateOnly? asOf)
     {
         ComparisonStatus StatusOf(EvidenceGroup g) => e.TryGetValue(g, out var v) ? v.Status : ComparisonStatus.SubjectMissing;
         string? DetailOf(EvidenceGroup g) => e.TryGetValue(g, out var v) ? v.Detail : null;
+        var f = ComparisonFields;
+        var subjectCountries = s.Addresses.Select(a => a.Country).OfType<string>().Distinct().ToList();
+        // An entity record is compared on its registration or IMO number, a person on the identity document.
+        var identifier = e.ContainsKey(EvidenceGroup.EntityIdentifier) ? EvidenceGroup.EntityIdentifier : EvidenceGroup.Document;
+        var other = OtherGroups.Select(g => e.GetValueOrDefault(g)).OfType<Evidence>().ToList();
+        var related = p.Relationships.Where(r => !EvidenceBuilder.IsEmployer(r.Relation)).ToList();
 
         return
         [
-            NameRow("中文姓名", s.Names.Where(IsCjk), p.Names.Where(IsCjk)),
-            NameRow("英文姓名／拼音", s.Names.Where(n => !IsCjk(n)), p.Names.Where(n => !IsCjk(n))),
-            new("國籍", NullIfEmpty(Join(s.Nationalities)), NullIfEmpty(Join(p.Citizenship)), StatusOf(EvidenceGroup.Nationality), null),
-            new("出生日期", s.DateOfBirth?.ToString(), NullIfEmpty(Join(p.DatesOfBirth.Select(d => d.ToString()))), StatusOf(EvidenceGroup.DateOfBirth),
+            NameRow(f[0], s.Names.Where(IsCjk), p.Names.Where(IsCjk)),
+            NameRow(f[1], s.Names.Where(n => !IsCjk(n)), p.Names.Where(n => !IsCjk(n))),
+            new(f[2], WithLocation(s.Nationalities, subjectCountries), WithLocation(p.Citizenship, p.AddressCountries), StatusOf(EvidenceGroup.Nationality), null,
+                subjectCountries.Count == 0 || p.AddressCountries.Count == 0 ? null : subjectCountries.Intersect(p.AddressCountries).Any() ? "所在地國家相符" : "所在地國家不同"),
+            new(f[3], s.DateOfBirth is { } own ? WithAge(own, asOf) : null, NullIfEmpty(Join(p.DatesOfBirth.Select(d => WithAge(d, asOf)))), StatusOf(EvidenceGroup.DateOfBirth),
                 DobDifference(e, p), NullIfEmpty(string.Join("；", new[] { EvidenceGroup.StatedAge, EvidenceGroup.StatedBirthDate }.Select(g => e.GetValueOrDefault(g)?.Note).OfType<string>()))),
-            new("性別", Gender(s.Gender), Gender(p.Gender), StatusOf(EvidenceGroup.Gender), DetailOf(EvidenceGroup.StatedGender), e.GetValueOrDefault(EvidenceGroup.StatedGender)?.Note),
-            new("證件", s.Document is { } d ? $"{d.Type} {Mask(d.Number)}" : null,
-                NullIfEmpty(Join((p.Documents ?? []).Select(x => $"{x.Type} {Mask(x.Number)}"))), StatusOf(EvidenceGroup.Document), DetailOf(EvidenceGroup.Document)),
-            new("地址", NullIfEmpty(Join(SubjectAddresses(s))), NullIfEmpty(Join(ProfileAddresses(p))),
+            new(f[4], Gender(s.Gender), Gender(p.Gender), StatusOf(EvidenceGroup.Gender), DetailOf(EvidenceGroup.StatedGender), e.GetValueOrDefault(EvidenceGroup.StatedGender)?.Note),
+            new(f[5], NullIfEmpty(Join(new[] { s.Document is { } d ? $"{d.Type} {Mask(d.Number)}" : null, // Only a legal person's tax number is compared (as its registration number), so only that one is shown.
+                    s.IsEntity && s.TaxId is { State: ValueState.Present, Value: { } tax } ? $"統編 {Mask(tax)}" : null }.OfType<string>())),
+                NullIfEmpty(Join((p.Documents ?? []).Select(x => $"{x.Type} {Mask(x.Number)}"))), StatusOf(identifier), DetailOf(identifier)),
+            new(f[6], NullIfEmpty(Join(SubjectAddresses(s))), NullIfEmpty(Join(ProfileAddresses(p))),
                 StatusOf(EvidenceGroup.Address), DetailOf(EvidenceGroup.Address)),
-            new("職業／雇主", NullIfEmpty(Join(SubjectOccupations(s))), NullIfEmpty(Join(ProfileRoles(p))),
+            new(f[7], NullIfEmpty(Join(SubjectOccupations(s))), NullIfEmpty(Join(ProfileRoles(p))),
                 StatusOf(EvidenceGroup.Employment), DetailOf(EvidenceGroup.Employment)),
-            new("其他識別碼", s.ReferenceNumber is { } r ? $"參考號碼 {Mask(r)}" : null, null, StatusOf(EvidenceGroup.OtherIdentifier),
-                s.ReferenceNumber is null ? null : EvidenceDetails.NotADocument),
+            // Reference numbers, relatives, related companies and (for a legal person) its senior managers.
+            new(f[8], NullIfEmpty(Join(new[] { s.ReferenceNumber is { } r ? $"參考號碼 {Mask(r)}" : null }.OfType<string>().Concat((s.Relatives ?? []).Select(x => $"{x.Relation} {x.Name}")))),
+                NullIfEmpty(Join((p.OtherIdentifiers ?? []).Select(x => $"{x.Label} {Mask(x.Number)}").Concat(related.Take(RelatedShownInRow).Select(x => $"{x.Relation} {x.Name}"))
+                    .Concat(related.Count > RelatedShownInRow ? [$"共 {related.Count} 筆"] : []))),
+                other.Count == 0 ? ComparisonStatus.SubjectMissing : other.Select(x => x.Status).MinBy(x => Array.IndexOf(MostTellingFirst, x)),
+                NullIfEmpty(string.Join("；", new[] { s.ReferenceNumber is null ? null : EvidenceDetails.NotADocument }.Concat(other.Select(x => x.Detail)).OfType<string>().Distinct()))),
         ];
+    }
+
+    private static readonly EvidenceGroup[] OtherGroups = [EvidenceGroup.OtherIdentifier, EvidenceGroup.Relationship, EvidenceGroup.CompanyAssociation];
+
+    // The ninth row holds several groups: it shows the one that says the most.
+    private static readonly ComparisonStatus[] MostTellingFirst =
+        [ComparisonStatus.Exact, ComparisonStatus.Partial, ComparisonStatus.Conflict, ComparisonStatus.Uncertain, ComparisonStatus.ProfileMissing, ComparisonStatus.SubjectMissing];
+
+    private static string? WithLocation(IReadOnlyList<string> nationalities, IReadOnlyList<string> located) =>
+        NullIfEmpty(string.Join("；", new[] { Join(nationalities), located.Count == 0 ? "" : $"所在地 {Join(located)}" }.Where(x => x.Length > 0)));
+
+    // A birth date known to the year gives two possible ages.
+    private static string WithAge(PartialDate dob, DateOnly? asOf)
+    {
+        if (asOf is not { } day) return dob.ToString();
+        var at = new PartialDate(day.Year, day.Month, day.Day);
+        var (min, max) = (HardConflictGate.MinAgeAt(dob, at), HardConflictGate.MaxAgeAt(dob, at));
+        // A birth date in the analysis year or later gives no age worth showing.
+        return min < 0 ? dob.ToString() : $"{dob}（{(min == max ? $"{max}" : $"{min}～{max}")} 歲）";
     }
 
     private static IEnumerable<string> SubjectAddresses(ScreenedSubject s) =>

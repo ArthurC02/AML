@@ -50,6 +50,7 @@ public static class CodeCatalog
         ("IDENTITY_REASON", "NEWS_GENDER_DIFFERENCE", "新聞所載性別不符", "新聞在名單人物姓名旁所載的性別與受檢對象不同；排除第三階段第 3、4 列。名單本身的性別相符時只顯示。", "NewsStatedCheck.CheckGender", Identity + "#birth-date-and-gender-stated-in-a-source"),
         ("IDENTITY_REASON", "ENTITY_IDENTIFIER_AGREEMENT", "實體識別碼相符", "非自然人記錄：雙方登記號碼或 IMO 號碼相同。", "IdentityDecisionPolicy.EntityDecision", Identity + "#reason-code-registry"),
         ("IDENTITY_REASON", "ENTITY_IDENTIFIER_CONFLICT", "實體識別碼不符", "非自然人記錄：同一種識別碼號碼不同。", "IdentityDecisionPolicy.EntityDecision", Identity + "#reason-code-registry"),
+        ("IDENTITY_REASON", "ENTITY_SENIOR_MANAGER_AGREEMENT", "高階管理人同名", "非自然人記錄：沒有可比對的實體識別碼，但雙方記載同名的高階管理人；部分佐證，REVIEW。", "IdentityDecisionPolicy.EntityDecision", Identity + "#reason-code-registry"),
 
         ("PAIR_REASON", "RELEASE_CONTROL_HUMAN_REVIEW", "放行控制：人工複核", "Sanction、PEP 或 RCA 條件為 HIT 或 UNKNOWN、原本為 NO_HIT 的組合，第一階段一律轉 REVIEW 交由人工。", "AssessmentPolicy.Assess", Disposition + "#two-results-read-separately"),
         ("PAIR_REASON", "SOURCE_CONDITION_UNKNOWN", "名單條件未知", "名單條件無法確定（UNKNOWN）；身分 NO_MATCH 時為 NO_HIT，Sanction、PEP、RCA 則由放行控制轉 REVIEW。", "AssessmentPolicy.Assess", Watchlist + "#reason-codes"),
@@ -114,6 +115,7 @@ public static class CodeCatalog
         ("EVIDENCE_DETAIL", "SAME_ORGANIZATION_SAME_PERIOD", "同機構同期間", "雙方在重疊期間任職同一機構；MEDIUM 佐證。", "EvidenceBuilder.EmploymentEvidence", Identity + "#comparison-rules"),
         ("EVIDENCE_DETAIL", "SAME_ORGANIZATION_NO_COMMON_PERIOD", "同機構，無共同期間", "同一機構，但缺期間或期間不重疊；不確定。", "EvidenceBuilder.EmploymentEvidence", Identity + "#comparison-rules"),
         ("EVIDENCE_DETAIL", "SAME_NAMED_RELATIVE", "同名關係人", "雙方記載同名且同關係的關係人（冒號後為關係）；佐證。", "EvidenceBuilder.RelativeEvidence", Identity + "#evidence-groups"),
+        ("EVIDENCE_DETAIL", "SAME_NAMED_SENIOR_MANAGER", "同名高階管理人", "法人件：雙方記載同名的高階管理人（職稱用語不必相同）；佐證。", "EvidenceBuilder.RelativeEvidence", Identity + "#evidence-groups"),
         ("EVIDENCE_DETAIL", "SOFT_DIFFERENCE", "地址軟差異", "地址差異只是弱訊號，從不構成衝突；括號內為 Jaccard 相似度。", "EvidenceBuilder.AddressEvidence", Identity + "#comparison-rules"),
         ("EVIDENCE_DETAIL", "SAME_ADDRESS_NO_PERIOD", "相同地址，無期間", "地址結構鍵相同，但雙方都沒有居住期間；不是佐證。", "EvidenceBuilder.AddressEvidence", Identity + "#comparison-rules"),
         ("EVIDENCE_DETAIL", "NOT_IDENTICAL_AFTER_NORMALIZATION", "正規化後仍不同", "姓名正規化後不完全相同；括號內為相似度。", "NameComparison.CompareNames", Identity + "#name-comparison"),

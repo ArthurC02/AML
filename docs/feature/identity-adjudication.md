@@ -75,7 +75,11 @@ Jaro-Winkler, Levenshtein and exact comparison of the same name are correlated f
 
 Photos are not evidence: appearance is never used to support or oppose identity or to estimate age, nationality, gender or name. This is the bank's current specification, not an industry rule; adding photo comparison needs a business-rule change, source and quality conditions and human review ([ADR-0001](../adr/0001-identity-adjudication.md)).
 
-These groups describe natural persons. A customer or related party is a natural person when its 客戶類型 (類型 for a related party) is missing or says 個人, 自然人, Person, Individual or Natural Person (in any case); any other value makes it a legal person or group. Organization, vessel and other Profiles use `ENTITY_IDENTIFIER` instead (registration number with a known, equal jurisdiction; IMO number for vessels, whatever the flag): agreement is `ENTITY_IDENTIFIER_AGREEMENT` (PROBABLE_MATCH, external REVIEW), a different number under the same key is `ENTITY_IDENTIFIER_CONFLICT` (REVIEW); otherwise, and always for a natural-person subject, `NON_PERSON_SUBJECT_REVIEW`. Entity rules are pending an entity Golden Case.
+These groups describe natural persons. A customer or related party is a natural person when its 客戶類型 (類型 for a related party) is missing or says 個人, 自然人, Person, Individual or Natural Person (in any case); any other value makes it a legal person or group. Organization, vessel and other Profiles use `ENTITY_IDENTIFIER` instead (registration number with a known, equal jurisdiction; IMO number for vessels, whatever the flag): agreement is `ENTITY_IDENTIFIER_AGREEMENT` (PROBABLE_MATCH, external REVIEW), a different number under the same key is `ENTITY_IDENTIFIER_CONFLICT` (REVIEW); otherwise, and always for a natural-person subject, `NON_PERSON_SUBJECT_REVIEW`.
+
+The people a legal person names are its senior managers (the ninth comparison field of the bank's specification). Against an organization record they are compared with the people that record names, by EXACT name only: the bank and the list word the post differently (負責人, Director), so the relation label is not compared. A manager both sides name is RELATIONSHIP support with detail `SAME_NAMED_SENIOR_MANAGER`. It never outweighs the identifier: with a comparable identifier the identifier decides; without one the pair is `ENTITY_SENIOR_MANAGER_AGREEMENT`, REVIEW on row 5, so review priority NORMAL instead of LOW. A name alone can be a coincidence, which is why this is never PROBABLE_MATCH. The bank export does not yet list a legal person's managers on the customer (a manager who is screened is a Case of their own, as a related party), so the rule acts only when the input supplies them.
+
+Entity rules are pending an entity Golden Case; until one is supplied they are checked on made-up companies only.
 
 ## Hit prerequisites and direct identifiers
 
@@ -326,6 +330,7 @@ Only registered codes may appear in decisions. New codes are added here with the
 | `NEWS_GENDER_DIFFERENCE` | NewsStatedCheck | it differs; rules out rows 3 and 4 unless the Profile's own gender agrees |
 | `ENTITY_IDENTIFIER_AGREEMENT` | IdentityDecisionPolicy | entity record: the same registration or IMO number on both sides |
 | `ENTITY_IDENTIFIER_CONFLICT` | IdentityDecisionPolicy | entity record: a different number under the same key |
+| `ENTITY_SENIOR_MANAGER_AGREEMENT` | IdentityDecisionPolicy | entity record with no comparable identifier: a senior manager of the same name on both sides; partial support, REVIEW |
 | `ART22_RULING_20261014_MAY_APPLY` | DispositionPolicy | the 2026-10-14 ruling may apply; flagged, not applied |
 | `ART22_FOREIGN_PEP_PRESUMPTION` | DispositionPolicy | Article 22 ① presumption; identity unchanged |
 | `ART22_ADVERSE_UNRELATED` | DispositionPolicy | Article 22 ②; an ADVERSE_MEDIA condition set aside |

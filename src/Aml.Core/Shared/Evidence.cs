@@ -50,6 +50,7 @@ public static class ReasonCodes
     public const string SourceQualityDowngrade = "SOURCE_QUALITY_DOWNGRADE";
     public const string EntityIdentifierAgreement = "ENTITY_IDENTIFIER_AGREEMENT";
     public const string EntityIdentifierConflict = "ENTITY_IDENTIFIER_CONFLICT";
+    public const string EntitySeniorManagerAgreement = "ENTITY_SENIOR_MANAGER_AGREEMENT";
 }
 
 public static class EvidenceDetails
@@ -62,6 +63,7 @@ public static class EvidenceDetails
     public const string SameOrganizationNoCommonPeriod = "SAME_ORGANIZATION_NO_COMMON_PERIOD";
     // Written with the relation: SAME_NAMED_RELATIVE:SPOUSE.
     public const string SameNamedRelative = "SAME_NAMED_RELATIVE";
+    public const string SameNamedSeniorManager = "SAME_NAMED_SENIOR_MANAGER";
     public const string SoftDifference = "SOFT_DIFFERENCE";
     public const string SameAddressNoPeriod = "SAME_ADDRESS_NO_PERIOD";
     public const string NotIdenticalAfterNormalization = "NOT_IDENTICAL_AFTER_NORMALIZATION";

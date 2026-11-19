@@ -24,7 +24,7 @@ Build a traceable identity adjudication flow for customer and related-party scre
 - unrestricted web search;
 - OCR where structured HTML is available;
 - universal news event extraction;
-- automatic identity decisions for organization, vessel and other non-person Profiles: they are retrieved, deduplicated and preserved with their source conditions; entity identifiers (registration number with jurisdiction, IMO number) can raise review priority, but the external result stays REVIEW until the entity rules are validated with an entity Golden Case;
+- automatic identity decisions for organization, vessel and other non-person Profiles: they are retrieved, deduplicated and preserved with their source conditions; entity identifiers (registration number with jurisdiction, IMO number) and a senior manager both sides name can raise review priority, but the external result stays REVIEW until the entity rules are validated with an entity Golden Case;
 - LLM-based identity or legal adjudication, and AI-assigned match probabilities ([ADR-0001](../adr/0001-identity-adjudication.md));
 - photo or face comparison;
 - unapproved AML scoring weights;

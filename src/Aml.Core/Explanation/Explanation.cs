@@ -8,7 +8,7 @@ using Aml.Core.Subjects;
 namespace Aml.Core.Explanation;
 
 public sealed record ComparisonRow(
-    [property: Description("比對項目（固定順序：中文姓名、英文姓名／拼音、國籍、出生日期、性別、證件、地址、職業／雇主、其他識別碼）")] string Field,
+    [property: Description("比對項目（固定順序：中文姓名、英文姓名、國籍／所在地國家、年齡（出生日期）、性別、證件號碼／統編、地址、職業／任職機構、其他可識別身分資訊）")] string Field,
     [property: Description("受檢對象的值；證件與參考號碼已遮罩")][property: Sensitivity(Sensitivity.Identifier)] string? SubjectValue,
     [property: Description("名單的值；證件已遮罩")][property: Sensitivity(Sensitivity.Identifier)] string? ProfileValue,
     [property: Description("比對狀態，見 /api/codes")] ComparisonStatus Status,

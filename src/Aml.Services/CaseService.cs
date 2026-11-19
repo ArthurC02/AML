@@ -111,7 +111,7 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
             var revision = current.CurrentRevision + 1;
             var status = CaseLifecycle.AfterAnalysis(analysis, current.Status);
             var changes = await ChangesSinceEffectiveRevisionAsync(current, analysis, ct).ConfigureAwait(false);
-            var explanation = ExplanationBuilder.Build(input, analysis, changes, newsModel);
+            var explanation = ExplanationBuilder.Build(input, analysis, changes, newsModel, asOf);
             var quality = AnalysisQuality.Of(explanation.Hits, input.Subject.Findings, analysis.NotEvaluatedProfiles.Count);
             var modelRan = explanation.Hits.Any(h => h.NewsDigest?.Model is not null);
             var record = new AnalysisRecord(current.CaseId, revision, execution, CaseLifecycle.Aggregate(analysis),

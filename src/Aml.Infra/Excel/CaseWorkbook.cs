@@ -148,7 +148,7 @@ public static class CaseWorkbook
     private static Table Comparison(IReadOnlyList<HitExplanation> hits) => new("比對",
     [
         new("命中編號", "hitNumber", "hit 編號"),
-        new("比對項目", "comparison[].field", "固定順序：中文姓名、英文姓名／拼音、國籍、出生日期、性別、證件、地址、職業／雇主、其他識別碼"),
+        new("比對項目", "comparison[].field", "固定順序：中文姓名、英文姓名、國籍／所在地國家、年齡（出生日期）、性別、證件號碼／統編、地址、職業／任職機構、其他可識別身分資訊"),
         new("受檢對象的值", "comparison[].subjectValue", "受檢對象的值；證件與參考號碼已遮罩", Identifying: true),
         new("名單的值", "comparison[].profileValue", "名單的值；證件已遮罩", Identifying: true),
         new("比對狀態", "comparison[].status", "比對狀態"),

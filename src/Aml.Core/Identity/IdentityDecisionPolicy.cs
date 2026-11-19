@@ -55,7 +55,10 @@ public static class IdentityDecisionPolicy
         if (comparable.Count == 0)
         {
             e[g] = new(g, Direction.Neutral, subject.Count == 0 ? ComparisonStatus.SubjectMissing : profile.Count == 0 ? ComparisonStatus.ProfileMissing : ComparisonStatus.Uncertain);
-            return new IdentityResult(e, null, null, IdentityDecision.Review, [ReasonCodes.NonPersonSubjectReview]);
+            // A senior manager of the same name on both sides is partial support: a person still decides, but sooner.
+            return e.GetValueOrDefault(EvidenceGroup.Relationship)?.Detail == EvidenceDetails.SameNamedSeniorManager
+                ? new IdentityResult(e, null, Stage3Rows.PartialSupport, IdentityDecision.Review, [ReasonCodes.EntitySeniorManagerAgreement])
+                : new IdentityResult(e, null, null, IdentityDecision.Review, [ReasonCodes.NonPersonSubjectReview]);
         }
         if (comparable.Any(x => EvidenceBuilder.DocumentNumber(x.a.Number) == EvidenceBuilder.DocumentNumber(x.b.Number)))
         {
@@ -84,6 +87,7 @@ public static class IdentityDecisionPolicy
     public static IReadOnlyList<WouldChangeIf> Contrast(IdentityResult r)
     {
         if (r.Stage3Row is not (Stage3Rows.StrongSupport or Stage3Rows.ConsistentAtPrecision or Stage3Rows.PartialSupport or Stage3Rows.NoSupport)) return [];
+        if (r.Evidence.ContainsKey(EvidenceGroup.EntityIdentifier)) return [];
         var dob = r.Evidence.GetValueOrDefault(EvidenceGroup.DateOfBirth);
         if (dob?.Detail == Findings.ProfileMultipleDob) return [];
 

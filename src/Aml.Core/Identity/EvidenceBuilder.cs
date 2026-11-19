@@ -22,7 +22,7 @@ public static class EvidenceBuilder
         Add(TemporalEvidence(s, p, news));
         Add(EmploymentEvidence(s, p));
         Add(RelativeEvidence(EvidenceGroup.Relationship, SubjectRelatives(s, isEntity: false),
-            p.Relationships.Where(r => !r.IsEntity).ToList(), Strength.Medium));
+            p.Relationships.Where(r => !r.IsEntity).ToList(), Strength.Medium, seniorManagers: s.IsEntity && !p.RecordType.Equals("Person", StringComparison.OrdinalIgnoreCase)));
         Add(RelativeEvidence(EvidenceGroup.CompanyAssociation, SubjectRelatives(s, isEntity: true),
             p.Relationships.Where(r => r.IsEntity && !IsEmployer(r.Relation)).ToList(), Strength.Low));
         Add(AddressEvidence(s, p));
@@ -152,17 +152,20 @@ public static class EvidenceBuilder
     /// <summary>
     /// A relative or related company named on both sides with the same relation and an EXACT name is support.
     /// An undated relationship holds only as of the source capture date, so nothing is projected backwards.
+    /// The people of a legal person are its senior managers: the bank and the list name the post in their own words
+    /// (負責人, Director), so the same name is enough there and the detail says SAME_NAMED_SENIOR_MANAGER.
     /// </summary>
-    public static Evidence? RelativeEvidence(EvidenceGroup g, IReadOnlyList<Relative> subject, IReadOnlyList<ProfileRelationship> profile, Strength strength)
+    public static Evidence? RelativeEvidence(EvidenceGroup g, IReadOnlyList<Relative> subject, IReadOnlyList<ProfileRelationship> profile, Strength strength,
+        bool seniorManagers = false)
     {
         if (subject.Count == 0)
             return profile.Count > 0 ? new(g, Direction.Neutral, ComparisonStatus.SubjectMissing) : null;
         if (profile.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.ProfileMissing);
-        var same = subject.FirstOrDefault(a => profile.Any(b => CanonicalRelation(a.Relation) == CanonicalRelation(b.Relation)
+        var same = subject.FirstOrDefault(a => profile.Any(b => (seniorManagers || CanonicalRelation(a.Relation) == CanonicalRelation(b.Relation))
             && NameComparison.CompareNames([a.Name], [b.Name]).Status == ComparisonStatus.Exact));
-        return same is not null
-            ? new(g, Direction.Support, ComparisonStatus.Exact, strength, $"{EvidenceDetails.SameNamedRelative}:{CanonicalRelation(same.Relation)}")
-            : new(g, Direction.Neutral, ComparisonStatus.Uncertain);
+        return same is null ? new(g, Direction.Neutral, ComparisonStatus.Uncertain)
+            : new(g, Direction.Support, ComparisonStatus.Exact, strength,
+                seniorManagers ? EvidenceDetails.SameNamedSeniorManager : $"{EvidenceDetails.SameNamedRelative}:{CanonicalRelation(same.Relation)}");
     }
 
     internal static bool IsEmployer(string relation) => relation.Equals("Employer", StringComparison.OrdinalIgnoreCase);

@@ -52,7 +52,7 @@ public class CaseReaderTests
     private static string Text(string gc, string file) => File.ReadAllText(Path.Combine(GoldenCaseTests.Folder(gc), file)).ReplaceLineEndings("\n");
 
     private static ComparisonRow Nationality(CaseInput input) =>
-        ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input)).Hits[0].Comparison.Single(r => r.Field == "國籍");
+        ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input)).Hits[0].Comparison.Single(r => r.Field == "國籍／所在地國家");
 
     // Countries.
 

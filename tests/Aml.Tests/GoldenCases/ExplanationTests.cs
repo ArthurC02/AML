@@ -17,7 +17,7 @@ public class ExplanationTests
         return ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input)).Hits[index];
     }
 
-    private static readonly string[] FixedOrder = ["中文姓名", "英文姓名／拼音", "國籍", "出生日期", "性別", "證件", "地址", "職業／雇主", "其他識別碼"];
+    private static readonly string[] FixedOrder = ["中文姓名", "英文姓名", "國籍／所在地國家", "年齡（出生日期）", "性別", "證件號碼／統編", "地址", "職業／任職機構", "其他可識別身分資訊"];
 
     private static ComparisonRow Row(HitExplanation h, string field) => h.Comparison.Single(r => r.Field == field);
 
@@ -37,16 +37,16 @@ public class ExplanationTests
         Assert.Equal(["鐘仁聲", "钟仁声"], h.MatchedNames);
         Assert.Equal(Exact, Row(h, "中文姓名").Status);
         Assert.Contains("鍾任聲", Row(h, "中文姓名").ProfileValue, StringComparison.Ordinal);
-        Assert.Equal(SubjectMissing, Row(h, "其他識別碼").Status);
+        Assert.Equal(SubjectMissing, Row(h, "其他可識別身分資訊").Status);
 
-        var dob = Row(h, "出生日期");
+        var dob = Row(h, "年齡（出生日期）");
         Assert.Equal("1973-06-12", dob.SubjectValue);
         Assert.Equal("1973、1972", dob.ProfileValue);
         Assert.Equal(Partial, dob.Status);
         Assert.Equal(ReasonCodes.BirthYearMatchFullDateNotComparable, dob.Difference);
 
         // The document number is masked.
-        Assert.Equal("TW_NATIONAL_ID A12*****89", Row(h, "證件").SubjectValue);
+        Assert.Equal("TW_NATIONAL_ID A12*****89", Row(h, "證件號碼／統編").SubjectValue);
         Assert.Contains(Findings.HistoricalAdminDivision, h.DataQualityFindings);
         Assert.Contains("DATE_OF_BIRTH（LOW", h.Summary.KeyEvidenceOrGaps, StringComparison.Ordinal);
         Assert.Contains("雙方沒有可共同比對的直接識別資料", h.Summary.KeyEvidenceOrGaps, StringComparison.Ordinal);
@@ -62,10 +62,10 @@ public class ExplanationTests
         Assert.Equal("關聯人（帳戶持有人的法定代理人） 陳志明", h.ScreenedSubject);
         Assert.Empty(h.Support);
         Assert.Equal(SubjectMissing, Row(h, "性別").Status);
-        Assert.Equal(ProfileMissing, Row(h, "出生日期").Status);
-        Assert.Equal("參考號碼 B12*****80", Row(h, "其他識別碼").SubjectValue);
-        Assert.Equal("NOT_A_DOCUMENT", Row(h, "其他識別碼").Difference);
-        Assert.Contains("受僱於 Heng Yuan Life Industry Company Limited", Row(h, "職業／雇主").ProfileValue, StringComparison.Ordinal);
+        Assert.Equal(ProfileMissing, Row(h, "年齡（出生日期）").Status);
+        Assert.Equal("參考號碼 B12*****80", Row(h, "其他可識別身分資訊").SubjectValue);
+        Assert.Equal("NOT_A_DOCUMENT", Row(h, "其他可識別身分資訊").Difference);
+        Assert.Contains("受僱於 Heng Yuan Life Industry Company Limited", Row(h, "職業／任職機構").ProfileValue, StringComparison.Ordinal);
         Assert.Contains(Findings.PostalCodeOnly, h.DataQualityFindings);
         Assert.Contains(Findings.DuplicatedAddressLine, h.DataQualityFindings);
         Assert.Contains("沒有任何佐證", h.Summary.KeyEvidenceOrGaps, StringComparison.Ordinal);
@@ -102,7 +102,7 @@ public class ExplanationTests
         Assert.Equal(ReasonCodes.ImpossibleAgeAtReportedEvent, h.HardConflict);
         Assert.Null(h.Stage3Row);
         Assert.Empty(h.Sources); // GC-01 cites no source and has no attached news
-        Assert.Contains("董事長，宏遠投資股份有限公司（1990-07 起）", Row(h, "職業／雇主").ProfileValue, StringComparison.Ordinal);
+        Assert.Contains("董事長，宏遠投資股份有限公司（1990-07 起）", Row(h, "職業／任職機構").ProfileValue, StringComparison.Ordinal);
         Assert.Equal("硬衝突 IMPOSSIBLE_AGE_AT_REPORTED_EVENT，足以排除。除姓名、國籍、性別等前提條件外，沒有任何佐證。", h.Summary.KeyEvidenceOrGaps);
         Assert.Contains("NO_MATCH（第一階段硬衝突", h.Summary.Conclusion, StringComparison.Ordinal);
     }
@@ -143,7 +143,7 @@ public class ExplanationTests
     {
         var h = Hit("GC-03");
 
-        Assert.Equal(Exact, Row(h, "英文姓名／拼音").Status);
+        Assert.Equal(Exact, Row(h, "英文姓名").Status);
         Assert.Equal(SubjectMissing, Row(h, "中文姓名").Status);
         var address = Row(h, "地址");
         Assert.Equal(Uncertain, address.Status);
@@ -175,7 +175,7 @@ public class ExplanationTests
     {
         var h = Hit("GC-12");
 
-        Assert.Contains(h.ProfileName!, Row(h, "中文姓名").ProfileValue + Row(h, "英文姓名／拼音").ProfileValue, StringComparison.Ordinal);
+        Assert.Contains(h.ProfileName!, Row(h, "中文姓名").ProfileValue + Row(h, "英文姓名").ProfileValue, StringComparison.Ordinal);
         Assert.Equal(["S1", "S2"], h.Sources.Select(s => s.Ref));
         Assert.Contains("）[S1]判定為", h.Summary.ExternalData, StringComparison.Ordinal);
         Assert.EndsWith("附加新聞有[S2]。", h.Summary.ExternalData, StringComparison.Ordinal);
@@ -190,9 +190,56 @@ public class ExplanationTests
             [new SourceCategory("Special Interest Person (SIP)", "Fraud")], [], [], [], null, [], []);
         var input = new CaseInput(subject, [new CandidateRow("陳志明", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
             new Dictionary<string, NewsItem> { ["1"] = new("1", "DOC1", "標題", "某報", new PartialDate(2026, 3, 1), "陳志明（45歲）涉案。") }, []);
-        var dob = Row(Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input)).Hits), "出生日期");
+        var dob = Row(Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input)).Hits), "年齡（出生日期）");
 
         Assert.Equal($"{ReasonCodes.BirthYearMatchFullDateNotComparable}；{ReasonCodes.AgeCompatibleAtReport}", dob.Difference);
         Assert.Contains("推算 45 歲", dob.Note, StringComparison.Ordinal);
+    }
+
+    // The bank's nine comparison fields: location country next to nationality, the age on the analysis day, the tax number
+    // next to the document, and related people in the ninth row.
+    [Fact]
+    public void The_nine_fields_show_location_country_age_tax_number_and_related_people()
+    {
+        var subject = new ScreenedSubject(SubjectRole.Customer, null, ["陳志明"], Gender.Male, new PartialDate(1980, 5, 20), ["TW"], null, null,
+            new FieldValue("12345678", ValueState.Present), null, [new Address("戶籍", "臺北市某路1號", null, "TW")], [])
+        { Relatives = [new Relative("許雅婷", "配偶")] };
+        var profile = new SourceProfile("DJ:1", Gender.Male, ["陳志明"], [new PartialDate(1980)], ["TW"], ["US"],
+            [new SourceCategory("Special Interest Person (SIP)", "Fraud")], [], [], [new ProfileRelationship("2", "許雅婷", "Wife")], null, [], []);
+        var input = new CaseInput(subject, [new CandidateRow("陳志明", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
+            new Dictionary<string, NewsItem>(), []);
+        var h = Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input), asOf: new DateOnly(2026, 5, 19)).Hits);
+
+        var country = Row(h, "國籍／所在地國家");
+        Assert.Equal(("TW；所在地 TW", "TW；所在地 US", Exact, "所在地國家不同"), (country.SubjectValue, country.ProfileValue, country.Status, country.Note));
+        // The day before the 46th birthday; a year-only birth date leaves two ages open.
+        Assert.Equal(("1980-05-20（45 歲）", "1980（45～46 歲）"), (Row(h, "年齡（出生日期）").SubjectValue, Row(h, "年齡（出生日期）").ProfileValue));
+        // A natural person's tax number is compared with nothing, so it is not shown.
+        Assert.Null(Row(h, "證件號碼／統編").SubjectValue);
+        var other = Row(h, "其他可識別身分資訊");
+        Assert.Equal(("配偶 許雅婷", "Wife 許雅婷", Exact, "SAME_NAMED_RELATIVE:SPOUSE"), (other.SubjectValue, other.ProfileValue, other.Status, other.Difference));
+    }
+
+    // A legal person against an organization record: the senior manager both sides name is shown and moves the pair up.
+    [Fact]
+    public void A_legal_person_with_a_senior_manager_both_sides_name_is_partial_support()
+    {
+        var company = new ScreenedSubject(SubjectRole.Customer, null, ["宏遠投資股份有限公司"], null, null, ["TW"], null, null,
+            new FieldValue("12345678", ValueState.Present), null, [], [], PartyType: "法人")
+        { Relatives = [new Relative("陳志明", "負責人")] };
+        var record = new SourceProfile("DJ:1", null, ["宏遠投資股份有限公司"], [], [], [], [new SourceCategory("Special Interest Entity (SIE)", "Fraud")],
+            [], [], [new ProfileRelationship("2", "陳志明", "Director")], null, [], [], RecordType: "Entity");
+        var input = new CaseInput(company, [new CandidateRow("宏遠投資股份有限公司", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = record },
+            new Dictionary<string, NewsItem>(), []);
+        var analysis = CaseAnalyzer.Analyze(input);
+        var h = Assert.Single(ExplanationBuilder.Build(input, analysis).Hits);
+
+        Assert.Equal((IdentityDecision.Review, 5, Aml.Core.Screening.ReviewPriority.Normal), (h.IdentityDecision, h.Stage3Row, h.ReviewPriority));
+        Assert.Equal([ReasonCodes.EntitySeniorManagerAgreement], h.ReasonCodes);
+        Assert.Empty(h.WouldChangeIf);
+        var other = Row(h, "其他可識別身分資訊");
+        Assert.Equal(("負責人 陳志明", "Director 陳志明", Exact, "SAME_NAMED_SENIOR_MANAGER"), (other.SubjectValue, other.ProfileValue, other.Status, other.Difference));
+        // The company's tax number is its registration number; the record carries none to compare it with.
+        Assert.Equal(("統編 123***78", ProfileMissing), (Row(h, "證件號碼／統編").SubjectValue, Row(h, "證件號碼／統編").Status));
     }
 }

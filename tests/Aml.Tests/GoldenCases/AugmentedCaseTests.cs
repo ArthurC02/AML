@@ -458,6 +458,16 @@ public class AugmentedCaseTests
         Assert.Equal((5, IdentityDecision.Review), (id.Stage3Row, id.Decision));
     }
 
+    [Theory]
+    [InlineData("林美玲犯詐欺取財罪，處有期徒刑一年。\n王大明無罪。", LegalStage.Convicted)]
+    [InlineData("王大明犯詐欺取財罪，處有期徒刑一年。\n林美玲無罪。", LegalStage.Acquitted)]
+    public void AUG_02_22_a_judgments_order_gives_the_profile_persons_own_outcome(string order, LegalStage stage)
+    {
+        var judgment = $"被告 林美玲\n被告 王大明\n上列被告因詐欺案件，經檢察官提起公訴，本院判決如下：\n主 文\n{order}\n理 由\n被告二人被訴詐欺取財。";
+        var (_, a) = Augment("GC-02", [(News21, "檢方已分案偵辦。", judgment)]);
+        Assert.Equal(stage, Assert.Single(Hit21(a).Conditions).LegalStage);
+    }
+
     // GC-03: Vietnamese customer and Profile (citizenship Viet Nam), active official wanted list, PROBABLE_MATCH.
 
     private static readonly (string, string, string) ToPep =

@@ -55,10 +55,8 @@ public class NewsModelCaseTests : ServiceTestBase
     /// must stay as it is without the models.
     /// </summary>
     [Theory]
-    // A judgment with two defendants: the Profile person is convicted, the co-defendant acquitted. The models read it;
-    // the rules' stage is UNKNOWN, because the stage heuristic does not read a judgment's own wording (提起公訴, 處有期徒刑
-    // in the order) until that is approved on a Golden Case (watchlist-and-adverse-information.md, legal stage).
-    [InlineData("judgment", Judgment, LegalStage.Unknown, NewsParty.Suspect, "Conviction", "Acquittal", "王大明", "Acquittal", "Conviction")]
+    // A judgment with two defendants: the Profile person is convicted, the co-defendant acquitted.
+    [InlineData("judgment", Judgment, LegalStage.Convicted, NewsParty.Suspect, "Conviction", "Acquittal", "王大明", "Acquittal", "Conviction")]
     // The Profile person is the victim of someone else's indicted fraud: no step is theirs.
     [InlineData("victim", "王大明涉嫌以假投資詐騙，檢方已起訴王大明。被害人林美玲表示遭騙新臺幣一百萬元。", LegalStage.Unknown, NewsParty.Victim, "", "Indictment,Conviction,Arrest", "王大明", "Indictment", "Conviction")]
     // One name stands for a group: the arrest and the referral are the Profile person's too.

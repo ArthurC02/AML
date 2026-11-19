@@ -370,9 +370,73 @@ public static partial class SourceConditions
                 if (LastStageIn(clause, attributable, own) is { } found) stage = found;
             }
         }
+        var (ordered, defendant) = JudgmentReading(news, names);
+        if (ordered is { } outcome) return outcome; // a judgment's order is its outcome
+        if (defendant && stage == LegalStage.Unknown) return LegalStage.Indicted; // a listed defendant stands indicted, whatever the order goes on to say
         var underInvestigation = blanked.Contains("偵辦", StringComparison.Ordinal) || blanked.Contains("調查", StringComparison.Ordinal);
         return stage == LegalStage.Unknown && underInvestigation ? LegalStage.Alleged : stage;
     }
+
+    // A judgment's order (the lines from 主文 to the 事實 / 理由 heading) is written to a fixed form: who is sentenced
+    // (處有期徒刑, 拘役, 罰金, 無期徒刑, 死刑, 免刑) and who is 無罪. Only what the order says of the Profile person counts:
+    // where they are the subject of a clause (the name opens it, alone or in a list of names: 林美玲、王大明均無罪; never
+    // 王大明對林美玲犯詐欺罪 or 原判決關於林美玲部分撤銷), up to a clause that opens with another person's name (林美玲處
+    // 有期徒刑一年，王大明無罪). A sentence in any part of the order makes CONVICTED, else an acquittal ACQUITTED; an order
+    // that says neither of them (上訴駁回, 免訴, 公訴不受理) gives nothing. Whether the person is a listed defendant (a
+    // 被告 line before 主文) is told as well: such a person stands indicted even when the order is not read.
+    // ponytail: pending a judgment Golden Case. Not read: an order sentence that goes on about the person without naming
+    // them again (又犯…罪，處…), a co-defendant of the same surname, and anything after the order that overturns it (the
+    // order wins over the rest of the text). An order with no 事實 / 理由 heading is read for 40 lines at most.
+    private static (LegalStage? Stage, bool Defendant) JudgmentReading(string news, IReadOnlyList<string> names)
+    {
+        var lines = news.Split('\n');
+        var start = Array.FindIndex(lines, l => Compact(l) == "主文");
+        if (start < 0) return (null, false);
+        var own = names.Take(100).Where(n => n.Length > 1).ToList();
+        var surnames = own.Where(n => CjkText.IsCjk(n[0])).Select(n => n[0]).ToHashSet();
+        var defendant = lines.Take(start).Select(Compact).Any(l => DefendantLine().IsMatch(l) && own.Exists(n => l.Contains(n, StringComparison.OrdinalIgnoreCase)));
+        var end = Array.FindIndex(lines, start + 1, l => OrderEnd().IsMatch(Compact(l)));
+        var order = string.Join('\n', lines[(start + 1)..Math.Min(end < 0 ? lines.Length : end, start + 1 + MaxOrderLines)]);
+        LegalStage? stage = null;
+        foreach (var (at, length) in Spans(order, 0, order.Length, SentenceEnds))
+        {
+            var theirs = new System.Text.StringBuilder();
+            foreach (var (from, size) in Spans(order, at, length, ClauseEnds))
+            {
+                var clause = order.Substring(from, size);
+                var named = own.Exists(n => clause.IndexOf(n, StringComparison.OrdinalIgnoreCase) is >= 0 and var i && OrderSubject().IsMatch(clause[..i]));
+                if (theirs.Length == 0 && !named) continue;
+                if (!named && OrderOpensWithName().Match(clause) is { Success: true } m
+                    && CommonSurnames.Contains(m.Value.TrimStart()[0], StringComparison.Ordinal) && !surnames.Contains(m.Value.TrimStart()[0])) break;
+                theirs.Append(clause).Append('，');
+            }
+            var said = theirs.ToString();
+            if (OrderSentence().IsMatch(said)) return (LegalStage.Convicted, defendant);
+            if (said.Contains("無罪", StringComparison.Ordinal)) stage = LegalStage.Acquitted;
+        }
+        return (stage, defendant);
+    }
+
+    private const int MaxOrderLines = 40;
+
+    private static string Compact(string s) => string.Concat(s.Where(c => !char.IsWhiteSpace(c)));
+
+    [GeneratedRegex("處(?:有期徒刑|拘役|罰金|無期徒刑|死刑)|免刑")]
+    private static partial Regex OrderSentence();
+
+    [GeneratedRegex("^(?:[一二三四五壹貳參]、)?(?:犯罪)?(?:事實|理由).{0,12}$")]
+    private static partial Regex OrderEnd();
+
+    [GeneratedRegex("^(?:上訴人即|上訴人|即)*被告")]
+    private static partial Regex DefendantLine();
+
+    // What may stand before the person's name when they are the clause's subject: 被告, and other names of a list.
+    [GeneratedRegex(@"^\s*(?:(?:上訴人即)?被告)?(?:\p{IsCJKUnifiedIdeographs}{2,4}[、及與])*$")]
+    private static partial Regex OrderSubject();
+
+    // Another defendant's part of an order sentence: a name of two to four characters right before what the order says of them.
+    [GeneratedRegex(@"^\s*\p{IsCJKUnifiedIdeographs}{2,4}?(?=共同|幫助|犯|無罪|處|均|應|部分|被訴)")]
+    private static partial Regex OrderOpensWithName();
 
     internal static readonly char[] SentenceEnds = ['。', '！', '？', '\n', '；'], ClauseEnds = ['，', ','];
 
@@ -417,6 +481,8 @@ public static partial class SourceConditions
         }
         if (own)
         {
+            // 提起公訴 is a judgment's word for the indictment, and a judgment names many people: only with the person's name.
+            Find(found, clause, PublicProsecution(), LegalStage.Indicted, modalEnd);
             Find(found, clause, Conviction(), LegalStage.Convicted, modalEnd);
             Find(found, clause, Acquittal(), LegalStage.Acquitted, modalEnd);
         }
@@ -481,7 +547,7 @@ public static partial class SourceConditions
     private static partial Regex OtherPersonOpening();
 
     // The name ends the clause or goes on in a list (、及與和); 等 after it makes a group, which is not matched.
-    [GeneratedRegex(@"起訴(?<name>\p{IsCJKUnifiedIdeographs}{3})(?=$|[、及與和\s])|對(?<name>\p{IsCJKUnifiedIdeographs}{3})(?:為|作成|予以)?(?:不|緩)起訴")]
+    [GeneratedRegex(@"起訴(?<name>\p{IsCJKUnifiedIdeographs}{3})(?=$|[、及與和\s])|對(?<name>\p{IsCJKUnifiedIdeographs}{3})(?:為|作成|予以)?(?:(?:不|緩)起訴|提起公訴)")]
     private static partial Regex OtherPersonObject();
 
     // Non-backtracking: a backtracking engine rescans to the end from every unclosed opening quote (1M 「 is quadratic).
@@ -490,6 +556,9 @@ public static partial class SourceConditions
 
     [GeneratedRegex("不起訴|緩起訴|撤回起訴|不予起訴|免予起訴")]
     internal static partial Regex Dismissal();
+
+    [GeneratedRegex("(?<!不|不予|未|未經)提起公訴")]
+    internal static partial Regex PublicProsecution();
 
     [GeneratedRegex("(?<!不|緩|撤回|予)起訴")]
     internal static partial Regex Indictment();

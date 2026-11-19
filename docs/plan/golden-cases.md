@@ -229,6 +229,7 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-02-19 | GC-02 | news states 林美玲（男）, the Profile's gender agrees | two sources disagree | `NEWS_GENDER_DIFFERENCE` shown, NEUTRAL; row 6 unchanged |
 | AUG-02-20 | GC-02 | same national ID on both sides, the news states 民國70年1月1日 | document outranks news | row 2 PROBABLE_MATCH, `NEWS_BIRTH_DATE_DIFFERENCE` alongside |
 | AUG-02-21 | GC-02 | news opens with a judgment's party block: name, gender and birth date on one line, ID number and residence on the next two | party lines | as AUG-02-15: MEDIUM support, row 5; the ID number in the news is not compared (DOCUMENT stays PROFILE_MISSING) |
+| AUG-02-22 | GC-02 | news holds a two-defendant judgment: 提起公訴, then an order sentencing one and acquitting the other | judgment order | the Profile person's own outcome: CONVICTED when the order sentences them, ACQUITTED when it acquits them, whatever it says of the co-defendant |
 | AUG-03-01 | GC-03 | Profile category → Politically Exposed Person (both sides Vietnamese) | Article 22 ① | ON_LIST presumption, identity unchanged |
 | AUG-03-02 | GC-03 | as AUG-03-01, customer nationality removed | Article 22 ① nationality missing | no recommendation, `CONFIRM_NATIONALITY` pending |
 | AUG-03-03 | GC-03 | Profile category → Politically Exposed Person / Former PEP | former PEP | `FORMER_PEP`, ON_LIST presumption kept |

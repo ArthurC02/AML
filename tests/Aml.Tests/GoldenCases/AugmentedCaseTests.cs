@@ -393,8 +393,10 @@ public class AugmentedCaseTests
     [Fact]
     public void AUG_02_16_a_birth_date_in_the_news_that_differs_is_a_soft_conflict_row_1()
     {
-        var (_, a) = Augment("GC-02", [Stated("女，民國70年1月1日生")]);
+        var (input, a) = Augment("GC-02", [Stated("女，民國70年1月1日生")]);
         var id = Hit21(a).Identity;
+        var summary = Assert.Single(Core.Explanation.ExplanationBuilder.Build(input, a).Hits).Summary.AgreementsAndDifferences;
+        Assert.Contains("衝突：新聞所載出生日期；", summary, StringComparison.Ordinal); // the reviewer is told what made row 1
         Assert.Null(id.HardConflict); // soft, never NO_MATCH
         Assert.Equal((1, IdentityDecision.Review, ReasonCodes.NewsBirthDateDifference), (id.Stage3Row, id.Decision, id.ReasonCodes[0]));
         Assert.Equal(Direction.Conflict, id.Evidence[EvidenceGroup.StatedBirthDate].Direction);
@@ -441,6 +443,19 @@ public class AugmentedCaseTests
         var id = Hit21(a).Identity;
         Assert.Equal((2, IdentityDecision.ProbableMatch), (id.Stage3Row, id.Decision));
         Assert.Equal([ReasonCodes.UniqueIdentifierAgreement, ReasonCodes.NewsBirthDateDifference], id.ReasonCodes);
+    }
+
+    [Fact]
+    public void AUG_02_21_a_judgments_party_lines_give_the_same_reading()
+    {
+        // The party block of a judgment: name, gender and birth date on one line, ID number and residence on the next two.
+        var (_, a) = Augment("GC-02", [Before(News21, "負責人林美玲涉嫌", "被告 林美玲 女 民國64年9月2日生\n身分證統一編號：A223456788號\n住臺北市○○區○○路1號")]);
+        var id = Hit21(a).Identity;
+        var birth = id.Evidence[EvidenceGroup.StatedBirthDate];
+        Assert.Equal((Direction.Support, Exact, Strength.Medium, ReasonCodes.NewsBirthDateAgrees), (birth.Direction, birth.Status, birth.Strength, birth.Detail));
+        Assert.Equal(ReasonCodes.NewsGenderAgrees, id.Evidence[EvidenceGroup.StatedGender].Detail);
+        Assert.Equal(ProfileMissing, id.Evidence[EvidenceGroup.Document].Status); // as GC-02: an ID number in news is shown masked, never compared
+        Assert.Equal((5, IdentityDecision.Review), (id.Stage3Row, id.Decision));
     }
 
     // GC-03: Vietnamese customer and Profile (citizenship Viet Nam), active official wanted list, PROBABLE_MATCH.

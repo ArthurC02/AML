@@ -190,6 +190,10 @@ Gender (`STATED_GENDER`). Read only when the customer has a gender and exactly o
 | different | missing or different | CONFLICT: rules out rows 3 and 4 like `GENDER_CONFLICT`, recorded alongside the row's code | `NEWS_GENDER_DIFFERENCE` |
 | different | same as the customer | NEUTRAL, UNCERTAIN: two sources disagree | `NEWS_GENDER_DIFFERENCE` |
 
+The comparison table has no row for news values: the birth date note and code sit on the 出生日期 row, the gender ones on the 性別 row, and those rows keep the status of the Profile's own field. A conflict from the news (stated age, birth date or gender) is therefore named in the explanation summary's 衝突 list (報導年齡, 新聞所載出生日期, 新聞所載性別).
+
+Measured on the annotated judgments (old development set, 35 suspects with an annotated birth date, 34 with a gender; the customer set to the annotated value, then to another person with the same name): for the same person no conflict was raised (birth date 27 support, 7 ambiguous, 1 not read; gender 30 agree, 4 not read); for the other person 33 of 35 birth dates and 30 of 34 genders gave the conflict. Judgments there give a birth year or year and month, so the support was `LOW`. The supplied cases' news carries no such value.
+
 Nationality and residence written next to the name are shown in the news digest for the reviewer and are not compared: a residence has no period, and a nationality word in news is often a description, not a citizenship.
 
 ## Hard conflict gate

@@ -67,7 +67,7 @@ public static class ExplanationBuilder
             Summary: new ExplanationSummary(
                 InternalData: InternalData(s, subject),
                 ExternalData: ExternalData(h, categories, sources, hasNews: news is not null),
-                AgreementsAndDifferences: AgreementsAndDifferences(rows, unknown),
+                AgreementsAndDifferences: AgreementsAndDifferences(rows, unknown, h.Identity.Evidence),
                 KeyEvidenceOrGaps: KeyEvidence(h, support),
                 Conclusion: Conclusion(h)),
             NewsDigest: NewsDigests.Build(news, p.Names, sources.LastOrDefault(x => x.UsedFor != SourceUse.ProfileRecord)?.Ref ?? "", newsModel));
@@ -110,9 +110,14 @@ public static class ExplanationBuilder
             + $"附加新聞{(hasNews ? "有" + Cite(sources.Where(x => x.UsedFor != SourceUse.ProfileRecord)) : "無")}。";
     }
 
-    private static string AgreementsAndDifferences(List<ComparisonRow> rows, List<string> unknown) =>
+    // What attached news states next to the name has no row of its own: a conflict there is named in the summary.
+    private static readonly (EvidenceGroup Group, string Label)[] NewsStated =
+        [(EvidenceGroup.StatedAge, "報導年齡"), (EvidenceGroup.StatedBirthDate, "新聞所載出生日期"), (EvidenceGroup.StatedGender, "新聞所載性別")];
+
+    private static string AgreementsAndDifferences(List<ComparisonRow> rows, List<string> unknown, IReadOnlyDictionary<EvidenceGroup, Evidence> e) =>
         $"相符：{OrMissing(Join(rows.Where(r => r.Status is ComparisonStatus.Exact or ComparisonStatus.Partial).Select(r => r.Field)), "無")}；"
-        + $"衝突：{OrMissing(Join(rows.Where(r => r.Status == ComparisonStatus.Conflict).Select(r => r.Field)), "無")}；"
+        + $"衝突：{OrMissing(Join(rows.Where(r => r.Status == ComparisonStatus.Conflict).Select(r => r.Field)
+            .Concat(NewsStated.Where(n => e.GetValueOrDefault(n.Group)?.Status == ComparisonStatus.Conflict).Select(n => n.Label))), "無")}；"
         + $"無法比對：{OrMissing(Join(unknown), "無")}。";
 
     private static string Conclusion(HitResult h) =>

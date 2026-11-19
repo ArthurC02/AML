@@ -366,17 +366,26 @@ public static partial class SourceConditions
         var kept = blanked.ToCharArray();
         foreach (Match m in Aside().Matches(news))
             if (!GroupAside().IsMatch(m.Value) && AfterAnotherName(news, m.Index, names, surnames)) kept.AsSpan(m.Index, m.Length).Fill('　');
+        // 辯稱遭人陷害云云, 稱其帳戶已遭通緝云云: from the verb of saying to 云云 is what someone said.
+        foreach (Match m in Reported().Matches(news)) kept.AsSpan(m.Index, m.Length).Fill('　');
         blanked = new string(kept);
         var named = WithoutRelations(news, names);
-        var (judgment, ordered, defendant) = JudgmentReading(news, names);
+        var (judgment, ordered, defendant, sole) = JudgmentReading(news, names);
+        var suspected = false;
         // A judgment names many people besides its defendants (witnesses, account holders, accomplices tried elsewhere):
         // for them its subjectless 起訴 is the defendants', and 起訴書, 起訴範圍 and 起訴意旨 are the case's papers.
         var bystander = judgment && !defendant;
         foreach (var (start, length) in Spans(blanked, 0, blanked.Length, SentenceEnds))
         {
-            var own = MentionsAnyName(named.Substring(start, length), names);
+            var sentence = blanked.Substring(start, length);
+            var others = OtherParty.Any(m => sentence.Contains(m, StringComparison.Ordinal));
+            // A judgment or ruling with one defendant goes on about 被告 without the name: that is the person.
+            var own = MentionsAnyName(named.Substring(start, length), names) || (sole && !others && sentence.Contains("被告", StringComparison.Ordinal) && !NotThisCase().IsMatch(sentence));
             var relation = named.AsSpan(start, length).Contains(RelationMark);
-            var attributable = own || (!bystander && !relation && !OtherParty.Any(m => blanked.AsSpan(start, length).Contains(m, StringComparison.Ordinal)));
+            var attributable = own || (!bystander && !relation && !others);
+            // 李小四等3人潛逃出境，發布通緝: outside a judgment a wanted notice said of a group is everyone's.
+            var collective = attributable && !judgment && Group().IsMatch(sentence);
+            suspected |= own && (Suspicion().IsMatch(sentence) || Group().IsMatch(sentence)); // a list of names ending 等9名 is the suspects'
             // 佯稱被害人涉案，已遭通緝: what a fraudster told the victim, to the end of that clause and through the next one.
             // No further: the sentence may go on to the fraudster's own arrest and indictment.
             var claimed = false;
@@ -390,18 +399,23 @@ public static partial class SourceConditions
                 var mine = MentionsAnyName(named.Substring(at, size), names);
                 if (!mine && (named.AsSpan(at, size).Contains(RelationMark) || NamesAnotherPerson(clause, surnames) || IndictsAnotherPerson(clause, surnames, news))) continue;
                 if (LastStageIn(clause, attributable, own) is { } found) stage = found;
+                else if (sole && own && Says(clause, Sentenced())) stage = LegalStage.Convicted;
                 // 定讞 alone settles what came before: an indictment (or nothing said) ends in a conviction, while
                 // 不起訴處分，全案定讞 and 判決無罪，全案定讞 stay what they are.
                 // 共犯李小四日前定讞 or 另案定讞 settles someone or something else.
                 else if (own && stage is LegalStage.Unknown or LegalStage.Indicted && Says(clause, Final())
                     && !OtherParty.Any(m => clause.Contains(m, StringComparison.Ordinal)) && !clause.Contains("另案", StringComparison.Ordinal)) stage = LegalStage.Convicted;
                 // A wanted notice is a stage only until a judicial one is told, before or after it (起訴後棄保遭通緝 stays INDICTED).
-                else if (own && stage == LegalStage.Unknown && Says(clause, WantedNotice())) stage = LegalStage.Wanted;
+                else if ((own || collective) && stage == LegalStage.Unknown && Says(clause, WantedNotice())) stage = LegalStage.Wanted;
             }
         }
         if (ordered is { } outcome) return outcome; // a judgment's order is its outcome
         if (defendant && stage == LegalStage.Unknown) return LegalStage.Indicted; // a listed defendant stands indicted, whatever the order goes on to say
-        var underInvestigation = !bystander && (blanked.Contains("偵辦", StringComparison.Ordinal) || blanked.Contains("調查", StringComparison.Ordinal));
+        // 偵辦 or 調查 somewhere in the text is the person's when a sentence naming them says they are under suspicion or
+        // names a step (涉嫌, 約談, 移送 …); someone the text names only as a counterpart in the facts is not ALLEGED by it.
+        // A text that never writes the Profile's names is about them as a whole.
+        var underInvestigation = !bystander && (suspected || !MentionsAnyName(named, names))
+            && (blanked.Contains("偵辦", StringComparison.Ordinal) || blanked.Contains("調查", StringComparison.Ordinal));
         return stage == LegalStage.Unknown && underInvestigation ? LegalStage.Alleged : stage;
     }
 
@@ -447,10 +461,24 @@ public static partial class SourceConditions
         foreach (Match m in Relation().Matches(news))
             if (names.Take(100).FirstOrDefault(n => n.Length > 1 && news.AsSpan(0, m.Index).EndsWith(n, StringComparison.OrdinalIgnoreCase)) is { } name)
                 chars.AsSpan(m.Index - name.Length, name.Length).Fill(RelationMark);
+        // 被害人王大明報案, 證人王大明指出: named in that role, the sentence's steps are someone else's.
+        foreach (Match m in Bystander().Matches(news))
+            if (names.Take(100).FirstOrDefault(n => n.Length > 1 && news.AsSpan(m.Index + m.Length).StartsWith(n, StringComparison.OrdinalIgnoreCase)) is { } name)
+                chars.AsSpan(m.Index + m.Length, name.Length).Fill(RelationMark);
         return new string(chars);
     }
 
     private const char RelationMark = '￼';
+
+    [GeneratedRegex("被害人|受害人|證人|告訴人|告發人|檢舉人")]
+    private static partial Regex Bystander();
+
+    // A sole defendant's 被告 sentence about another case, an earlier one, or the law in general is not this case's step.
+    [GeneratedRegex("另案|該案|他案|前案|前因|前科|規定|條第")]
+    private static partial Regex NotThisCase();
+
+    [GeneratedRegex("(?:辯稱|佯稱|謊稱|誆稱|訛稱|詐稱|聲稱|宣稱|供稱|陳稱|堅稱|主張|(?<![下簡名俗職])稱)[^。！？；\n]{0,200}?云云")]
+    private static partial Regex Reported();
 
     [GeneratedRegex("[的之](?:[妻夫女父母兄弟姊姐妹哥岳媳婿姪甥胞兒孫叔伯舅姑嬸]|子(?!公司)|丈夫|先生|太太|老公|老婆|配偶|前妻|前夫|前女友|前男友|男友|友人|助理|秘書|司機|特助|部屬|下屬|員工|同事|合夥人|律師)")]
     internal static partial Regex Relation();
@@ -478,24 +506,29 @@ public static partial class SourceConditions
     // ponytail: pending a judgment Golden Case. Not read: an order sentence that goes on about the person without naming
     // them again (又犯…罪，處…), a co-defendant of the same surname, and anything after the order that overturns it (the
     // order wins over the rest of the text). An order with no 事實 / 理由 heading is read for 40 lines at most.
-    private static (bool Judgment, LegalStage? Stage, bool Defendant) JudgmentReading(string news, IReadOnlyList<string> names)
+    private static (bool Judgment, LegalStage? Stage, bool Defendant, bool Sole) JudgmentReading(string news, IReadOnlyList<string> names)
     {
         // Full-width letters and digits are read as half-width ones: a name may be written either way (Ａ０５, A05).
         static string HalfWidth(string s) => string.Concat(s.Select(c => c is (>= 'Ａ' and <= 'Ｚ') or (>= 'ａ' and <= 'ｚ') or (>= '０' and <= '９') ? (char)(c - 0xFEE0) : c));
         var lines = HalfWidth(news).Split('\n');
         var start = Array.FindIndex(lines, l => Compact(l) == "主文");
-        if (start < 0) return (false, null, false);
+        if (start < 0) return (false, null, false, false);
         var own = names.Take(100).Where(n => n.Length > 1).Select(HalfWidth).ToList();
         var surnames = own.Where(n => CjkText.IsCjk(n[0])).Select(n => n[0]).ToHashSet();
         // The header lists defendants on a 被告 line and on the lines after it, up to the next party's line (辯護人, 上列 …).
         var listed = new List<string>();
+        var defendantLines = 0;
         string? head = null;
         foreach (var l in lines.Take(start).Select(Compact))
         {
             if (DefendantLine().IsMatch(l)) head = l;
             else if (OtherPartyLine().IsMatch(l)) head = null;
+            if (head is not null && l.Length > 0) defendantLines++;
             if (head is not null && own.Exists(n => l.Contains(n, StringComparison.OrdinalIgnoreCase))) listed.Add(head);
         }
+        // The only defendant: one line in all the 被告 blocks, and it is theirs. The text's bare 被告 is then this person.
+        var sole = listed.Count == 1 && defendantLines == 1;
+        if (sole) own.Add("被告"); // the order of a one-defendant judgment may say 被告無罪 without the name
         var defendant = listed.Count > 0;
         var end = Array.FindIndex(lines, start + 1, l => OrderEnd().IsMatch(Compact(l)));
         var order = string.Join('\n', lines[(start + 1)..Math.Min(end < 0 ? lines.Length : end, start + 1 + MaxOrderLines)]);
@@ -513,7 +546,7 @@ public static partial class SourceConditions
                 theirs.Append(clause).Append('，');
             }
             var said = theirs.ToString();
-            if (OrderSentence().IsMatch(said)) return (true, LegalStage.Convicted, defendant);
+            if (OrderSentence().IsMatch(said)) return (true, LegalStage.Convicted, defendant, sole);
             // 原判決關於X沒收部分、Y無罪部分均撤銷 names a part of the judgment below, not an outcome.
             // 陳志明無罪部分，檢察官上訴駁回 upholds the acquittal and stays one.
             if (RevokedAcquittal().Replace(said, "").Contains("無罪", StringComparison.Ordinal)) stage = LegalStage.Acquitted;
@@ -521,7 +554,7 @@ public static partial class SourceConditions
         // A defendant appeals a conviction only: 上訴駁回 on the appeal of an 上訴人即被告 leaves that conviction standing.
         if (stage is null && order.Contains("上訴駁回", StringComparison.Ordinal) && listed.Exists(l => l.StartsWith("上訴人即被告", StringComparison.Ordinal) || l.StartsWith("即被告", StringComparison.Ordinal))) // 即被告 opens the line under 上訴人
             stage = LegalStage.Convicted;
-        return (true, stage, defendant);
+        return (true, stage, defendant, sole);
     }
 
     private const int MaxOrderLines = 40;
@@ -534,7 +567,7 @@ public static partial class SourceConditions
     [GeneratedRegex("^(?:[一二三四五壹貳參]、)?(?:犯罪)?(?:事實|理由).{0,12}$")]
     private static partial Regex OrderEnd();
 
-    [GeneratedRegex("^(?:上訴人即|上訴人|即)*被告")]
+    [GeneratedRegex("^(?:上訴人即|上訴人|聲請人即|抗告人即|即)*被告")]
     private static partial Regex DefendantLine();
 
     [GeneratedRegex("^(?:(?:選任|指定|公設)?辯護人|上列|輔佐人|(?:訴訟|法定)?代理人|公訴人|上訴人|告訴人|參與人|被害人|具保人|聲請人|受刑人|抗告人|檢察官)")]
@@ -588,6 +621,12 @@ public static partial class SourceConditions
     [GeneratedRegex(@"判[決處]?(?<name>\p{IsCJKUnifiedIdeographs}{1,2}[^\P{IsCJKUnifiedIdeographs}長員官人層嫌犯])(?=有期徒刑|無期徒刑|死刑|拘役|罰金|無罪|[0-9０-９一二三四五六七八九十兩]+(?:年|個月|月))|通緝的?(?<name>\p{IsCJKUnifiedIdeographs}{3})(?=落網|到案|歸案|$)")]
     private static partial Regex OtherPersonJudged();
 
+    [GeneratedRegex("(?<![平同相對])等共?[0-9０-９一二兩三四五六七八九十百餘多數]*(?:人|名|嫌|被告)")]
+    private static partial Regex Group();
+
+    [GeneratedRegex("涉|嫌|偵辦|調查|逮捕|拘提|約談|羈押|收押|移送|函送|交保|搜索|查獲|到案|被告|共犯|首腦|主謀|成員|車手|起訴|通緝")]
+    private static partial Regex Suspicion();
+
     private static LegalStage? LastStageIn(string clause, bool attributable, bool own)
     {
         var found = new List<(int End, LegalStage Stage)>();
@@ -600,6 +639,8 @@ public static partial class SourceConditions
         if (own)
         {
             // 提起公訴 is a judgment's word for the indictment, and a judgment names many people: only with the person's name.
+            // Tried and left out: reading 對李小四等4人提起公訴 in a report for everyone the text names. On the second dev
+            // set it gave the indictment to five people the group did not hold and to three it did.
             Find(found, clause, PublicProsecution(), LegalStage.Indicted, modalEnd);
             Find(found, clause, Conviction(), LegalStage.Convicted, modalEnd);
             Find(found, clause, Acquittal(), LegalStage.Acquitted, modalEnd);
@@ -700,6 +741,11 @@ public static partial class SourceConditions
     // 原審判…), 裁判, 談判, 誤判, 判斷, 判決前, 宣判時間 … are other words, and 判賠 names no penalty.
     [GeneratedRegex(@"判處|判刑|判決有罪|有罪確定|(?<!(?<![一二三更初原])審|[裁談批評誤研預])判(?>[決處]?)(?![前後時斷期])(?:[他她]|\p{IsCJKUnifiedIdeographs}{2,4}?)??(?:有期徒刑|無期徒刑|死刑|拘役|罰金|[0-9０-９一二三四五六七八九十兩]+(?:年|個月|月))")]
     internal static partial Regex Conviction();
+
+    // 認被告犯…罪，處有期徒刑二年: a judgment's own wording, with no 判. Whose sentence it is the clause does not say, so it
+    // is read only where the text has one defendant.
+    [GeneratedRegex(@"^\s*(?:各|均)?處(?:有期徒刑|拘役|無期徒刑|死刑)")]
+    private static partial Regex Sentenced();
 
     [GeneratedRegex("(?<!無罪)定讞(?!前)")]
     internal static partial Regex Final();

@@ -58,20 +58,24 @@ Train is used for optimization, dev for checkpoint/threshold selection, and test
 
 ## Current candidate choice
 
-The verified development choice as of 2026-11-19 is **NER20 / event37**. It has not replaced deployed models.
+The verified development choice as of 2026-11-21 is **NER20 / event43**. It has not replaced deployed models.
 
 | Measure | Selected candidate | TP / FP / FN | Dev F1 | Threshold | Gate |
 |---|---|---|---|---|---|
 | Primary NER | NER20 with ASCII input mode and document-role head | 2,791 / 265 / 240 | 0.917036 | — | Pass |
-| Primary event | event37, ordinary CLS input/output | 962 / 255 / 232 | 0.798009 | 0.35 | Fail |
-| Working end to end, dev documents | NER20 / event37 | 501 / 99 / 72 | 0.854220 | 0.30 | Fail |
-| Working end to end, second dev set | NER20 / event37 | 352 / 53 / 39 | 0.884422 | 0.30 | Fail |
-| Profile person, dev documents (176 persons) | NER20 / event37 | 448 / 129 / 52 | 0.831941 | 0.30 | — |
-| Profile person, second dev set (125 persons) | NER20 / event37 | 294 / 76 / 7 | 0.876304 | 0.30 | — |
+| Primary event | event43, ordinary CLS input/output | 963 / 259 / 231 | 0.797185 | 0.40 | Fail |
+| Working end to end, dev documents | NER20 / event43 | 511 / 100 / 62 | 0.863176 | 0.30 | Fail |
+| Working end to end, second dev set | NER20 / event43 | 353 / 52 / 38 | 0.886935 | 0.30 | Fail |
+| Profile person, dev documents (176 persons) | NER20 / event43 | 457 / 128 / 43 | 0.842396 | 0.30 | — |
+| Profile person, second dev set (125 persons) | NER20 / event43 | 295 / 76 / 6 | 0.877976 | 0.30 | — |
 
-The two Profile-person rows measure the reading the way the system uses it: one known person per news item. Each labelled suspect person in turn is the Profile person (all their written forms are the Profile's names; persons sharing a form are one), the reader is run with those names, and only the entities it marks as the Profile's are counted. The legal stage those events imply (the highest of convicted, acquitted, not indicted, indicted, wanted, alleged, none; earlier-case, negated and requested steps left out) agrees with the labels for 157 of 176 persons (0.892) and 122 of 125 (0.976); whether the person has any step at all agrees for 168 (0.955) and 125 (1.000). This view has no gate. It is harsher on precision than the working measure (persons with no labelled event are included: 41 and 16) and it rotates only over labelled suspects, so it says nothing about a Profile person the text mentions as a victim or an official.
+The two Profile-person rows measure the reading the way the system uses it: one known person per news item. Each labelled suspect person in turn is the Profile person (all their written forms are the Profile's names; persons sharing a form are one), the reader is run with those names, and only the entities it marks as the Profile's are counted. The legal stage those events imply (the highest of convicted, acquitted, not indicted, indicted, wanted, alleged, none; earlier-case, negated and requested steps left out) agrees with the labels for 157 of 176 persons (0.892) and 122 of 125 (0.976); whether the person has any step at all agrees for 169 (0.960) and 125 (1.000). This view has no gate. It is harsher on precision than the working measure (persons with no labelled event are included: 41 and 16) and it rotates only over labelled suspects, so it says nothing about a Profile person the text mentions as a victim or an official.
 
-The event rows are those of the current asking rules (8,050 dev rows), so the primary event counts are not comparable with candidates measured on earlier row sets. The end-to-end rows use the working measure defined above, not the gate's form (one gold person per cell, without the two name rules); the gate form has not been re-measured for event37, and both working rows are already short of 0.90. The second dev set is 29 documents that are never used for training. Thresholds and reader rules were chosen looking at the dev sets, so neither is an untouched estimate; the test split is.
+The event rows are those of the current asking rules (8,050 dev rows), so the primary event counts are not comparable with candidates measured on earlier row sets. The end-to-end rows use the working measure defined above, not the gate's form (one gold person per cell, without the two name rules); the gate form has not been re-measured for event43, and both working rows are already short of 0.90. The second dev set is 29 documents that are never used for training. Thresholds and reader rules were chosen looking at the dev sets, so neither is an untouched estimate; the test split is.
+
+event43 is event37 trained for one more epoch with rows of a kind of text the training documents do not hold: a news report of a court ruling. The training text is judgments and police and prosecutor releases, and on a media court report event37 read an appealable ruling (可上訴, 得上訴) as an appeal and a dated earlier step of the same case as an earlier case. The training labels were checked first and are right: no appeal label stands on a sentence whose only appeal wording is appealability, but only 33 such sentences exist, all in other kinds of text. The added rows are 539 questions on made-up sentences of that kind (rulings with appealability wording, dated earlier steps of the same case, earlier records with contrasts), written to a brief by three writers, labelled blind by two others and adjudicated, each repeated four times beside the 173,941 existing rows. On 170 held-out rows from made-up reports by a fourth writer who did not see the others, row-level F1 at 0.30 rose from 0.761 (142 / 43 / 46) to 0.864, and wrong earlier-case answers fell from 18 to 8. On the real dev sets event43 has 252 errors against 263 for event37 (0.854 / 0.884, 501 / 99 / 72 and 352 / 53 / 39); a control that trained the same extra epoch without the made-up rows has 260 (0.856 / 0.881), so the epoch alone does not explain the gain. The Profile-person stage agreement is the same as event37's and its events are better (0.832 → 0.842, 0.876 → 0.878). One run each.
+
+Official court press releases, a third kind of text (a court's own summary of its ruling), do not help as training rows. 40 releases of the Judicial Yuan's court news (government news releases, Copyright Act art. 9) were labelled and verified the way the training documents are; 32 give 1,948 rows and 8 are held out (380 rows, 56 labels). On the held-out rows event37 scores 0.735 and event43 0.727, far below the dev sets. event44 (event43 plus one epoch with the 32 releases' rows twice) scores 0.742 there, with 24 of its 29 wrong rows the same as event43's, and ties event43 on the working measure (0.865 / 0.884, 251 errors against 252) while agreeing on the legal stage for three fewer Profile persons (156 and 120). It is not retained. What stays wrong in the releases is not wording a sentence model can learn from more rows: a sentence that says only 被告 is asked about every named person, including the principal offender or co-actor of another case who is not this ruling's defendant, and the gathered PDF text breaks sentences at line ends so that the name and the sentence stand in different rows. Both are properties of the reading and the gathered text, to be corrected there before more releases are labelled.
 
 event37 continues the ordinary CLS line: the job35 event model (see the frozen state below) trained for one more epoch at a low learning rate on the same rows. A second arm of that continuation wrapped the other persons of the sentence in a second marker pair; it ended with 271 errors over both sets (0.854 / 0.877) against 276 for event37 (0.848 / 0.877 under the reader rules of that time), one run each. That difference does not show an effect of the markers, the marked input needs a change to the served input, and it was not kept. Both arms improve on their common start (294 errors), which is what one more epoch gave.
 
@@ -81,7 +85,7 @@ Whether fixed rules can correct the model's answers was measured on the dev rows
 
 An overall passing NER score does not establish reliable rare roles: `ORG-Victim` has zero TP on six dev gold spans. Model-role accuracy and event attribution both matter to the final reading.
 
-Structural candidates measured so far (document-context heads, trigger-binding supervision, caption observation, shared predicate decoder, clause-level rows, other-person markers) did not replace the ordinary CLS line. The five source-reviewed actor/case errors that motivated the earlier structural work have not been re-checked against event37. Current selection and limitation summaries belong here; epoch histories, process IDs, upload progress and individual retry records belong to the external artifacts.
+Structural candidates measured so far (document-context heads, trigger-binding supervision, caption observation, shared predicate decoder, clause-level rows, other-person markers) did not replace the ordinary CLS line. The five source-reviewed actor/case errors that motivated the earlier structural work have not been re-checked against the current candidate. Current selection and limitation summaries belong here; epoch histories, process IDs, upload progress and individual retry records belong to the external artifacts.
 
 ## Diagnose an error at the boundary where it arises
 
@@ -170,7 +174,7 @@ All paths in this section are outside the repository. They distinguish source tr
 | Actual .NET evaluator | `C:\tmp\aml-eval-r4\` (`Program.cs`, `bin\Release\net10.0\aml-eval.dll`, `both.sh`); it compiles the reader from this checkout |
 | Working handoff notes of the labelling and training rounds | `C:\tmp\aml-data\labels\v6\progress.md` |
 
-The retained native NER is `downloads\colab-20261114\aml20\ner\extracted\models\ner`; it requires both its encoder and `document-roles.safetensors`. The retained native event model is `downloads\aml37\models\ev`. Their ONNX/config/vocab pair and isolated caches are under `measurements\aml37-pair\`. These paths are relative to `C:\tmp\aml-train`.
+The retained native NER is `downloads\colab-20261114\aml20\ner\extracted\models\ner`; it requires both its encoder and `document-roles.safetensors`. The retained native event model is `downloads\aml43\models\ev`. Their ONNX/config/vocab pair and isolated caches are under `measurements\aml43-pair\`. These paths are relative to `C:\tmp\aml-train`.
 
 Deployment supplies the matching `ner/` and `ev/` graphs, configs, vocabularies and required heads at `NewsModels:Directory`. Update the product's measured behavior with the deployed pair. A change to `NewsModelReading.EventThreshold` changes the inference contract and requires actual runtime evaluation as well.
 
@@ -207,9 +211,9 @@ The repository files above belong to the handoff commit. Inspect `git log`, `git
 
 ### Frozen state to establish before another experiment
 
-The retained pair is NER20/event37 from the candidate table. event37 is job37: the job35 event model (the rows of `data-r8`, two epochs from event32) continued for one epoch at learning rate 1e-5 with the asked name masked in half of the rows; its trained weights are the last-epoch checkpoint. Jobs 36 (other-person markers), 38 and 39 (ownership pilots) are measured and not retained. All jobs are downloaded, verified and stopped; the server had no active Colab session at handoff. Recheck live state before managing sessions. No checked next correction is ready.
+The retained pair is NER20/event43 from the candidate table. event43 is job43: event37 continued for one epoch with the same settings on the rows of `data-r8` (with the four label edits below) plus the 539 made-up court-report rows of `data-synth\train-a/b/c.jsonl` four times, 176,097 rows. event37 is job37: the job35 event model (the rows of `data-r8`, two epochs from event32) continued for one epoch at learning rate 1e-5 with the asked name masked in half of the rows. Each job's trained weights are the last-epoch checkpoint. Jobs 36 (other-person markers), 38 and 39 (ownership pilots), 41 (the control epoch without made-up rows) and 44 (court press releases) are measured and not retained. All jobs are downloaded, verified and stopped; the server had no active Colab session at handoff. Recheck live state before managing sessions. No checked next correction is ready.
 
-Current train data (`data-r8`) contains 173,941 event rows, 15,683 of them with at least one label (20,183 row labels in all); the rest are label-free questions the reader asks at run time. Four label edits in two training documents (three events, one restating sentence) were made after `data-r8` was built; they enter at the next data build and do not by themselves warrant a retrain. Dev labels are unchanged since the candidate table was measured. Earlier adoption records (`measurements\review24-inputs\`, `measurements\review21-inputs\`, `C:\tmp\aml-data\labels\review-questioning-20261115\`) are completed, not a pending queue. Preserve frozen receipts when reproducing a check.
+Current train data (`data-r8`) contains 173,941 event rows, 15,683 of them with at least one label (20,183 row labels in all); the rest are label-free questions the reader asks at run time. Four label edits in two training documents (three events, one restating sentence) were made after `data-r8` was built; job43's rows carry them. The made-up rows and the court press-release rows (`data-court\train.jsonl`, `heldout.jsonl`; the eight held-out releases are a measure and are never trained on) are kept beside the document rows, not merged into them. Dev labels are unchanged since the candidate table was measured. Earlier adoption records (`measurements\review24-inputs\`, `measurements\review21-inputs\`, `C:\tmp\aml-data\labels\review-questioning-20261115\`) are completed, not a pending queue. Preserve frozen receipts when reproducing a check.
 
 The current identity anchors are:
 
@@ -218,9 +222,13 @@ The current identity anchors are:
 | `data-r8\ev-train.jsonl` | `ae2af2841d3e737afdf6144cd4bb2bb4a94b692ee22ccb8a1469fca51f93175f` |
 | `data-r8\ev-dev.jsonl` | `909ba30ba48996a39c4559ec43da19dd2f29fcc3f306fc4c7d37ebf98c6664b4` |
 | `data-r8\split.json` | `ca5d73ccda03f0b18149aeee76c62f04581fbefcbaeb8a2250b0348d522230a9` |
-| `downloads\aml37\models\ev\model.safetensors` | `1b5fb6d8a094c011edb6992e3ce369d53831bf75204b12927963dc5b4c9dee44` |
-| `measurements\aml37-pair\ev\model.onnx` | `fcd73bd774beba11281cdd7ef857f79e91464c29aebbe88447e9465cab323f99` |
-| `measurements\aml37-pair\ner\model.onnx` | `5fe102bb56cb0a5025c334888f178c0f5ab0940dff7134088affb491d90d9df1` |
+| job43 `data\ev-train.jsonl` (176,097 rows) | `8b88656042d194a305a4fa2f33356ddf7be9830ddb16b6f0e9ab843d988bff94` |
+| `data-synth\heldout.jsonl` | `735067244d73e7b1b30dc968ec144acaa752aa81bd8cf79488a607eb6d53ccc8` |
+| `data-court\heldout.jsonl` | `9a578359ec7caeb119b2b3f37fc96f43ee4d90d4f1a8bb05615be52d044de44e` |
+| `downloads\aml37\models\ev\model.safetensors` (job43's start) | `1b5fb6d8a094c011edb6992e3ce369d53831bf75204b12927963dc5b4c9dee44` |
+| `downloads\aml43\models\ev\model.safetensors` | `d14c8be982e1e48877de5ede558cd1010d9b93fbe7c972953d2fbec5d3584304` |
+| `measurements\aml43-pair\ev\model.onnx` | `2a21be0c03a3db7a4b7e0cb9953299b369817a1630d997bad2bcd4697c5bd422` |
+| `measurements\aml43-pair\ner\model.onnx` | `5fe102bb56cb0a5025c334888f178c0f5ab0940dff7134088affb491d90d9df1` |
 
 A job bundle trains on its own copy of the rows, with labels outside the start model's label set removed; its `job.json` records those hashes.
 
@@ -240,7 +248,8 @@ These are durable references for conclusions above, not a second execution log. 
 
 | Question | Evidence |
 |---|---|
-| Which candidates and actual pipeline are retained? | `aml20-ner\ner-dev-metrics.json`; `C:\tmp\aml-train\downloads\aml37\logs-ev.txt` and `job.json`; `aml37-pair\` scored with `both.sh` |
+| Which candidates and actual pipeline are retained? | `aml20-ner\ner-dev-metrics.json`; `C:\tmp\aml-train\downloads\aml43\logs-ev.txt` and `job.json`; `aml43-pair\` scored with `both.sh` (working measure) and the evaluator's `profile` mode |
+| Do rows of a missing kind of text help, and which kind? | `C:\tmp\aml-train\data-synth\` (brief, rows, blind relabels) and `data-court\`, scored with `score_rows.py`; controls `aml41-pair\` (epoch without new rows) and `aml44-pair\` (court press releases); `data-court\heldout-err44.jsonl` for what stays wrong |
 | Did marking the other persons of the sentence help? | `aml36-pair\` against the control `aml37-pair\` (same start, epoch count and settings, no markers) |
 | Which cells stay wrong from one candidate to the next, and in what kind of sentence? | `audit-e2e31\cmp35.py`, `audit-e2e31\kind37.py` on the evaluator's dumps |
 | Can ownership inside a sentence be learned, and what must be given? | `C:\tmp\aml-train\prep_pairs.py`, `pilot_pairs.py`; `downloads\aml38\` (step words marked), `downloads\aml39\` (step type only); `audit-e2e31\pairbase.py` for the sentence model on the same rows |

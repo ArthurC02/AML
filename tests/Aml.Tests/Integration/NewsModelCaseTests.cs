@@ -49,7 +49,7 @@ public class NewsModelCaseTests : ServiceTestBase
         """;
 
     /// <summary>
-    /// Made-up news of four kinds on GC-02's Case, read by the trained models (AML_NEWS_MODELS; skipped without it). The
+    /// Made-up news of nine kinds on GC-02's Case, read by the trained models (AML_NEWS_MODELS; skipped without it). The
     /// expectations are what the reviewer of a Case on this Profile person needs, not what the models happen to give: the
     /// person's own stage, nobody else's step, and the rules and the models saying the same. In every row the Case itself
     /// must stay as it is without the models.
@@ -63,7 +63,15 @@ public class NewsModelCaseTests : ServiceTestBase
     [InlineData("group", "警方昨日逮捕林美玲等3人，全案依詐欺罪嫌移送臺北地檢署偵辦。", LegalStage.Alleged, NewsParty.Suspect, "Arrest,Referral", "Indictment,Conviction", null, "", "")]
     // The prosecutor decided not to indict.
     [InlineData("dismissed", "林美玲涉嫌詐欺一案，檢察官偵查後認罪嫌不足，對林美玲為不起訴處分。", LegalStage.Dismissed, NewsParty.Suspect, "NonIndictment", "Conviction", null, "", "")]
-    public async Task The_trained_models_and_the_rules_read_the_same_case(string key, string text, LegalStage stage, NewsParty party,
+    // A report's own wording of a judgment, and a reversal on appeal.
+    [InlineData("sentence", "林美玲因詐欺遭檢方起訴，臺北地院判林美玲有期徒刑二年。", LegalStage.Convicted, NewsParty.Suspect, "Indictment,Conviction", "Acquittal", null, "", "")]
+    [InlineData("acquitted", "林美玲被訴詐欺一案，臺北地院審理後判林美玲無罪。", LegalStage.Acquitted, NewsParty.Suspect, "Acquittal", "Conviction", null, "", "")]
+    [InlineData("reversed", "林美玲一審遭判處有期徒刑二年，二審改判無罪。", LegalStage.Acquitted, NewsParty.Suspect, "Conviction,Acquittal", "", null, "", "")]
+    // Wanted, with no judicial step told.
+    [InlineData("wanted", "林美玲涉嫌詐欺，棄保潛逃，臺北地檢署已對林美玲發布通緝。", LegalStage.Wanted, NewsParty.Suspect, "WantedNotice", "Indictment,Conviction", null, "", "")]
+    // The husband is indicted, not the Profile person.
+    [InlineData("relative", "林美玲的丈夫王大明涉嫌詐欺，王大明遭檢方起訴。", LegalStage.Unknown, null, "", "Indictment,Conviction", "王大明", "Indictment", "Conviction")]
+    public async Task The_trained_models_and_the_rules_read_the_same_case(string key, string text, LegalStage stage, NewsParty? party,
         string stated, string notStated, string? other, string otherStated, string otherNotStated)
     {
         var directory = Environment.GetEnvironmentVariable("AML_NEWS_MODELS");
@@ -84,8 +92,8 @@ public class NewsModelCaseTests : ServiceTestBase
         var entities = Assert.Single(withModels.Explanation!.Hits).NewsDigest!.Model!.Entities;
         static string[] Steps(NewsModelEntity e) => [.. e.Events.Where(x => x.Certainty == NewsCertainty.Stated).Select(x => x.Type.ToString())];
         static string[] List(string csv) => csv.Split(',', StringSplitOptions.RemoveEmptyEntries);
-        Assert.Equal(("林美玲", true, party), (entities[0].Name, entities[0].ProfileName, entities[0].Party));
-        Assert.Empty(List(stated).Except(Steps(entities[0])));
+        Assert.Equal(("林美玲", true), (entities[0].Name, entities[0].ProfileName));
+        if (party is not null) Assert.Equal(party, entities[0].Party); Assert.Empty(List(stated).Except(Steps(entities[0])));
         Assert.Empty(List(notStated).Intersect(Steps(entities[0])));
         if (other is null) return;
         var second = Assert.Single(entities, e => e.Name == other);

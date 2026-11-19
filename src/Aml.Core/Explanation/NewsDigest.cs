@@ -481,7 +481,8 @@ public static partial class NewsDigests
         (NewsEventType.Detention, DetentionPattern()), (NewsEventType.AssetRestraint, AssetRestraintPattern()),
         (NewsEventType.NonIndictment, SourceConditions.Dismissal()), (NewsEventType.Indictment, IndictmentPattern()),
         (NewsEventType.Indictment, SourceConditions.Indictment()), (NewsEventType.Acquittal, AcquittalPattern()),
-        (NewsEventType.Conviction, SourceConditions.Conviction()), (NewsEventType.Acquittal, SourceConditions.Acquittal()),
+        (NewsEventType.Conviction, SourceConditions.Conviction()), (NewsEventType.Conviction, SourceConditions.Final()),
+        (NewsEventType.Acquittal, SourceConditions.Acquittal()),
         (NewsEventType.Appeal, AppealPattern()), (NewsEventType.Confiscation, ConfiscationPattern()), (NewsEventType.Fine, FinePattern()),
         (NewsEventType.RegulatoryPenalty, RegulatoryPattern()), (NewsEventType.WantedNotice, WantedPattern()), (NewsEventType.Extradition, ExtraditionPattern()),
     ];

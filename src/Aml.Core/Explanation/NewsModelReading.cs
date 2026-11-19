@@ -197,7 +197,8 @@ public static class NewsModelReading
             int? carried = null;
             var named = entities.Select((e, i) => (i, Form: e.Forms.FirstOrDefault(f => s.Contains(f, StringComparison.Ordinal)), e.Role))
                 .Where(x => x.Form is not null).ToList();
-            foreach (var (i, form, _) in named) yield return (i, form!, s, false, false);
+            // 林美玲的丈夫王大明遭起訴 is asked for 王大明 alone: the sentence names 林美玲 only to say whose husband he is.
+            foreach (var (i, form, _) in named.Where(x => !SourceConditions.OnlyAsRelation(s, entities[x.i].Forms))) yield return (i, form!, s, false, false);
             // The person named last in the sentence's text, with the form written there.
             var person = named.Where(x => !IsOrganisation(x.Role))
                 .SelectMany(x => entities[x.i].Forms.Where(f => s.Contains(f, StringComparison.Ordinal))

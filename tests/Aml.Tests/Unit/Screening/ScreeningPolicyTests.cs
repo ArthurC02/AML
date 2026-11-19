@@ -176,7 +176,17 @@ public class ScreeningPolicyTests
     [InlineData("陳志明經檢察官提起公訴。\n主文\n上訴駁回。\n理由\n略。", LegalStage.Indicted)]                // the order says nothing of them: the keywords stand
     [InlineData("被告 李小四\n上列被告因詐欺案件，經檢察官提起公訴，本院判決如下：\n主文\n李小四犯詐欺取財罪，處有期徒刑一年。\n理由\n證人陳志明到庭作證。", LegalStage.Unknown)] // a witness: not a defendant, not in the order
     [InlineData("被告 陳志明\n上列被告因詐欺案件，經檢察官提起公訴，本院判決如下：\n主文\n本件公訴不受理。\n理由\n略。", LegalStage.Indicted)] // a listed defendant stands indicted
-    [InlineData("上訴人即被告 陳志明\n主文\n上訴駁回。\n理由\n略。", LegalStage.Indicted)]
+    [InlineData("上訴人即被告 陳志明\n主文\n上訴駁回。\n理由\n略。", LegalStage.Convicted)]                   // a defendant appeals a conviction only
+    [InlineData("上訴人 臺灣臺北地方檢察署檢察官\n被告 陳志明\n主文\n上訴駁回。\n理由\n略。", LegalStage.Indicted)] // the prosecutor's appeal: the outcome below is not told
+    [InlineData("被告 陳志明\n主文\n陳志明犯如附表一所示之罪，各處如附表一所示之刑。應執行有期徒刑三年。\n理由\n略。", LegalStage.Convicted)]
+    [InlineData("被告 李小四\n被告 陳志明\n主文\n一、李小四犯詐欺取財罪，處有期徒刑一年。\n二、陳志明被訴部分無罪。\n理由\n略。", LegalStage.Acquitted)] // numbered items
+    [InlineData("被告 李小四\n陳志明\n選任辯護人 王律師\n上列被告因詐欺案件，經檢察官提起公訴，本院判決如下：\n主文\n本件公訴不受理。\n理由\n略。", LegalStage.Indicted)] // listed on the line after 被告
+    [InlineData("被告 李小四\n選任辯護人 陳志明律師\n上列被告因詐欺案件，經檢察官起訴，本院調查後判決如下：\n主文\n李小四無罪。\n理由\n略。", LegalStage.Unknown)]   // the defence lawyer is no defendant
+    // A judgment names many people who are not its defendants: its subjectless 起訴 and its papers are not theirs.
+    [InlineData("被告 李小四\n上列被告因詐欺案件，經檢察官起訴，本院判決如下：\n主文\n李小四犯詐欺取財罪，處有期徒刑一年。\n理由\n李小四將款項匯入陳志明之帳戶。\n本件起訴程序合法。", LegalStage.Unknown)]
+    [InlineData("被告 李小四\n主文\n李小四犯詐欺取財罪，處有期徒刑一年。\n理由\n陳志明所涉部分非本案起訴範圍。\n起訴書誤載陳志明之帳號，應予更正。", LegalStage.Unknown)]
+    [InlineData("被告 李小四\n主文\n李小四犯詐欺取財罪，處有期徒刑一年。\n理由\n共犯陳志明業經檢察官另案起訴。", LegalStage.Indicted)]       // said of them by name
+    [InlineData("被告 陳志明\n主文\n本件公訴不受理。\n理由\n起訴書記載之事實，業經判決確定。", LegalStage.Indicted)]                    // a listed defendant keeps the papers
     [InlineData("主文\n李小四對陳志明犯詐欺取財罪，處有期徒刑一年。\n理由\n略。", LegalStage.Unknown)]          // the victim of the offence
     [InlineData("主文\n李小四偽造陳志明之署押，處有期徒刑一年。\n理由\n略。", LegalStage.Unknown)]
     [InlineData("被告 陳志明\n主文\n原判決關於陳志明處有期徒刑部分撤銷。\n陳志明無罪。\n理由\n略。", LegalStage.Acquitted)] // the revoked sentence is not the outcome
@@ -188,6 +198,67 @@ public class ScreeningPolicyTests
     [InlineData("陳志明到案說明，檢察官另對李小四提起公訴。李小四否認犯行。", LegalStage.Unknown)]             // another person's
     [InlineData("本案經檢察官提起公訴。證人陳志明到庭。", LegalStage.Unknown)]                               // 提起公訴 counts only with the person's name
     [InlineData("主文\n陳志明無罪。\n理由\n檢察官認被告應判處有期徒刑，尚無可採。", LegalStage.Acquitted)]      // the reasons do not undo the order
+    // The ways a report words a judgment: 判 with the sentence itself, 獲判, 無罪定讞.
+    [InlineData("法院今判陳志明有期徒刑三年。", LegalStage.Convicted)]
+    [InlineData("陳志明一審遭判無期徒刑。", LegalStage.Convicted)]
+    [InlineData("陳志明被依詐欺罪判1年6月。", LegalStage.Convicted)]
+    [InlineData("陳志明遭重判十五年。", LegalStage.Convicted)]
+    [InlineData("二審撤銷陳志明無罪判決，改判有期徒刑二年。", LegalStage.Convicted)]
+    [InlineData("陳志明遭判賠三百萬元。", LegalStage.Unknown)]                         // a civil award is no conviction
+    [InlineData("陳志明最重可判七年。", LegalStage.Unknown)]
+    [InlineData("陳志明獲判無罪。", LegalStage.Acquitted)]
+    [InlineData("法院判陳志明無罪。", LegalStage.Acquitted)]
+    [InlineData("陳志明無罪定讞。", LegalStage.Acquitted)]
+    [InlineData("陳志明無罪確定。", LegalStage.Acquitted)]
+    [InlineData("陳志明強調自己無罪。", LegalStage.Unknown)]
+    [InlineData("陳志明遭檢方聲請簡易判決處刑。", LegalStage.Indicted)]                 // the summary form of an indictment
+    [InlineData("陳志明棄保潛逃，檢方發布通緝。", LegalStage.Wanted)]
+    [InlineData("陳志明遭通緝多年後落網，檢方依詐欺罪起訴。", LegalStage.Indicted)]       // the last stage wins
+    [InlineData("陳志明並未遭通緝。", LegalStage.Unknown)]
+    // Someone close to the person is not the person.
+    [InlineData("陳志明的哥哥遭起訴。", LegalStage.Unknown)]
+    [InlineData("陳志明的丈夫李小四涉嫌詐欺，遭檢方起訴。", LegalStage.Unknown)]         // the next clause is still the husband's
+    [InlineData("陳志明的子公司遭搜索，陳志明遭起訴。", LegalStage.Indicted)]            // 子公司 is no son
+    [InlineData("陳志明之妻林美玲遭判處有期徒刑一年。", LegalStage.Unknown)]
+    [InlineData("陳志明的助理被依貪污罪起訴，陳志明未遭起訴。", LegalStage.Unknown)]
+    [InlineData("陳志明與其妻均遭起訴。", LegalStage.Indicted)]
+    [InlineData("陳志明檢舉李小四詐欺，檢方起訴李小四。李小四否認犯行。", LegalStage.Unknown)]
+    // 判 inside another word, and what a judgment says of someone else in the person's sentence.
+    [InlineData("陳志明審判期間長達三年。", LegalStage.Unknown)]
+    [InlineData("陳志明誤判三年內景氣。", LegalStage.Unknown)]
+    [InlineData("法官判陳志明須賠償十萬元。", LegalStage.Unknown)]
+    [InlineData("陳志明去年遭起訴，今年3月一審判他5年6月。", LegalStage.Convicted)]
+    [InlineData("陳志明被判三個月拘役。", LegalStage.Convicted)]
+    [InlineData("陳志明獲判無罪，法院另判處李小四有期徒刑一年。", LegalStage.Acquitted)]
+    [InlineData("法院判李小四有期徒刑一年，陳志明則獲判無罪。", LegalStage.Acquitted)]
+    [InlineData("陳志明遭判處有期徒刑一年，法院另判李小四無罪。", LegalStage.Convicted)]
+    [InlineData("陳志明一審無罪，二審逆轉判刑。", LegalStage.Convicted)]
+    [InlineData("陳志明一審判刑，二審逆轉無罪。", LegalStage.Acquitted)]
+    [InlineData("陳志明獲不起訴處分，全案定讞。", LegalStage.Dismissed)]              // 定讞 alone settles what came before
+    [InlineData("法院判決陳志明無罪，全案定讞。", LegalStage.Acquitted)]
+    [InlineData("陳志明遭起訴，三審定讞。", LegalStage.Convicted)]
+    [InlineData("警方通緝的李小四落網，陳志明到案說明。李小四否認犯行。", LegalStage.Unknown)]
+    [InlineData("通緝犯陳志明落網。", LegalStage.Wanted)]
+    [InlineData("法院撤銷陳志明通緝。", LegalStage.Unknown)]
+    [InlineData("陳志明遭起訴後棄保潛逃，法院發布通緝。", LegalStage.Indicted)]          // wanted is no step past the indictment
+    // Found in review: the report wordings must not reach past what they name.
+    [InlineData("法院判處陳志明有期徒刑二年，另判李四無罪。", LegalStage.Convicted)]
+    [InlineData("一審判陳志明罰金、李四無罪。", LegalStage.Convicted)]
+    [InlineData("陳志明遭起訴，判決前三年的資金流向待查。", LegalStage.Indicted)]
+    [InlineData("陳志明遭起訴，判決前十三年的資金流向待查。", LegalStage.Indicted)]
+    [InlineData("陳志明遭起訴，法官判斷5年內不會再犯。", LegalStage.Indicted)]
+    [InlineData("陳志明遭起訴，宣判前三年他已離職。", LegalStage.Indicted)]
+    [InlineData("陳志明遭起訴，法官宣判時間訂於三年後。", LegalStage.Indicted)]
+    [InlineData("陳志明遭起訴，法官難以判斷是否無罪。", LegalStage.Indicted)]
+    [InlineData("陳志明遭起訴，他主張應判無罪。", LegalStage.Indicted)]
+    [InlineData("法院宣判陳志明等三人均無罪。", LegalStage.Acquitted)]
+    [InlineData("陳志明遭起訴，共犯李小四日前定讞。", LegalStage.Indicted)]
+    [InlineData("陳志明遭起訴，同案被告已定讞。", LegalStage.Indicted)]
+    [InlineData("陳志明遭起訴，全案定讞前仍在逃。", LegalStage.Indicted)]
+    [InlineData("陳志明為某公司負責人，法院判處董事長有期徒刑二年。", LegalStage.Convicted)] // a title, not another person
+    [InlineData("陳志明獲解除通緝。", LegalStage.Unknown)]
+    [InlineData("法院撤回對陳志明的通緝。", LegalStage.Unknown)]
+    [InlineData("陳志明遭起訴，原審判陳志明有期徒刑二年。", LegalStage.Convicted)]
     public void legal_stage_from_news(string news, LegalStage expected) =>
         Assert.Equal(expected, Assert.Single(SourceConditions.Determine(Profile("Adverse Media"), false, news)).LegalStage);
 

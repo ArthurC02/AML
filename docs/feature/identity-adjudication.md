@@ -192,6 +192,12 @@ Gender (`STATED_GENDER`). Read only when the customer has a gender and exactly o
 
 The comparison table has no row for news values: the birth date note and code sit on the 出生日期 row, the gender ones on the 性別 row, and those rows keep the status of the Profile's own field. A conflict from the news (stated age, birth date or gender) is therefore named in the explanation summary's 衝突 list (報導年齡, 新聞所載出生日期, 新聞所載性別).
 
+**When the two sources disagree** (the NEUTRAL, UNCERTAIN rows above: the Profile's own birth date or gender agrees with the customer and the news next to the name says otherwise), the identity decision stands on the Profile's fields, but the reviewer is told, since the rows show no conflict and the attached news may be another person's:
+
+- the pair carries `ATTACHED_NEWS_DISAGREES_WITH_PROFILE` in `pairReasonCodes` (whenever its result is REVIEW);
+- the summary's 相符／衝突／無法比對 sentence ends with 來源不一致：新聞所載出生日期（、新聞所載性別）與名單記錄不同，附加新聞可能不是這位名單人物的。;
+- a PROBABLE_MATCH is reviewed at NORMAL priority instead of HIGH: what the news says of the person (and the legal stage read from it) is in doubt, the match with the Profile is not. A raised Sanction condition keeps HIGH.
+
 Measured on the annotated judgments (old development set, 35 suspects with an annotated birth date, 34 with a gender; the customer set to the annotated value, then to another person with the same name): for the same person no conflict was raised (birth date 27 support, 7 ambiguous, 1 not read; gender 30 agree, 4 not read); for the other person 33 of 35 birth dates and 30 of 34 genders gave the conflict. Judgments there give a birth year or year and month, so the support was `LOW`. The supplied cases' news carries no such value.
 
 Nationality and residence written next to the name are shown in the news digest for the reviewer and are not compared: a residence has no period, and a nationality word in news is often a description, not a citizenship.

@@ -67,7 +67,7 @@ public static class ExplanationBuilder
             Summary: new ExplanationSummary(
                 InternalData: InternalData(s, subject),
                 ExternalData: ExternalData(h, categories, sources, hasNews: news is not null),
-                AgreementsAndDifferences: AgreementsAndDifferences(rows, unknown, h.Identity.Evidence),
+                AgreementsAndDifferences: AgreementsAndDifferences(rows, unknown, h.Identity.Evidence, h.PairReasonCodes.Contains(AssessmentPolicy.AttachedNewsDisagreesWithProfile)),
                 KeyEvidenceOrGaps: KeyEvidence(h, support),
                 Conclusion: Conclusion(h)),
             NewsDigest: NewsDigests.Build(news, p.Names, sources.LastOrDefault(x => x.UsedFor != SourceUse.ProfileRecord)?.Ref ?? "", newsModel));
@@ -114,11 +114,15 @@ public static class ExplanationBuilder
     private static readonly (EvidenceGroup Group, string Label)[] NewsStated =
         [(EvidenceGroup.StatedAge, "報導年齡"), (EvidenceGroup.StatedBirthDate, "新聞所載出生日期"), (EvidenceGroup.StatedGender, "新聞所載性別")];
 
-    private static string AgreementsAndDifferences(List<ComparisonRow> rows, List<string> unknown, IReadOnlyDictionary<EvidenceGroup, Evidence> e) =>
+    private static string AgreementsAndDifferences(List<ComparisonRow> rows, List<string> unknown, IReadOnlyDictionary<EvidenceGroup, Evidence> e, bool newsDisagrees) =>
         $"相符：{OrMissing(Join(rows.Where(r => r.Status is ComparisonStatus.Exact or ComparisonStatus.Partial).Select(r => r.Field)), "無")}；"
         + $"衝突：{OrMissing(Join(rows.Where(r => r.Status == ComparisonStatus.Conflict).Select(r => r.Field)
             .Concat(NewsStated.Where(n => e.GetValueOrDefault(n.Group)?.Status == ComparisonStatus.Conflict).Select(n => n.Label))), "無")}；"
-        + $"無法比對：{OrMissing(Join(unknown), "無")}。";
+        + $"無法比對：{OrMissing(Join(unknown), "無")}。"
+        // The Profile's own field agrees with the customer and the news next to the name says otherwise: said in words,
+        // since the rows above show no conflict. Only with the pair's reason code, so the two never part.
+        + (!newsDisagrees ? "" : Join(NewsStated.Where(n => e.GetValueOrDefault(n.Group) is { Status: ComparisonStatus.Uncertain, Detail: ReasonCodes.NewsBirthDateDifference or ReasonCodes.NewsGenderDifference })
+            .Select(n => n.Label)) is { Length: > 0 } disagreeing ? $"來源不一致：{disagreeing}與名單記錄不同，附加新聞可能不是這位名單人物的。" : "");
 
     private static string Conclusion(HitResult h) =>
         $"系統身分判斷 {CaseJson.Code(h.Identity.Decision)}"

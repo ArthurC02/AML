@@ -195,6 +195,25 @@ public class ScreeningBoundaryTests
     public void Review_priority_follows_the_stage_3_row(IdentityDecision decision, int row, ReviewPriority priority) =>
         Assert.Equal(priority, AssessmentPolicy.Assess([Condition(ListType.AdverseMedia)], Identity(decision, row)).Priority);
 
+    // Attached news that states another birth date or gender than the Profile's own (which agrees with the customer):
+    // the pair says so; a PROBABLE_MATCH waits at NORMAL, a raised Sanction keeps HIGH, a pair that is no REVIEW says nothing.
+    [Theory]
+    [InlineData(ListType.AdverseMedia, IdentityDecision.ProbableMatch, 4, ReviewPriority.Normal, true)]
+    [InlineData(ListType.Sanction, IdentityDecision.ProbableMatch, 4, ReviewPriority.High, true)]
+    [InlineData(ListType.AdverseMedia, IdentityDecision.Review, 5, ReviewPriority.Normal, true)]
+    [InlineData(ListType.AdverseMedia, IdentityDecision.Review, 6, ReviewPriority.Low, true)]
+    [InlineData(ListType.AdverseMedia, IdentityDecision.NoMatch, 6, null, false)]
+    public void News_that_disagrees_with_the_profile_is_told_and_lowers_a_probable_match(ListType type, IdentityDecision decision, int row, ReviewPriority? priority, bool told)
+    {
+        var evidence = new Dictionary<EvidenceGroup, Evidence>
+        {
+            [EvidenceGroup.StatedBirthDate] = new(EvidenceGroup.StatedBirthDate, Direction.Neutral, ComparisonStatus.Uncertain, Strength.None, ReasonCodes.NewsBirthDateDifference, null),
+        };
+        var a = AssessmentPolicy.Assess([Condition(type)], new IdentityResult(evidence, null, row, decision, []));
+        Assert.Equal(priority, a.Priority);
+        Assert.Equal(told, a.ReasonCodes.Contains(AssessmentPolicy.AttachedNewsDisagreesWithProfile));
+    }
+
     // ---- Article 22 and pending checks -------------------------------------------------------------------------
 
     private static DispositionRecommendation Recommend(SourceProfile p, string[] nationality, params SourceCondition[] conditions) =>

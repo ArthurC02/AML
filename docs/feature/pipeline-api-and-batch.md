@@ -179,7 +179,7 @@ The revision record's `explanation` holds, per pair:
 - source conditions, DispositionRecommendation and the pending verification checks;
 - a five-part summary: internal data, external data, agreements and differences, key evidence or gaps, conclusion.
 
-Per pair the response also carries `reviewPriority` (HIGH for PROBABLE_MATCH or Sanction, NORMAL for stage 3 row 5, LOW otherwise) and `pairReasonCodes` (e.g. `RELEASE_CONTROL_HUMAN_REVIEW`, `SOURCE_CONDITION_UNKNOWN`); per Case, `notEvaluatedProfiles` and `changesFromPreviousRevision`, compared against the last effective revision (`ADDED`, `REMOVED`, `RESULT_CHANGED`, `IDENTITY_CHANGED`, `REASONS_CHANGED`, each with `profileId`, `profileKey`, from and to).
+Per pair the response also carries `reviewPriority` (HIGH for a raised Sanction condition or a PROBABLE_MATCH; NORMAL for stage 3 row 5, and for a PROBABLE_MATCH whose attached news [disagrees with the Profile](identity-adjudication.md#birth-date-and-gender-stated-in-a-source); LOW otherwise) and `pairReasonCodes` (e.g. `RELEASE_CONTROL_HUMAN_REVIEW`, `SOURCE_CONDITION_UNKNOWN`, `ATTACHED_NEWS_DISAGREES_WITH_PROFILE`); per Case, `notEvaluatedProfiles` and `changesFromPreviousRevision`, compared against the last effective revision (`ADDED`, `REMOVED`, `RESULT_CHANGED`, `IDENTITY_CHANGED`, `REASONS_CHANGED`, each with `profileId`, `profileKey`, from and to).
 
 The summary only restates recorded facts; it adds none. Sources are listed with `ref` (`S1`, `S2`, …), id, name, URL, retrieval date, where used and whether attached to the Profile; the summary's external-data part cites them as `[S1]`. Nothing is dropped to shorten the response.
 

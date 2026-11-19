@@ -53,6 +53,7 @@ public static class CodeCatalog
 
         ("PAIR_REASON", "RELEASE_CONTROL_HUMAN_REVIEW", "放行控制：人工複核", "Sanction、PEP 或 RCA 條件為 HIT 或 UNKNOWN、原本為 NO_HIT 的組合，第一階段一律轉 REVIEW 交由人工。", "AssessmentPolicy.Assess", Disposition + "#two-results-read-separately"),
         ("PAIR_REASON", "SOURCE_CONDITION_UNKNOWN", "名單條件未知", "名單條件無法確定（UNKNOWN）；身分 NO_MATCH 時為 NO_HIT，Sanction、PEP、RCA 則由放行控制轉 REVIEW。", "AssessmentPolicy.Assess", Watchlist + "#reason-codes"),
+        ("PAIR_REASON", "ATTACHED_NEWS_DISAGREES_WITH_PROFILE", "附加新聞與名單記錄不一致", "附加新聞在名單人物姓名旁所載的出生日期或性別與客戶不同，而名單本身的欄位與客戶相符：兩個來源互相不一致，新聞可能不是這位名單人物的。身分判斷不變；PROBABLE_MATCH 的複核優先序由 HIGH 降為 NORMAL（Sanction 仍為 HIGH）。", "AssessmentPolicy.Assess", Identity + "#birth-date-and-gender-stated-in-a-source"),
 
         ("DISPOSITION", "ART22_FOREIGN_PEP_PRESUMPTION", "第 22 條①：外國 PEP 推定", "依第 22 條第 1 款推定；身分判斷不變。", "DispositionPolicy.Recommend", Disposition + "#article-22-1-foreign-pep-presumption"),
         ("DISPOSITION", "ART22_ADVERSE_UNRELATED", "第 22 條②：負面新聞與洗錢無關", "依第 22 條第 2 款，ADVERSE_MEDIA 條件不採計。", "DispositionPolicy.Recommend", Disposition + "#article-22-2-adverse-news-unrelated-to-mltfpf"),

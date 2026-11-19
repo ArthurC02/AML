@@ -411,16 +411,24 @@ public class AugmentedCaseTests
         Assert.Equal((Direction.Neutral, ReasonCodes.NewsBirthDateAgrees), (id.Evidence[EvidenceGroup.StatedBirthDate].Direction, id.Evidence[EvidenceGroup.StatedBirthDate].Detail));
         Assert.Equal((Direction.Support, Strength.High), (id.Evidence[EvidenceGroup.DateOfBirth].Direction, id.Evidence[EvidenceGroup.DateOfBirth].Strength));
         Assert.Equal((4, IdentityDecision.ProbableMatch), (id.Stage3Row, id.Decision)); // counted twice it would be row 3
+        Assert.Equal(ReviewPriority.High, Hit21(a).ReviewPriority);
+        Assert.DoesNotContain(AssessmentPolicy.AttachedNewsDisagreesWithProfile, Hit21(a).PairReasonCodes);
     }
 
     [Fact]
     public void AUG_02_18_a_news_date_against_an_agreeing_profile_date_is_shown_not_a_conflict()
     {
-        var (_, a) = Augment("GC-02", [ProfileBornAsTheCustomer, Stated("女，民國70年1月1日生")]);
+        var (input, a) = Augment("GC-02", [ProfileBornAsTheCustomer, Stated("女，民國70年1月1日生")]);
         var id = Hit21(a).Identity;
         var birth = id.Evidence[EvidenceGroup.StatedBirthDate];
         Assert.Equal((Direction.Neutral, Uncertain, ReasonCodes.NewsBirthDateDifference), (birth.Direction, birth.Status, birth.Detail));
         Assert.Equal((4, IdentityDecision.ProbableMatch), (id.Stage3Row, id.Decision));
+        // The reviewer is told: the two sources disagree, so the news may be another person's, and the pair is not first in line.
+        Assert.Equal(ReviewPriority.Normal, Hit21(a).ReviewPriority);
+        Assert.Contains(AssessmentPolicy.AttachedNewsDisagreesWithProfile, Hit21(a).PairReasonCodes);
+        var summary = Aml.Core.Explanation.ExplanationBuilder.Build(input, a).Hits.Single(h => h.ProfileKey == Hit21(a).Profile.ProfileKey).Summary;
+        Assert.EndsWith("來源不一致：新聞所載出生日期與名單記錄不同，附加新聞可能不是這位名單人物的。", summary.AgreementsAndDifferences);
+        Assert.Contains("ATTACHED_NEWS_DISAGREES_WITH_PROFILE", summary.Conclusion);
     }
 
     [Fact]
@@ -432,6 +440,8 @@ public class AugmentedCaseTests
         Assert.Equal((Direction.Neutral, Uncertain, ReasonCodes.NewsGenderDifference), (gender.Direction, gender.Status, gender.Detail));
         Assert.Equal((6, IdentityDecision.Review), (id.Stage3Row, id.Decision)); // unchanged from GC-02
         Assert.DoesNotContain(ReasonCodes.NewsGenderDifference, id.ReasonCodes);
+        Assert.Equal(ReviewPriority.Low, Hit21(a).ReviewPriority); // already last in line; the reviewer is still told
+        Assert.Contains(AssessmentPolicy.AttachedNewsDisagreesWithProfile, Hit21(a).PairReasonCodes);
     }
 
     [Fact]

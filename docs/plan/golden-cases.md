@@ -225,8 +225,8 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-02-15 | GC-02 | news states 林美玲（女，民國64年9月2日生） | news birth date agrees | `NEWS_BIRTH_DATE_AGREES`, MEDIUM support, row 5 REVIEW (GC-02 is row 6); still no direct identifier |
 | AUG-02-16 | GC-02 | news states a birth date of 民國70年1月1日 | `NEWS_BIRTH_DATE_DIFFERENCE` | soft conflict, row 1 REVIEW, never NO_MATCH; the explanation summary names 新聞所載出生日期 under 衝突 |
 | AUG-02-17 | GC-02 | Profile DOB 1975/9/2 and the news states the same date | one fact told twice | news NEUTRAL; row 4 PROBABLE_MATCH, not row 3 |
-| AUG-02-18 | GC-02 | Profile DOB 1975/9/2, the news states 民國70年1月1日 | two sources disagree | news NEUTRAL, UNCERTAIN; row 4 unchanged |
-| AUG-02-19 | GC-02 | news states 林美玲（男）, the Profile's gender agrees | two sources disagree | `NEWS_GENDER_DIFFERENCE` shown, NEUTRAL; row 6 unchanged |
+| AUG-02-18 | GC-02 | Profile DOB 1975/9/2, the news states 民國70年1月1日 | two sources disagree | news NEUTRAL, UNCERTAIN; row 4 unchanged; `ATTACHED_NEWS_DISAGREES_WITH_PROFILE`, priority NORMAL, the summary says 來源不一致 |
+| AUG-02-19 | GC-02 | news states 林美玲（男）, the Profile's gender agrees | two sources disagree | `NEWS_GENDER_DIFFERENCE` shown, NEUTRAL; row 6 unchanged; `ATTACHED_NEWS_DISAGREES_WITH_PROFILE`, priority stays LOW |
 | AUG-02-20 | GC-02 | same national ID on both sides, the news states 民國70年1月1日 | document outranks news | row 2 PROBABLE_MATCH, `NEWS_BIRTH_DATE_DIFFERENCE` alongside |
 | AUG-02-21 | GC-02 | news opens with a judgment's party block: name, gender and birth date on one line, ID number and residence on the next two | party lines | as AUG-02-15: MEDIUM support, row 5; the ID number in the news is not compared (DOCUMENT stays PROFILE_MISSING) |
 | AUG-02-22 | GC-02 | news holds a two-defendant judgment: 提起公訴, then an order sentencing one and acquitting the other | judgment order | the Profile person's own outcome: CONVICTED when the order sentences them, ACQUITTED when it acquits them, whatever it says of the co-defendant |

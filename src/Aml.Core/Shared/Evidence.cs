@@ -1,7 +1,7 @@
 using System.ComponentModel;
 namespace Aml.Core.Shared;
 
-public enum EvidenceGroup { Name, Gender, Nationality, DateOfBirth, Document, OtherIdentifier, Employment, Relationship, CompanyAssociation, Address, StatedAge, TemporalRole, EntityIdentifier }
+public enum EvidenceGroup { Name, Gender, Nationality, DateOfBirth, Document, OtherIdentifier, Employment, Relationship, CompanyAssociation, Address, StatedAge, TemporalRole, EntityIdentifier, StatedBirthDate, StatedGender }
 
 public enum Direction { Prerequisite, Support, Conflict, Neutral }
 
@@ -38,6 +38,11 @@ public static class ReasonCodes
     public const string AgeCompatibleAtReport = "AGE_COMPATIBLE_AT_REPORT";
     public const string AgeDifferenceAtReport = "AGE_DIFFERENCE_AT_REPORT";
     public const string AgeNotComparable = "AGE_NOT_COMPARABLE";
+    public const string NewsBirthDateAgrees = "NEWS_BIRTH_DATE_AGREES";
+    public const string NewsBirthDateDifference = "NEWS_BIRTH_DATE_DIFFERENCE";
+    public const string NewsBirthDateAmbiguous = "NEWS_BIRTH_DATE_AMBIGUOUS";
+    public const string NewsGenderAgrees = "NEWS_GENDER_AGREES";
+    public const string NewsGenderDifference = "NEWS_GENDER_DIFFERENCE";
     public const string ImpossibleRoleAtReportedEvent = "IMPOSSIBLE_ROLE_AT_REPORTED_EVENT";
     public const string DeathBeforeCustomerBirth = "DEATH_BEFORE_CUSTOMER_BIRTH";
     public const string NonPersonSubjectReview = "NON_PERSON_SUBJECT_REVIEW";

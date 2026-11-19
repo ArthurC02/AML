@@ -43,6 +43,11 @@ public static class CodeCatalog
         ("IDENTITY_REASON", "AGE_COMPATIBLE_AT_REPORT", "報導年齡相容", "新聞所述年齡與推算年齡相差在 2 歲內；不是佐證。", "StatedAgeCheck.Check", Identity + "#age-stated-in-a-source"),
         ("IDENTITY_REASON", "AGE_DIFFERENCE_AT_REPORT", "報導年齡不符", "新聞所述年齡與推算年齡相差超過 2 歲；軟衝突，第三階段第 1 列。", "StatedAgeCheck.Check", Identity + "#age-stated-in-a-source"),
         ("IDENTITY_REASON", "AGE_NOT_COMPARABLE", "報導年齡無法比對", "新聞有年齡，但缺完整出生日期或報導日期，或年齡是事件當時（時年）。", "StatedAgeCheck.Check", Identity + "#age-stated-in-a-source"),
+        ("IDENTITY_REASON", "NEWS_BIRTH_DATE_AGREES", "新聞所載出生日期相符", "新聞在名單人物姓名旁所載的出生日期與受檢對象相符；名單本身沒有相符的出生日期時是佐證（完整日期 MEDIUM，其餘 LOW），不是直接識別資料。", "NewsStatedCheck.CheckBirthDate", Identity + "#birth-date-and-gender-stated-in-a-source"),
+        ("IDENTITY_REASON", "NEWS_BIRTH_DATE_DIFFERENCE", "新聞所載出生日期不符", "新聞在名單人物姓名旁所載的出生日期都與受檢對象不符；軟衝突，第三階段第 1 列。名單本身的出生日期相符時只顯示，不是衝突。", "NewsStatedCheck.CheckBirthDate", Identity + "#birth-date-and-gender-stated-in-a-source"),
+        ("IDENTITY_REASON", "NEWS_BIRTH_DATE_AMBIGUOUS", "新聞所載出生日期分歧", "同一寫法的姓名旁有分散的出生日期，其中之一與受檢對象相符；不是佐證。", "NewsStatedCheck.CheckBirthDate", Identity + "#birth-date-and-gender-stated-in-a-source"),
+        ("IDENTITY_REASON", "NEWS_GENDER_AGREES", "新聞所載性別相符", "新聞在名單人物姓名旁所載的性別與受檢對象相同；只顯示，不是佐證。", "NewsStatedCheck.CheckGender", Identity + "#birth-date-and-gender-stated-in-a-source"),
+        ("IDENTITY_REASON", "NEWS_GENDER_DIFFERENCE", "新聞所載性別不符", "新聞在名單人物姓名旁所載的性別與受檢對象不同；排除第三階段第 3、4 列。名單本身的性別相符時只顯示。", "NewsStatedCheck.CheckGender", Identity + "#birth-date-and-gender-stated-in-a-source"),
         ("IDENTITY_REASON", "ENTITY_IDENTIFIER_AGREEMENT", "實體識別碼相符", "非自然人記錄：雙方登記號碼或 IMO 號碼相同。", "IdentityDecisionPolicy.EntityDecision", Identity + "#reason-code-registry"),
         ("IDENTITY_REASON", "ENTITY_IDENTIFIER_CONFLICT", "實體識別碼不符", "非自然人記錄：同一種識別碼號碼不同。", "IdentityDecisionPolicy.EntityDecision", Identity + "#reason-code-registry"),
 

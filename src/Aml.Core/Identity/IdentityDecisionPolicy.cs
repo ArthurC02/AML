@@ -8,7 +8,7 @@ public static class IdentityDecisionPolicy
 {
     private const int StrongSupportMinimumCount = 2;
 
-    private static readonly EvidenceGroup[] GroupsWithConflictCode = [EvidenceGroup.DateOfBirth, EvidenceGroup.Document, EvidenceGroup.StatedAge];
+    private static readonly EvidenceGroup[] GroupsWithConflictCode = [EvidenceGroup.DateOfBirth, EvidenceGroup.Document, EvidenceGroup.StatedAge, EvidenceGroup.StatedBirthDate];
 
     public static IdentityResult Decide(ScreenedSubject s, SourceProfile p, NewsItem? news = null)
     {
@@ -21,6 +21,7 @@ public static class IdentityDecisionPolicy
         var (row, decision, code) = Stage3(e);
         var reasons = new List<string> { code };
         if (e[EvidenceGroup.Gender].Status == ComparisonStatus.Conflict) reasons.Add(ReasonCodes.GenderConflict);
+        if (e.GetValueOrDefault(EvidenceGroup.StatedGender)?.Status == ComparisonStatus.Conflict) reasons.Add(ReasonCodes.NewsGenderDifference);
         if (NoBilateralDirectIdentifier(s, p)) reasons.Add(ReasonCodes.NoBilateralDirectIdentifier);
         return new IdentityResult(e, null, row, decision, reasons);
     }
@@ -116,12 +117,13 @@ public static class IdentityDecisionPolicy
 
         var conflict = GroupsWithConflictCode.Select(g => e.GetValueOrDefault(g)).FirstOrDefault(v => v?.Status == ComparisonStatus.Conflict);
         if (conflict is not null)
-            return (Stage3Rows.Conflict, IdentityDecision.Review, conflict.Detail!); // every DOB, document and stated-age conflict carries its code
+            return (Stage3Rows.Conflict, IdentityDecision.Review, conflict.Detail!); // every DOB, document, stated-age and news birth date conflict carries its code
 
         if (supports.Any(v => v.Strength == Strength.Unique))
             return (Stage3Rows.UniqueIdentifier, IdentityDecision.ProbableMatch, ReasonCodes.UniqueIdentifierAgreement);
 
-        var oppositeGenders = StatusOf(EvidenceGroup.Gender) == ComparisonStatus.Conflict;
+        // A gender attached news states for the Profile person that differs from the customer's counts as the Profile's own.
+        var oppositeGenders = StatusOf(EvidenceGroup.Gender) == ComparisonStatus.Conflict || e.GetValueOrDefault(EvidenceGroup.StatedGender)?.Status == ComparisonStatus.Conflict;
         if (!oppositeGenders && supports.Any(v => v.Strength == Strength.High) && supports.Length >= StrongSupportMinimumCount)
             return (Stage3Rows.StrongSupport, IdentityDecision.ProbableMatch, ReasonCodes.StrongSupportCombination);
 
@@ -131,7 +133,7 @@ public static class IdentityDecisionPolicy
         var dobAgrees = e.GetValueOrDefault(EvidenceGroup.DateOfBirth)?.IsSupport == true;
         var docOrEmploymentUnsettled = new[] { EvidenceGroup.Document, EvidenceGroup.Employment }
             .Select(g => e.GetValueOrDefault(g)).Any(IsUnsettled);
-        if (prerequisitesAgree && dobAgrees && !docOrEmploymentUnsettled)
+        if (prerequisitesAgree && !oppositeGenders && dobAgrees && !docOrEmploymentUnsettled)
             return (Stage3Rows.ConsistentAtPrecision, IdentityDecision.ProbableMatch, ReasonCodes.ConsistentAtAvailablePrecision);
 
         return supports.Length > 0

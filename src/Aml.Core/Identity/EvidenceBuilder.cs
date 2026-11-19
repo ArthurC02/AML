@@ -27,6 +27,8 @@ public static class EvidenceBuilder
             p.Relationships.Where(r => r.IsEntity && !IsEmployer(r.Relation)).ToList(), Strength.Low));
         Add(AddressEvidence(s, p));
         Add(StatedAgeCheck.Check(s, p, news));
+        Add(NewsStatedCheck.CheckBirthDate(s, p, news, e[EvidenceGroup.DateOfBirth]));
+        Add(NewsStatedCheck.CheckGender(s, p, news));
         return e;
     }
 
@@ -229,7 +231,7 @@ public static class EvidenceBuilder
     private const int ScatteredDobCount = 3;
     private const int ScatteredDobSpanYears = 2;
 
-    private static bool AreScattered(IReadOnlyList<PartialDate> dobs) =>
+    internal static bool AreScattered(IReadOnlyList<PartialDate> dobs) =>
         dobs.Count >= ScatteredDobCount || dobs.Max(d => d.Year) - dobs.Min(d => d.Year) > ScatteredDobSpanYears;
 
     private static Strength SupportStrength(DatePrecision agreedPrecision) => agreedPrecision switch

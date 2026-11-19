@@ -825,7 +825,9 @@
                                 "ADDRESS",
                                 "STATED_AGE",
                                 "TEMPORAL_ROLE",
-                                "ENTITY_IDENTIFIER"
+                                "ENTITY_IDENTIFIER",
+                                "STATED_BIRTH_DATE",
+                                "STATED_GENDER"
                               ]
                             },
                             "direction": {
@@ -1374,7 +1376,9 @@
                             "ADDRESS",
                             "STATED_AGE",
                             "TEMPORAL_ROLE",
-                            "ENTITY_IDENTIFIER"
+                            "ENTITY_IDENTIFIER",
+                            "STATED_BIRTH_DATE",
+                            "STATED_GENDER"
                           ]
                         },
                         "assumption": {

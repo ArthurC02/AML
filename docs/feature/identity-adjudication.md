@@ -63,6 +63,8 @@ RELATIONSHIP
 EMPLOYMENT
 COMPANY_ASSOCIATION
 STATED_AGE
+STATED_BIRTH_DATE
+STATED_GENDER
 TEMPORAL_ROLE
 OTHER_IDENTIFIER
 ```
@@ -104,6 +106,7 @@ Per evidence group (step 6 of the [operating architecture](system-overview.md#op
 | DOCUMENT | type + issuing country/authority + number | yes: same key and number is `UNIQUE` support (row 2), same key with a different number is `DOCUMENT_IDENTITY_CONFLICT` (row 1); a document of another type or country is UNCERTAIN `NOT_COMPARABLE`, which does not block row 4; no sample Profile carries a document yet |
 | ADDRESS | structured Taiwan address fields; token Jaccard for unstructured text | yes: city to floor key (old names and full-width digits folded), else Jaccard over words and CJK bigrams; always UNCERTAIN (`SAME_ADDRESS_NO_PERIOD` or `SOFT_DIFFERENCE`), since neither source gives validity periods |
 | EMPLOYMENT | occupation and employer company, same period only | yes: same organization with overlapping periods on both sides (each needs a start; an open end runs to the present; compared by year, the coarsest common precision) is `MEDIUM` support; without periods `SAME_ORGANIZATION_NO_COMMON_PERIOD`; a different employer is UNCERTAIN `DIFFERENT_ORGANIZATION`, never a conflict. The bank export has an occupation category only, so subject employments are not yet extracted: an occupation category against Profile roles is `NOT_COMPARABLE` (subject employer missing), which does not block row 4 |
+| STATED_BIRTH_DATE / STATED_GENDER | the birth date and gender attached news writes next to the Profile person's name, against the customer's | yes; see [birth date and gender stated in a source](#birth-date-and-gender-stated-in-a-source) |
 | OTHER_IDENTIFIER | labelled number equality | yes: the same number on both sides is `LOW` support with `SAME_IDENTIFIER_NATURE_UNCONFIRMED`; a different number is UNCERTAIN, never a conflict |
 | TEMPORAL_ROLE | age at every dated role start and the report date | yes: `TEMPORALLY_PLAUSIBLE` (neutral, never support) when every age reaches `MinimumRoleAge`; the hard-conflict code when the gate fires |
 | RELATIONSHIP / COMPANY_ASSOCIATION | spouse, parents, related companies named on both sides | yes: same relation and an EXACT name is support (`MEDIUM` for relatives, `LOW` for companies); the employer goes to EMPLOYMENT. Subject-side relatives are not in the bank export yet |
@@ -157,6 +160,37 @@ Applies only to an age explicitly stated for a named person in a bounded source 
 - An age stated with 時年 is the age when the reported event happened, whose date the text does not give; it is never compared with the report date and gives `AGE_NOT_COMPARABLE`.
 - Phase 1 reads the age only when it is adjacent to the Profile person's name in the same sentence of attached news (e.g. 陳志明（45歲）, 45歲的陳志明).
 - The ±2 tolerance applies to stated ages only, never to DOB comparisons.
+
+### Birth date and gender stated in a source
+
+Attached news and judgments often write a person's birth date and gender right next to the name (a judgment's party line, a bracket after the name). `NewsStatedCheck` sets the ones written next to the Profile person's names (the first 20, the identifier reader's limit) against the customer's. They are read by the [identifier rules](watchlist-and-adverse-information.md#news-digest), not by the news models, which feed no decision.
+
+The news is not an approved Profile field, and the value belongs to the Profile person only because it stands next to the name. So it weighs less than the Profile's own field, and it never becomes a hard conflict or NO_MATCH ([ADR-0012](../adr/0012-sources-and-web-information.md)).
+
+Birth date (`STATED_BIRTH_DATE`). A year under 1000 is a ROC year (民國70年1月1日生, 70年次); precision is kept as written.
+
+| News against the customer | Profile's own DATE_OF_BIRTH | Evidence | Code |
+|---|---|---|---|
+| a news date agrees | not support | support one level below a Profile field: `MEDIUM` for a full date on both sides, else `LOW` | `NEWS_BIRTH_DATE_AGREES` |
+| a news date agrees | support | NEUTRAL: the same fact told twice is one piece of evidence | `NEWS_BIRTH_DATE_AGREES` |
+| a news date agrees, but the news dates are scattered (3 or more, or over 2 years apart) | any | NEUTRAL: several people written the same way (masked names) | `NEWS_BIRTH_DATE_AMBIGUOUS` |
+| no news date agrees | not support | soft CONFLICT, [stage 3](#stage-3-table) row 1, REVIEW | `NEWS_BIRTH_DATE_DIFFERENCE` |
+| no news date agrees | support | NEUTRAL, UNCERTAIN: two sources disagree with each other, not with the customer | `NEWS_BIRTH_DATE_DIFFERENCE` |
+| the customer has no birth date | any | NEUTRAL, `SUBJECT_MISSING`; the news date is shown | none |
+
+- A news birth date is not a direct identifier and never satisfies row 4, which needs the Profile's own DATE_OF_BIRTH; `MEDIUM` is below the `HIGH` row 3 needs. Alone it moves a pair from row 6 to row 5.
+- A coarser news date that a more precise one covers is dropped, as for Profile DOBs.
+- Row 1 comes before row 2, so a news birth date difference keeps even a pair with an agreeing document in REVIEW on the conflict's code, as a stated-age difference does.
+
+Gender (`STATED_GENDER`). Read only when the customer has a gender and exactly one gender stands next to the names.
+
+| News against the customer | Profile's own gender | Evidence | Code |
+|---|---|---|---|
+| same | any | NEUTRAL; shown, never support | `NEWS_GENDER_AGREES` |
+| different | missing or different | CONFLICT: rules out rows 3 and 4 like `GENDER_CONFLICT`, recorded alongside the row's code | `NEWS_GENDER_DIFFERENCE` |
+| different | same as the customer | NEUTRAL, UNCERTAIN: two sources disagree | `NEWS_GENDER_DIFFERENCE` |
+
+Nationality and residence written next to the name are shown in the news digest for the reviewer and are not compared: a residence has no period, and a nationality word in news is often a description, not a citizenship.
 
 ## Hard conflict gate
 
@@ -221,9 +255,9 @@ Applied only when no hard conflict fired. The first matching row wins. The table
 
 | # | Condition | Decision | Reason code |
 |---|---|---|---|
-| 1 | a `CONFLICT` in DATE_OF_BIRTH or DOCUMENT without a hard rule, or `AGE_DIFFERENCE_AT_REPORT` | REVIEW | the conflict's code (`FULL_DOB_CONFLICT`, `DOB_CONFLICT`, `DOCUMENT_IDENTITY_CONFLICT`, `AGE_DIFFERENCE_AT_REPORT`) |
+| 1 | a `CONFLICT` in DATE_OF_BIRTH or DOCUMENT without a hard rule, `AGE_DIFFERENCE_AT_REPORT`, or a `CONFLICT` in STATED_BIRTH_DATE | REVIEW | the conflict's code, the first of `FULL_DOB_CONFLICT` / `DOB_CONFLICT`, `DOCUMENT_IDENTITY_CONFLICT`, `AGE_DIFFERENCE_AT_REPORT`, `NEWS_BIRTH_DATE_DIFFERENCE` |
 | 2 | UNIQUE support | MATCH when the release policy allows; Phase 1: PROBABLE_MATCH | `UNIQUE_IDENTIFIER_AGREEMENT` |
-| 3 | HIGH support plus at least one other non-prerequisite support, and no `GENDER_CONFLICT` | PROBABLE_MATCH | `STRONG_SUPPORT_COMBINATION` |
+| 3 | HIGH support plus at least one other non-prerequisite support, and no `GENDER_CONFLICT` or STATED_GENDER conflict | PROBABLE_MATCH | `STRONG_SUPPORT_COMBINATION` |
 | 4 | every hit prerequisite is EXACT (name after normalization and disclosed relaxations, gender, nationality), DATE_OF_BIRTH is support at the finest precision both sides allow, and no DOCUMENT or EMPLOYMENT value is CONFLICT or UNCERTAIN other than `NOT_COMPARABLE` | PROBABLE_MATCH | `CONSISTENT_AT_AVAILABLE_PRECISION` |
 | 5 | at least one non-prerequisite support | REVIEW | `PARTIAL_SUPPORT_ONLY` |
 | 6 | none | REVIEW | `NO_NON_PREREQUISITE_SUPPORT` |
@@ -232,7 +266,7 @@ Applied only when no hard conflict fired. The first matching row wins. The table
 - Address and other location differences are weak ([comparison rules](#comparison-rules)); they never trigger row 1 and never block row 4.
 - Employment is never a conflict (a different employer is not evidence against identity), so it never triggers row 1; an uncertain employment still blocks row 4.
 - A DOB agreement recorded as `PROFILE_MULTIPLE_DOB` is not support, so it does not satisfy row 4.
-- Opposite genders rule out rows 3 and 4; the pair falls to row 5 or 6 and `GENDER_CONFLICT` is recorded alongside.
+- Opposite genders rule out rows 3 and 4; the pair falls to row 5 or 6 and `GENDER_CONFLICT` is recorded alongside. A gender in attached news that differs from the customer's does the same with `NEWS_GENDER_DIFFERENCE` ([birth date and gender stated in a source](#birth-date-and-gender-stated-in-a-source)).
 - `NO_BILATERAL_DIRECT_IDENTIFIER` is recorded alongside whenever it applies.
 - Review priority follows the row: 2, 3 and 4 first, then 5, then 1 and 6.
 
@@ -274,6 +308,11 @@ Only registered codes may appear in decisions. New codes are added here with the
 | `AGE_COMPATIBLE_AT_REPORT` | IdentityDecisionPolicy | stated age within ±2 years at the same time point; not support |
 | `AGE_DIFFERENCE_AT_REPORT` | IdentityDecisionPolicy | stated age differs by more than 2 years; soft conflict |
 | `AGE_NOT_COMPARABLE` | IdentityDecisionPolicy | stated age found but not comparable: no full subject DOB, no report date, or an age stated with 時年 |
+| `NEWS_BIRTH_DATE_AGREES` | NewsStatedCheck | a birth date next to the Profile person's name in attached news agrees with the customer's; support (`MEDIUM` or `LOW`) only when the Profile's own DOB is not |
+| `NEWS_BIRTH_DATE_DIFFERENCE` | NewsStatedCheck | no such birth date agrees; soft conflict (row 1) unless the Profile's own DOB agrees |
+| `NEWS_BIRTH_DATE_AMBIGUOUS` | NewsStatedCheck | scattered birth dates next to one written name, one of them agreeing; not support |
+| `NEWS_GENDER_AGREES` | NewsStatedCheck | the gender next to the name in attached news is the customer's; shown, not support |
+| `NEWS_GENDER_DIFFERENCE` | NewsStatedCheck | it differs; rules out rows 3 and 4 unless the Profile's own gender agrees |
 | `ENTITY_IDENTIFIER_AGREEMENT` | IdentityDecisionPolicy | entity record: the same registration or IMO number on both sides |
 | `ENTITY_IDENTIFIER_CONFLICT` | IdentityDecisionPolicy | entity record: a different number under the same key |
 | `ART22_RULING_20261014_MAY_APPLY` | DispositionPolicy | the 2026-10-14 ruling may apply; flagged, not applied |

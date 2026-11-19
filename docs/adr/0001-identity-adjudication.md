@@ -1,7 +1,7 @@
 # ADR-0001: Evidence-driven identity adjudication
 
 - Status: Accepted
-- Date: 2026-11-02; updated 2026-11-09 (merged former ADR-0002, 0003, 0018, 0019)
+- Date: 2026-11-02; updated 2026-11-09 (merged former ADR-0002, 0003, 0018, 0019), 2026-11-19 (values stated in attached news)
 
 ## Context
 
@@ -16,6 +16,7 @@ Fellegi-Sunter, which sums per-field weights log₂(m/u), pays off only once m a
 - **Explicit records, no score.** Adjudication works on CandidateProfile, Evidence, Conflict and SystemDecision. Every decision lists its supporting evidence, conflicts, unknown fields, reason codes and policy version ([explainability](../feature/identity-adjudication.md#explainability)). Retrieval scores (BM25, displayed similarity) rank candidates only and are never identity probabilities.
 - **Three ordered stages:** Hard Conflict Gate, Evidence Strength Assessment, Decision Policy. A confirmed hard conflict cannot be offset by weak supporting attributes. Each hard-conflict rule names its evidence and policy version and carries its own validation status; only validated rules close a pair automatically, unvalidated ones surface as REVIEW ([hard conflict gate](../feature/identity-adjudication.md#hard-conflict-gate)).
 - **Strength table before Fellegi-Sunter.** Phase 1 uses a decision table over `strength` (`LOW | MEDIUM | HIGH | UNIQUE`) ([decision table](../feature/identity-adjudication.md#decision-policy)). Levels follow Fellegi-Sunter order (the less likely a chance agreement, the higher), so a later switch to weights keeps the ranking. Hit prerequisites (NAME, NATIONALITY, GENDER) have no strength. Fellegi-Sunter with term-frequency adjustment and calibration waits for Gate D: historical decisions with human gold answers, and public or list-side statistics for u.
+- **A value stated in attached news is weaker than a Profile field.** An age, birth date or gender written next to the Profile person's name is evidence ([ADR-0012](0012-sources-and-web-information.md)), but it is the person's only by standing next to the name. Agreement is at most `MEDIUM` and never a direct identifier; a difference is a soft conflict that keeps the pair in REVIEW, never a hard conflict ([spec](../feature/identity-adjudication.md#birth-date-and-gender-stated-in-a-source)).
 - **PROBABLE_MATCH is internal.** It ranks REVIEW first; consumers receive REVIEW ([combination matrix](../feature/data-contracts.md#combination-matrix)). There is no automatic MATCH.
 - **Legacy rules not adopted:**
 

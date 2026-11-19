@@ -27,6 +27,7 @@ public class NewsIdentifiersTests
     [InlineData("被告 王大明\n\n住臺北市", "王大明", "")] // an empty line ends the party's lines
     [InlineData("王大明今年45歲。", "王大明", "AGE:45歲")]
     [InlineData("王姓男子遭起訴。", "王姓男子", "GENDER:男")]
+    [InlineData("李姓女子遭起訴。", "王姓男子", "")] // a form the text does not hold says nothing
     [InlineData("被告王大明自陳高職畢業、從事水電工作。", "王大明", "OCCUPATION:水電")]
     [InlineData("被告王大明自陳高職畢業，從事水電工作。", "王大明", "")]
     [InlineData("被告王大明擔任車手，提領款項。", "王大明", "")]

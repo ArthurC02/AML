@@ -134,8 +134,8 @@ public static class ExplanationBuilder
             NameRow("英文姓名／拼音", s.Names.Where(n => !IsCjk(n)), p.Names.Where(n => !IsCjk(n))),
             new("國籍", NullIfEmpty(Join(s.Nationalities)), NullIfEmpty(Join(p.Citizenship)), StatusOf(EvidenceGroup.Nationality), null),
             new("出生日期", s.DateOfBirth?.ToString(), NullIfEmpty(Join(p.DatesOfBirth.Select(d => d.ToString()))), StatusOf(EvidenceGroup.DateOfBirth),
-                DobDifference(e, p), e.GetValueOrDefault(EvidenceGroup.StatedAge)?.Note),
-            new("性別", Gender(s.Gender), Gender(p.Gender), StatusOf(EvidenceGroup.Gender), null),
+                DobDifference(e, p), NullIfEmpty(string.Join("；", new[] { EvidenceGroup.StatedAge, EvidenceGroup.StatedBirthDate }.Select(g => e.GetValueOrDefault(g)?.Note).OfType<string>()))),
+            new("性別", Gender(s.Gender), Gender(p.Gender), StatusOf(EvidenceGroup.Gender), DetailOf(EvidenceGroup.StatedGender), e.GetValueOrDefault(EvidenceGroup.StatedGender)?.Note),
             new("證件", s.Document is { } d ? $"{d.Type} {Mask(d.Number)}" : null,
                 NullIfEmpty(Join((p.Documents ?? []).Select(x => $"{x.Type} {Mask(x.Number)}"))), StatusOf(EvidenceGroup.Document), DetailOf(EvidenceGroup.Document)),
             new("地址", NullIfEmpty(Join(SubjectAddresses(s))), NullIfEmpty(Join(ProfileAddresses(p))),
@@ -174,6 +174,7 @@ public static class ExplanationBuilder
         if (e.TryGetValue(EvidenceGroup.DateOfBirth, out var dob) && dob.Detail is not null) parts.Add(dob.Detail);
         else if (p.Findings.Contains(Findings.ProfileMultipleDob)) parts.Add(Findings.ProfileMultipleDob);
         if (e.TryGetValue(EvidenceGroup.StatedAge, out var age) && age.Detail is not null) parts.Add(age.Detail);
+        if (e.TryGetValue(EvidenceGroup.StatedBirthDate, out var stated) && stated.Detail is not null) parts.Add(stated.Detail);
         return parts.Count == 0 ? null : string.Join("；", parts);
     }
 

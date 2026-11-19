@@ -37,7 +37,7 @@ public static partial class NewsIdentifiers
         }
         foreach (var form in forms.Where(f => f.Length >= 2).Distinct(StringComparer.Ordinal).Take(MaxForms))
         {
-            if (AnonymisedGender().Match(form) is { Success: true } g) Add(NewsIdentifierKind.Gender, g.Groups["g"].Value);
+            if (text.Contains(form, StringComparison.Ordinal) && AnonymisedGender().Match(form) is { Success: true } g) Add(NewsIdentifierKind.Gender, g.Groups["g"].Value);
             var at = 0;
             for (var n = 0; n < MaxPerForm && found.Count < MaxFound && (at = text.IndexOf(form, at, StringComparison.Ordinal)) >= 0; n++, at += form.Length)
             {

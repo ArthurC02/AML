@@ -1,5 +1,6 @@
 using System.Text;
 using Aml.Core.Cases;
+using Aml.Core.Codes;
 using Aml.Core.Identity;
 using Aml.Core.Normalization;
 using Aml.Core.Ports;
@@ -125,13 +126,55 @@ public static class ExplanationBuilder
         + (!newsDisagrees ? "" : Join(NewsStated.Where(n => e.GetValueOrDefault(n.Group) is { Status: ComparisonStatus.Uncertain, Detail: ReasonCodes.NewsBirthDateDifference or ReasonCodes.NewsGenderDifference })
             .Select(n => n.Label)) is { Length: > 0 } disagreeing ? $"來源不一致：{disagreeing}與名單記錄不同，附加新聞可能不是這位名單人物的。" : "");
 
+    // Said in words first; every code stays, in brackets, so the sentence can still be traced to /api/codes.
     private static string Conclusion(HitResult h) =>
-        $"系統身分判斷 {CaseJson.Code(h.Identity.Decision)}"
-        + (h.Identity.HardConflict is { } hc ? $"（第一階段硬衝突 {hc}）"
-            : h.Identity.Stage3Row is { } row ? $"（第三階段第 {row} 列）" : $"（{h.Identity.ReasonCodes[0]}）")
-        + $"；對外結果 {CaseJson.Code(h.PairResult)}" + (h.ReviewPriority is { } pr ? $"（複核優先序 {CaseJson.Code(pr)}）" : "")
-        + $"；理由碼 {Join(h.Identity.ReasonCodes.Concat(h.PairReasonCodes))}。名單條件與身分判斷各自獨立。"
+        $"身分判斷：{IdentityWords(h.Identity.Decision)}（{CaseJson.Code(h.Identity.Decision)}，"
+        + (h.Identity.HardConflict is { } hc ? $"第一階段硬衝突 {hc}）"
+            : h.Identity.Stage3Row is { } row ? $"第三階段第 {row} 列）" : $"{h.Identity.ReasonCodes[0]}）")
+        + $"；對外結果：{ResultWords(h.PairResult)}（{CaseJson.Code(h.PairResult)}）"
+        + (h.ReviewPriority is { } pr ? $"，複核優先序{PriorityWords(pr)}（{CaseJson.Code(pr)}）" : "")
+        + $"；理由：{Join(h.Identity.ReasonCodes.Concat(h.PairReasonCodes).Select(Named))}。名單條件與身分判斷各自獨立。"
         + Disposition(h.Disposition);
+
+    /// <summary>A code with its catalog name in front: 在可得精度內一致（CONSISTENT_AT_AVAILABLE_PRECISION).</summary>
+    private static string Named(string code) => CodeCatalog.Find(code) is { } entry ? $"{entry.Name}（{code}）" : code;
+
+    private static string IdentityWords(IdentityDecision d) => d switch
+    {
+        IdentityDecision.ProbableMatch => "很可能是同一人",
+        IdentityDecision.NoMatch => "不是同一人",
+        _ => "無法確定是否同一人",
+    };
+
+    private static string ResultWords(ScreeningAssessment r) => r switch
+    {
+        ScreeningAssessment.Hit => "命中",
+        ScreeningAssessment.NoHit => "未命中",
+        ScreeningAssessment.Review => "需人工複核",
+        ScreeningAssessment.NotEvaluated => "未評估",
+        _ => "不適用",
+    };
+
+    private static string GroupWords(EvidenceGroup g) => g switch
+    {
+        EvidenceGroup.Name => "姓名",
+        EvidenceGroup.Gender => "性別",
+        EvidenceGroup.Nationality => "國籍",
+        EvidenceGroup.DateOfBirth => "出生日期",
+        EvidenceGroup.Document => "證件",
+        EvidenceGroup.OtherIdentifier => "其他識別碼",
+        EvidenceGroup.Employment => "任職機構",
+        EvidenceGroup.Relationship => "關係人",
+        EvidenceGroup.CompanyAssociation => "關聯公司",
+        EvidenceGroup.Address => "地址",
+        EvidenceGroup.StatedAge => "報導年齡",
+        EvidenceGroup.TemporalRole => "時序",
+        EvidenceGroup.EntityIdentifier => "登記號碼",
+        EvidenceGroup.StatedBirthDate => "新聞所載出生日期",
+        _ => "新聞所載性別",
+    };
+
+    private static string PriorityWords(ReviewPriority p) => p switch { ReviewPriority.High => "高", ReviewPriority.Normal => "一般", _ => "低" };
 
     /// <summary>The nine comparison fields of the bank's screening specification, in its order.</summary>
     public static readonly IReadOnlyList<string> ComparisonFields =
@@ -247,7 +290,7 @@ public static class ExplanationBuilder
                 : "，足以排除。"));
         sb.Append(support.Count == 0
             ? "除姓名、國籍、性別等前提條件外，沒有任何佐證。"
-            : "佐證：" + Join(support.Select(v => $"{CaseJson.Code(v.Group)}（{CaseJson.Code(v.Strength)}{(v.Detail is null ? "" : "，" + v.Detail)}）")) + "。");
+            : "佐證：" + Join(support.Select(v => $"{GroupWords(v.Group)}（{CaseJson.Code(v.Group)}，強度 {CaseJson.Code(v.Strength)}{(v.Detail is null ? "" : "，" + Named(v.Detail))}）")) + "。");
         if (h.Identity.ReasonCodes.Contains(ReasonCodes.NoBilateralDirectIdentifier))
             sb.Append("雙方沒有可共同比對的直接識別資料（完整出生日期或證件）。");
         return sb.ToString();
@@ -255,8 +298,10 @@ public static class ExplanationBuilder
 
     // Advisory only: the final selection happens outside the system (ADR-0004).
     private static string Disposition(DispositionRecommendation d) =>
-        (d.Recommendation is { } r ? $"第 22 條建議 {CaseJson.Code(r)}（{Join(d.ReasonCodes)}，僅供參考）。" : $"第 22 條無法給建議（{Join(d.ReasonCodes)}）。")
-        + (d.PendingChecks.Count > 0 ? $"待查核：{Join(d.PendingChecks)}（尚未執行）。" : "");
+        (d.Recommendation is { } r
+            ? $"第 22 條建議：{(r == Recommendation.OnList ? "列為名單對象" : "不列為名單對象")}（{CaseJson.Code(r)}；{Join(d.ReasonCodes.Select(Named))}），僅供參考。"
+            : $"第 22 條無法給建議（{Join(d.ReasonCodes.Select(Named))}）。")
+        + (d.PendingChecks.Count > 0 ? $"待查核（尚未執行）：{Join(d.PendingChecks.Select(Named))}。" : "");
 
     private static string Condition(SourceCondition c)
     {

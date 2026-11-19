@@ -48,10 +48,11 @@ public class ExplanationTests
         // The document number is masked.
         Assert.Equal("TW_NATIONAL_ID A12*****89", Row(h, "證件號碼／統編").SubjectValue);
         Assert.Contains(Findings.HistoricalAdminDivision, h.DataQualityFindings);
-        Assert.Contains("DATE_OF_BIRTH（LOW", h.Summary.KeyEvidenceOrGaps, StringComparison.Ordinal);
+        // Words first, the code after them in brackets.
+        Assert.Contains("出生日期（DATE_OF_BIRTH，強度 LOW，出生年相符", h.Summary.KeyEvidenceOrGaps, StringComparison.Ordinal);
         Assert.Contains("雙方沒有可共同比對的直接識別資料", h.Summary.KeyEvidenceOrGaps, StringComparison.Ordinal);
-        Assert.Contains("PROBABLE_MATCH（第三階段第 4 列）", h.Summary.Conclusion, StringComparison.Ordinal);
-        Assert.Contains("對外結果 REVIEW", h.Summary.Conclusion, StringComparison.Ordinal);
+        Assert.StartsWith("身分判斷：很可能是同一人（PROBABLE_MATCH，第三階段第 4 列）；對外結果：需人工複核（REVIEW），複核優先序高（HIGH）；理由：在可得精度內一致（CONSISTENT_AT_AVAILABLE_PRECISION）",
+            h.Summary.Conclusion, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -70,7 +71,7 @@ public class ExplanationTests
         Assert.Contains(Findings.DuplicatedAddressLine, h.DataQualityFindings);
         Assert.Contains("沒有任何佐證", h.Summary.KeyEvidenceOrGaps, StringComparison.Ordinal);
         Assert.Contains("ADVERSE_MEDIA（FINANCIAL_CRIME、TAX_CRIME；法律階段 INDICTED）", h.Summary.ExternalData, StringComparison.Ordinal);
-        Assert.Contains("REVIEW（第三階段第 6 列）", h.Summary.Conclusion, StringComparison.Ordinal);
+        Assert.Contains("身分判斷：無法確定是否同一人（REVIEW，第三階段第 6 列）", h.Summary.Conclusion, StringComparison.Ordinal);
 
         Assert.Collection(h.Sources,
             s =>
@@ -104,7 +105,7 @@ public class ExplanationTests
         Assert.Empty(h.Sources); // GC-01 cites no source and has no attached news
         Assert.Contains("董事長，宏遠投資股份有限公司（1990-07 起）", Row(h, "職業／任職機構").ProfileValue, StringComparison.Ordinal);
         Assert.Equal("硬衝突 IMPOSSIBLE_AGE_AT_REPORTED_EVENT，足以排除。除姓名、國籍、性別等前提條件外，沒有任何佐證。", h.Summary.KeyEvidenceOrGaps);
-        Assert.Contains("NO_MATCH（第一階段硬衝突", h.Summary.Conclusion, StringComparison.Ordinal);
+        Assert.Contains("身分判斷：不是同一人（NO_MATCH，第一階段硬衝突", h.Summary.Conclusion, StringComparison.Ordinal);
     }
 
     [Fact]

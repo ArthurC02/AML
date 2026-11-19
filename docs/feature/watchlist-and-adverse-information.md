@@ -234,6 +234,7 @@ Each hit with attached news carries a `newsDigest` in its explanation ([ADR-0012
     - 日前 and 上週 name no day and stay null, as does every relative date when the publication date is unknown
   - The agency, amount and requested penalty come from the clause, else from the sentence. The offences, the penalty and finality come from the sentence.
   - The penalty (徒刑, 拘役, 緩刑, 併科罰金, 易科罰金, 褫奪公權) is read for convictions only, the requested penalty (求刑, 求處) for indictments only; a sentencing request is never a sentence, so 求處有期徒刑10年 is left out of the penalty.
+  - 可上訴, 得上訴, 可提起上訴 and 得抗告 say a ruling can still be appealed and give no appeal event; 不得上訴 stays a `NEGATED` appeal.
   - `final` is set for a stated judgment or non-indictment whose sentence says 判決確定, 定讞, 全案確定 or 確定在案, and not 可上訴, 未定讞 or 未確定.
   - The offences found are mapped to risk categories (`offenceCategories`), after the FATF designated categories and 洗錢防制法 第 3 條: 內線交易 → MARKET_ABUSE, 地下匯兌 → FINANCIAL_CRIME, 背信 → BREACH_OF_TRUST, and so on; 公共危險, 賭博 and 傷害 have none.
   - Each event keeps its sentence as the quote, at most 200 characters.

@@ -715,7 +715,8 @@ public static partial class NewsDigests
     [GeneratedRegex("獲判無罪|判無罪|無罪確定|無罪定讞")]
     private static partial Regex AcquittalPattern();
 
-    [GeneratedRegex("非常上訴|提起上訴|上訴|抗告|聲請再審|發回更審|更[一二三四五]審")]
+    // 可上訴 and 得上訴 say a ruling can still be appealed, not that anyone appealed; 不得上訴 stays, as a negated appeal.
+    [GeneratedRegex("非常上訴|(?<!可|(?<!不)得|可提起|(?<!不)得提起)(?:提起)?上訴|(?<!可|(?<!不)得)抗告|聲請再審|發回更審|更[一二三四五]審")]
     private static partial Regex AppealPattern();
 
     [GeneratedRegex("沒收|追徵|追繳")]

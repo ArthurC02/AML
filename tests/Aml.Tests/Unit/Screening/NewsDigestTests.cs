@@ -61,6 +61,18 @@ public class NewsDigestTests
         Assert.Equal([(NewsEventType.Detention, "林姓男子"), (NewsEventType.NonIndictment, "陳姓女子")], d.Events.Select(e => (e.Type, e.Actor)));
     }
 
+    // A ruling that can still be appealed is not an appeal; one that was appealed is.
+    [Theory]
+    [InlineData("臺北地院判王大明有期徒刑五年，可上訴。", false)]
+    [InlineData("王大明遭判處有期徒刑3年，全案仍可上訴。", false)]
+    [InlineData("王大明遭判處有期徒刑3年，得上訴。", false)]
+    [InlineData("王大明遭判處有期徒刑3年，可提起上訴。", false)]
+    [InlineData("法院裁定王大明羈押，得抗告。", false)]
+    [InlineData("王大明遭判處有期徒刑3年，可上訴，王大明已提起上訴。", true)]
+    [InlineData("王大明不服判決上訴。", true)]
+    public void An_appealable_ruling_is_not_an_appeal(string news, bool appeal) =>
+        Assert.Equal(appeal, Digest(news).Events.Any(e => e.Type == NewsEventType.Appeal));
+
     [Theory]
     [InlineData("王大明尚未被起訴。", NewsEventType.Indictment, NewsCertainty.Negated)]
     [InlineData("王大明恐遭起訴。", NewsEventType.Indictment, NewsCertainty.Hedged)]

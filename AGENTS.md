@@ -51,6 +51,7 @@ dotnet format Aml.slnx --verify-no-changes
 dotnet test --solution Aml.slnx                 # whole suite, a few seconds
 tests/Aml.Tests/bin/Debug/net10.0/Aml.Tests.exe -namespace "Aml.Tests.Unit.*"   # inner loop
 AML_UPDATE_SNAPSHOTS=1 dotnet test --solution Aml.slnx   # only after an intended contract/example change; review the diff
+AML_NEWS_MODELS=<dir with ner/ and ev/> dotnet test --solution Aml.slnx   # also runs the trained news models on a Case (skipped without it)
 dotnet tool restore && dotnet stryker -f stryker-new-logic.json -m "**/Identity/IdentityDecisionPolicy.cs"   # mutation test one file
 ```
 

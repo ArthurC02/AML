@@ -259,6 +259,23 @@ public class ScreeningPolicyTests
     [InlineData("陳志明獲解除通緝。", LegalStage.Unknown)]
     [InlineData("法院撤回對陳志明的通緝。", LegalStage.Unknown)]
     [InlineData("陳志明遭起訴，原審判陳志明有期徒刑二年。", LegalStage.Convicted)]
+    // An aside in brackets is about whoever stands right before it; a fraudster's story is no report; a heading is no step.
+    [InlineData("李小四（另案起訴）、陳志明等人共組詐欺集團。", LegalStage.Unknown)]
+    [InlineData("陳志明夥同李○○（業經提起公訴）、王小五（已判刑確定）詐騙被害人。", LegalStage.Unknown)]
+    [InlineData("陳志明（業經檢察官另案起訴）夥同李小四詐騙被害人。", LegalStage.Indicted)]
+    [InlineData("李小四與陳志明（58歲，已遭起訴）共組詐欺集團。", LegalStage.Indicted)]
+    [InlineData("陳志明所屬集團成員佯稱被害人涉及洗錢，已遭通緝，須交付存款。", LegalStage.Unknown)]
+    [InlineData("陳志明假冒檢察官謊稱被害人遭起訴。陳志明遭警方逮捕後移送偵辦。", LegalStage.Alleged)]
+    [InlineData("陳志明佯稱可代辦貸款，騙取被害人帳戶，得手後轉匯一空，全案偵結後將陳志明等9人依詐欺罪嫌起訴。", LegalStage.Indicted)] // the story ends, the report goes on
+    [InlineData("陳志明涉嫌詐欺。\n起訴罪名\n詐欺取財罪。", LegalStage.Unknown)]
+    [InlineData("陳志明、李小四（均遭起訴）涉詐欺。", LegalStage.Indicted)]             // an aside for all of the list
+    [InlineData("陳志明與李小四（兩人均遭檢方起訴）涉詐欺。", LegalStage.Indicted)]
+    [InlineData("陳志明被控佯稱投資可獲利，遭起訴。", LegalStage.Indicted)]             // the next clause opens with the passive
+    [InlineData("被告 陳志明\n主文\n陳志明無罪部分，檢察官上訴駁回。\n理由\n略。", LegalStage.Acquitted)] // the acquittal is upheld
+    // More forms of a judgment's header and order.
+    [InlineData("上 訴 人\n即 被 告 陳志明\n主文\n上訴駁回。\n理由\n略。", LegalStage.Convicted)]
+    [InlineData("被告 陳志明\n主文\n陳志明犯如本院附表編號1所示之罪，處如本院附表編號1所示之刑。\n理由\n略。", LegalStage.Convicted)]
+    [InlineData("被告 陳志明\n被告 李小四\n主文\n原判決關於陳志明沒收部分、李小四無罪部分均撤銷。\n陳志明犯詐欺取財罪，處有期徒刑一年。\n理由\n略。", LegalStage.Convicted)]
     public void legal_stage_from_news(string news, LegalStage expected) =>
         Assert.Equal(expected, Assert.Single(SourceConditions.Determine(Profile("Adverse Media"), false, news)).LegalStage);
 

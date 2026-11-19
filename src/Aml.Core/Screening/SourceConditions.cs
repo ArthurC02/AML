@@ -361,6 +361,12 @@ public static partial class SourceConditions
         // Quoted speech is blanked out, keeping every position: stages are looked for in the blanked text, names in the
         // original (綽號「阿明」的王大明 still names the person).
         var blanked = Quoted().Replace(news, m => new string('　', m.Length));
+        // An aside in brackets is about whoever stands right before it: 李小四（另案起訴）、陳志明 says nothing of 陳志明.
+        // The brackets are paired in the text as written (a quote blanked out may have held one of a pair).
+        var kept = blanked.ToCharArray();
+        foreach (Match m in Aside().Matches(news))
+            if (!GroupAside().IsMatch(m.Value) && AfterAnotherName(news, m.Index, names, surnames)) kept.AsSpan(m.Index, m.Length).Fill('　');
+        blanked = new string(kept);
         var named = WithoutRelations(news, names);
         var (judgment, ordered, defendant) = JudgmentReading(news, names);
         // A judgment names many people besides its defendants (witnesses, account holders, accomplices tried elsewhere):
@@ -371,9 +377,15 @@ public static partial class SourceConditions
             var own = MentionsAnyName(named.Substring(start, length), names);
             var relation = named.AsSpan(start, length).Contains(RelationMark);
             var attributable = own || (!bystander && !relation && !OtherParty.Any(m => blanked.AsSpan(start, length).Contains(m, StringComparison.Ordinal)));
+            // 佯稱被害人涉案，已遭通緝: what a fraudster told the victim, to the end of that clause and through the next one.
+            // No further: the sentence may go on to the fraudster's own arrest and indictment.
+            var claimed = false;
             foreach (var (at, size) in Spans(blanked, start, length, ClauseEnds))
             {
                 var clause = blanked.Substring(at, size);
+                // …unless the next clause opens with the passive: 陳志明佯稱可獲利，遭起訴 is the fraudster's own indictment.
+                if (claimed) { claimed = false; if (!OpensPassive().IsMatch(clause)) continue; }
+                if (Pretence().Match(clause) is { Success: true } pretence) (claimed, clause) = (true, clause[..pretence.Index]);
                 if (bystander) clause = IndictmentPaper().Replace(clause, m => new string('　', m.Length));
                 var mine = MentionsAnyName(named.Substring(at, size), names);
                 if (!mine && (named.AsSpan(at, size).Contains(RelationMark) || NamesAnotherPerson(clause, surnames) || IndictsAnotherPerson(clause, surnames, news))) continue;
@@ -392,6 +404,38 @@ public static partial class SourceConditions
         var underInvestigation = !bystander && (blanked.Contains("偵辦", StringComparison.Ordinal) || blanked.Contains("調查", StringComparison.Ordinal));
         return stage == LegalStage.Unknown && underInvestigation ? LegalStage.Alleged : stage;
     }
+
+    [GeneratedRegex("無罪部分(?=[^。]{0,40}撤銷)")]
+    private static partial Regex RevokedAcquittal();
+
+    // 李小四、陳志明（均遭起訴）: an aside that opens with a word for all of them is the whole list's.
+    [GeneratedRegex("^[（(](?:均|皆|同|等|[兩二三四五]人)")]
+    private static partial Regex GroupAside();
+
+    [GeneratedRegex(@"^\s*(?:遭|被|經)")]
+    private static partial Regex OpensPassive();
+
+    [GeneratedRegex("佯稱|謊稱|誆稱|訛稱|詐稱")]
+    private static partial Regex Pretence();
+
+    [GeneratedRegex("[（(][^（）()。\n]{1,200}[）)]", RegexOptions.NonBacktracking)]
+    private static partial Regex Aside();
+
+    // The two or three characters before the bracket read as another person's name: a common surname other than the
+    // Profile person's own, then ideographs or ○ (李小四, 李○○, 李四). After one of the Profile's names it is theirs.
+    // ponytail: a noun opening with a surname character (高層（已起訴）) is taken for a name too.
+    private static bool AfterAnotherName(string news, int bracket, IReadOnlyList<string> names, HashSet<char> ownSurnames)
+    {
+        var before = news.AsSpan(0, bracket);
+        if (names.Take(100).Any(n => n.Length > 1 && news.AsSpan(0, bracket).EndsWith(n, StringComparison.OrdinalIgnoreCase))) return false;
+        foreach (var length in new[] { 3, 2 })
+            if (before.Length >= length && before[^length..] is var name && CommonSurnames.Contains(name[0], StringComparison.Ordinal)
+                && !ownSurnames.Contains(name[0]) && name[1..].IndexOfAnyExcept(NameCharacters) < 0) return true;
+        return false;
+    }
+
+    private static readonly System.Buffers.SearchValues<char> NameCharacters = System.Buffers.SearchValues.Create(
+        "○" + string.Concat(Enumerable.Range(0x4E00, 0x9FFF - 0x4E00 + 1).Select(c => (char)c)));
 
     // 王大明的哥哥遭起訴, 王大明之妻李四遭判刑: the one spoken of is the relative, aide or lawyer, so the Profile name right
     // before 的 / 之 and such a word is marked out, keeping every position. A sentence that names the person only this way
@@ -470,10 +514,12 @@ public static partial class SourceConditions
             }
             var said = theirs.ToString();
             if (OrderSentence().IsMatch(said)) return (true, LegalStage.Convicted, defendant);
-            if (said.Contains("無罪", StringComparison.Ordinal)) stage = LegalStage.Acquitted;
+            // 原判決關於X沒收部分、Y無罪部分均撤銷 names a part of the judgment below, not an outcome.
+            // 陳志明無罪部分，檢察官上訴駁回 upholds the acquittal and stays one.
+            if (RevokedAcquittal().Replace(said, "").Contains("無罪", StringComparison.Ordinal)) stage = LegalStage.Acquitted;
         }
         // A defendant appeals a conviction only: 上訴駁回 on the appeal of an 上訴人即被告 leaves that conviction standing.
-        if (stage is null && order.Contains("上訴駁回", StringComparison.Ordinal) && listed.Exists(l => l.StartsWith("上訴人即被告", StringComparison.Ordinal)))
+        if (stage is null && order.Contains("上訴駁回", StringComparison.Ordinal) && listed.Exists(l => l.StartsWith("上訴人即被告", StringComparison.Ordinal) || l.StartsWith("即被告", StringComparison.Ordinal))) // 即被告 opens the line under 上訴人
             stage = LegalStage.Convicted;
         return (true, stage, defendant);
     }
@@ -482,7 +528,7 @@ public static partial class SourceConditions
 
     private static string Compact(string s) => string.Concat(s.Where(c => !char.IsWhiteSpace(c)));
 
-    [GeneratedRegex("處(?:有期徒刑|拘役|罰金|無期徒刑|死刑|如附[表件])|免刑")]
+    [GeneratedRegex("處(?:有期徒刑|拘役|罰金|無期徒刑|死刑|如(?:本院)?附[表件])|免刑")]
     private static partial Regex OrderSentence();
 
     [GeneratedRegex("^(?:[一二三四五壹貳參]、)?(?:犯罪)?(?:事實|理由).{0,12}$")]
@@ -640,7 +686,7 @@ public static partial class SourceConditions
     internal static partial Regex PublicProsecution();
 
     // 聲請簡易判決處刑 is the summary form of an indictment.
-    [GeneratedRegex("(?<!不|緩|撤回|予)起訴|聲請簡易判決處刑")]
+    [GeneratedRegex("(?<!不|緩|撤回|予)起訴(?!罪名|法條)|聲請簡易判決處刑")]
     internal static partial Regex Indictment();
 
     [GeneratedRegex("起訴(?:書|範圍|意旨)")]

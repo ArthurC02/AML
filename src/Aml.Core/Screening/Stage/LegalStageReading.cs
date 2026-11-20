@@ -39,6 +39,9 @@ namespace Aml.Core.Screening.Stage;
 /// - The last stage in the text wins; 定讞 alone settles what came before, and 通緝 is WANTED only while no judicial
 ///   stage is told (in a sentence naming the person: none that such a sentence told). 偵辦 or 調查 give ALLEGED only when
 ///   there is no stage.
+/// - The code an anonymised judgment writes for the person (A05, linked by <see cref="RulingReading"/>) is one of their
+///   names for the whole text, written as a whole token, half- or full-width (A05, Ａ０５; not A051):
+///   A05所涉詐欺犯行，業經檢察官為不起訴處分確定 is theirs.
 /// The full rules, with examples, are in docs/feature/watchlist-and-adverse-information.md (Stage from attached news).
 /// </remarks>
 internal static class LegalStageReading
@@ -49,8 +52,14 @@ internal static class LegalStageReading
         var stage = LegalStage.Unknown;
         string? basis = null; // the code of the transition that last set the stage
         var stageOwn = false; // a sentence naming the person set it: one that does not name them does not replace it
-        var text = ReportForm.Prepare(news, names);
         var ruling = RulingReading.Read(news, names);
+        // 被告 陳志明 … 主文 A05犯…: the code the judgment writes for the person names them in its reasons too.
+        if (ruling.PartyCode is { } code)
+        {
+            news = ReportForm.MarkCode(news, code);
+            names = [ReportForm.CodeMark, .. names]; // first: within the names searched for
+        }
+        var text = ReportForm.Prepare(news, names);
         var (judgment, sole) = (ruling.Judgment, ruling.Sole);
         var suspected = false;
         var bystander = ReportRules.Bystander(ruling);

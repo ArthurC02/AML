@@ -15,6 +15,10 @@ namespace Aml.Core.Screening.Stage;
 /// 有期徒刑一年，王大明無罪). A sentence in any part of the order makes CONVICTED, else an acquittal ACQUITTED; an order
 /// that says neither of them (免訴, 公訴不受理) gives nothing, save what the later readers tell. Whether the person is a
 /// listed defendant (a 被告 line before 主文) is told as well: such a person stands indicted even when the order is not read.
+/// A judgment the court anonymised calls its defendants by a code from 主文 on (A03犯…，處有期徒刑一年。A07無罪。): when the
+/// header's 被告 block holds N names alone on their lines, the order writes none of them, and its sentences have N distinct
+/// codes for subject (A03犯…, A03、A07均無罪; not A12 of A03與A12共同犯…), first written in ascending order, the i-th name is
+/// the i-th code, and the person's code is one of their names (else no code is theirs).
 /// ponytail: pending a judgment Golden Case. Not read: a judgment's order sentence that goes on about the person without
 /// naming them again (又犯…罪，處…; a release's is read), a co-defendant of the same surname, and anything after the order
 /// that overturns it (the order wins over the rest of the text). An order with no 事實 / 理由 heading is read for 40 lines at most.
@@ -23,7 +27,7 @@ internal static class RulingReading
 {
     internal static RulingResult Read(string news, IReadOnlyList<string> names) =>
         RulingForm.Parse(news, names) is { } text && DecisionList.FirstOf(Readers, text) is var first
-            ? new(true, first?.Stage, text.Defendant, text.Sole, first?.Code)
+            ? new(true, first?.Stage, text.Defendant, text.Sole, first?.Code, text.PartyCode)
             : default;
 
     /// <summary>What every reader says of the person, in the order of <see cref="Readers"/>; empty when the text is no ruling.</summary>

@@ -36,9 +36,9 @@ internal readonly record struct StageReading(LegalStage Stage, string? Basis);
 /// <summary>
 /// What a ruling says of the person: whether the text is a judgment or release; the person's stage by it (null: it does
 /// not say); whether they are a defendant of it, and its only one; the code of the reader that gave the stage (null when
-/// none spoke).
+/// none spoke); the code an anonymised judgment writes for them (A05; null when there is none).
 /// </summary>
-internal readonly record struct RulingResult(bool Judgment, LegalStage? Stage, bool Defendant, bool Sole, string? Basis);
+internal readonly record struct RulingResult(bool Judgment, LegalStage? Stage, bool Defendant, bool Sole, string? Basis, string? PartyCode);
 
 /// <summary>A judgment or a court's release of its ruling, read once (<see cref="RulingForm.Parse"/>) into what every ruling rule needs.</summary>
 internal sealed class RulingText
@@ -55,8 +55,11 @@ internal sealed class RulingText
     /// <summary>The text's lines, 400 at most.</summary>
     public string[] All { get; init; } = [];
 
-    /// <summary>The person's names; with 被告 when they are the only defendant.</summary>
+    /// <summary>The person's names; with 被告 when they are the only defendant, and with <see cref="PartyCode"/>.</summary>
     public List<string> Own { get; init; } = [];
+
+    /// <summary>The code an anonymised judgment's order writes for the person (A05), linked from the header's names.</summary>
+    public string? PartyCode { get; init; }
 
     public HashSet<char> Surnames { get; init; } = [];
 

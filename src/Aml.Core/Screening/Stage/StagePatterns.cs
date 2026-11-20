@@ -174,9 +174,24 @@ internal static partial class StagePatterns
     [GeneratedRegex("被告(?:不服[^，,。]{0,8})?提起上訴")]
     internal static partial Regex DefendantAppealed();
 
+    // A header line that is a defendant's name alone, past the 被告 label: 陳志明, 陳志明（另案在押）; not 住臺北市中正區….
+    [GeneratedRegex(@"^(?<name>\p{IsCJKUnifiedIdeographs}{2,4})(?:[（(][^（）()]*[）)])?$")]
+    internal static partial Regex BareName();
+
+    // The code an anonymised judgment writes for a defendant from the order on: A05, B12, Ａ０５; not inside AB123, A073 or A0512.
+    private const string Code = "[A-ZＡ-Ｚ][0-9０-９]{2}", NoLetterOrDigitAfter = "(?![A-Za-z0-9Ａ-Ｚａ-ｚ０-９])";
+
+    [GeneratedRegex("(?<![A-Za-z0-9Ａ-Ｚａ-ｚ０-９])" + Code + NoLetterOrDigitAfter)]
+    internal static partial Regex PartyCode();
+
+    // A code that is the subject of a sentence of the order: it opens a line or follows 。；; (an item number 一、 before it),
+    // alone or in a list joined by 、: A03犯…, A03、A07均無罪, 上開撤銷部分，A03處…; not A12 of A03與A12共同犯…, nor 如附表A07所示之物.
+    [GeneratedRegex(@"(?<=(?:^|[。；;\n])\s*(?:[一二三四五六七八九十]+、)?(?:(?:" + StageGlossary.RevokedPartOpeners + ")[，,])?(?:" + Code + "、)*)" + Code + NoLetterOrDigitAfter)]
+    internal static partial Regex SubjectCode();
+
     // ---- A sentence of the order and whose it is ----
 
-    [GeneratedRegex("處(?:" + StageGlossary.Penalties + "|如(?:本院)?附[表件]|如[^，,。\n]{0,20}所示之刑)|應執行(?:" + StageGlossary.CombinedPenalties + ")|免刑")]
+    [GeneratedRegex("處(?:" + StageGlossary.Penalties + "|如?(?:本院)?附[表件]|如[^，,。\n]{0,20}所示之刑)|應執行(?:" + StageGlossary.CombinedPenalties + ")|免刑")]
     internal static partial Regex OrderSentence();
 
     [GeneratedRegex("緩刑[0-9一二三四五六七八九十壹貳參肆伍]+年")]

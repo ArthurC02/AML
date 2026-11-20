@@ -9,7 +9,7 @@ namespace Aml.Core.Screening.Stage;
 internal static class StageGlossary
 {
     /// <summary>The version of this glossary; change it with any entry.</summary>
-    internal const string Version = "stage-glossary-2";
+    internal const string Version = "stage-glossary-3";
 
     // ---- Saying and quoting ----
 
@@ -149,6 +149,13 @@ internal static class StageGlossary
     /// A word that may open someone else's sentence would give the person that sentence.
     /// </summary>
     internal const string ContinuationWords = "應執行|又犯|又共同犯";
+
+    /// <summary>
+    /// How an appeal judgment's order opens the new sentence after setting the old one aside, before the defendant
+    /// (pattern SubjectCode: 上開撤銷部分，A03處有期徒刑十一月). Used only to find the subject code of an anonymised
+    /// judgment; a wider opener would make a code after any clause a subject.
+    /// </summary>
+    internal const string RevokedPartOpeners = "上開撤銷部分|前開撤銷部分|前項撤銷部分|撤銷部分";
 
     /// <inheritdoc cref="ContinuationWords"/>
     internal static readonly string[] ContinuationOpeners = ContinuationWords.Split('|');
@@ -403,11 +410,14 @@ internal static class StageGlossary
     /// <inheritdoc cref="AppellantDefendantWords"/>
     internal static readonly string[] AppellantDefendant = AppellantDefendantWords.Split('|');
 
-    /// <summary>Kinds of counsel before 辯護人 on a party line (pattern OtherPartyLine).</summary>
-    internal const string CounselKinds = "選任|指定|公設";
+    /// <summary>
+    /// Kinds of counsel before 辯護人 on a party line (pattern OtherPartyLine). A kind left out lets the counsel's names run on
+    /// as defendants (義務辯護人 林美玲).
+    /// </summary>
+    internal const string CounselKinds = "選任|指定|公設|義務|共同選任|共同指定";
 
-    /// <summary>Kinds of agent before 代理人 on a party line (pattern OtherPartyLine).</summary>
-    internal const string AgentKinds = "訴訟|法定";
+    /// <summary>Kinds of agent before 代理人 on a party line (pattern OtherPartyLine): 告訴代理人, the complainant's.</summary>
+    internal const string AgentKinds = "訴訟|法定|告訴";
 
     /// <summary>Party-line openings besides counsel, agents and <see cref="OtherPartyRoles"/> that end the defendants' block (pattern OtherPartyLine).</summary>
     internal const string OtherPartyHeads = "上列|輔佐人";

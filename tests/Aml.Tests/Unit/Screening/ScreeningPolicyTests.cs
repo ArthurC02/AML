@@ -464,6 +464,21 @@ public class ScreeningPolicyTests
     // An aside opening with a surname-character noun is not another person's.
     [InlineData("陳志明涉詐欺（按金額經查已達五百萬元，業經起訴）。", LegalStage.Indicted)]
     [InlineData("陳志明涉詐欺（即白手套所涉部分，業經起訴）。", LegalStage.Indicted)]
+    // An anonymised judgment: the header's i-th name is the order's i-th code, when they are as many and in ascending order.
+    [InlineData(CodedJudgment + "A03犯三人以上共同詐欺取財罪，處有期徒刑一年。\nA07無罪。" + CodedFacts, LegalStage.Convicted)]
+    [InlineData(CodedSoleJudgment + "A05犯詐欺取財罪，處有期徒刑六月。\n事 實\n略。", LegalStage.Convicted)]
+    [InlineData(CodedSoleJudgment + "A05無罪。\n事 實\n略。", LegalStage.Acquitted)]
+    [InlineData(CodedSoleJudgment + "A05犯附表「主文」欄所示之罪，各處附表「主文」欄所示之刑。\n事 實\n略。", LegalStage.Convicted)] // sentenced by a table
+    [InlineData(CodedSoleJudgment + "原判決之宣告刑撤銷。\n上開撤銷部分，A05處有期徒刑十一月。\n理 由\n略。", LegalStage.Convicted)]
+    [InlineData(CodedSoleJudgment + "A05犯詐欺取財罪，處有期徒刑六月。扣案陳志明所有之手機沒收。\n事 實\n略。", LegalStage.Convicted)] // the name in the order, not as its subject
+    [InlineData(CodedSoleJudgment + "A05公訴不受理。\n理 由\nA05所涉詐欺犯行，業經檢察官為不起訴處分確定。", LegalStage.Dismissed)] // the code names them in the reasons too
+    [InlineData(CodedJudgment + "A03犯三人以上共同詐欺取財罪，處有期徒刑一年。\nA07無罪。\nA09免訴。" + CodedFacts, LegalStage.Indicted)] // three codes for two names
+    [InlineData(CodedJudgment + "A07無罪。\nA03犯三人以上共同詐欺取財罪，處有期徒刑一年。" + CodedFacts, LegalStage.Indicted)] // not in ascending order
+    [InlineData(CodedSoleJudgment + "被告犯詐欺取財罪，處有期徒刑六月。\n事 實\n略。", LegalStage.Convicted)] // no code: the only defendant's 被告
+    [InlineData(CodedHeader + "A03與A12共同犯詐欺罪，處有期徒刑一年。\n理 由\nA12犯詐欺罪，處有期徒刑一年。", LegalStage.Indicted)] // one subject code for two names
+    [InlineData(CodedHeader + "A03、A07均無罪。", LegalStage.Acquitted)]
+    [InlineData(CodedHeader + "A03與A12共同犯詐欺罪，處有期徒刑一年。李小四無罪。", LegalStage.Indicted)] // a real name in the order
+    [InlineData(CounselOnTwoLines, LegalStage.Indicted)] // one defendant, two subject codes
     public void legal_stage_from_news(string news, LegalStage expected)
     {
         var c = Assert.Single(SourceConditions.Determine(Profile("Adverse Media"), false, news));
@@ -482,6 +497,16 @@ public class ScreeningPolicyTests
     [InlineData("被告 林美玲\n主文\n林美玲犯詐欺取財罪，處有期徒刑一年。\n理由\n註：陳志明本件所涉犯嫌，業經提起公訴；王大同本案所涉罪嫌，另案通緝中。", "陳志明", LegalStage.Indicted)]
     [InlineData("被告 林美玲\n主文\n林美玲犯詐欺取財罪，處有期徒刑一年。\n理由\n王大同經合法傳喚未到，由本院通緝中。", "王大同", LegalStage.Wanted)] // the clause after the one naming them
     [InlineData("陳志明向李小四佯稱：帳戶遭凍結，涉及詐騙，且伊已遭通緝，需配合交付款項云云，致李小四陷於錯誤。", "陳志明", LegalStage.Unknown)] // a pretence quoted after a colon
+    [InlineData(CodedJudgment + "A03犯三人以上共同詐欺取財罪，處有期徒刑一年。\nA07無罪。" + CodedFacts, "李小四", LegalStage.Acquitted)] // the second name, the second code
+    [InlineData(CodedJudgment + "A03犯三人以上共同詐欺取財罪，處有期徒刑一年。\nA07無罪。" + CodedFacts, "王大同", LegalStage.Unknown)] // the defence lawyer has no code
+    [InlineData(CodedJudgment + "A07無罪。\nA03犯三人以上共同詐欺取財罪，處有期徒刑一年。" + CodedFacts, "李小四", LegalStage.Indicted)] // not in ascending order
+    [InlineData(CodedHeader + "A03與A12共同犯詐欺罪，處有期徒刑一年。\n理 由\nA12犯詐欺罪，處有期徒刑一年。", "李小四", LegalStage.Indicted)] // A12 is no subject
+    [InlineData(CodedHeader + "A03犯詐欺罪，處有期徒刑一年。扣案如附表A07所示之物沒收。\n事 實\nx", "李小四", LegalStage.Indicted)]
+    [InlineData(CodedHeader + "A03、A07均無罪。", "李小四", LegalStage.Acquitted)]
+    [InlineData(CodedHeader + "A03與A12共同犯詐欺罪，處有期徒刑一年。李小四無罪。", "李小四", LegalStage.Acquitted)]
+    [InlineData(CodedHeader + "A03公訴不受理。\nA07公訴不受理。\n理 由\n本院判決A073犯詐欺罪，處有期徒刑一年。", "李小四", LegalStage.Indicted)] // A073 is another token
+    [InlineData(CodedHeader + "A03公訴不受理。\nA07公訴不受理。\n理 由\n本院判決Ａ０７犯詐欺罪，處有期徒刑一年。", "李小四", LegalStage.Convicted)] // full-width
+    [InlineData(CounselOnTwoLines, "王大同", LegalStage.Unknown)] // the counsel's second line
     public void legal_stage_from_news_of(string news, string name, LegalStage expected)
     {
         var reading = LegalStageReading.FromNews(news, [name]);
@@ -506,6 +531,7 @@ public class ScreeningPolicyTests
     [InlineData("陳志明棄保潛逃，檢方發布通緝。", LegalStage.Wanted, StageBasis.WantedNotice)]
     [InlineData("檢方偵辦後，陳志明可能遭到起訴。", LegalStage.Alleged, StageBasis.UnderInvestigation)]
     [InlineData("陳志明恐遭起訴。", LegalStage.Unknown, null)]
+    [InlineData(CodedHeader + "A03與A12共同犯詐欺罪，處有期徒刑一年。\n理 由\nA12犯詐欺罪，處有期徒刑一年。", LegalStage.Indicted, StageBasis.ListedDefendant)]
     public void legal_stage_basis_from_news(string news, LegalStage expectedStage, string? expectedBasis)
     {
         var c = Assert.Single(SourceConditions.Determine(Profile("Adverse Media"), false, news));
@@ -521,6 +547,11 @@ public class ScreeningPolicyTests
     private const string SentencedByNumber = "本院114年度訴字第1號被告李小四等24人案件，於今日宣判。\n壹、判決主文：\n㈠李小四等15人各犯發展組織罪，各處有期徒刑7年（編號1）、5年（編號2至3）。\n㈡王大同無罪。\n貳、犯罪事實摘要：\n李小四（編號1）、陳志明（編號3）共同吸收成員。";
     private const string TriedInAnotherCase = "壹、主文要旨\n李小四犯詐欺取財罪，處有期徒刑2年。\n貳、事實摘要\n李小四指派陳志明（由本院另案審理）、王大同竊錄。";
     private const string ProsecutorAppealed = "上訴人 臺灣臺北地方檢察署檢察官\n被告 陳志明\n主文\n上訴駁回。\n理由\n略。";
+    private const string CodedJudgment = "臺灣臺北地方法院刑事判決\n公 訴 人 臺灣臺北地方檢察署檢察官\n被 告 陳志明\n      李小四\n選任辯護人 王大同律師\n上列被告因詐欺等案件，經檢察官提起公訴，本院判決如下：\n主 文\n";
+    private const string CodedSoleJudgment = "臺灣臺北地方法院刑事判決\n公 訴 人 臺灣臺北地方檢察署檢察官\n被 告 陳志明\n上列被告因詐欺案件，經檢察官提起公訴，本院判決如下：\n主 文\n";
+    private const string CodedHeader = "被 告 陳志明\n      李小四\n選任辯護人 王大同律師\n上列被告因詐欺案件，本院判決如下：\n主 文\n";
+    private const string CounselOnTwoLines = "被 告 陳志明\n義務辯護人 林美玲\n      王大同\n上列被告因詐欺案件，本院判決如下：\n主 文\nA03犯詐欺罪，處有期徒刑一年。\nA07無罪。\n事 實\nx";
+    private const string CodedFacts = "\n事 實\n一、A03與A07及真實姓名年籍不詳之人共同詐欺，A12（另行審結）提供帳戶。";
 
     // The trace of the ruling readers agrees with the decision: its first reader that speaks is the reading, with its code.
     [Theory]

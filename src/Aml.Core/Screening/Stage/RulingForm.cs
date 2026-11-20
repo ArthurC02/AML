@@ -33,13 +33,16 @@ internal static class RulingForm
         // The header lists defendants on a 被告 line and on the lines after it, up to the next party's line (辯護人, 上列 …).
         var listed = new List<string>();
         var defendantLines = 0;
+        var bareNames = new List<string>(); // the block's lines that are a name alone, in the header's order
         string? head = null;
         foreach (var l in lines.Take(release ? 0 : start).Select(StageText.Compact))
         {
-            if (StagePatterns.DefendantLine().IsMatch(l)) head = l;
+            var label = StagePatterns.DefendantLine().Match(l);
+            if (label.Success) head = l;
             else if (StagePatterns.OtherPartyLine().IsMatch(l)) head = null;
             if (head is not null && l.Length > 0) defendantLines++;
             if (head is not null && own.Exists(n => l.Contains(n, StringComparison.OrdinalIgnoreCase))) listed.Add(head);
+            if (head is not null && StagePatterns.BareName().Match(l[label.Length..]) is { Success: true } bare) bareNames.Add(bare.Groups["name"].Value);
         }
         // The only defendant: one line in all the 被告 blocks, and it is theirs. The text's bare 被告 is then this person.
         var sole = listed.Count == 1 && defendantLines == 1;
@@ -70,11 +73,14 @@ internal static class RulingForm
         var end = start < 0 ? -1 : Array.FindIndex(lines, start + 1, l => StageText.Compact(l) is var c && (!release ? StagePatterns.OrderEnd().IsMatch(c)
             : small ? ItemNumerals.Contains(c.FirstOrDefault(), StringComparison.Ordinal) && StagePatterns.ReleaseHeading().IsMatch(c)
             : c.Length > 1 && c[1] == '、' && SeriesNumerals.Contains(c[0], StringComparison.Ordinal)));
+        var block = lines[(start + 1)..Math.Min(end < 0 ? lines.Length : end, start + 1 + (release ? StageGlossary.MaxReleaseLines : StageGlossary.MaxOrderLines))];
+        var code = release ? null : PartyCode(bareNames, block, own);
+        if (code is not null) own.Add(code);
         return new()
         {
             Release = release,
             HasHeading = start >= 0,
-            Block = lines[(start + 1)..Math.Min(end < 0 ? lines.Length : end, start + 1 + (release ? StageGlossary.MaxReleaseLines : StageGlossary.MaxOrderLines))],
+            Block = block,
             All = lines[..Math.Min(lines.Length, StageGlossary.MaxReleaseLines)],
             Own = own,
             Surnames = surnames,
@@ -82,7 +88,37 @@ internal static class RulingForm
             Defendant = defendant,
             Sole = sole,
             Appealed = appealed,
+            PartyCode = code,
         };
+    }
+
+    // A judgment the court anonymised names its defendants in the header and calls them by a code from 主文 on:
+    // 被告 陳志明 / 李小四 … 主文 A03犯…，處有期徒刑一年。A07無罪。 With as many codes as subjects of the order's sentences
+    // as names alone in the header, first written in ascending order, and none of those names a subject of the order, the i-th
+    // name is the i-th code. Else none: the codes are not told apart.
+    private static string? PartyCode(List<string> bareNames, string[] block, List<string> own)
+    {
+        var person = bareNames.FindIndex(IsOwn);
+        if (person < 0 || person != bareNames.FindLastIndex(IsOwn)) return null; // two defendants of the person's name
+        var order = string.Join('\n', block);
+        if (bareNames.Exists(b => IsSubject(order, b))) return null; // A03犯…。李小四無罪。 is not anonymised
+        var codes = StagePatterns.SubjectCode().Matches(order).Select(m => m.Value).Distinct().ToList();
+        return codes.Count == bareNames.Count && codes.Zip(codes.Skip(1)).All(p => Number(p.First) < Number(p.Second)) ? codes[person] : null;
+
+        bool IsOwn(string bare) => own.Exists(n => string.Equals(StageText.Compact(n), bare, StringComparison.OrdinalIgnoreCase));
+        static int Number(string code) => int.Parse(code.AsSpan(1), System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    // The name opens a sentence of the order, alone, after 被告 or in a list (陳志明、李小四均無罪). Elsewhere in it
+    // (扣案陳志明所有之手機沒收) it is no subject, and the order is still an anonymised one.
+    private static bool IsSubject(string order, string name)
+    {
+        for (var i = order.IndexOf(name, StringComparison.OrdinalIgnoreCase); i >= 0; i = order.IndexOf(name, i + 1, StringComparison.OrdinalIgnoreCase))
+        {
+            var before = order.AsSpan(0, i).TrimEnd(' ');
+            if (before.Length == 0 || StageText.SentenceEnds.Contains(before[^1]) || before[^1] is ';' or '、' || before.EndsWith(StageGlossary.Defendant, StringComparison.Ordinal)) return true;
+        }
+        return false;
     }
 
     // A heading (a short numbered line with no comma, or the order's heading) ends there; it does not run on.

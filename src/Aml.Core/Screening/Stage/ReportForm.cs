@@ -15,6 +15,16 @@ internal static class ReportForm
 
     // ---- The text, read once ----
 
+    /// <summary>The person's name for the code an anonymised judgment writes for them, as <see cref="MarkCode"/> leaves it.</summary>
+    internal const string CodeMark = "";
+
+    /// <summary>
+    /// Each writing of the code as a whole token, half- or full-width (A07, Ａ０７; not A073 or A07B), replaced by
+    /// <see cref="CodeMark"/> of the same length, keeping every position: a name matched inside a longer token would be theirs.
+    /// </summary>
+    internal static string MarkCode(string news, string code) =>
+        StagePatterns.PartyCode().Replace(news, m => StageText.HalfWidth(m.Value) == code ? CodeMark : m.Value);
+
     /// <summary>The text with what is not a report of the person blanked out, keeping every position; the names marked out where they stand for someone else.</summary>
     internal static ReportText Prepare(string news, IReadOnlyList<string> names)
     {

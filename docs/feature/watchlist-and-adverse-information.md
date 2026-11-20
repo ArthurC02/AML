@@ -83,6 +83,7 @@ The list type RCA (a PEP's relative or close associate) is not the Case's relate
 | `UNMAPPED_CATEGORY` | the category has no list type; UNKNOWN for review |
 | `SANCTION_MEASURE_NOT_CONFIRMED` | see [sanctions screening](sanctions-screening.md#sanction-condition) |
 | `RCA_OUTSIDE_STATUTORY_SCOPE` | see [PEP and RCA screening](pep-rca-screening.md#rca-relationship-scope) |
+| `STAGE_READERS_DISAGREE` | the stage models and the rules read different stages in the attached news; a reviewer reads it ([three readers](#three-readers)) |
 
 ## Risk categories
 
@@ -160,7 +161,7 @@ Both readings share one shape: a text read once into a context value, then an or
 2. **Readers in a fixed order.** Each reader is one way a ruling tells a person's outcome, a named function from the parsed text to a stage or nothing: the order under its heading, the whole release, a listed defendant's dismissed appeal, the only defendant's dismissed appeal, a dismissed appeal with the sentence recalled, proceeds confiscated, sentenced by row number, tried elsewhere. The list `Readers` is the precedence, and the first reader that speaks gives the stage (a decision list). The readers do not know of each other.
 3. **Patterns and guards** are named regular expressions grouped by what they recognise (the kind of text and its order, the parties, a sentence of the order and whose it is, guards for what looks like an outcome and is not, appeals, row numbers and tables).
 
-**Which rule gave the stage.** Every rule has a code (kind `LEGAL_STAGE_BASIS` in `/api/codes`, constants in `StageBasis`), and so do the closing decisions. The condition carries the code of the rule that gave its stage as `legalStageBasis` (null exactly when the stage is UNKNOWN): the ruling reader that spoke first when the order wins, else the transition that last set the stage, else the closing decision. The explanation shows it beside the stage: `法律階段 CONVICTED（依據：主文沒收犯罪所得（STAGE_PROCEEDS_CONFISCATED））`. For measuring rules one by one on the labelled sets and listing the texts where two of them disagree, `DecisionList.AllOf` gives what every rule of a list says, and `RulingReading.Trace` does so for the ruling readers; decisions use only `FirstOf`.
+**Which rule gave the stage.** Every rule has a code (kind `LEGAL_STAGE_BASIS` in `/api/codes`, constants in `StageBasis`), and so do the closing decisions. The condition carries the code of the rule that gave its stage as `legalStageBasis` (null exactly when the stage is UNKNOWN, save a vote of the [three readers](#three-readers)): the ruling reader that spoke first when the order wins, else the transition that last set the stage, else the closing decision. The explanation shows it beside the stage: `法律階段 CONVICTED（依據：主文沒收犯罪所得（STAGE_PROCEEDS_CONFISCATED））`. For measuring rules one by one on the labelled sets and listing the texts where two of them disagree, `DecisionList.AllOf` gives what every rule of a list says, and `RulingReading.Trace` does so for the ruling readers; decisions use only `FirstOf`.
 
 | Code | The stage comes from |
 |---|---|
@@ -179,6 +180,7 @@ Both readings share one shape: a text read once into a context value, then an or
 | `STAGE_LISTED_DEFENDANT` | A listed defendant of a judgment with no stage read (INDICTED) |
 | `STAGE_UNDER_INVESTIGATION` | 偵辦 / 調查 with the person under suspicion, or in a text that never writes their name, and no stage read (ALLEGED) |
 | `STAGE_OFFICIAL_WANTED_LIST` | Not news: an active official wanted list (WANTED) |
+| `STAGE_VOTE_UNANIMOUS`, `STAGE_VOTE_MAJORITY`, `STAGE_VOTE_SPLIT` | Not a rule: the vote of the rules and the two stage models ([three readers](#three-readers)) |
 
 A new form, of a ruling or of a report, is therefore one of four changes, in rising cost: a word of the glossary, a pattern of an existing rule, a guard, or a new rule with its place in its list and its code in `StageBasis` and the catalog. Each comes with rows of the `legal_stage_from_news` theory (a new rule also with one of `legal_stage_basis_from_news`), counter-examples included, and is measured on the labelled sets before and after.
 
@@ -236,6 +238,53 @@ Measured on the annotated documents, each annotated suspect taken in turn as the
 Rule by rule, over the seven sets (persons whose stage the rule decided, and how many of those agree with the label): the order under its heading 585 of 587; under investigation 119 of 126; a stage keyword 85 of 108; the whole release 26 of 28; a dismissed appeal with the sentence recalled 19 of 24; a wanted notice 12 of 16; sentenced by row number 15 of 15; proceeds confiscated 7 of 7; tried elsewhere 3 of 5; a listed defendant's dismissed appeal 3 of 4; the only defendant's dismissed appeal 2 of 2. So the readers of a ruling's own form are near exact, and what is left to gain is in the report keywords, the recalled sentence and the wanted notice. Asked one by one, the ruling's readers disagree on 10 persons of the five court sets (five where the heading convicts and the whole text also holds an acquittal, five where a row number convicts someone the order or the text acquits, as with defendants masked to a shared form, and one each of the rest); the list's order settles those, and they are where a new rule's place in the list has to be argued.
 
 **Cost.** Over the 1,130 person-document pairs of the annotated sets (5,110 characters on average), one reading takes 1.4 ms on average and 13 ms at worst, 2.7 ms per 10,000 characters, on a busy developer machine (measured outside the repository through `SourceConditions.Determine`). A new rule adds little because the text is prepared once (blanking, marks, the ruling's parse) and shared by every rule, each decision list stops at the first rule that speaks, and the patterns are generated at compile time. A document is read once for each Profile person it is attached to, so the cost of a Case grows with the number of its candidates. One test guards it: on made-up reports, judgments and releases of about 5,000 characters the reading of a doubled body takes at most 3 times as long, and less than 25 ms per 10,000 characters, a tripwire far above the measure ([LegalStageCostTests](../../tests/Aml.Tests/Unit/Screening/LegalStageCostTests.cs)). It catches a reading that has become mostly quadratic or several times slower, not a small quadratic part, and no test reads hostile shapes (a million repeated names or keywords) through the stage reading: the bound of that kind in [NewsDigestTests](../../tests/Aml.Tests/Unit/Screening/NewsDigestTests.cs) covers the news digest only.
+
+#### Three readers
+
+The rules above are one of up to three readers of the stage. Two models may read it too, each optional and each behind the port `IStageReader` (the news text and the Profile's names in, a stage and an optional quote out, or nothing when it cannot answer); `StageVote` combines what they give.
+
+| Reader | Name on the condition | What it is | Configuration |
+|---|---|---|---|
+| The rules | `rules` | `LegalStageReading.FromNews`, as above | always |
+| Person-stage classifier | `classifier` | `Infra/Models/OnnxStageClassifier`: bert-base-chinese fine-tuned on (document, person) pairs, a 7-way head on [CLS], run with ONNX Runtime | `StageModels:ClassifierDirectory`: a folder with `model.onnx`, `vocab.txt` and `labels.json` (label order, `max_length`) |
+| Large language model | `llm` | `Infra/Models/OllamaStageReader`: Gemma 4 12B (q4_K_M) on an Ollama server inside the bank, one `/api/chat` call per document | `StageModels:LlmUrl` (the server's root), `StageModels:LlmModel` (required with it), `StageModels:LlmTimeoutSeconds` (60) |
+
+**The vote.** The readers present are the rules and every configured model that answered:
+
+| Readers present | Stage | `legalStageBasis` | Condition reason |
+|---|---|---|---|
+| The rules alone | the rules' | the rules' | none |
+| The rules and one model, the same stage | the rules' | the rules' | none |
+| The rules and one model, different stages | the rules' (a model alone never changes the stage) | the rules' | `STAGE_READERS_DISAGREE` |
+| All three the same | that stage | `STAGE_VOTE_UNANIMOUS` | none |
+| Two of the three the same | that stage | `STAGE_VOTE_MAJORITY` | none |
+| All three different | UNKNOWN | `STAGE_VOTE_SPLIT` | `STAGE_READERS_DISAGREE` |
+
+`STAGE_READERS_DISAGREE` tells the reviewer to read the stage in the news themselves; it does not change the condition's status or the pair's result (an ADVERSE_MEDIA condition is a HIT whatever its stage, so its pair is in review unless identity says NO_MATCH). With a vote basis, the stage may be UNKNOWN and still carry a basis. Whenever a model is configured, the condition carries `stageReaders`: each reader that answered, in the order rules, classifier, llm, with its stage, the rules' own basis, and the language model's quote with `quoteInText` (whether the quote, all whitespace removed, is in the news text, whitespace removed). A model that was not configured or did not answer is not listed. The explanation shows it beside the stage: `法律階段 CONVICTED（依據：多數決（STAGE_VOTE_MAJORITY））；各讀取者：rules INDICTED、classifier CONVICTED、llm CONVICTED（引文「…」，原文可查到）`. With no model configured nothing of this appears and every output is as the rules alone make it. Without attached news no model is asked.
+
+**A missing model.** A model that is not configured is not registered, and the vote has one reader fewer. One that fails (the ONNX run throws; the language model's server answers with an error, times out, or gives no stage for person 1 in the asked JSON) answers nothing for that Case, and the vote goes on without it: a failure never blocks the analysis, it moves the row of the table up. With only the classifier the rules decide and the classifier can only order review; the same with only the language model.
+
+**The classifier's input** is built as the training code built it (`prep_stage.py`, `train_stage.py`), so that the model sees at run time what it saw in training: the text NFKC-normalised per character; the name is the Profile's first name of two characters or more; the evidence is, in text order, the first 60 characters, every sentence holding one of the Profile's names (sentences end on 。！？；!?; and line breaks), and after each the next sentence when it names no person; each occurrence of a name, longest first and not overlapping, is wrapped in `[unused1]` `[unused2]`. Pieces are joined directly when adjacent, with one space across whitespace and with "…" where text was skipped; over the budget of 512 − 3 − the name's tokens, the head, then the pieces in order up to 60 % of the budget, then the last pieces that fit. The tokens are `[CLS] name [SEP] evidence [SEP]` with token types 0 to the first [SEP] and 1 after, the markers as ids 1 and 2, no lower-casing (the tokenizer was saved with `do_lower_case` false and a BertNormalizer without lower-casing), the name at most 32 tokens. The stage is the label of the highest logit. One part differs from training, because at run time nobody is annotated: there, the next sentence was kept when it held no form of any annotated person; here, when it holds none of the Profile's names and no 被告, 嫌犯, 犯嫌, 嫌疑人 or 嫌疑犯 before a common surname (被告王大同). On the 1,063 rows of the four report sets the builder gives the training evidence exactly when given the annotated persons, and the run-time rule changes the evidence of 563 of them (mostly a following sentence kept that names a victim or witness); read with the run-time evidence the classifier is right for 894 persons where the training evidence gives 901 (dev 171 and 170, dev2 106 and 107, v9 300 and 305, v11 317 and 319). Keeping no following sentence at all gives 899, so the rule matters little either way. Given the training rows' own name and evidence, the .NET tokenizer and ONNX graph give the final epoch's label on all 185 dev rows (an opt-in test, `AML_STAGE_MODEL`, `AML_STAGE_PARITY_ROWS`, `AML_STAGE_PARITY_PRED`).
+
+**The language model's input** is the measured run's: the fixed prompt (`Infra/Models/stage-prompt.txt`, which holds no name) with `{{PERSONS}}` the line `1：` and the Profile's names joined by `、`, and `{{TEXT}}` the news (over 16,000 characters: the first 10,000, a line `（中間省略）`, the last 6,000); `stream` false, `think` false, `format` the JSON schema `{persons: [{id, stage (the seven codes), quote}]}`, options temperature 0, seed 1, `num_ctx` 24576, `num_predict` 4096. The first answer for id 1 with one of the seven codes counts. One part differs from the measured run: there, the prompt listed every annotated suspect of the document with the forms the document writes them by; here it lists the Profile person alone, by the Profile's names. That difference has not been measured. Only the news text and the Profile's names are sent ([security and privacy](security-and-privacy.md#personal-data-boundary)).
+
+**Measured.** Per person, each annotated suspect taken as the Profile person, persons whose stage is the reference's, on the sets measured for the rules above (v11 and accept5 held back: the rules were not written looking at them, and no reader was tuned on them). The classifier is the final epoch of one training run; the language model and the vote were run outside the repository, with the inputs of training and of the measured run (above), not through this code.
+
+| Set | Persons | Rules | Classifier | Gemma 4 12B | Vote |
+|---|---|---|---|---|---|
+| dev | 185 | 178 | 170 | 163 | 182 |
+| dev2 | 126 | 122 | 107 | 115 | 119 |
+| v9 | 390 | 352 | 305 | 364 | 360 |
+| v11 (held back) | 362 | 295 | 319 | 319 | 335 |
+| accept (court releases) | 93 | 87 | 79 | 89 | 88 |
+| accept3 | 172 | 145 | 112 | 154 | 146 |
+| accept4 | 257 | 248 | 230 | 251 | 250 |
+| accept5 (held back) | 148 | 140 | 117 | 134 | 137 |
+| All | 1,733 | 1,567 | 1,439 | 1,589 | 1,617 |
+
+Where all three agree they are right 99.5 % of the time or more. The vote gains most where the rules were not written against the text (v11: 335 against 295) and costs a little where they were (dev2, accept5): on a court release of fixed form the rules are near exact and the models are what is outvoted. The table is the evidence for the vote's shape: no reader alone is best on every set, and a stage two readers give alike is rarely wrong.
+
+**Cost.** The classifier runs one ONNX pass of at most 512 tokens per Profile person and document. The language model's call takes seconds to minutes on the bank's server and runs inside the synchronous analysis; `StageModels:LlmTimeoutSeconds` bounds it and is to be set below `Batch:Timeout` (2 min), else a slow answer makes the batch job time out instead of dropping the reader. Neither model's version is recorded in the revision, only the reader names on the condition (a known limit).
 
 ### News digest
 

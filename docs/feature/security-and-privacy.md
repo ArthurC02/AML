@@ -18,7 +18,7 @@ The [operating architecture](system-overview.md#operating-architecture) separate
 
 - Data Processing (list acquisition, normalization, index) handles list and public data only. No customer data is sent to it, stored with it or used to query outside sources.
 - Runtime Query receives customer and related-party data and keeps it inside the bank: no external calls carry it, and results stay in the Case store.
-- No LLM or external AI service is used in either half.
+- No external AI service is used in either half. The models that read attached news run inside the bank: the small ONNX models in the process, and the optional large language model ([three readers](watchlist-and-adverse-information.md#three-readers)) on an Ollama endpoint the bank runs (`StageModels:LlmUrl`). A call to it carries only the attached news text and the Profile's names, as person 1 of a fixed prompt; never a customer or related-party field, and nothing the customer side supplied. The endpoint is inside the bank's network; its URL is configuration, so pointing it at an outside host is a deployment decision to refuse.
 
 ## Data classification
 

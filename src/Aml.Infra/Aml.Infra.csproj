@@ -16,5 +16,6 @@
   <ItemGroup>
     <EmbeddedResource Include="Persistence\Sql\*" LogicalName="Sql.%(Filename)%(Extension)" />
     <EmbeddedResource Include="Persistence\Scripts\Sqlite\*.sql" />
+    <EmbeddedResource Include="Models\stage-prompt.txt" LogicalName="Models.stage-prompt.txt" />
   </ItemGroup>
 </Project>

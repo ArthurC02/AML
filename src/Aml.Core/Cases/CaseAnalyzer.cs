@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using Aml.Core.Identity;
+using Aml.Core.Ports;
 using Aml.Core.Retrieval;
 using Aml.Core.Screening;
 using Aml.Core.Subjects;
@@ -31,20 +32,21 @@ public static class CaseAnalyzer
     /// <param name="risk">An approved AML risk policy; without one no pair is scored.</param>
     /// <param name="asOf">The analysis date (whether a PEP's roles have all ended); today (UTC) when not given. A service
     /// that stores the analysis passes its own clock's date.</param>
-    public static CaseAnalysis Analyze(CaseInput input, RiskPolicy? risk = null, DateOnly? asOf = null)
+    /// <param name="stageReaders">The configured stage models that vote with the rules on the stage in attached news; none: the rules alone.</param>
+    public static CaseAnalysis Analyze(CaseInput input, RiskPolicy? risk = null, DateOnly? asOf = null, IReadOnlyList<IStageReader>? stageReaders = null)
     {
         var today = asOf ?? DateOnly.FromDateTime(DateTime.UtcNow);
         var rowsByProfile = input.Rows.GroupBy(r => r.ProfileId).ToList();
-        var hits = rowsByProfile.Where(g => input.Profiles.ContainsKey(g.Key)).Select(g => Hit(input, g, risk, today)).ToList();
+        var hits = rowsByProfile.Where(g => input.Profiles.ContainsKey(g.Key)).Select(g => Hit(input, g, risk, today, stageReaders)).ToList();
         var notEvaluated = rowsByProfile.Where(g => !input.Profiles.ContainsKey(g.Key)).Select(g => ProfileKeys.KeyOf(g.Key)).ToList();
         return new CaseAnalysis(hits, notEvaluated, input.ImportedDecisions);
     }
 
-    private static HitResult Hit(CaseInput input, IGrouping<string, CandidateRow> rows, RiskPolicy? risk, DateOnly today)
+    private static HitResult Hit(CaseInput input, IGrouping<string, CandidateRow> rows, RiskPolicy? risk, DateOnly today, IReadOnlyList<IStageReader>? stageReaders)
     {
         var profile = input.Profiles[rows.Key];
         var news = input.NewsByProfileId.GetValueOrDefault(rows.Key);
-        var conditions = SourceConditions.Determine(profile, rows.Any(r => r.IsRca), news?.Text, ListFlags.Merge(rows.Select(r => r.Flags ?? ListFlags.None)), today);
+        var conditions = SourceConditions.Determine(profile, rows.Any(r => r.IsRca), news?.Text, ListFlags.Merge(rows.Select(r => r.Flags ?? ListFlags.None)), today, stageReaders);
         var identity = IdentityDecisionPolicy.Decide(input.Subject, profile, news);
         var pair = AssessmentPolicy.Assess(conditions, identity);
         var disposition = DispositionPolicy.Recommend(input.Subject, profile, conditions, identity, news is not null, today);

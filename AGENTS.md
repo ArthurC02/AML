@@ -1,6 +1,6 @@
 # AGENTS.md
 
-AML screening PoC: given a customer (or related party) and candidate list Profiles (Sanction, PEP/RCA, official lists, adverse news and court rulings), it decides whether they are the same person and whether the source condition holds, and explains every decision. Rules and algorithms decide today; a large language model is not excluded, and a model enters a decision only on measured evidence (ADR-0012). API only, no UI. C# / .NET 10, SQLite in the PoC.
+AML screening PoC: given a customer (or related party) and candidate list Profiles (Sanction, PEP/RCA, official lists, adverse news and court rulings), it decides whether they are the same person and whether the source condition holds, and explains every decision. Rules and algorithms decide; when stage models are configured, the legal stage of attached news is a vote of the rules, a classifier and a large language model (`Screening/Stage/StageVote.cs`, ADR-0012); a model enters a decision only on measured evidence. API only, no UI. C# / .NET 10, SQLite in the PoC.
 
 ## Mental model in five facts
 

@@ -11,7 +11,7 @@ Each record holds the decisions in force on one subject: context, decision and c
 | [0008](0008-validation-and-deferred-capabilities.md) | Validation backlog and deferred capabilities behind the Phase 1 controls | Accepted |
 | [0010](0010-persistence-and-batch.md) | Replaceable persistence and a database job table | Accepted |
 | [0012](0012-sources-and-web-information.md) | Sources, web information and the news digest | Accepted; web search and web evidence not built yet |
-| [0015](0015-licences.md) | Clean licences for libraries, models and text | Accepted |
+| [0015](0015-licences.md) | Clean licences for libraries, models and text | Accepted; the large language model open (off unless configured) |
 | [0023](0023-business-api-data-and-workbook.md) | Business API, AI-ready data and the case workbook | Accepted; one fact per sheet not built yet |
 
 The numbers are kept from the records they absorbed (2026-11-09). A former number maps to its record: 0002, 0003, 0018, 0019 → 0001; 0017, 0020 → 0004; 0016 → 0005; 0007, 0009, 0013 → 0006; 0021 → 0008; 0011, 0014, 0026 → 0010; 0028 → 0012; 0029 → 0015; 0022, 0024, 0025, 0027 → 0023.

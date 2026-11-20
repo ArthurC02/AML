@@ -28,9 +28,18 @@ internal static class StageBasis
 
     // Outside news: SourceConditions.Shape, the active official wanted list.
     internal const string OfficialWantedList = "STAGE_OFFICIAL_WANTED_LIST";
+
+    // StageVote.Decide: the rules and two stage models vote.
+    internal const string VoteUnanimous = "STAGE_VOTE_UNANIMOUS";
+    internal const string VoteMajority = "STAGE_VOTE_MAJORITY";
+    internal const string VoteSplit = "STAGE_VOTE_SPLIT";
 }
 
-/// <summary>The stage a news text tells of the person, and the code of the rule that gave it (null exactly when the stage is UNKNOWN).</summary>
+/// <summary>
+/// The stage a news text tells of the person, and the code of the rule that gave it: from the rules alone, null exactly
+/// when the stage is UNKNOWN; from the vote of three readers, a STAGE_VOTE_* code also with UNKNOWN (a split, or two
+/// readers agreeing on UNKNOWN).
+/// </summary>
 internal readonly record struct StageReading(LegalStage Stage, string? Basis);
 
 /// <summary>

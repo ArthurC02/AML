@@ -6,6 +6,7 @@ using Aml.Core.Normalization;
 using Aml.Core.Ports;
 using Aml.Core.Retrieval;
 using Aml.Core.Screening;
+using Aml.Core.Screening.Stage;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
 
@@ -307,7 +308,14 @@ public static class ExplanationBuilder
     {
         var parts = new List<string>();
         if (c.RiskCategories.Count > 0) parts.Add(Join(c.RiskCategories));
-        if (c.LegalStage != LegalStage.Unknown) parts.Add("法律階段 " + CaseJson.Code(c.LegalStage) + (c.LegalStageBasis is { } b ? $"（依據：{Named(b)}）" : ""));
+        if (c.LegalStage != LegalStage.Unknown || c.StageReaders is not null)
+            parts.Add("法律階段 " + CaseJson.Code(c.LegalStage) + (c.LegalStageBasis is { } b ? $"（依據：{Named(b)}）" : ""));
+        if (c.StageReaders is { } readers)
+        {
+            parts.Add("各讀取者：" + Join(readers.Select(r => $"{r.Reader} {CaseJson.Code(r.Stage)}"
+                + (r.Quote is { } q ? $"（引文「{q}」，{(r.QuoteInText == true ? "原文可查到" : "原文查無")}）" : ""))));
+            if (c.Status == ConditionStatus.Hit && c.ReasonCodes.Contains(StageVote.ReadersDisagree)) parts.Add(Named(StageVote.ReadersDisagree));
+        }
         if (c.Status != ConditionStatus.Hit) parts.Add("條件狀態 " + CaseJson.Code(c.Status) + (c.ReasonCodes.Count > 0 ? "，" + Join(c.ReasonCodes) : ""));
         return CaseJson.Code(c.Type) + (parts.Count > 0 ? $"（{string.Join("；", parts)}）" : "");
     }

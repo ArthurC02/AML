@@ -48,7 +48,7 @@ AML/
 │   │   ├── Retrieval/            # ProfileIndex (alias, BM25, n-gram, reading-key routes), ProfileMerge
 │   │   ├── Cases/                # CaseAnalyzer, Case records, revision changes, lineage, quality, CaseViews and page tokens, CaseJson (JSON form and schemas)
 │   │   ├── Explanation/          # ExplanationBuilder, NewsDigest (rules), NewsModelReading (corrections of the news models' output)
-│   │   └── Ports/                # ICaseStore, IJobStore, IListStore, INewsModel
+│   │   └── Ports/                # ICaseStore, IJobStore, IListStore, INewsModel, IStageReader
 │   ├── Aml.Services/             # orchestration
 │   │   ├── CaseService.cs        # sole writer of Case state; builds each revision's lineage and quality
 │   │   ├── ProfileFiles.cs       # Profile file names and the list content hash
@@ -61,7 +61,7 @@ AML/
 │   │   ├── Html/                 # HTML page to export layout (AngleSharp)
 │   │   ├── Web/                  # polite fetching (robots.txt, delay), main text of web pages and PDFs
 │   │   ├── Excel/                # Xlsx (SpreadsheetML with the standard library), CaseWorkbook (eleven sheets)
-│   │   ├── Models/               # OnnxNewsModel (ONNX Runtime), BertWordPiece (the training tokenizer, with offsets)
+│   │   ├── Models/               # OnnxNewsModel and OnnxStageClassifier (ONNX Runtime), BertWordPiece (the training tokenizer, with offsets), OllamaStageReader (LLM over HTTP, prompt in stage-prompt.txt)
 │   │   └── Jobs/                 # JobStore
 │   └── Aml.Api/                  # composition root
 │       ├── Program.cs            # DI, OpenAPI, OpenTelemetry, health check, endpoint registration

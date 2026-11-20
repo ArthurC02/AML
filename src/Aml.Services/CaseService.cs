@@ -9,8 +9,10 @@ namespace Aml.Services;
 /// <summary>Sole writer of Case state. Runs AnalyzeCase synchronously.</summary>
 /// <remarks>ponytail: POST /api/cases analyzes inline; high-volume callers use POST /api/batches.</remarks>
 public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore? lists = null, Func<string, string>? exportText = null,
-    INewsModel? newsModel = null)
+    INewsModel? newsModel = null, IEnumerable<IStageReader>? stageReaders = null)
 {
+    private readonly IStageReader[] stageModels = [.. stageReaders ?? []];
+
     public const int MaxRevisionAttempts = 3;
 
     /// <summary>
@@ -102,7 +104,7 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
         var started = Stopwatch.GetTimestamp();
         // The service's clock, not the machine's: a re-analysis on a given day reads the same, and tests can fix the day.
         var asOf = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var analysis = CaseAnalyzer.Analyze(input, asOf: asOf);
+        var analysis = CaseAnalyzer.Analyze(input, asOf: asOf, stageReaders: stageModels);
         var execution = CaseLifecycle.Execution(analysis);
         var lineage = AnalysisLineage.Of(input, await ProfileUsesAsync(input, files, ct).ConfigureAwait(false), asOf);
 

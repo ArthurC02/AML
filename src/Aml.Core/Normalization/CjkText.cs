@@ -8,6 +8,9 @@ public static class CjkText
 
     public static bool IsCjk(char c) => c is >= CjkExtensionAStart and <= CjkUnifiedIdeographsEnd;
 
+    /// <summary>One of the commonest Taiwanese surnames (the stage rules' list), for readers outside Core.</summary>
+    public static bool IsCommonSurname(char c) => Screening.Stage.StageGlossary.CommonSurnames.Contains(c, StringComparison.Ordinal);
+
     private const char CjkExtensionAStart = '㐀';
     private const char CjkUnifiedIdeographsEnd = '鿿';
 

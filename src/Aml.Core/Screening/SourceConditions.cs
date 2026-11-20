@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.RegularExpressions;
 using Aml.Core.Normalization;
+using Aml.Core.Ports;
 using Aml.Core.Screening.Stage;
 using Aml.Core.Subjects;
 
@@ -30,7 +31,16 @@ public sealed record SourceCondition(
     [property: Description("PEP 子類型，見 /api/codes")] string? PepType = null,
     [property: Description("制裁計畫")] string? Program = null,
     [property: Description("管轄地")] string? Jurisdiction = null,
-    [property: Description("法律階段的依據規則，見 /api/codes")] string? LegalStageBasis = null);
+    [property: Description("法律階段的依據規則，見 /api/codes")] string? LegalStageBasis = null,
+    [property: Description("各讀取者讀出的法律階段：規則與每個有回答的法律階段模型；未設定模型時省略")] IReadOnlyList<StageReaderResult>? StageReaders = null);
+
+/// <summary>What one reader of the attached news read as the Profile person's legal stage (watchlist-and-adverse-information.md#three-readers).</summary>
+public sealed record StageReaderResult(
+    [property: Description("讀取者：rules（規則）、classifier（階段分類模型）或 llm（大型語言模型）")] string Reader,
+    [property: Description("此讀取者讀出的法律階段")] LegalStage Stage,
+    [property: Description("規則的依據，見 /api/codes；僅 rules 有")] string? Basis = null,
+    [property: Description("模型引用的原文；沒有引文時省略")] string? Quote = null,
+    [property: Description("去除空白後，引文是否出現在新聞原文中；沒有引文時省略")] bool? QuoteInText = null);
 
 /// <summary>List-type determination and source conditions (ADR-0005).</summary>
 public static partial class SourceConditions
@@ -92,7 +102,10 @@ public static partial class SourceConditions
     /// conflict; a mapped category whose flag is MISSING keeps its category condition.
     /// </summary>
     /// <param name="asOf">The analysis date, for whether a PEP's roles have all ended; today (UTC) when not given.</param>
-    public static IReadOnlyList<SourceCondition> Determine(SourceProfile profile, bool isRca, string? news, ListFlags? flags = null, DateOnly? asOf = null)
+    /// <param name="stageReaders">The configured stage models, which vote with the rules on the stage in attached news
+    /// (<see cref="StageVote"/>); none: the rules alone.</param>
+    public static IReadOnlyList<SourceCondition> Determine(SourceProfile profile, bool isRca, string? news, ListFlags? flags = null, DateOnly? asOf = null,
+        IReadOnlyList<IStageReader>? stageReaders = null)
     {
         var today = asOf ?? DateOnly.FromDateTime(DateTime.UtcNow);
         flags ??= ListFlags.None;
@@ -103,7 +116,7 @@ public static partial class SourceConditions
         DecideRca(decided, mapped, flags, isRca);
         var conflict = !flags.AllMissing && FlagsContradictCategories(decided, mapped);
         var risks = AdverseMediaRiskCategories(profile);
-        return decided.Select(d => Condition(d, profile, risks, news, conflict, today)).ToList();
+        return decided.Select(d => Condition(d, profile, risks, news, conflict, today, stageReaders ?? [])).ToList();
     }
 
     // 黑名單 = NO never clears a Sanction category: that condition is UNKNOWN for review.
@@ -138,9 +151,10 @@ public static partial class SourceConditions
     private static bool FlagsContradictCategories(List<Decision> decided, List<ListType> mapped) =>
         mapped.Any(t => t is not ListType.Unknown && !decided.Any(d => d.Status == ConditionStatus.Hit && d.Type == t));
 
-    private static SourceCondition Condition(Decision d, SourceProfile profile, IReadOnlyList<string> risks, string? news, bool conflict, DateOnly today)
+    private static SourceCondition Condition(Decision d, SourceProfile profile, IReadOnlyList<string> risks, string? news, bool conflict, DateOnly today,
+        IReadOnlyList<IStageReader> stageReaders)
     {
-        var c = Shape(d.Type, profile, risks, news, today);
+        var c = Shape(d.Type, profile, risks, news, today, stageReaders);
         if (d.Status != ConditionStatus.Hit) c = c with { Status = d.Status };
         var codes = c.ReasonCodes.Concat(new[] { d.Code, conflict ? FlagCategoryConflict : null }.OfType<string>()).Distinct().ToList();
         return c with { Basis = d.Basis, ReasonCodes = codes };
@@ -166,30 +180,40 @@ public static partial class SourceConditions
         _ => FlagValue.Missing,
     };
 
-    private static SourceCondition Shape(ListType t, SourceProfile profile, IReadOnlyList<string> risks, string? news, DateOnly today) => t switch
-    {
-        ListType.AdverseMedia => AdverseMedia(profile, risks, news),
-        ListType.OtherOfficialList when IsActiveWantedList(profile.OfficialList) =>
-            Hit(ListType.OfficialWantedList) with { LegalStage = LegalStage.Wanted, LegalStageBasis = StageBasis.OfficialWantedList },
-        ListType.Sanction => Sanction(profile),
-        ListType.Pep or ListType.Rca => Hit(t) with
+    private static SourceCondition Shape(ListType t, SourceProfile profile, IReadOnlyList<string> risks, string? news, DateOnly today,
+        IReadOnlyList<IStageReader> stageReaders) => t switch
         {
-            PepType = PepType(profile, t, today),
-            ReasonCodes = OutsideStatutoryScope(profile) ? [RcaOutsideStatutoryScope] : [],
-        },
-        ListType.Unknown => new SourceCondition(t, ConditionStatus.Unknown, ConditionBasis.Unmapped, [], LegalStage.Unknown, null, PolicyVersion, []),
-        _ => Hit(t),
-    };
+            ListType.AdverseMedia => AdverseMedia(profile, risks, news, stageReaders),
+            ListType.OtherOfficialList when IsActiveWantedList(profile.OfficialList) =>
+                Hit(ListType.OfficialWantedList) with { LegalStage = LegalStage.Wanted, LegalStageBasis = StageBasis.OfficialWantedList },
+            ListType.Sanction => Sanction(profile),
+            ListType.Pep or ListType.Rca => Hit(t) with
+            {
+                PepType = PepType(profile, t, today),
+                ReasonCodes = OutsideStatutoryScope(profile) ? [RcaOutsideStatutoryScope] : [],
+            },
+            ListType.Unknown => new SourceCondition(t, ConditionStatus.Unknown, ConditionBasis.Unmapped, [], LegalStage.Unknown, null, PolicyVersion, []),
+            _ => Hit(t),
+        };
 
-    private static SourceCondition AdverseMedia(SourceProfile profile, IReadOnlyList<string> risks, string? news)
+    private static SourceCondition AdverseMedia(SourceProfile profile, IReadOnlyList<string> risks, string? news, IReadOnlyList<IStageReader> stageReaders)
     {
-        var (stage, basis) = LegalStageReading.FromNews(news, profile.Names);
-        return Hit(ListType.AdverseMedia) with
+        var rules = LegalStageReading.FromNews(news, profile.Names);
+        var c = Hit(ListType.AdverseMedia) with
         {
             RiskCategories = risks,
+            LegalStage = rules.Stage,
+            LegalStageBasis = rules.Basis,
+            AmlRelevance = Relevance(risks, news, profile),
+        };
+        if (news is null || stageReaders.Count == 0) return c;
+        var ((stage, basis), disagree, readers) = StageVote.Read(rules, news, profile.Names, stageReaders);
+        return c with
+        {
             LegalStage = stage,
             LegalStageBasis = basis,
-            AmlRelevance = Relevance(risks, news, profile),
+            StageReaders = readers,
+            ReasonCodes = disagree ? [StageVote.ReadersDisagree] : [],
         };
     }
 

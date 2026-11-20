@@ -687,6 +687,66 @@
                     "null"
                   ],
                   "default": null
+                },
+                "stageReaders": {
+                  "description": "各讀取者讀出的法律階段：規則與每個有回答的法律階段模型；未設定模型時省略",
+                  "type": [
+                    "array",
+                    "null"
+                  ],
+                  "items": {
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "reader": {
+                        "description": "讀取者：rules（規則）、classifier（階段分類模型）或 llm（大型語言模型）",
+                        "type": "string"
+                      },
+                      "stage": {
+                        "description": "此讀取者讀出的法律階段",
+                        "enum": [
+                          "UNKNOWN",
+                          "ALLEGED",
+                          "INDICTED",
+                          "WANTED",
+                          "CONVICTED",
+                          "ACQUITTED",
+                          "DISMISSED"
+                        ]
+                      },
+                      "basis": {
+                        "description": "規則的依據，見 /api/codes；僅 rules 有",
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "default": null
+                      },
+                      "quote": {
+                        "description": "模型引用的原文；沒有引文時省略",
+                        "type": [
+                          "string",
+                          "null"
+                        ],
+                        "default": null
+                      },
+                      "quoteInText": {
+                        "description": "去除空白後，引文是否出現在新聞原文中；沒有引文時省略",
+                        "type": [
+                          "boolean",
+                          "null"
+                        ],
+                        "default": null
+                      }
+                    },
+                    "required": [
+                      "reader",
+                      "stage"
+                    ]
+                  },
+                  "default": null
                 }
               },
               "required": [

@@ -398,8 +398,13 @@ public static partial class SourceConditions
                 if (bystander) clause = IndictmentPaper().Replace(clause, m => new string('　', m.Length));
                 var mine = MentionsAnyName(named.Substring(at, size), names);
                 if (!mine && (named.AsSpan(at, size).Contains(RelationMark) || NamesAnotherPerson(clause, surnames) || IndictsAnotherPerson(clause, surnames, news))) continue;
-                if (LastStageIn(clause, attributable, own) is { } found) stage = found;
-                else if (sole && own && Says(clause, Sentenced())) stage = LegalStage.Convicted;
+                // Someone a judgment names who is not its defendant gets a conviction or acquittal only from the clause
+                // naming them: 被告依王大明指示…，量處被告有期徒刑七年 sentences the defendant.
+                if (LastStageIn(clause, attributable, own && (!bystander || mine)) is { } found) stage = found;
+                // 處有期徒刑二年 opening a clause is the person's when the judgment has no other defendant, or when the
+                // sentence says whom the court ruled on: 判決被告王大明犯詐欺罪，處有期徒刑二年.
+                else if (own && Says(clause, Sentenced()) && (sole || names.Take(100).Any(n => n.Length > 1
+                    && (sentence.Contains("判決被告" + n, StringComparison.OrdinalIgnoreCase) || sentence.Contains("判決" + n, StringComparison.OrdinalIgnoreCase))))) stage = LegalStage.Convicted;
                 // 定讞 alone settles what came before: an indictment (or nothing said) ends in a conviction, while
                 // 不起訴處分，全案定讞 and 判決無罪，全案定讞 stay what they are.
                 // 共犯李小四日前定讞 or 另案定讞 settles someone or something else.
@@ -512,9 +517,13 @@ public static partial class SourceConditions
     {
         // Full-width letters and digits are read as half-width ones: a name may be written either way (Ａ０５, A05).
         static string HalfWidth(string s) => string.Concat(s.Select(c => c is (>= 'Ａ' and <= 'Ｚ') or (>= 'ａ' and <= 'ｚ') or (>= '０' and <= '９') ? (char)(c - 0xFEE0) : c));
-        var lines = HalfWidth(news).Split('\n');
-        var start = Array.FindIndex(lines, l => Compact(l) == "主文");
+        var lines = HalfWidth(news).Replace("\r", "", StringComparison.Ordinal).Split('\n');
+        var start = Array.FindIndex(lines, l => OrderHeading().IsMatch(Compact(l)));
         if (start < 0) return (false, null, false, false);
+        // A court's press release of its ruling gives the order under a heading of its own (壹、判決主文：, 主文要旨,
+        // 判決結論) and has no party lines: its defendants are the people its opening writes as 被告 and the name.
+        var heading = Compact(lines[start]);
+        var release = heading != "主文";
         var own = names.Take(100).Where(n => n.Length > 1).Select(HalfWidth).ToList();
         var surnames = own.Where(n => CjkText.IsCjk(n[0])).Select(n => n[0]).ToHashSet();
         // The header lists defendants on a 被告 line and on the lines after it, up to the next party's line (辯護人, 上列 …).
@@ -530,10 +539,27 @@ public static partial class SourceConditions
         }
         // The only defendant: one line in all the 被告 blocks, and it is theirs. The text's bare 被告 is then this person.
         var sole = listed.Count == 1 && defendantLines == 1;
-        if (sole) own.Add("被告"); // the order of a one-defendant judgment may say 被告無罪 without the name
         var defendant = listed.Count > 0;
-        var end = Array.FindIndex(lines, start + 1, l => OrderEnd().IsMatch(Compact(l)));
+        if (release && !defendant)
+        {
+            // The release's only defendant: every 被告 its opening writes is followed by one of the person's names, and
+            // that name by no further one (被告王大明等3人, 被告王大明、李小四 are several).
+            var opening = Compact(string.Join('\n', lines.Take(start)));
+            var after = opening.Split("被告", 102).Skip(1).Take(100).ToList(); // an opening names a handful
+            var compact = own.Select(Compact).ToList();
+            var theirs = after.Select(a => compact.FirstOrDefault(n => a.StartsWith(n, StringComparison.OrdinalIgnoreCase))).ToList();
+            defendant = theirs.Exists(n => n is not null);
+            sole = defendant && theirs.TrueForAll(n => n is not null) && !after.Zip(theirs).Any(x => x.First[x.Second!.Length..] is var rest && (rest.StartsWith('等') || rest.StartsWith('、') || rest.StartsWith('及') || rest.StartsWith('與')));
+        }
+        if (sole) own.Add("被告"); // the order of a one-defendant judgment may say 被告無罪 without the name
+        // A release's order runs to the next heading of its series: 壹、 to 貳、, 一、 to 二、. Under an unnumbered heading the
+        // order's own items may be 一、 二、, so only 壹、 or 貳、 ends it.
+        string[] next = heading[0] switch { '壹' => ["貳、"], '一' => ["二、"], _ => ["壹、", "貳、"] };
+        var end = Array.FindIndex(lines, start + 1, l => Compact(l) is var c && (OrderEnd().IsMatch(c)
+            || (release && Array.Exists(next, n => c.StartsWith(n, StringComparison.Ordinal)))));
         var order = string.Join('\n', lines[(start + 1)..Math.Min(end < 0 ? lines.Length : end, start + 1 + MaxOrderLines)]);
+        // A release's page may break its lines inside a sentence, even inside a name: a line that ends no sentence runs on.
+        if (release) order = WrappedLine().Replace(order, "");
         LegalStage? stage = null;
         foreach (var (at, length) in Spans(order, 0, order.Length, SentenceEnds))
         {
@@ -556,14 +582,32 @@ public static partial class SourceConditions
         // A defendant appeals a conviction only: 上訴駁回 on the appeal of an 上訴人即被告 leaves that conviction standing.
         if (stage is null && order.Contains("上訴駁回", StringComparison.Ordinal) && listed.Exists(l => l.StartsWith("上訴人即被告", StringComparison.Ordinal) || l.StartsWith("即被告", StringComparison.Ordinal))) // 即被告 opens the line under 上訴人
             stage = LegalStage.Convicted;
+        // A release has no 上訴人即被告 line. Its 上訴駁回 leaves standing the sentence the release recalls of the person
+        // (經…法院判決「王大明犯殺人罪，處有期徒刑十年」, 判處王大明有期徒刑): a sentence of the text naming them with one.
+        // ponytail: a prosecutor's dismissed appeal against an acquittal, in a release that also writes the penalty asked
+        // for the person (請求判處王大明…), reads CONVICTED; tell whose appeal it was if that turns up.
+        if (stage is null && release && order.Contains("上訴駁回", StringComparison.Ordinal) && HalfWidth(news) is var whole
+            && Spans(whole, 0, whole.Length, SentenceEnds).Select(s => whole.Substring(s.Item1, s.Item2))
+                .Any(s => own.Exists(n => s.Contains(n, StringComparison.OrdinalIgnoreCase)) && (s.Contains("判處", StringComparison.Ordinal) || OrderSentence().IsMatch(s))))
+            stage = LegalStage.Convicted;
         return (true, stage, defendant, sole);
     }
+
+    // 主文 alone on its line (a judgment), or a court press release's heading for it: 壹、判決主文：, 一、主文要旨,
+    // 本院判決主文:, 壹、主文摘要說明:, 壹、判決結論:.
+    // 判決結論 / 判決結果 is a release's heading only with its item number: a news report may set 判決結果 on a line too.
+    [GeneratedRegex("^(?:(?:[壹一]、)?(?:本院)?(?:判決)?主文|[壹一]、判決結[論果])(?:要旨|摘要)?(?:說明)?[:：]?(?:[（(][^（）()]*[）)])?$")]
+    private static partial Regex OrderHeading();
+
+    // Not before a line that opens a new item (一、 ㈠ (一) 1.): 一、陳志明無罪 / 二、李小四處有期徒刑二年 stay two.
+    [GeneratedRegex(@"(?<![。；：:;！？\n])\n(?!\s*(?:[一二三四五六七八九十]+、|[㈠-㈩]|[（(][一二三四五六七八九十]+[）)]|[0-9]{1,2}[.．、]))")]
+    private static partial Regex WrappedLine();
 
     private const int MaxOrderLines = 40;
 
     private static string Compact(string s) => string.Concat(s.Where(c => !char.IsWhiteSpace(c)));
 
-    [GeneratedRegex("處(?:有期徒刑|拘役|罰金|無期徒刑|死刑|如(?:本院)?附[表件])|免刑")]
+    [GeneratedRegex("處(?:有期徒刑|拘役|罰金|無期徒刑|死刑|如(?:本院)?附[表件]|如[^，,。\n]{0,20}所示之刑)|應執行(?:有期徒刑|拘役|罰金)|免刑")]
     private static partial Regex OrderSentence();
 
     [GeneratedRegex("^(?:[一二三四五壹貳參]、)?(?:犯罪)?(?:事實|理由).{0,12}$")]
@@ -577,7 +621,7 @@ public static partial class SourceConditions
 
     // What may stand before the person's name when they are the clause's subject: an item number (一、), 被告, and other
     // names of a list (a published judgment may write them 甲○○ or A05).
-    [GeneratedRegex(@"^\s*(?:[一二三四五六七八九十]+、)?(?:(?:上訴人即)?被告)?(?:[\p{IsCJKUnifiedIdeographs}○A-Za-z0-9]{2,4}[、及與])*$")]
+    [GeneratedRegex(@"^\s*(?:[一二三四五六七八九十]+、|[㈠-㈩]、?|[（(][一二三四五六七八九十]+[）)]|[0-9]{1,2}[.．、])?\s*與?(?:(?:上訴人即)?被告)?(?:[\p{IsCJKUnifiedIdeographs}○A-Za-z0-9]{2,4}[、及與]\s*)*$")]
     private static partial Regex OrderSubject();
 
     // Another defendant's part of an order sentence: a name of two to four characters right before what the order says of them.

@@ -149,7 +149,7 @@ public static class NewsModelReading
     private static List<int> Defendants(List<string> sentences, List<Entity> entities)
     {
         var order = sentences.FindIndex(s => string.Concat(s.Where(c => !char.IsWhiteSpace(c))) == "主文");
-        if (order < 0 && SourceConditions.IsCourtRelease(string.Join('\n', sentences.Take(40))))
+        if (order < 0 && RulingReading.IsCourtRelease(string.Join('\n', sentences.Take(40))))
         {
             static bool AsDefendant(string s, string form)
             {

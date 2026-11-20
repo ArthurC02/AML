@@ -139,6 +139,14 @@ The system preserves the source wording. `INDICTED` is not rewritten as convicte
 
 ### Stage from attached news
 
+**How the reading of a ruling is built** (`Core/Screening/RulingReading.cs`; the keyword heuristic for reports stays in `SourceConditions.LegalStageFromNews`, which asks the ruling first). It is a cascade of three steps, as rule-based extraction from fixed-form text is usually built (stages that each do one thing and hand a structure on):
+
+1. **Parse once.** `RulingText.Parse` turns the text into what every rule needs and nothing decides twice: whether it is a judgment or a court's release, the lines under the order's heading, the whole text, the person's names, and whether they are a defendant, the only one, and said to have appealed. A text that is neither gives no reading.
+2. **Readers in a fixed order.** Each reader is one way a ruling tells a person's outcome, a function from the parsed text to a stage or nothing: the order under its heading, the whole release, a listed defendant's dismissed appeal, the only defendant's dismissed appeal, a dismissed appeal with the sentence recalled, proceeds confiscated, sentenced by row number, tried elsewhere. The list `Readers` is the precedence, and the first reader that speaks gives the stage (a decision list). The readers do not know of each other.
+3. **Patterns and guards** are named regular expressions grouped by what they recognise (the kind of text and its order, the parties, a sentence of the order and whose it is, guards for what looks like an outcome and is not, appeals, row numbers and tables).
+
+A new form of ruling is therefore one of three changes, in rising cost: a pattern of an existing reader, a guard, or a new reader with its place in the list. Each comes with rows of the `legal_stage_from_news` theory, counter-examples included, and is measured on the labelled sets before and after.
+
 The ADVERSE_MEDIA stage is read from the attached news by a keyword heuristic, and from a judgment's order by its fixed form. Both await a judgment Golden Case; until then they are checked on augmented cases (AUG-02-22) and made-up reports:
 
 - **A judgment's order.** When the text has a 主文 line, the lines from it to the 事實 / 理由 heading are the order, and what it says of the Profile person is the stage: a sentence (處有期徒刑, 拘役, 罰金, 無期徒刑, 死刑, 免刑) in any part is CONVICTED, else 無罪 is ACQUITTED. Only a clause where the person is the subject counts (their name opens it, alone or in a list of names: 林美玲、王大明均無罪), and what follows up to a clause that opens with another person's name of two to four characters (林美玲處有期徒刑一年，王大明無罪). So a co-defendant's sentence or acquittal is never theirs, nor is an offence against them (王大明對林美玲犯詐欺取財罪，處…) or a part of an earlier judgment being revoked (原判決關於林美玲處有期徒刑部分撤銷). A numbered heading (一、犯罪事實) ends the order too, and without any heading 40 lines are read at most.

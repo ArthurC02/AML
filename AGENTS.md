@@ -30,6 +30,7 @@ Api ──► Services ──► Core
 | Whole flow of one Case | `Core/Cases/CaseAnalyzer.cs`, then `Services/CaseService.cs` |
 | Identity decision | `Core/Identity/EvidenceBuilder.cs`, `HardConflictGate.cs`, `IdentityDecisionPolicy.cs`; spec `docs/feature/identity-adjudication.md` |
 | Source condition / list types | `Core/Screening/SourceConditions.cs`; spec `docs/feature/watchlist-and-adverse-information.md` |
+| Legal stage from a judgment or court release | `Core/Screening/RulingReading.cs` (parse once, ordered readers, named patterns); reports: `SourceConditions.LegalStageFromNews` |
 | Names, dates, addresses | `Core/Normalization/`; spec `docs/feature/extraction-and-normalization.md` |
 | Explanation and news digest | `Core/Explanation/ExplanationBuilder.cs`, `NewsDigest.cs`; news models `NewsModelReading.cs`, `Infra/Models/` |
 | Training or measuring the news models (labels, Colab, end-to-end F1) | `docs/plan/news-model-training.md` (data and models live outside the repo) |

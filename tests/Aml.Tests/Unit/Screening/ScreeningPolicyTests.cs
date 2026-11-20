@@ -414,11 +414,79 @@ public class ScreeningPolicyTests
     [InlineData("本院審理被告陳志明傷害案件，於今日宣判，判決被告陳志明犯傷害罪，處有期徒刑1年6月。", LegalStage.Convicted)]
     [InlineData("法院今日判決陳志明犯傷害罪，處有期徒刑1年6月。", LegalStage.Convicted)]
     [InlineData("本院於今日宣判，判決被告李小四對陳志明犯傷害罪，處有期徒刑1年6月。", LegalStage.Unknown)] // named in the sentence, but not whom the court ruled on
+    // What a sentence naming the person says is not overridden by one that does not name them.
+    [InlineData("檢方偵結，陳志明、李小四依法提起公訴，王大同則為緩起訴處分。緩起訴部分：王大同緩起訴期間為二年。", LegalStage.Indicted)]
+    [InlineData("被告陳志明、李小四提起公訴。二、緩起訴部分：緩起訴期間均為一年。", LegalStage.Indicted)]
+    [InlineData("陳志明遭起訴後棄保潛逃，遭發布通緝。", LegalStage.Indicted)]
+    [InlineData("陳志明涉嫌詐欺遭約談。檢方今偵結起訴七人。", LegalStage.Indicted)]                // no stage of their own before it
+    [InlineData("檢方起訴七人。陳志明獲不起訴處分。", LegalStage.Dismissed)]
+    // A judgment's bystander: an indictment or a wanted notice only from the clause naming them.
+    [InlineData("被告 林美玲\n主文\n林美玲犯詐欺取財罪，處有期徒刑一年。\n理由\n檢察官起訴被告之上開犯行，其中陳志明之陳述足以佐證。", LegalStage.Unknown)]
+    [InlineData("被告 林美玲\n主文\n林美玲犯詐欺取財罪，處有期徒刑一年。\n理由\n李小四由本院通緝中，陳志明、王大同由本院另行審結。", LegalStage.Unknown)]
+    [InlineData("被告 林美玲\n主文\n林美玲犯詐欺取財罪，處有期徒刑一年。\n理由\n同案被告陳志明業經檢察官提起公訴。", LegalStage.Indicted)]
+    // An aside that opens with other people's names, or follows a masked one, is theirs.
+    [InlineData("陳志明、李小四、王大同分別加入該集團（按李小四、王大同參與犯罪組織部分，業經另案起訴）。", LegalStage.Unknown)]
+    [InlineData("陳志明與李O四（業經檢察官為不起訴處分）共同詐欺。", LegalStage.Unknown)]
+    [InlineData("陳志明（業經檢察官提起公訴）與李小四共同詐欺。", LegalStage.Indicted)]
+    [InlineData("李小四、陳志明（均遭起訴）共同詐欺。", LegalStage.Indicted)]
+    // 全案…提起公訴 in a report is everyone's; 對李小四等4人提起公訴 is not.
+    [InlineData("警方拘提陳志明、李小四到案。全案移送地檢署偵辦，經檢察官偵結後提起公訴。", LegalStage.Indicted)]
+    [InlineData("陳志明涉嫌詐欺遭約談。檢察官對李小四等4人提起公訴。", LegalStage.Unknown)]
+    [InlineData("陳志明涉嫌詐欺遭約談。全案經檢察官偵結，不提起公訴。", LegalStage.Unknown)]
+    // What a prosecutor asks the court for is no sentence.
+    [InlineData("檢察官建請法院對被告陳志明判處應執行有期徒刑十年以上。陳志明遭提起公訴。", LegalStage.Indicted)]
+    [InlineData("檢察官建請法院對被告陳志明判處應執行有期徒刑十年以上。", LegalStage.Unknown)]
+    [InlineData("檢察官請法院從重量刑，判處陳志明有期徒刑八年。", LegalStage.Unknown)]              // the request runs into the next clause
+    [InlineData("法院判處陳志明有期徒刑十年。", LegalStage.Convicted)]
+    [InlineData("檢方聲請法院羈押獲准，今依詐欺罪起訴陳志明。", LegalStage.Indicted)]              // 聲請法院 asks for a step
+    [InlineData("檢察官建請法院從重量刑，法院今判處陳志明有期徒刑五年。", LegalStage.Convicted)]     // the next clause has a subject: the court's ruling
+    [InlineData("陳志明涉詐欺，檢察官建請法院從重量刑，法院判決無罪。", LegalStage.Acquitted)]
+    [InlineData("陳志明涉詐欺，檢察官建請法院從重量刑，陳志明獲判無罪。", LegalStage.Acquitted)]
+    [InlineData("陳志明涉案，律師請法院從輕量刑，陳志明遭判處有期徒刑五年。", LegalStage.Convicted)]
+    [InlineData("檢察官起訴陳志明，並請法院從重量刑，法院今判處陳志明有期徒刑五年。", LegalStage.Convicted)]
+    [InlineData("陳志明涉案，檢方提請法院，同日起訴陳志明。", LegalStage.Indicted)]                // 提請法院 is no request for a penalty
+    [InlineData("陳志明涉詐欺，檢察官請法院從重量刑，並經法院判處有期徒刑五年。", LegalStage.Convicted)]
+    // A pretence quoted after a colon ends before a later saying.
+    [InlineData("陳志明向李小四佯稱：可獲利，李小四交付款項後，檢察官起訴陳志明，並於庭上辯稱無辜云云。", LegalStage.Indicted)]
+    [InlineData("陳志明向李小四佯稱：可獲利，李小四交付款項，嗣陳志明遭判處有期徒刑五年，法院認為其事後辯稱：不知情云云。", LegalStage.Convicted)]
+    // 為 makes a clause another person's only after an adverb (李小四則為).
+    [InlineData("陳志明涉詐欺，高院認為證據不足而判決無罪。", LegalStage.Acquitted)]
+    [InlineData("陳志明涉詐欺，高院認為被告罪證明確而判處有期徒刑二年。", LegalStage.Convicted)]
+    [InlineData("陳志明涉案，金額為新臺幣五百萬元而遭起訴。", LegalStage.Indicted)]
+    // Another person's wanted notice in a judgment.
+    [InlineData("被告 林美玲\n主文\n林美玲犯詐欺取財罪，處有期徒刑一年。\n理由\n註：陳志明本件所涉犯嫌，李小四遭通緝。", LegalStage.Unknown)]
+    [InlineData("被告 林美玲\n主文\n林美玲犯詐欺取財罪，處有期徒刑一年。\n理由\n陳志明到庭，李小四則由本院通緝中。", LegalStage.Unknown)]
+    [InlineData("被告 林美玲\n主文\n林美玲犯詐欺取財罪，處有期徒刑一年。\n理由\n陳志明提告後，檢察官起訴被告，被告遭通緝。", LegalStage.Unknown)]
+    // A later withdrawal replaces the person's indictment.
+    [InlineData("陳志明涉詐欺遭起訴。檢方嗣後撤回起訴。", LegalStage.Dismissed)]
+    // 全案 with another person as the object of 提起公訴.
+    [InlineData("陳志明遭約談。全案偵結，檢方對李小四提起公訴。", LegalStage.Unknown)]
+    // An aside opening with a surname-character noun is not another person's.
+    [InlineData("陳志明涉詐欺（按金額經查已達五百萬元，業經起訴）。", LegalStage.Indicted)]
+    [InlineData("陳志明涉詐欺（即白手套所涉部分，業經起訴）。", LegalStage.Indicted)]
     public void legal_stage_from_news(string news, LegalStage expected)
     {
         var c = Assert.Single(SourceConditions.Determine(Profile("Adverse Media"), false, news));
         Assert.Equal(expected, c.LegalStage);
         Assert.Equal(c.LegalStage == LegalStage.Unknown, c.LegalStageBasis is null); // a stage always names its rule
+    }
+
+    // The same, for a Profile person other than 陳志明 in a text that names several.
+    [Theory]
+    [InlineData("檢方偵結，陳志明、李小四依法提起公訴，王大同則為緩起訴處分。緩起訴部分：王大同緩起訴期間為二年。", "王大同", LegalStage.Dismissed)]
+    [InlineData("王大同因偵查中逃匿，另發布通緝。檢察官依法起訴被告等十人。", "王大同", LegalStage.Wanted)]      // their own wanted notice
+    [InlineData("檢察官依法起訴被告等十人。王大同因偵查中逃匿，另發布通緝。", "王大同", LegalStage.Wanted)]
+    [InlineData("被告 林美玲\n主文\n林美玲犯詐欺取財罪，處有期徒刑一年。\n理由\n李小四由本院通緝中，陳志明、王大同由本院另行審結。", "李小四", LegalStage.Wanted)]
+    [InlineData("陳志明、李小四、王大同分別加入該集團（按李小四、王大同參與犯罪組織部分，業經另案起訴）。", "李小四", LegalStage.Indicted)]
+    [InlineData("被告 林美玲\n主文\n林美玲犯詐欺取財罪，處有期徒刑一年。\n理由\n註：陳志明本件所涉犯嫌，業經提起公訴；王大同本案所涉罪嫌，另案通緝中。", "王大同", LegalStage.Wanted)] // the clause after their part
+    [InlineData("被告 林美玲\n主文\n林美玲犯詐欺取財罪，處有期徒刑一年。\n理由\n註：陳志明本件所涉犯嫌，業經提起公訴；王大同本案所涉罪嫌，另案通緝中。", "陳志明", LegalStage.Indicted)]
+    [InlineData("被告 林美玲\n主文\n林美玲犯詐欺取財罪，處有期徒刑一年。\n理由\n王大同經合法傳喚未到，由本院通緝中。", "王大同", LegalStage.Wanted)] // the clause after the one naming them
+    [InlineData("陳志明向李小四佯稱：帳戶遭凍結，涉及詐騙，且伊已遭通緝，需配合交付款項云云，致李小四陷於錯誤。", "陳志明", LegalStage.Unknown)] // a pretence quoted after a colon
+    public void legal_stage_from_news_of(string news, string name, LegalStage expected)
+    {
+        var reading = LegalStageReading.FromNews(news, [name]);
+        Assert.Equal(expected, reading.Stage);
+        Assert.Equal(reading.Stage == LegalStage.Unknown, reading.Basis is null);
     }
 
     // The rule that gave the stage (watchlist-and-adverse-information.md#stage-from-attached-news): every rule at least once.

@@ -11,10 +11,10 @@ internal static class ReportRules
 {
     // ---- The transitions, in the order of LegalStageReading.Transitions ----
 
-    // Someone a judgment names who is not its defendant gets a conviction or acquittal only from the clause
-    // naming them: 被告依王大明指示…，量處被告有期徒刑七年 sentences the defendant.
+    // Someone a judgment names who is not its defendant gets a stage only from the clause naming them:
+    // 被告依王大明指示…，量處被告有期徒刑七年 sentences the defendant, 檢察官起訴被告…，其中王大明之陳述… indicts the defendant.
     internal static LegalStage? KeywordStage(ClauseScope c) =>
-        LastStageIn(c.Clause, c.Sentence.Attributable, c.Sentence.Own && (!c.Bystander || c.Mine));
+        LastStageIn(c.Clause, c.Sentence.Attributable && (!c.Bystander || c.Mine), c.Sentence.Own && (!c.Bystander || c.Mine), c.Sentence.WholeCase);
 
     // 處有期徒刑二年 opening a clause is the person's when the judgment has no other defendant, or when the
     // sentence says whom the court ruled on: 判決被告王大明犯詐欺罪，處有期徒刑二年.
@@ -30,8 +30,17 @@ internal static class ReportRules
             && !StageText.ContainsAny(c.Clause, StageGlossary.OtherParty) && !c.Clause.Contains(StageGlossary.AnotherCase, StringComparison.Ordinal) ? LegalStage.Convicted : null;
 
     // A wanted notice is a stage only until a judicial one is told, before or after it (起訴後棄保遭通緝 stays INDICTED).
+    // The person's own beats a judicial stage that no sentence naming them told (檢察官起訴被告等十人。王大同另發布通緝).
+    // A judgment's bystander is wanted only by the clause naming them, or one after it in the sentence with no subject of
+    // its own (陳志明經傳喚未到，由本院通緝中; not 李小四由本院通緝中，陳志明由本院另行審結, 陳志明到庭，李小四則由本院通緝中
+    // or 陳志明提告後，…，被告遭通緝).
     internal static LegalStage? WantedWhileNoStage(ClauseScope c) =>
-        (c.Sentence.Own || c.Sentence.Collective) && c.Stage == LegalStage.Unknown && Says(c.Clause, StagePatterns.WantedNotice()) ? LegalStage.Wanted : null;
+        (c.Sentence.Own || c.Sentence.Collective) && (!c.Bystander || c.Mine || c.Named && StagePatterns.OpensWithoutSubject().IsMatch(c.Clause))
+            && (c.Stage == LegalStage.Unknown || c.Sentence.Own && !c.StageOwn) && Says(c.Clause, StagePatterns.WantedNotice()) ? LegalStage.Wanted : null;
+
+    // A sentence that does not name the person may still withdraw their indictment: 陳志明遭起訴。檢方嗣後撤回起訴.
+    internal static bool Withdraws(ClauseScope c) =>
+        c.Stage == LegalStage.Indicted && c.Sentence.Attributable && StageText.ContainsAny(c.Clause, StageGlossary.Withdrawal);
 
     // ---- What the report says of the person as a whole ----
 
@@ -62,7 +71,7 @@ internal static class ReportRules
 
     // ---- Reading stage keywords in a clause ----
 
-    private static LegalStage? LastStageIn(string clause, bool attributable, bool own)
+    private static LegalStage? LastStageIn(string clause, bool attributable, bool own, bool wholeCase)
     {
         var found = new List<(int End, LegalStage Stage)>();
         var modalEnd = StageText.FirstModalEnd(clause); // once per clause: a modal ending at or before a keyword qualifies it
@@ -71,12 +80,13 @@ internal static class ReportRules
             Find(found, clause, StagePatterns.Dismissal(), LegalStage.Dismissed, modalEnd);
             Find(found, clause, StagePatterns.Indictment(), LegalStage.Indicted, modalEnd);
         }
+        // 提起公訴 is a judgment's word for the indictment, and a judgment names many people: only with the person's name,
+        // or in a report's sentence about 全案, the whole case.
+        // Tried and left out: reading 對李小四等4人提起公訴 in a report for everyone the text names. On the second dev
+        // set it gave the indictment to five people the group did not hold and to three it did.
+        if (own || wholeCase) Find(found, clause, StagePatterns.PublicProsecution(), LegalStage.Indicted, modalEnd);
         if (own)
         {
-            // 提起公訴 is a judgment's word for the indictment, and a judgment names many people: only with the person's name.
-            // Tried and left out: reading 對李小四等4人提起公訴 in a report for everyone the text names. On the second dev
-            // set it gave the indictment to five people the group did not hold and to three it did.
-            Find(found, clause, StagePatterns.PublicProsecution(), LegalStage.Indicted, modalEnd);
             Find(found, clause, StagePatterns.Conviction(), LegalStage.Convicted, modalEnd);
             Find(found, clause, StagePatterns.Acquittal(), LegalStage.Acquitted, modalEnd);
         }

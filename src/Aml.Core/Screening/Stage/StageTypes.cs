@@ -87,7 +87,11 @@ internal sealed class RulingText
 internal sealed record ReportText(IReadOnlyList<string> Names, HashSet<char> Surnames, string Blanked, string Named);
 
 /// <summary>What a sentence of the report says of the person, and whose steps it may tell (<see cref="ReportForm.Scope"/>).</summary>
-internal readonly record struct SentenceScope(string Text, bool Own, bool Attributable, bool Collective);
+internal readonly record struct SentenceScope(string Text, bool Own, bool Attributable, bool Collective, bool WholeCase);
 
-/// <summary>A clause that is the person's (or may be), after the pretence cut and the indictment papers blanked out; <see cref="Stage"/> is the stage read so far.</summary>
-internal readonly record struct ClauseScope(string Clause, bool Mine, SentenceScope Sentence, bool Sole, bool Bystander, IReadOnlyList<string> Names, LegalStage Stage);
+/// <summary>
+/// A clause that is the person's (or may be), after the pretence cut and the indictment papers blanked out; <see cref="Stage"/>
+/// is the stage read so far, and <see cref="StageOwn"/> says a sentence naming the person gave it; <see cref="Named"/> says
+/// this clause or one before it in the sentence is the person's.
+/// </summary>
+internal readonly record struct ClauseScope(string Clause, bool Mine, SentenceScope Sentence, bool Sole, bool Bystander, IReadOnlyList<string> Names, LegalStage Stage, bool StageOwn, bool Named);

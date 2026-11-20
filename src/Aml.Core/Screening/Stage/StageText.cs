@@ -86,10 +86,13 @@ internal static class StageText
 
     // Where the first modal of the clause ends (past the end when there is none). A modal anywhere before the keyword makes
     // it no stage (最重可判處, 檢方請求法院依法從重判處), but a word that only holds the modal's characters is not one.
-    internal static int FirstModalEnd(string clause)
+    internal static int FirstModalEnd(string clause) => FirstModalEnd(clause, StageGlossary.Modals);
+
+    /// <summary>Where the first of these modals ends in the clause, with their guards (past the end when there is none).</summary>
+    internal static int FirstModalEnd(string clause, (string Modal, string NotBefore, string NotAfter)[] modals)
     {
         var first = int.MaxValue;
-        foreach (var (modal, notBefore, notAfter) in StageGlossary.Modals)
+        foreach (var (modal, notBefore, notAfter) in modals)
             for (var at = clause.IndexOf(modal, StringComparison.Ordinal); at >= 0 && at + modal.Length < first;
                  at = clause.IndexOf(modal, at + 1, StringComparison.Ordinal))
             {

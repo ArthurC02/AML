@@ -77,6 +77,15 @@ internal static partial class StagePatterns
     [GeneratedRegex("(?:" + StageGlossary.SayingVerbs + "|(?<![下簡名俗職號堪又暱人對])稱)(?:(?!" + StageGlossary.SayingVerbs + @"|稱)[^。！？；\n，,]){0,80}(?:[，,](?:(?!" + StageGlossary.SayingVerbs + @"|稱)[^。！？；\n，,]){0,80})?" + StageGlossary.ReportedSpeechEnd)]
     internal static partial Regex Reported();
 
+    // 佯稱：帳戶遭凍結，涉及詐騙，且伊已遭通緝云云: after a colon the pretence is quoted whole, over any commas, to 云云.
+    // Not past another verb of saying: …檢察官起訴陳志明，並於庭上辯稱無辜云云 ends a later saying.
+    [GeneratedRegex("(?:" + StageGlossary.PretenceVerbs + @")[:：](?:(?!" + StageGlossary.SayingVerbs + @"|稱)[^。！？；\n]){0,300}?" + StageGlossary.ReportedSpeechEnd)]
+    internal static partial Regex PretenceQuoted();
+
+    // 請法院從重量刑，判處陳志明有期徒刑八年: the clause after a request opens with the penalty and no subject.
+    [GeneratedRegex(@"^\s*(?:" + StageGlossary.AskedPenaltyLinks + ")?(?:" + StageGlossary.AskedPenaltyVerbs + ")")]
+    internal static partial Regex AskedPenalty();
+
     [GeneratedRegex("起訴(?:" + StageGlossary.IndictmentPapers + ")")]
     internal static partial Regex IndictmentPaper();
 
@@ -99,13 +108,25 @@ internal static partial class StagePatterns
     [GeneratedRegex(@"^\s*[均業已亦]{0,3}經[^，,。對撤]{0,12}提起公訴")]
     internal static partial Regex ChargedPart();
 
+    // 陳志明本案所涉罪嫌，另案通緝中: the clause after the person's part opens with the notice. Not 對李小四發布通緝.
+    [GeneratedRegex(@"^\s*[^，,。對]{0,6}通緝")]
+    internal static partial Regex WantedPart();
+
+    // 王大同經合法傳喚未到，由本院通緝中: a clause with no subject of its own, and no 被告 (…，被告遭通緝 is the defendant's).
+    [GeneratedRegex(@"^(?![^，,]*被告)\s*(?:" + StageGlossary.SubjectlessOpeners + "|通緝)")]
+    internal static partial Regex OpensWithoutSubject();
+
+    // 檢方對李小四提起公訴: the indictment has a named object; whether it is another person the caller tells by the surname.
+    [GeneratedRegex(@"對(?<name>\p{IsCJKUnifiedIdeographs}{2,3}?)(?:" + StageGlossary.DispositionVerbs + ")?提起公訴")]
+    internal static partial Regex ProsecutionObject();
+
     // The same for a judgment or a wanted notice, where what follows the name tells it is one, written once or not:
     // 法院另判處李小四有期徒刑一年, 判李小四無罪, 警方通緝的李小四落網.
     // A two-character name counts here too (另判李四無罪); a title does not (判處董事長有期徒刑 may be the person).
     [GeneratedRegex(@"判[決處]?(?<name>\p{IsCJKUnifiedIdeographs}{1,2}[^\P{IsCJKUnifiedIdeographs}長員官人層嫌犯])(?=" + StageGlossary.Penalties + "|無罪|[0-9０-９一二三四五六七八九十兩]+(?:" + StageGlossary.TermUnits + @"))|通緝的?(?<name>\p{IsCJKUnifiedIdeographs}{3})(?=" + StageGlossary.CaughtWords + "|$)")]
     internal static partial Regex OtherPersonJudged();
 
-    [GeneratedRegex(@"^\s*(?:" + StageGlossary.Connectives + @")?(?<surname>\p{IsCJKUnifiedIdeographs})(?:\p{IsCJKUnifiedIdeographs}{1,2}|姓(?:" + StageGlossary.PersonNouns + "))(?:" + StageGlossary.ClauseAdverbs + ")?(?:" + StageGlossary.OtherPersonPassives + ")")]
+    [GeneratedRegex(@"^\s*(?:" + StageGlossary.Connectives + @")?(?<surname>\p{IsCJKUnifiedIdeographs})(?:\p{IsCJKUnifiedIdeographs}{1,2}|姓(?:" + StageGlossary.PersonNouns + "))(?:(?:" + StageGlossary.ClauseAdverbs + ")?(?:" + StageGlossary.OtherPersonPassives + ")|(?:" + StageGlossary.BeforeDispositionAdverbs + ")為)")]
     internal static partial Regex OtherPersonOpening();
 
     // The name ends the clause or goes on in a list (、及與和); 等 after it makes a group, which is not matched.

@@ -9,7 +9,7 @@ namespace Aml.Core.Screening.Stage;
 internal static class StageGlossary
 {
     /// <summary>The version of this glossary; change it with any entry.</summary>
-    internal const string Version = "stage-glossary-1";
+    internal const string Version = "stage-glossary-2";
 
     // ---- Saying and quoting ----
 
@@ -38,7 +38,17 @@ internal static class StageGlossary
     /// Words of a prosecutor's dismissal (pattern Dismissal: DISMISSED); they are read before an indictment, so 不起訴 is never
     /// INDICTED. A word that is not a dismissal (起訴) would read every indictment as DISMISSED.
     /// </summary>
-    internal const string DismissalWords = "不起訴|緩起訴|撤回起訴|不予起訴|免予起訴";
+    internal const string DismissalWords = "不起訴|緩起訴|" + WithdrawalWords + "|不予起訴|免予起訴";
+
+    /// <summary>
+    /// Words of a withdrawn indictment (in <see cref="DismissalWords"/>): said in a sentence that does not name the person but
+    /// points at nobody else, they still replace the person's own indictment (陳志明遭起訴。檢方嗣後撤回起訴). A word that is
+    /// no withdrawal would let another's dismissal replace it.
+    /// </summary>
+    internal const string WithdrawalWords = "撤回起訴|撤回公訴";
+
+    /// <inheritdoc cref="WithdrawalWords"/>
+    internal static readonly string[] Withdrawal = WithdrawalWords.Split('|');
 
     /// <summary>
     /// What may not stand right before 提起公訴 for it to be an indictment (pattern PublicProsecution): 不提起公訴, 未經提起公訴.
@@ -213,15 +223,35 @@ internal static class StageGlossary
     internal static readonly string[] Passives = PassiveWords.Split('|');
 
     /// <summary>
+    /// A prosecutor's or counsel's requests to the court for a penalty (檢察官建請法院判處, 請法院從重量刑): modals
+    /// (<see cref="Modals"/>, with the same guards), and what is asked runs into the next clause when it opens with the
+    /// penalty (<see cref="AskedPenaltyVerbs"/>). 聲請法院, 申請法院, 提請法院, 呈請法院, 報請法院, 函請法院 and 移請法院 ask for a
+    /// step or pass the case on (聲請法院羈押獲准，今依詐欺罪起訴; 提請法院，同日起訴): they are not counted. A word that is no
+    /// request would lose the stage in its clause.
+    /// </summary>
+    internal static readonly (string Modal, string NotBefore, string NotAfter)[] CourtRequests = [("建請", "", ""), ("請法院", "聲申提呈報函移", "")];
+
+    /// <summary>
+    /// The penalty verbs that, opening the clause after a request to the court with no subject, are still what is asked
+    /// (pattern AskedPenalty: 請法院從重量刑，判處陳志明有期徒刑八年). A clause with its own subject (法院今判處…, 陳志明獲判無罪)
+    /// is the court's ruling and is read. A word that does not open an asked penalty would lose real rulings.
+    /// </summary>
+    internal const string AskedPenaltyVerbs = "判處|量處|處|科";
+
+    /// <summary>What may stand before the asked penalty verb (pattern AskedPenalty: 並判處, 再處).</summary>
+    internal const string AskedPenaltyLinks = "並|再";
+
+    /// <summary>
     /// Modals, requests, plans, conditions and hearsay: one ending at or before a keyword in its clause makes it no stage
-    /// (最重可判處, 請求從重判處, 恐遭起訴, 擬起訴). A modal does not count after a character of NotBefore or before one of
-    /// NotAfter: words that only hold its characters (許可, 可疑, 恐嚇, 恐怖, 恐龍, 要求, 求償, 模擬, 若干).
+    /// (最重可判處, 請求從重判處, 建請法院判處, 恐遭起訴, 擬起訴). A modal does not count after a character of NotBefore or before
+    /// one of NotAfter: words that only hold its characters (許可, 可疑, 恐嚇, 恐怖, 恐龍, 要求, 求償, 模擬, 若干).
     /// ponytail: a name holding 可 or 求 (陳可欣遭起訴) still reads as a modal, so no stage: the safe side.
     /// </summary>
     internal static readonly (string Modal, string NotBefore, string NotAfter)[] Modals =
     [
         ("可", "許認核", "疑是"), ("恐", "", "嚇怖慌懼龍"), ("求", "要訴需追", "償援助職"), ("最重", "", ""), ("推定", "", ""),
         ("擬", "模虛", ""), ("預計", "", ""), ("即將", "", ""), ("將會", "", ""), ("若", "", "干"), ("如果", "", ""), ("一旦", "", ""), ("據傳", "", ""),
+        .. CourtRequests,
     ];
 
     // ---- Parties and relations ----
@@ -262,6 +292,13 @@ internal static class StageGlossary
     /// <inheritdoc cref="OtherPartyWords"/>
     internal static readonly string[] OtherParty = OtherPartyWords.Split('|');
 
+    /// <summary>
+    /// The whole case: outside a judgment, a report's sentence saying it, and pointing at nobody else, gives its 提起公訴 to
+    /// everyone the report names (全案移送地檢署偵辦，經檢察官偵結後提起公訴). A word that is no whole would give one
+    /// person's indictment to all.
+    /// </summary>
+    internal const string WholeCase = "全案";
+
     /// <summary>Another case: 另案定讞 settles something else.</summary>
     internal const string AnotherCase = "另案";
 
@@ -284,10 +321,17 @@ internal static class StageGlossary
     internal const string ClauseAdverbs = "也|亦|則|已|均";
 
     /// <summary>
-    /// The passive or 獲 right after another person's name that makes the clause theirs (pattern OtherPersonOpening: 李四遭, 李四獲).
-    /// A longer word stands first (遭到 before 遭).
+    /// The passive or 獲 right after another person's name that makes the clause theirs (pattern OtherPersonOpening: 李四遭,
+    /// 李四獲). A longer word stands first (遭到 before 遭).
     /// </summary>
     internal const string OtherPersonPassives = "遭到|遭|被|獲";
+
+    /// <summary>
+    /// The adverbs that must stand between another person's name and 為 for the clause to be theirs (pattern
+    /// OtherPersonOpening: 王大同則為緩起訴處分). Without one, 為 goes on a word (高院認為, 金額為, 方式為). A word that may
+    /// end such a word would take the person's clause away from them.
+    /// </summary>
+    internal const string BeforeDispositionAdverbs = "則|另|均|亦";
 
     /// <summary>
     /// A clause that opens with one of these after a pretence is the fraudster's own step (pattern OpensPassive: 陳志明佯稱可獲利，遭起訴).
@@ -308,6 +352,38 @@ internal static class StageGlossary
     /// 兩人, 三人 …: such an aside is not another person's alone.
     /// </summary>
     internal const string GroupAsideOpeners = "均|皆|同|等";
+
+    /// <summary>
+    /// Words that may open a bracketed aside before the names it is about (按李小四、王大同…部分，業經另案起訴). A longer word
+    /// stands first. A word that may begin a name would hide that name.
+    /// </summary>
+    internal const string AsideNameOpenerWords = "按|即|其中";
+
+    /// <summary>
+    /// The characters that mask a name, besides ideographs (李○四, 李O四, 李Ｘ四): a bracket after such a name is another
+    /// person's aside. One character each, not a word list. A character that stands in ordinary words would read them as names.
+    /// </summary>
+    internal const string NameMasks = "○OXＯＸ";
+
+    /// <summary>
+    /// Words that open a clause with no subject of its own (pattern OpensWithoutSubject: 王大同經合法傳喚未到，由本院通緝中):
+    /// a wanted notice there goes on about the one a clause before it named, also for someone a judgment only names. A word
+    /// that may open a subject (a surname) would give them another person's notice.
+    /// </summary>
+    internal const string SubjectlessOpeners = "經|由|遭|被|並|且|而|另|現|仍";
+
+    /// <inheritdoc cref="AsideNameOpenerWords"/>
+    internal static readonly string[] AsideNameOpeners = AsideNameOpenerWords.Split('|');
+
+    /// <summary>
+    /// What after a name opening an aside makes the aside that person's (（李小四、王大同…）, （李小四等人…）): it is blanked out
+    /// when it holds none of the Profile's names. Only a list goes on so: a word that may go on a noun (金額經, 白手套所涉)
+    /// would blank out asides about the Profile person that open with a surname character.
+    /// </summary>
+    internal const string AfterAsideNameWords = "、|等";
+
+    /// <inheritdoc cref="AfterAsideNameWords"/>
+    internal static readonly string[] AfterAsideName = AfterAsideNameWords.Split('|');
 
     /// <summary>Words that make one sentence each one's (pattern Sentenced: 各處有期徒刑, 均處有期徒刑).</summary>
     internal const string EachOf = "各|均";

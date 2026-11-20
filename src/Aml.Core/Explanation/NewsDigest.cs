@@ -81,7 +81,7 @@ public static partial class NewsDigests
         var surnames = names.Where(n => CjkText.IsCjk(n[0])).Select(Surname).ToHashSet(StringComparer.Ordinal);
         var mentions = Mentions(text, names, surnames);
         // Quoted speech is a claim: no event is read inside it (as for the legal stage), but names are.
-        var blanked = SourceConditions.Quoted().Replace(text, m => new string('　', m.Length));
+        var blanked = StageWords.Quoted().Replace(text, m => new string('　', m.Length));
         var people = People(text, mentions);
         // An event names its person as the people list does: by the first full name, else the first form.
         var shownAs = mentions.GroupBy(m => m.Key, StringComparer.Ordinal)
@@ -123,7 +123,7 @@ public static partial class NewsDigests
         {
             if (found.Count >= MaxFound) break;
             var surname = m.Groups["surname"].Value;
-            if (surname.Length == 1 && !SourceConditions.CommonSurnames.Contains(surname[0], StringComparison.Ordinal)) continue;
+            if (surname.Length == 1 && !StageWords.CommonSurnames.Contains(surname[0], StringComparison.Ordinal)) continue;
             if (!m.Groups["named"].Success && !StandsAlone(text, m)) continue;
             found.Add(new(m.Index, m.Length, "~" + surname, m.Value, surnames.Contains(surname) ? NewsMatch.ProfileSurname : NewsMatch.OtherPerson,
                 AnonymousRole(m.Groups["kind"].Value), Anonymous: true));
@@ -191,7 +191,7 @@ public static partial class NewsDigests
         if (name.Length > min && AfterName.Contains(name[^1], StringComparison.Ordinal)) name = name[..^1];
         if (name.Length < min) return null;
         var given = name[(compound ? 2 : 1)..];
-        if (!compound && !SourceConditions.CommonSurnames.Contains(name[0], StringComparison.Ordinal)) return null;
+        if (!compound && !StageWords.CommonSurnames.Contains(name[0], StringComparison.Ordinal)) return null;
         if (NotGivenName.Contains(given[0], StringComparison.Ordinal)) return null;
         return given.Length == 2 && Organisation.Contains(given[1], StringComparison.Ordinal) ? null : name;
     }
@@ -340,14 +340,14 @@ public static partial class NewsDigests
     {
         var events = new List<NewsEvent>();
         var triggers = 0;
-        foreach (var (s, sl) in SourceConditions.Spans(blanked, 0, blanked.Length, SourceConditions.SentenceEnds))
+        foreach (var (s, sl) in StageWords.Spans(blanked, 0, blanked.Length, StageWords.SentenceEnds))
         {
             if (sl == 0) continue;
             var sentence = text.Substring(s, sl);
             Slots? sentenceSlots = null;
             var seen = new HashSet<(NewsEventType, string?, NewsCertainty)>();
             var conditional = false;
-            foreach (var (c, cl) in SourceConditions.Spans(blanked, s, sl, SourceConditions.ClauseEnds))
+            foreach (var (c, cl) in StageWords.Spans(blanked, s, sl, StageWords.ClauseEnds))
             {
                 if (cl == 0) continue;
                 var clause = blanked.Substring(c, cl);
@@ -359,7 +359,7 @@ public static partial class NewsDigests
 
                 var found = Triggers.SelectMany(t => t.Pattern.Matches(clause).Take(MaxTriggers).Select(m => (t.Type, m))).OrderBy(x => x.m.Index).ToList();
                 if (found.Count == 0) continue;
-                var modalEnd = SourceConditions.FirstModalEnd(clause);
+                var modalEnd = StageWords.FirstModalEnd(clause);
                 var pronoun = Pronoun().IsMatch(clause);
                 var clauseSlots = Slots.Of(Head(text.Substring(c, cl)), published, withOffences: false);
                 sentenceSlots ??= Slots.Of(Head(sentence), published, withOffences: true);
@@ -428,7 +428,7 @@ public static partial class NewsDigests
         var bare = WithoutPassive(before);
         if (bare.EndsWith("是否", StringComparison.Ordinal) || before.Contains("未必", StringComparison.Ordinal) || before.Contains("不排除", StringComparison.Ordinal))
             return NewsCertainty.Hedged;
-        if (EndsWithAny(bare, Denials) || SourceConditions.Negated(clause, m.Index)) return NewsCertainty.Negated;
+        if (EndsWithAny(bare, Denials) || StageWords.Negated(clause, m.Index)) return NewsCertainty.Negated;
         if (modalEnd <= m.Index || underCondition) return NewsCertainty.Hedged;
         return requested && !after.ContainsAny(Granted) ? NewsCertainty.Requested : NewsCertainty.Stated;
     }
@@ -479,10 +479,10 @@ public static partial class NewsDigests
         (NewsEventType.Investigation, InvestigationPattern()), (NewsEventType.Search, SearchPattern()), (NewsEventType.Questioning, QuestioningPattern()),
         (NewsEventType.Arrest, ArrestPattern()), (NewsEventType.Referral, ReferralPattern()), (NewsEventType.Bail, BailPattern()),
         (NewsEventType.Detention, DetentionPattern()), (NewsEventType.AssetRestraint, AssetRestraintPattern()),
-        (NewsEventType.NonIndictment, SourceConditions.Dismissal()), (NewsEventType.Indictment, IndictmentPattern()),
-        (NewsEventType.Indictment, SourceConditions.Indictment()), (NewsEventType.Acquittal, AcquittalPattern()),
-        (NewsEventType.Conviction, SourceConditions.Conviction()), (NewsEventType.Conviction, SourceConditions.Final()),
-        (NewsEventType.Acquittal, SourceConditions.Acquittal()),
+        (NewsEventType.NonIndictment, StageWords.Dismissal()), (NewsEventType.Indictment, IndictmentPattern()),
+        (NewsEventType.Indictment, StageWords.Indictment()), (NewsEventType.Acquittal, AcquittalPattern()),
+        (NewsEventType.Conviction, StageWords.Conviction()), (NewsEventType.Conviction, StageWords.Final()),
+        (NewsEventType.Acquittal, StageWords.Acquittal()),
         (NewsEventType.Appeal, AppealPattern()), (NewsEventType.Confiscation, ConfiscationPattern()), (NewsEventType.Fine, FinePattern()),
         (NewsEventType.RegulatoryPenalty, RegulatoryPattern()), (NewsEventType.WantedNotice, WantedPattern()), (NewsEventType.Extradition, ExtraditionPattern()),
     ];

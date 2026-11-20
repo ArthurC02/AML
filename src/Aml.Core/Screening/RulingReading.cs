@@ -29,12 +29,12 @@ internal static partial class RulingReading
 
     internal static Reading Read(string news, IReadOnlyList<string> names) =>
         RulingText.Parse(news, names) is { } text
-            ? new(true, Readers.Select(read => read(text)).FirstOrDefault(stage => stage is not null), text.Defendant, text.Sole)
+            ? new(true, StageWords.FirstOf(Readers, text), text.Defendant, text.Sole)
             : default;
 
     // The order of this list is the precedence: what stands under the order's heading first, then the whole release,
     // then what a dismissed appeal leaves standing, then the forms that name the person outside a sentence of the order.
-    private static readonly Func<RulingText, LegalStage?>[] Readers =
+    private static readonly StageRule<RulingText>[] Readers =
     [
         OrderUnderHeading, WholeRelease, AppealOfListedDefendant, AppealOfOnlyDefendant, AppealWithRecalledSentence,
         ProceedsConfiscated, SentencedByRowNumber, TriedElsewhereNote,
@@ -50,7 +50,7 @@ internal static partial class RulingReading
     private static string Compact(string s) => string.Concat(s.Where(c => !char.IsWhiteSpace(c)));
 
     private static IEnumerable<string> Sentences(string text) =>
-        SourceConditions.Spans(text, 0, text.Length, SourceConditions.SentenceEnds).Select(s => text.Substring(s.Start, s.Length));
+        StageWords.Spans(text, 0, text.Length, StageWords.SentenceEnds).Select(s => text.Substring(s.Start, s.Length));
 
     // ---- The text, read once ----
 
@@ -242,10 +242,10 @@ internal static partial class RulingReading
         var text = t.Text(rows);
         LegalStage? read = null;
         var carried = false; // the sentence before this one was the person's
-        foreach (var (at, length) in SourceConditions.Spans(text, 0, text.Length, SourceConditions.SentenceEnds))
+        foreach (var (at, length) in StageWords.Spans(text, 0, text.Length, StageWords.SentenceEnds))
         {
             var theirs = new System.Text.StringBuilder();
-            foreach (var (from, size) in SourceConditions.Spans(text, at, length, SourceConditions.ClauseEnds))
+            foreach (var (from, size) in StageWords.Spans(text, at, length, StageWords.ClauseEnds))
             {
                 var clause = text.Substring(from, size);
                 // What is asked for, or what the law allows, is no outcome: 檢察官請求處有期徒刑五年, 應處有期徒刑.
@@ -256,7 +256,7 @@ internal static partial class RulingReading
                     && !(release && TriedElsewhere().Match(clause, i + n.Length) is { Success: true } e && e.Index == i + n.Length));
                 if (theirs.Length == 0 && !named) continue;
                 if (!named && (another || (OrderOpensWithName().Match(clause) is { Success: true } m
-                    && SourceConditions.CommonSurnames.Contains(m.Value.TrimStart()[0], StringComparison.Ordinal) && !t.Surnames.Contains(m.Value.TrimStart()[0])))) break;
+                    && StageWords.CommonSurnames.Contains(m.Value.TrimStart()[0], StringComparison.Ordinal) && !t.Surnames.Contains(m.Value.TrimStart()[0])))) break;
                 theirs.Append(clause).Append('，');
             }
             var said = theirs.ToString();
@@ -276,7 +276,7 @@ internal static partial class RulingReading
 
     // 被告李小四犯…, 判決李小四無罪: the clause's subject is another person. The only defendant's 被告 is not theirs there.
     private static bool Another(RulingText t, string clause) => OtherSubject().Match(clause) is { Success: true } m && m.Groups["n"].Value is var n
-        && SourceConditions.CommonSurnames.Contains(n[0], StringComparison.Ordinal) && !t.Own.Exists(o => o != "被告" && clause.AsSpan(m.Groups["n"].Index).StartsWith(o, StringComparison.OrdinalIgnoreCase));
+        && StageWords.CommonSurnames.Contains(n[0], StringComparison.Ordinal) && !t.Own.Exists(o => o != "被告" && clause.AsSpan(m.Groups["n"].Index).StartsWith(o, StringComparison.OrdinalIgnoreCase));
 
     // A release may give its defendants as a table, which the page's text holds one cell a line: the person's name alone
     // on a line (a row number before it, a bracketed title after it), then the cells of their row. The first penalty
@@ -301,7 +301,7 @@ internal static partial class RulingReading
                 if (cell.Length is 1 or 2 && cell.All(char.IsAsciiDigit)) break; // the next row's number on its own line
                 // The row ends too at a heading, and at a line about someone else: 李小四處有期徒刑二年, 判決被告李小四….
                 if (ReleaseHeading().IsMatch(cell) || (cell.Contains("被告", StringComparison.Ordinal) && !names.Exists(n => cell.Contains(n, StringComparison.OrdinalIgnoreCase)))
-                    || (OrderOpensWithName().Match(cell) is { Success: true } m && SourceConditions.CommonSurnames.Contains(m.Value[0], StringComparison.Ordinal) && !surnames.Contains(m.Value[0]))) break;
+                    || (OrderOpensWithName().Match(cell) is { Success: true } m && StageWords.CommonSurnames.Contains(m.Value[0], StringComparison.Ordinal) && !surnames.Contains(m.Value[0]))) break;
                 if (TablePenalty().IsMatch(cell) || OrderSentence().IsMatch(cell)) return LegalStage.Convicted;
                 // A cell that says another outcome comes first: 無罪, 免訴, 不受理, 上訴駁回, 撤銷.
                 if (cell.Contains("無罪", StringComparison.Ordinal)) return LegalStage.Acquitted;

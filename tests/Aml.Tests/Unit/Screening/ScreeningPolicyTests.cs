@@ -325,7 +325,36 @@ public class ScreeningPolicyTests
     // 判決結果 with no item number is a report's own line, not a release's heading: the report is read as one.
     [InlineData("陳志明涉詐欺遭起訴，法院一審判處有期徒刑三年。\n判決結果\n略。", LegalStage.Convicted)]
     [InlineData("陳志明涉詐欺，警方偵辦中。\n判決結果\n法院尚未宣判。", LegalStage.Alleged)]
-    [InlineData("壹、判決主文：\n李小四犯詐欺取財罪，處有期徒刑一年。\n貳、理由：\n陳志明犯詐欺取財罪，處有期徒刑一年，為另案所認定。", LegalStage.Unknown)] // past the next heading is not the order
+    // A release is read whole: it has no heading, or says the outcome before it or in its reasons.
+    [InlineData("本院114年度國審訴字第5號被告陳志明傷害致死案件，於今日宣判，判決主文：「陳志明犯傷害致死罪，處有期徒刑九年。」\n一、事實摘要\n略。", LegalStage.Convicted)]
+    [InlineData("本院115年度訴字第230號被告陳男涉犯個資法案件，於今日宣判，判決：「陳志明無罪」。\n判決要旨：\n略。", LegalStage.Acquitted)]
+    [InlineData("壹、本院判決摘要：\n本院審理113年度國審重訴字第6號被告陳志明殺人案件，於今日宣判。\n貳、判決理由摘要：\n一、經本院認被告陳志明犯殺人罪，處有期徒刑14年。", LegalStage.Convicted)]
+    [InlineData("壹、本院判決摘要：\n本院審理115年度上訴字第1546號被告陳志明(下稱被告)殺人案件，於今日宣判。被告前經臺灣苗栗地方法院以其犯殺人罪，判處有期徒刑19年。被告不服提起上訴。\n貳、判決理由摘要：\n本件被告上訴，為無理由，爰駁回其上訴。", LegalStage.Convicted)]
+    [InlineData("本院審理114年度金重訴字第25號被告李小四等人洗錢案件於今日宣判。\n壹、各被告之罪名及刑度：\n一、李小四共同犯洗錢罪，處有期徒刑9月。\n二、陳志明被訴部分，公訴不受理；其餘被訴部分無罪。\n貳、理由：\n略。", LegalStage.Acquitted)]
+    [InlineData("本院審理114年度上訴字第9號被告李小四等人銀行法案件於今日宣判。\n壹、判決主文：\n原判決關於李小四之宣告刑部分撤銷。\n其他上訴（即被告王大同、陳志明部分）駁回。\n貳、原審判決說明：\n被告均以量刑過重為由提起上訴。", LegalStage.Convicted)]
+    [InlineData("臺灣新竹地方法院113年度訴字第382號被告李小四等人貪污案件於今日宣判。\n貳、主文\n(十一)陳志明：\n1.犯行使業務上登載不實文書罪，處有期徒刑陸月。\n(十二)王大同無罪。", LegalStage.Convicted)]
+    [InlineData("臺灣新竹地方法院113年度訴字第382號被告李小四等人貪污案件於今日宣判。\n貳、主文\n(十一)陳志明：\n無罪。\n(十二)王大同：\n犯圖利罪，處有期徒刑伍年。", LegalStage.Acquitted)]
+    // A news report that cites a judgment, even with the court and its case number, is not the court's release.
+    [InlineData("台北地院今天依詐欺罪判處李小四有期徒刑三年。陳志明另案遭檢方起訴。", LegalStage.Indicted)]
+    [InlineData("台灣高等法院113年度上訴字第5號審理，今日宣判。\n被告陳志明遭檢方起訴，檢察官請求處有期徒刑五年，法院尚在審理。", LegalStage.Indicted)]
+    [InlineData("台灣台北地方法院113年度訴字第5號案件，陳志明被控詐欺，法院今日宣判。被告陳志明表示，李小四被判處有期徒刑。", LegalStage.Unknown)]
+    // What stands under the heading wins over the reasons; what is asked for, was ruled below or is another's is no outcome.
+    [InlineData("壹、判決主文：\n陳志明無罪。\n貳、理由\n被告陳志明於警詢稱，一審判決被告陳志明處有期徒刑三年。", LegalStage.Acquitted)]
+    [InlineData("壹、判決主文：\n原判決撤銷。\n陳志明無罪。\n貳、理由\n一審判決陳志明處有期徒刑三年，本院認不構成犯罪。", LegalStage.Acquitted)]
+    [InlineData("壹、判決主文：\n陳志明無罪。\n貳、理由\n本院認陳志明應處有期徒刑三年，但檢察官舉證不足。", LegalStage.Acquitted)]
+    [InlineData("本院114年度訴字第1號被告陳志明詐欺案件，於今日宣判。\n被告陳志明涉嫌詐欺，檢察官請求處有期徒刑五年。\n本院判決被告陳志明無罪。", LegalStage.Acquitted)]
+    [InlineData("本院114年度訴字第1號被告陳志明詐欺案件，於今日宣判。\n一審判決被告陳志明處有期徒刑2年，本院撤銷原判決，改判被告陳志明無罪。", LegalStage.Acquitted)]
+    [InlineData("本院114年度訴字第1號被告陳志明詐欺案件，於今日宣判。\n被告陳志明無罪。\n本院另判決被告李小四處有期徒刑。", LegalStage.Acquitted)] // the only defendant of the opening, but 被告李小四 is another
+    [InlineData("本院114年度訴字第1號被告陳志明詐欺案件，於今日宣判。\n經本院認被告陳志明未犯詐欺罪，判決無罪。\n被告李小四處有期徒刑1年。", LegalStage.Acquitted)]
+    [InlineData("本院114年度訴字第1號被告陳志明、李小四詐欺案件，於今日宣判。\n被告\n陳志明\n李小四\n本院判決被告李小四處有期徒刑2年，被告陳志明無罪。", LegalStage.Acquitted)]
+    [InlineData("本院114年度訴字第1號被告陳志明等人詐欺案件，於今日宣判。\n壹、判決主文：\n一、李小四處有期徒刑2年。\n二、陳志明無罪。\n貳、當事人\n陳志明\n李小四\n有期徒刑2年", LegalStage.Acquitted)]
+    [InlineData("本院114年度訴字第1號被告陳志明等人詐欺案件，於今日宣判。\n壹、判決主文：\n陳志明無罪。\n貳、理由摘要\n陳志明\n王大同處有期徒刑2年", LegalStage.Acquitted)]
+    // A table of defendants, one cell a line.
+    [InlineData("壹、判決結論：\n被 告\n宣告罪名\n宣 告 刑\n李小四\n共同犯傷害致人於死罪\n有期徒刑拾貳年\n王大同\n陳志明\n有期徒刑拾年\n貳、理由：\n略。", LegalStage.Convicted)] // two names share one penalty cell
+    [InlineData("壹、判決主文（節錄）\n編號 被告 主文內容摘要\n1 李小四\n李小四無罪。\n2 陳志明\n（某公司負責人） (1)甲案：犯交付賄賂罪，處有期徒刑1年。\n(2)乙案：犯妨害投標罪，處有期徒刑10月。\n貳、理由：\n略。", LegalStage.Convicted)]
+    [InlineData("壹、判決主文（節錄）\n編號 被告 主文內容摘要\n1 陳志明\n陳志明無罪。\n2 李小四\n李小四犯交付賄賂罪，處有期徒刑1年。\n貳、理由：\n略。", LegalStage.Acquitted)] // the next numbered row is another's
+    [InlineData("壹、判決主文\n編號 被告 主文內容摘要\n1 李小四 李小四犯詐欺取財罪，處有期徒刑1年。\n2 陳志明 陳志明無罪。\n貳、理由：\n略。", LegalStage.Acquitted)] // a row on one line is read as a sentence
+    [InlineData("壹、判決主文\n編號 被告 主文內容摘要\n1 陳志明\n陳志明犯特殊洗錢罪，為他人公開演講及\n處有期徒刑1年6月。\n其他被訴部分無罪。\n貳、理由：\n略。", LegalStage.Convicted)]
     // 上訴駁回 leaves standing the sentence the release recalls of the person, by name or as its only 被告.
     [InlineData("被告陳志明因詐欺案件，前經臺灣臺北地方法院判決「陳志明犯詐欺取財罪，處有期徒刑一年」，被告不服提起上訴。\n壹、本院判決主文：\n上訴駁回。\n貳、理由：\n略。", LegalStage.Convicted)]
     [InlineData("本院115年度上訴字第1號被告陳志明詐欺案件於今日宣判。\n壹、本院判決主文:\n上訴駁回。\n貳、理由:\n一、本案臺灣臺北地方法院判處被告有期徒刑一年。", LegalStage.Convicted)]

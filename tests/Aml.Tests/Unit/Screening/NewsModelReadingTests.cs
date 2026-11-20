@@ -264,6 +264,34 @@ public class NewsModelReadingTests
     }
 
     [Fact]
+    public void In_a_court_press_release_a_whole_case_sentence_is_read_only_for_those_written_as_defendant()
+    {
+        // 王大明 is the principal offender, arrested elsewhere; the release's 被告 is 陳小華, and so is its sentence.
+        NewsModelReadout Case(string opening) => Read(opening + "\n王大明遭逮捕。被告陳小華依指示取槍。本院審酌一切情狀。全案審結。量處被告有期徒刑七年。",
+            new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Suspect" }, null,
+            ("王大明", "逮捕", "Arrest", 0.9f), ("陳小華", "取槍", "Arrest", 0.9f), ("王大明", "量處", "Conviction", 0.9f), ("陳小華", "量處", "Conviction", 0.9f));
+
+        var release = Case("本院113年度重訴字第4號殺人案件於今日宣判。");
+        Assert.Equal([NewsEventType.Arrest], release.Entities.Single(e => e.Name == "王大明").Events.Select(v => v.Type));
+        Assert.Contains(NewsEventType.Conviction, release.Entities.Single(e => e.Name == "陳小華").Events.Select(v => v.Type));
+        // A news report has no such reading: the sentence is asked for every suspect with an event of their own.
+        Assert.Contains(NewsEventType.Conviction, Case("〔記者丙／台北報導〕").Entities.Single(e => e.Name == "王大明").Events.Select(v => v.Type));
+    }
+
+    [Theory]
+    [InlineData(0.97f, 0.9f, false)] // dismissed for sure, and no less likely than filed: one event, the dismissal
+    [InlineData(0.6f, 0.9f, true)]
+    [InlineData(0.96f, 0.99f, true)] // the filing is the surer: both stay (an appeal to the next instance)
+    public void An_appeal_filed_and_dismissed_is_the_dismissal_alone(float dismissed, float filed, bool keepsFiled)
+    {
+        var r = Read("王大明不服提起上訴。本院駁回之。", new() { ["王大明"] = "PER-Suspect" }, null,
+            ("王大明", "提起上訴", "Appeal", filed), ("王大明", "駁回", "Appeal-Negated", dismissed));
+
+        var appeals = Assert.Single(r.Entities).Events.Where(v => v.Type == NewsEventType.Appeal).Select(v => v.Certainty).Order().ToList();
+        Assert.Equal(keepsFiled ? [NewsCertainty.Stated, NewsCertainty.Negated] : [NewsCertainty.Negated], appeals);
+    }
+
+    [Fact]
     public void A_whole_case_sentence_counts_only_for_a_suspect_with_an_event_in_a_sentence_about_them()
     {
         // 陳小華 is a suspect the text only mentions: no sentence about him gives an event, so the referral is not his.

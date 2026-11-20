@@ -90,6 +90,13 @@ public static class NewsModelReading
         }
         var best = found.Select(d => d.Where(x => 1 - x.Value.None >= EventThreshold)
             .ToDictionary(x => x.Key, x => (P: 1 - x.Value.None, x.Value.Quote))).ToList();
+        // An appeal filed and dismissed is one event, the dismissal: the filing sentence (被告不服提起上訴) does not say
+        // how it ended, so the model answers both. The filed appeal is dropped when the dismissal is at least 0.95 and no
+        // less likely than it. Measured end to end (the feature doc): 12 wrong events removed on 40 court press
+        // releases, three on the dev documents for one right one lost; dropping it whenever a dismissal is found lost six.
+        foreach (var b in best)
+            if (b.TryGetValue((NewsEventType.Appeal, NewsCertainty.Negated), out var dismissed) && b.TryGetValue((NewsEventType.Appeal, NewsCertainty.Stated), out var filed)
+                && dismissed.P >= 0.95 && dismissed.P >= filed.P) b.Remove((NewsEventType.Appeal, NewsCertainty.Stated));
         foreach (var (i, steps) in Order(sentences, entities.Select(x => x.e).ToList(), defendants)
             .Where(x => x.Value.Contains(NewsEventType.Conviction) || x.Value.Contains(NewsEventType.Acquittal)))
             foreach (var step in new[] { NewsEventType.Fine, NewsEventType.Confiscation }.Where(s => !steps.Contains(s)))
@@ -136,9 +143,22 @@ public static class NewsModelReading
 
     // A judgment lists its defendants before 主文; the case's steps are theirs, not those of the other suspects it names
     // (accomplices tried elsewhere). A text without such a list (a press release) has no one to tell apart this way.
+    // A court's press release of its ruling has no such list: its defendants are the suspects it writes as 被告 and the
+    // name somewhere (never 同案被告 or 另案被告, who are tried elsewhere). The principal offender or a co-actor it names
+    // without 被告 is not who its 被告 sentences are about.
     private static List<int> Defendants(List<string> sentences, List<Entity> entities)
     {
         var order = sentences.FindIndex(s => string.Concat(s.Where(c => !char.IsWhiteSpace(c))) == "主文");
+        if (order < 0 && SourceConditions.IsCourtRelease(string.Join('\n', sentences.Take(40))))
+        {
+            static bool AsDefendant(string s, string form)
+            {
+                for (var at = s.IndexOf("被告" + form, StringComparison.Ordinal); at >= 0; at = s.IndexOf("被告" + form, at + 1, StringComparison.Ordinal))
+                    if (!(at >= 2 && s.AsSpan(at - 2, 2) is "同案" or "另案")) return true;
+                return false;
+            }
+            return [.. Enumerable.Range(0, entities.Count).Where(i => entities[i].Role == "PER-Suspect" && entities[i].Forms.Any(f => sentences.Any(s => AsDefendant(s, f))))];
+        }
         return [.. Enumerable.Range(0, entities.Count).Where(i => entities[i].Role == "PER-Suspect"
             && sentences.Take(Math.Max(order, 0)).Any(s => entities[i].Forms.Any(f => s.Contains(f, StringComparison.Ordinal))))];
     }

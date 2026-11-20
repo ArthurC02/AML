@@ -355,6 +355,31 @@ public class ScreeningPolicyTests
     [InlineData("壹、判決主文（節錄）\n編號 被告 主文內容摘要\n1 陳志明\n陳志明無罪。\n2 李小四\n李小四犯交付賄賂罪，處有期徒刑1年。\n貳、理由：\n略。", LegalStage.Acquitted)] // the next numbered row is another's
     [InlineData("壹、判決主文\n編號 被告 主文內容摘要\n1 李小四 李小四犯詐欺取財罪，處有期徒刑1年。\n2 陳志明 陳志明無罪。\n貳、理由：\n略。", LegalStage.Acquitted)] // a row on one line is read as a sentence
     [InlineData("壹、判決主文\n編號 被告 主文內容摘要\n1 陳志明\n陳志明犯特殊洗錢罪，為他人公開演講及\n處有期徒刑1年6月。\n其他被訴部分無罪。\n貳、理由：\n略。", LegalStage.Convicted)]
+    // Large-case forms of a release.
+    [InlineData("壹、主文要旨\n一、李小四共同犯詐欺取財罪，處有期徒刑2年。\n二、陳志明共同犯交付賄賂罪，共4罪。應執行有期徒刑1年2月。\n貳、事實摘要\n略。", LegalStage.Convicted)] // the item goes on without a subject
+    [InlineData("壹、主文要旨\n一、陳志明共同犯交付賄賂罪，共4罪。\n貳、事實摘要\n李小四犯詐欺罪。應執行有期徒刑1年。", LegalStage.Unknown)] // a heading ends the item
+    [InlineData("壹、判決主文\n李小四犯詐欺取財罪，處有期徒刑2年。（刑度與原審相同）\n陳志明無罪。\n貳、理由\n略。", LegalStage.Acquitted)] // a line closed by a bracket does not run on
+    [InlineData("本院審理114年度訴字第6號被告李小四、陳志明貪污案件，於114年8月18日判決①被告李小四犯詐取財物罪，處有期徒刑2年；②被告陳志明犯詐取財物罪，處有期徒刑10月。", LegalStage.Convicted)]
+    [InlineData("本院審理114年度訴字第6號被告李小四、陳志明貪污案件，經合議庭判決①被告李小四無罪，及②被告陳志明犯詐取財物罪，處有期徒刑10月。", LegalStage.Convicted)]
+    [InlineData("壹、判決主文\n原判決關於陳志明緩刑部分撤銷。\n㈠ 陳志明緩刑3年，並應向公庫支付新臺幣5萬元。\n貳、理由\n略。", LegalStage.Convicted)]
+    [InlineData("壹、判決主文\n原判決關於陳志明緩刑部分撤銷。\n貳、理由\n略。", LegalStage.Unknown)]
+    [InlineData("被告陳志明殺人案件，經地方法院判決後，被告提起上訴，本院114年度上訴字第9號於今日宣示判決。\n壹、本院主文：\n上訴駁回。\n貳、事實摘要：\n略。", LegalStage.Convicted)] // the only defendant's own appeal
+    [InlineData("被告陳志明殺人案件，經地方法院判決後，檢察官提起上訴，本院114年度上訴字第9號於今日宣示判決。\n壹、本院主文：\n上訴駁回。\n貳、事實摘要：\n略。", LegalStage.Indicted)]
+    [InlineData("壹、本院判決摘要：\n本院審理113年度上訴字第7號李小四等人案件，於今日宣判。李小四、陳志明前經地方法院以其等共同犯詐欺罪，李小四判處有期徒刑5年、陳志明判處有期徒刑2年。本院審理後，李小四處有期徒刑3年。另陳志明部分改判無罪。", LegalStage.Acquitted)] // what the court below ruled is recalled, not the outcome
+    [InlineData("本院114年度訴字第1號被告李小四等24人案件，於今日宣判。\n壹、判決主文：\n㈠李小四等15人各犯發展組織罪，各處有期徒刑7年（編號1）、5年（編號2至3）。\n㈡王大同無罪。\n貳、犯罪事實摘要：\n李小四（編號1）、陳志明（編號3）共同吸收成員。", LegalStage.Convicted)] // sentenced by row number
+    [InlineData("本院114年度訴字第1號被告李小四等24人案件，於今日宣判。\n壹、判決主文：\n㈠李小四等15人各犯發展組織罪，各處有期徒刑7年（編號1）、5年（編號2至3）。\n貳、犯罪事實摘要：\n李小四（編號1）、陳志明（編號16）共同吸收成員。", LegalStage.Unknown)]
+    [InlineData("壹、主文要旨\n李小四犯詐欺取財罪，處有期徒刑2年。\n貳、事實摘要\n李小四指派陳志明（由本院另案審理）、王大同竊錄。", LegalStage.Indicted)]
+    // What a review found the large-case forms would misread.
+    [InlineData("本院114年度訴字第1號被告李小四、陳志明詐欺案件，於今日宣判。\n壹、判決主文\n陳志明無罪，李小四緩刑3年。", LegalStage.Acquitted)]
+    [InlineData("本院114年度訴字第1號被告李小四、陳志明詐欺案件，於今日宣判。\n壹、判決主文\n陳志明無罪，其餘被告緩刑3年。", LegalStage.Acquitted)]
+    [InlineData("本院114年度訴字第1號被告李小四、陳志明詐欺案件，於今日宣判。\n壹、判決主文\n陳志明無罪。又李小四犯詐欺罪，處有期徒刑1年。", LegalStage.Acquitted)]
+    [InlineData("本院114年度訴字第1號被告李小四、陳志明詐欺案件，於今日宣判。\n壹、判決主文\n陳志明無罪。\n應執行有期徒刑2年。", LegalStage.Acquitted)]
+    [InlineData("本院114年度訴字第1號被告李小四等24人案件，於今日宣判。\n壹、判決主文：\n李小四處有期徒刑7年，扣案如附表編號2至3所示之物沒收。\n貳、犯罪事實摘要：\n陳志明（編號3）涉案。", LegalStage.Unknown)] // an exhibit's number
+    [InlineData("本院114年度訴字第1號被告李小四等24人案件，於今日宣判。\n壹、判決主文：\n李小四等5人各處有期徒刑7年（編號1至5），其中陳志明（編號3）部分無罪。", LegalStage.Unknown)] // a sentence that also acquits gives no conviction by number
+    [InlineData("本院114年度上訴字第9號被告陳志明殺人案件，於今日宣判。\n壹、本院主文：\n上訴駁回。\n貳、事實摘要：\n檢察官就被告無罪部分上訴。被告上訴權。", LegalStage.Indicted)] // whose appeal is not told in the opening
+    [InlineData("被告陳志明殺人案件，被告提起上訴，本院114年度上訴字第9號於今日宣示判決。\n壹、本院主文：\n原判決撤銷，發回。\n貳、理由：\n另案上訴駁回。", LegalStage.Indicted)]
+    [InlineData("壹、判決主文\n陳志明犯詐欺罪（共2罪）\n處有期徒刑1年。\n貳、理由\n略。", LegalStage.Convicted)] // a bracket inside a sentence still runs on
+    [InlineData("壹、主文要旨\n陳志明（本院審理中）、李小四共同犯詐欺取財罪，處有期徒刑2年。\n貳、事實摘要\n略。", LegalStage.Indicted)] // the bracket takes the person out of this ruling
     // 上訴駁回 leaves standing the sentence the release recalls of the person, by name or as its only 被告.
     [InlineData("被告陳志明因詐欺案件，前經臺灣臺北地方法院判決「陳志明犯詐欺取財罪，處有期徒刑一年」，被告不服提起上訴。\n壹、本院判決主文：\n上訴駁回。\n貳、理由：\n略。", LegalStage.Convicted)]
     [InlineData("本院115年度上訴字第1號被告陳志明詐欺案件於今日宣判。\n壹、本院判決主文:\n上訴駁回。\n貳、理由:\n一、本案臺灣臺北地方法院判處被告有期徒刑一年。", LegalStage.Convicted)]

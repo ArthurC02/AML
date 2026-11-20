@@ -1,11 +1,11 @@
 # ADR-0015: Clean licences for libraries, models and text
 
 - Status: Accepted
-- Date: 2026-11-02; updated 2026-11-10 (models run with ONNX Runtime)
+- Date: 2026-11-02; updated 2026-11-10 (models run with ONNX Runtime), 2026-11-20 (a large language model is not excluded)
 
 ## Context
 
-MediatR, AutoMapper and FluentAssertions moved to commercial licences in 2025; in a bank each commercial dependency needs procurement and legal review. The bank chose small models run inside the bank over keywords alone and over a large language model. The Traditional Chinese models of CKIP are GPL-3.0 and were trained on corpora licensed for non-commercial research only (Academia Sinica Balanced Corpus 4.0, OntoNotes 5.0, Chinese Gigaword).
+MediatR, AutoMapper and FluentAssertions moved to commercial licences in 2025; in a bank each commercial dependency needs procurement and legal review. The PoC reads news with small models run inside the bank beside the rules; a large language model is not excluded ([ADR-0012](0012-sources-and-web-information.md)), and the same licence rule would apply to one. The Traditional Chinese models of CKIP are GPL-3.0 and were trained on corpora licensed for non-commercial research only (Academia Sinica Balanced Corpus 4.0, OntoNotes 5.0, Chinese Gigaword).
 
 ## Decision
 

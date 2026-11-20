@@ -25,7 +25,7 @@ Build a traceable identity adjudication flow for customer and related-party scre
 - OCR where structured HTML is available;
 - universal news event extraction;
 - automatic identity decisions for organization, vessel and other non-person Profiles: they are retrieved, deduplicated and preserved with their source conditions; entity identifiers (registration number with jurisdiction, IMO number) and a senior manager both sides name can raise review priority, but the external result stays REVIEW until the entity rules are validated with an entity Golden Case;
-- LLM-based identity or legal adjudication, and AI-assigned match probabilities ([ADR-0001](../adr/0001-identity-adjudication.md));
+- an LLM's verdict as the identity decision, and AI-assigned match probabilities ([ADR-0001](../adr/0001-identity-adjudication.md));
 - photo or face comparison;
 - unapproved AML scoring weights;
 - automatic confirmation for all PEP or Sanction cases;
@@ -43,7 +43,7 @@ Build a traceable identity adjudication flow for customer and related-party scre
 
 ## Operating architecture
 
-Rules and algorithms only, no LLM. It has two halves split by personal data.
+Rules and algorithms decide; no large language model is used today (none is excluded: [ADR-0012](../adr/0012-sources-and-web-information.md)). It has two halves split by personal data.
 
 - **Data Processing** handles lists and public data (official lists for Sanction/PEP/RCA, public news and court rulings, other public sources). It holds no customer personal data and refreshes on a schedule or on an event.
 - **Runtime Query** analyzes and adjudicates one Case. Customer personal data enters here and stays inside the bank ([security and privacy](security-and-privacy.md#personal-data-boundary)).

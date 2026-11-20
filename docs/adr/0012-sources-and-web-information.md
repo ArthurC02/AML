@@ -1,13 +1,13 @@
 # ADR-0012: Sources, web information and the news digest
 
 - Status: Accepted. Web search and web identity evidence are decided but not built yet; until they are, the [news digest](../feature/watchlist-and-adverse-information.md#news-digest) and the [news models](../feature/watchlist-and-adverse-information.md#news-models) read only the news attached to a Profile. The models feed no decision; of the rule readings, the age, birth date and gender written next to the Profile person's name in attached news are identity evidence.
-- Date: 2026-11-02; updated 2026-11-10 (the small models read attached news beside the rules), 2026-11-19 (birth date and gender in attached news are identity evidence)
+- Date: 2026-11-02; updated 2026-11-10 (the small models read attached news beside the rules), 2026-11-19 (birth date and gender in attached news are identity evidence), 2026-11-20 (a large language model is not excluded; measurements decide)
 
 ## Context
 
 PoC input is supplied files. Later the bank may integrate by API, and data may need to be crawled.
 
-Reviewers read the news and judgments about a listed person to learn who is involved, in what role and what happened: searched, detained, indicted, convicted. The same pages often settle identity: an age, a title, a place or a court case that fits or does not fit the customer. A Profile carries at most one attached article today, and several reports of one event are common. The bank wants no large language model: results must be reproducible, explainable and run inside the bank. Small models under clean licences are allowed ([ADR-0015](0015-licences.md)). Customer data stays inside the bank ([security and privacy](../feature/security-and-privacy.md)).
+Reviewers read the news and judgments about a listed person to learn who is involved, in what role and what happened: searched, detained, indicted, convicted. The same pages often settle identity: an age, a title, a place or a court case that fits or does not fit the customer. A Profile carries at most one attached article today, and several reports of one event are common. Results must be reproducible, explainable and run inside the bank. A large language model is not excluded: none reads the news so far, because the PoC machine cannot run one at a useful speed and no measurement on the annotated documents has shown what one would give; whether one is used is decided by such measurements. Models come under clean licences ([ADR-0015](0015-licences.md)). Customer data stays inside the bank ([security and privacy](../feature/security-and-privacy.md)).
 
 ## Decision
 

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-AML screening PoC: given a customer (or related party) and candidate list Profiles (Sanction, PEP/RCA, official lists, adverse news and court rulings), it decides whether they are the same person and whether the source condition holds, and explains every decision. Rules and algorithms only, no LLM in any decision. API only, no UI. C# / .NET 10, SQLite in the PoC.
+AML screening PoC: given a customer (or related party) and candidate list Profiles (Sanction, PEP/RCA, official lists, adverse news and court rulings), it decides whether they are the same person and whether the source condition holds, and explains every decision. Rules and algorithms decide today; a large language model is not excluded, and a model enters a decision only on measured evidence (ADR-0012). API only, no UI. C# / .NET 10, SQLite in the PoC.
 
 ## Mental model in five facts
 
@@ -65,4 +65,4 @@ CI (`.github/workflows/ci.yml`) restores with `--locked-mode`, so a package chan
 - **Docs describe the current state and build a mental model.** Organize them around responsibilities, data flow, invariants, decisions and evidence. Keep chronological construction/training logs in experiment artifacts; update conclusions rather than appending each work session. Update the feature/plan doc in the same change as the code. ADRs hold the decisions in force, one record per subject (9 records): a changed or new decision edits the record it belongs to, with its date line updated; add a record only for a subject none covers.
 - **Licences:** no commercially licensed packages; models and training text only under clean licences allowing commercial use (ADR-0015). Embedded third-party data needs an entry in `THIRD-PARTY-NOTICES.md` and `licenses/`.
 - **Personal data:** `samples/` is supplied material, read-only; do not open its files unless the task needs them, and never copy names, ids or quotes from it into code, docs, logs, commit messages or test names. Customer data stays in the Runtime Query half (`docs/feature/security-and-privacy.md`).
-- **Not in Phase 1:** LLM adjudication or AI match probabilities, automatic MATCH, any UI, OCR, unapproved risk weights.
+- **Not in Phase 1:** an LLM's verdict as the identity decision, AI match probabilities, automatic MATCH, any UI, OCR, unapproved risk weights.

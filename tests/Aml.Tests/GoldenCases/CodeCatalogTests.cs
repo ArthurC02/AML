@@ -2,6 +2,7 @@ using Aml.Core.Cases;
 using Aml.Core.Subjects;
 using Aml.Core.Codes;
 using Aml.Core.Screening;
+using Aml.Core.Screening.Stage;
 using Aml.Infra.Txt;
 using Aml.Services;
 

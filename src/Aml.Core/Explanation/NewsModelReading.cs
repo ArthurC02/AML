@@ -2,6 +2,7 @@ using System.ComponentModel;
 using Aml.Core.Normalization;
 using Aml.Core.Ports;
 using Aml.Core.Screening;
+using Aml.Core.Screening.Stage;
 using Aml.Core.Shared;
 
 namespace Aml.Core.Explanation;
@@ -218,7 +219,7 @@ public static class NewsModelReading
             var named = entities.Select((e, i) => (i, Form: e.Forms.FirstOrDefault(f => s.Contains(f, StringComparison.Ordinal)), e.Role))
                 .Where(x => x.Form is not null).ToList();
             // 林美玲的丈夫王大明遭起訴 is asked for 王大明 alone: the sentence names 林美玲 only to say whose husband he is.
-            foreach (var (i, form, _) in named.Where(x => !StageWords.OnlyAsRelation(s, entities[x.i].Forms))) yield return (i, form!, s, false, false);
+            foreach (var (i, form, _) in named.Where(x => !StageText.OnlyAsRelation(s, entities[x.i].Forms))) yield return (i, form!, s, false, false);
             // The person named last in the sentence's text, with the form written there.
             var person = named.Where(x => !IsOrganisation(x.Role))
                 .SelectMany(x => entities[x.i].Forms.Where(f => s.Contains(f, StringComparison.Ordinal))
@@ -369,5 +370,5 @@ public static class NewsModelReading
 
     // A Chinese personal name: two to four CJK characters opening with a common surname.
     private static bool WellFormed(string n) =>
-        n.Length is >= 2 and <= 4 && n.All(CjkText.IsCjk) && StageWords.CommonSurnames.Contains(n[0], StringComparison.Ordinal);
+        n.Length is >= 2 and <= 4 && n.All(CjkText.IsCjk) && StageGlossary.CommonSurnames.Contains(n[0], StringComparison.Ordinal);
 }

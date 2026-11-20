@@ -30,7 +30,7 @@ Api ──► Services ──► Core
 | Whole flow of one Case | `Core/Cases/CaseAnalyzer.cs`, then `Services/CaseService.cs` |
 | Identity decision | `Core/Identity/EvidenceBuilder.cs`, `HardConflictGate.cs`, `IdentityDecisionPolicy.cs`; spec `docs/feature/identity-adjudication.md` |
 | Source condition / list types | `Core/Screening/SourceConditions.cs`; spec `docs/feature/watchlist-and-adverse-information.md` |
-| Legal stage from attached news | `Core/Screening/LegalStageReading.cs` (reports), `RulingReading.cs` (judgments, court releases), `StageWords.cs` (shared vocabulary, `StageRule<T>`): parse once, ordered rules, first that speaks wins |
+| Legal stage from attached news | `Core/Screening/Stage/`, one concern a file: `StageGlossary` (words, limits), `StagePatterns` (regexes built from them), `StageText` / `RulingForm` / `ReportForm` (reading the form), `StageTypes` (data), `RulingRules` / `ReportRules` (what a form means), `RulingReading` / `LegalStageReading` (entry points, rule order). A new wording goes into the lowest of these that can hold it |
 | Names, dates, addresses | `Core/Normalization/`; spec `docs/feature/extraction-and-normalization.md` |
 | Explanation and news digest | `Core/Explanation/ExplanationBuilder.cs`, `NewsDigest.cs`; news models `NewsModelReading.cs`, `Infra/Models/` |
 | Training or measuring the news models (labels, Colab, end-to-end F1) | `docs/plan/news-model-training.md` (data and models live outside the repo) |

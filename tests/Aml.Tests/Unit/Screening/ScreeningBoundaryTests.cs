@@ -1,5 +1,6 @@
 using Aml.Core.Identity;
 using Aml.Core.Screening;
+using Aml.Core.Screening.Stage;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
 using static Aml.Core.Screening.ConditionStatus;

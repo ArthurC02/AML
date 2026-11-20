@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Text.RegularExpressions;
 using Aml.Core.Normalization;
+using Aml.Core.Screening.Stage;
 using Aml.Core.Subjects;
 
 namespace Aml.Core.Screening;
@@ -294,7 +295,7 @@ public static partial class SourceConditions
         if (news is null || hasPredicateRiskCategory) return AmlRelevance.Uncertain;
         var statesJurisdiction = (p.AllegationCountries ?? []).Count > 0 || Dateline().IsMatch(news);
         var mentionsPredicateOffence = PredicateConduct.Concat(SeriousConsequence).Any(w => news.Contains(w, StringComparison.OrdinalIgnoreCase));
-        var personNamedInNonPredicateConduct = CjkText.Sentences(news).Where(s => StageWords.MentionsAnyName(s, p.Names))
+        var personNamedInNonPredicateConduct = CjkText.Sentences(news).Where(s => StageText.MentionsAnyName(s, p.Names))
             .Any(s => NonPredicateConduct.Any(w => s.Contains(w, StringComparison.OrdinalIgnoreCase)));
         return statesJurisdiction && personNamedInNonPredicateConduct && !mentionsPredicateOffence ? AmlRelevance.Unrelated : AmlRelevance.Uncertain;
     }

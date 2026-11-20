@@ -369,6 +369,26 @@ public class ScreeningPolicyTests
     [InlineData("本院114年度訴字第1號被告李小四等24人案件，於今日宣判。\n壹、判決主文：\n㈠李小四等15人各犯發展組織罪，各處有期徒刑7年（編號1）、5年（編號2至3）。\n㈡王大同無罪。\n貳、犯罪事實摘要：\n李小四（編號1）、陳志明（編號3）共同吸收成員。", LegalStage.Convicted)] // sentenced by row number
     [InlineData("本院114年度訴字第1號被告李小四等24人案件，於今日宣判。\n壹、判決主文：\n㈠李小四等15人各犯發展組織罪，各處有期徒刑7年（編號1）、5年（編號2至3）。\n貳、犯罪事實摘要：\n李小四（編號1）、陳志明（編號16）共同吸收成員。", LegalStage.Unknown)]
     [InlineData("壹、主文要旨\n李小四犯詐欺取財罪，處有期徒刑2年。\n貳、事實摘要\n李小四指派陳志明（由本院另案審理）、王大同竊錄。", LegalStage.Indicted)]
+    // Tables of terms, shared rows, proceeds, a release opening with the court's name.
+    [InlineData("壹、判決結論摘要：\n姓名\n所犯罪名\n宣告刑\n緩刑\n李小四\n共同犯非法利用個人資料罪\n1年8月、 3月（得易科罰金）\n緩刑5年\n陳志明\n共同犯非法利用個人資料罪\n10月\n緩刑3年\n貳、理由\n略。", LegalStage.Convicted)]
+    [InlineData("壹、判決結論摘要：\n姓名\n宣告刑\n李小四、王大同、\n陳志明、張三豐\n各 10 月\n貳、理由\n略。", LegalStage.Convicted)] // defendants sharing a row
+    [InlineData("壹、判決結論摘要：\n比賽日期\n參與之人\n112年2月24日\n李小四、陳志明\n112年4月8日\n王大同\n貳、理由\n略。", LegalStage.Unknown)] // a date is no term, and no column is headed as terms
+    [InlineData("壹、判決結論摘要：\n姓名\n宣告刑\n1\n陳志明\n無罪\n2\n李小四\n2年\n貳、理由\n略。", LegalStage.Acquitted)]
+    [InlineData("壹、判決結論摘要：\n姓名\n宣告刑\n1\n陳志明\n2\n李小四\n2年\n貳、理由\n略。", LegalStage.Unknown)] // the next row's number ends the row
+    [InlineData("壹、判決結論摘要：\n姓名\n宣告刑\n李小四無罪、陳志明\n2年\n貳、理由\n略。", LegalStage.Unknown)] // not a cell of names
+    [InlineData("臺灣士林地方法院113年度訴字第2號詐欺案件，於今日宣判，判決摘要如下：\n一、犯罪事實：\n略。\n附表：\n被告\n刑度\n1\n陳志明\n犯詐欺取財罪\n2年\n緩刑5年", LegalStage.Convicted)]
+    [InlineData("壹、主文摘要說明：\n一、原判決關於李小四、陳志明之沒收部分均撤銷。\n二、李小四犯罪所得新臺幣5萬元、陳志明犯罪所得新臺幣2萬元，除應發還被害人外，沒收之。\n貳、理由\n略。", LegalStage.Convicted)]
+    [InlineData("壹、主文摘要說明：\n一、參與人陳志明犯罪所得新臺幣5萬元沒收。\n貳、理由\n略。", LegalStage.Unknown)]
+    [InlineData("壹、主文要旨\nJOHN A. SMITH、陳志明、李小四共同犯運輸毒品罪，各處有期徒刑8年。\n貳、事實\n略。", LegalStage.Convicted)] // a foreign name heads the list
+    [InlineData("壹、判決結論\n被告李小四共同犯傷害致人於死罪，處有期徒刑11年。\n貳、簡要事實\n註：王大同、陳志明本件所涉犯嫌，業經提起公訴；張三豐另案通緝中。", LegalStage.Indicted)]
+    [InlineData("壹、判決結論\n被告李小四共同犯傷害致人於死罪，處有期徒刑11年。\n貳、簡要事實\n被告依陳志明指示施暴，業經提起公訴。", LegalStage.Unknown)] // the defendant's indictment
+    [InlineData("本院113年度訴字第2號案件宣判。\n姓名\n檢察官求處有期徒刑\n陳志明\n8年", LegalStage.Unknown)] // what is asked for heads the column
+    [InlineData("本院113年度訴字第2號案件宣判。\n姓名\n原判決刑度\n陳志明\n2年", LegalStage.Unknown)]
+    [InlineData("本院113年度訴字第2號案件宣判。\n姓名\n宣告刑\n陳志明\n免訴\n2年", LegalStage.Unknown)] // another outcome comes first
+    [InlineData("本院113年度訴字第2號案件宣判。\n姓名\n宣告刑\n陳志明\n上訴駁回\n緩刑5年", LegalStage.Unknown)]
+    [InlineData("本院113年度訴字第2號案件宣判。\n壹、判決主文\n李小四犯詐欺罪，處有期徒刑2年。陳志明犯罪所得新臺幣5萬元，已發還，李小四應沒收。", LegalStage.Unknown)]
+    [InlineData("壹、判決主文\n被告李小四犯詐欺罪，處有期徒刑2年。\n貳、事實\n陳志明所涉詐欺案，已經檢察官對王大同提起公訴。", LegalStage.Unknown)]
+    [InlineData("壹、判決主文\n被告李小四犯詐欺罪，處有期徒刑2年。\n貳、事實\n陳志明所涉案件，業經檢察官撤回提起公訴。", LegalStage.Unknown)]
     // What a review found the large-case forms would misread.
     [InlineData("本院114年度訴字第1號被告李小四、陳志明詐欺案件，於今日宣判。\n壹、判決主文\n陳志明無罪，李小四緩刑3年。", LegalStage.Acquitted)]
     [InlineData("本院114年度訴字第1號被告李小四、陳志明詐欺案件，於今日宣判。\n壹、判決主文\n陳志明無罪，其餘被告緩刑3年。", LegalStage.Acquitted)]

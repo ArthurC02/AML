@@ -389,6 +389,7 @@ public static partial class SourceConditions
             // 佯稱被害人涉案，已遭通緝: what a fraudster told the victim, to the end of that clause and through the next one.
             // No further: the sentence may go on to the fraudster's own arrest and indictment.
             var claimed = false;
+            var theirPart = false; // the clause before this one named the person and what they are charged with (…所涉犯嫌)
             foreach (var (at, size) in Spans(blanked, start, length, ClauseEnds))
             {
                 var clause = blanked.Substring(at, size);
@@ -396,7 +397,9 @@ public static partial class SourceConditions
                 if (claimed) { claimed = false; if (!OpensPassive().IsMatch(clause)) continue; }
                 if (Pretence().Match(clause) is { Success: true } pretence) (claimed, clause) = (true, clause[..pretence.Index]);
                 if (bystander) clause = IndictmentPaper().Replace(clause, m => new string('　', m.Length));
-                var mine = MentionsAnyName(named.Substring(at, size), names);
+                // 王大明、李小四本件所涉犯嫌，業經提起公訴: the indictment is of those the clause before names.
+                var mine = MentionsAnyName(named.Substring(at, size), names) || (theirPart && ChargedPart().IsMatch(clause));
+                theirPart = MentionsAnyName(named.Substring(at, size), names) && TheirPart().IsMatch(clause);
                 if (!mine && (named.AsSpan(at, size).Contains(RelationMark) || NamesAnotherPerson(clause, surnames) || IndictsAnotherPerson(clause, surnames, news))) continue;
                 // Someone a judgment names who is not its defendant gets a conviction or acquittal only from the clause
                 // naming them: 被告依王大明指示…，量處被告有期徒刑七年 sentences the defendant.
@@ -423,6 +426,13 @@ public static partial class SourceConditions
             && (blanked.Contains("偵辦", StringComparison.Ordinal) || blanked.Contains("調查", StringComparison.Ordinal));
         return stage == LegalStage.Unknown && underInvestigation ? LegalStage.Alleged : stage;
     }
+
+    [GeneratedRegex(@"所涉[^，,。]{0,8}$")]
+    private static partial Regex TheirPart();
+
+    // Not 經檢察官對李小四提起公訴 (another's) or 撤回.
+    [GeneratedRegex(@"^\s*[均業已亦]{0,3}經[^，,。對撤]{0,12}提起公訴")]
+    private static partial Regex ChargedPart();
 
     [GeneratedRegex("無罪部分(?=[^。]{0,40}撤銷)")]
     private static partial Regex RevokedAcquittal();
@@ -633,6 +643,12 @@ public static partial class SourceConditions
                 .Any(s => own.Exists(n => s.Contains(n, StringComparison.OrdinalIgnoreCase))
                     && (s.Contains("判處", StringComparison.Ordinal) || OrderSentence().IsMatch(s) || (DismissedPart().Match(s) is { Success: true } part && own.Exists(n => part.Value.Contains(n, StringComparison.OrdinalIgnoreCase))))))
             stage = LegalStage.Convicted;
+        // 陳志明犯罪所得新臺幣五萬元…沒收 under the heading: proceeds of crime are taken from the person convicted of it,
+        // also where the release's order rules on nothing else of theirs (an appeal on the confiscation alone).
+        if (stage is null && release && start >= 0 && Text(block) is var items && Spans(items, 0, items.Length, SentenceEnds).Select(s => items.Substring(s.Item1, s.Item2))
+                .Any(s => (s.Contains("沒收", StringComparison.Ordinal) || s.Contains("追徵", StringComparison.Ordinal)) && !NotTheirProceeds().IsMatch(s)
+                    && own.Exists(n => n != "被告" && (s.Contains(n + "犯罪所得", StringComparison.OrdinalIgnoreCase) || s.Contains(n + "之犯罪所得", StringComparison.OrdinalIgnoreCase)))))
+            stage = LegalStage.Convicted;
         if (stage is null && release)
         {
             // A large case numbers its defendants and sentences them by number: 王大明等15人各犯…罪，各處有期徒刑7年（編號1）、
@@ -662,6 +678,9 @@ public static partial class SourceConditions
     [GeneratedRegex("[（(]編號([0-9]{1,3})(?:至([0-9]{1,3}))?[）)]")]
     private static partial Regex NumberedRows();
 
+    [GeneratedRegex("參與人|第三人|無罪|不予沒收|不另為沒收|已發還|駁回|聲請")]
+    private static partial Regex NotTheirProceeds();
+
     [GeneratedRegex("無罪|原審|第一審|上訴|前經")]
     private static partial Regex NotThisOrder();
 
@@ -688,24 +707,44 @@ public static partial class SourceConditions
     // column of names and a separate column of outcomes read column by column is not told apart.
     private static LegalStage? TableRow(string[] rows, List<string> own, List<string> names, HashSet<char> surnames)
     {
+        var terms = rows.Any(r => Compact(r) is { Length: <= 10 } c && TableTermHeading().IsMatch(c));
         for (var i = 0; i < rows.Length; i++)
         {
-            if (!own.Contains(TableNameCell().Replace(Compact(rows[i]), ""), StringComparer.OrdinalIgnoreCase)) continue;
+            // The name cell may hold the defendants who share the row: 陳志明、李小四、 (each a name, nothing more).
+            var cellNames = TableNameCell().Replace(Compact(rows[i]), "").Split('、', StringSplitOptions.RemoveEmptyEntries);
+            if (cellNames.Length is 0 or > 12 || !cellNames.Any(c => own.Contains(c, StringComparer.OrdinalIgnoreCase))
+                || !cellNames.All(c => c.Length is >= 2 and <= 4 || own.Contains(c, StringComparer.OrdinalIgnoreCase))) continue;
             foreach (var row in rows.Skip(i + 1).Take(MaxRowLines))
             {
                 var cell = Compact(row);
                 if (TableNextRow().IsMatch(row) || (cell.Length <= 14 && (cell.EndsWith('：') || cell.EndsWith(':')))) break; // (二)李小四： opens the next block
+                if (cell.Length is 1 or 2 && cell.All(char.IsAsciiDigit)) break; // the next row's number on its own line
                 // The row ends too at a heading, and at a line about someone else: 李小四處有期徒刑二年, 判決被告李小四….
                 if (ReleaseHeading().IsMatch(cell) || (cell.Contains("被告", StringComparison.Ordinal) && !names.Exists(n => cell.Contains(n, StringComparison.OrdinalIgnoreCase)))
                     || (OrderOpensWithName().Match(cell) is { Success: true } m && CommonSurnames.Contains(m.Value[0], StringComparison.Ordinal) && !surnames.Contains(m.Value[0]))) break;
                 if (TablePenalty().IsMatch(cell) || OrderSentence().IsMatch(cell)) return LegalStage.Convicted;
+                // Under a column headed 宣告刑, 刑度 or 有期徒刑 the cell is the term alone: 1年8月、3月（得易科罰金）, 各10月, 緩刑5年.
+                // A cell that says another outcome comes first: 無罪, 免訴, 不受理, 上訴駁回, 撤銷.
                 if (cell.Contains("無罪", StringComparison.Ordinal)) return LegalStage.Acquitted;
+                if (cell.Length <= 10 && TableOtherOutcome().IsMatch(cell)) break;
+                if (terms && TableTerm().IsMatch(cell)) return LegalStage.Convicted;
             }
         }
         return null;
     }
 
     private const int MaxRowLines = 12;
+
+    [GeneratedRegex("免訴|不受理|駁回|撤銷")]
+    private static partial Regex TableOtherOutcome();
+
+    // The heading cell whole: never 檢察官求處有期徒刑, 法定刑度 or 原判決刑度.
+    [GeneratedRegex(@"^(?:宣告刑|刑度|(?:應執行)?有期徒刑|[（(]有期徒刑[）)])$")]
+    private static partial Regex TableTermHeading();
+
+    // 2年, 1年8月、3月（得易科罰金）, 各10月, 緩刑5年; never a date (112年4月8日) or a range of terms (7月以上11月以下).
+    [GeneratedRegex(@"^(?:[各均]?[0-9]{1,2}年(?:[0-9]{1,2}月)?|[各均]?[0-9]{1,2}月|緩刑[0-9]{1,2}年)(?:[、，,（(].*)?$")]
+    private static partial Regex TableTerm();
 
     // What stands beside the name in its cell: a row or item number before it, a bracketed title or a colon after it
     // ((十一)王大明： heads the lines of that person's counts).
@@ -737,7 +776,8 @@ public static partial class SourceConditions
 
     // 本院114年度訴字第1號…宣判: the court speaking of itself, its case number, its ruling. A news report may cite a
     // court and a case number (臺灣高等法院113年度上訴字第5號), but never says 本院.
-    [GeneratedRegex(@"本院(?:審理)?[0-9]{2,3}年度?[^，,。]{1,12}字第[0-9]+號.{0,160}(?:宣判|判決)")]
+    // Or the text opens with the court's name and the case number, and says 宣判: 臺灣士林地方法院113年度訴字第2號…案件，於…宣判.
+    [GeneratedRegex(@"本院(?:審理)?[0-9]{2,3}年度?[^，,。]{1,12}字第[0-9]+號.{0,160}(?:宣判|判決)|^(?:臺灣|福建)[\p{IsCJKUnifiedIdeographs}]{2,12}法院[0-9]{2,3}年度[^，,。]{1,12}字第[0-9]+號[^。]{0,160}宣判")]
     private static partial Regex CourtRelease();
 
     // The subject of a ruling's clause, to see whether it is someone else: 被告李小四犯…, 判決李小四無罪, 認李小四處….
@@ -782,7 +822,7 @@ public static partial class SourceConditions
     // names of a list (a published judgment may write them 甲○○ or A05).
     // A release also writes the ruling in running text: 判決主文：「王大明犯…, 判決被告王大明…, 經本院認被告王大明犯….
     // 於114年6月9日判決①被告王大明…；②被告李小四…, 另王大明部分改判無罪.
-    [GeneratedRegex(@"^\s*[另及]?(?:[一二三四五六七八九十]+、|[㈠-㈩]、?|[①-⑳]|[（(][一二三四五六七八九十0-9]+[）)]|[0-9]{1,2}(?:[.．、]|(?=\s)))?\s*(?:(?:於[^，,。]{0,14}日)?經?(?:本院|合議庭|國民法官法庭)?(?:(?:判決|改判)(?:主文)?[:：]?[「『]?[①-⑳]?|認))?與?(?:(?:上訴人即)?被告)?(?:[\p{IsCJKUnifiedIdeographs}○A-Za-z0-9]{2,4}[、及與]\s*)*$")]
+    [GeneratedRegex(@"^\s*[另及]?(?:[一二三四五六七八九十]+、|[㈠-㈩]、?|[①-⑳]|[（(][一二三四五六七八九十0-9]+[）)]|[0-9]{1,2}(?:[.．、]|(?=\s)))?\s*(?:(?:於[^，,。]{0,14}日)?經?(?:本院|合議庭|國民法官法庭)?(?:(?:判決|改判)(?:主文)?[:：]?[「『]?[①-⑳]?|認))?與?(?:(?:上訴人即)?被告)?(?:(?:[\p{IsCJKUnifiedIdeographs}○A-Za-z0-9]{2,4}|[A-Za-z][A-Za-z .\-]{1,40})[、及與]\s*)*$")]
     private static partial Regex OrderSubject();
 
     // Another defendant's part of an order sentence: a name of two to four characters right before what the order says of them.

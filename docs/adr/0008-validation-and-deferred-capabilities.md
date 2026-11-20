@@ -1,7 +1,7 @@
 # ADR-0008: Validation backlog and deferred capabilities behind the Phase 1 controls
 
 - Status: Accepted
-- Date: 2026-11-02; updated 2026-11-09 (merged former ADR-0021)
+- Date: 2026-11-02; updated 2026-11-09 (merged former ADR-0021), 2026-11-20 (Fellegi-Sunter groups and placeholders)
 
 ## Context
 
@@ -15,7 +15,7 @@ Only GC-01 to GC-03 have real data; waiting for GC-04 to GC-08 would stall all w
   - **Profile merging**: `ProfileMerge` groups Profiles on a shared comparable document key or a recorded "same as" link, never on names; merged Profiles keep their IDs.
   - **Source refresh**: `case_input` stores the files of every revision; a changed Profile re-analyzes each Case whose latest input used it.
   - **Entity evidence**: registration number with jurisdiction, IMO number. Agreement is PROBABLE_MATCH (external REVIEW); no automatic MATCH or NO_MATCH for entities.
-  - **Fellegi-Sunter**: `FellegiSunter.Score` with placeholder m and u, outside every result and decision.
+  - **Fellegi-Sunter**: `FellegiSunter.Score` over the hit prerequisites, DATE_OF_BIRTH, DOCUMENT and any other support, with placeholder m and u partly measured on sanctions lists against each other ([calibration weight](../feature/identity-adjudication.md#calibration-weight)), outside every result and decision.
   - **Risk scoring**: `RiskScoring` runs only with a bank-approved `RiskPolicy`; none ships, so no pair is scored.
 
 ## Consequences

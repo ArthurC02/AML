@@ -204,21 +204,41 @@ public class IdentityEvidenceTests
     }
 
     [Fact]
-    public void Fellegi_sunter_full_dob_agreement_weighs_m_over_one_in_22000()
+    public void Fellegi_sunter_full_dob_agreement_weighs_m_over_one_in_13700()
     {
         var evidence = new Dictionary<EvidenceGroup, Evidence>
         {
             [EvidenceGroup.DateOfBirth] = new(EvidenceGroup.DateOfBirth, Direction.Support, Exact, Strength.High),
         };
-        Assert.Equal(Math.Log2(FellegiSunter.PlaceholderM * 22_000), Assert.Single(FellegiSunter.Score(evidence).Groups).Weight, 6);
+        Assert.Equal(Math.Log2(0.91 * 13_700), Assert.Single(FellegiSunter.Score(evidence).Groups).Weight, 6); // DOB m 0.91, HIGH u 1/13,700
+    }
+
+    [Fact]
+    public void Fellegi_sunter_dob_conflict_weighs_one_minus_m_over_one_minus_the_high_u()
+    {
+        var evidence = new Dictionary<EvidenceGroup, Evidence>
+        {
+            [EvidenceGroup.DateOfBirth] = new(EvidenceGroup.DateOfBirth, Direction.Conflict, ComparisonStatus.Conflict, Strength.High),
+        };
+        Assert.Equal(Math.Log2((1 - 0.91) / (1 - 1.0 / 13_700)), Assert.Single(FellegiSunter.Score(evidence).Groups).Weight, 6); // about -3.47
+    }
+
+    [Fact]
+    public void Fellegi_sunter_gives_no_weight_to_a_prerequisite_of_a_group_it_has_no_u_for()
+    {
+        var evidence = new Dictionary<EvidenceGroup, Evidence>
+        {
+            [EvidenceGroup.DateOfBirth] = new(EvidenceGroup.DateOfBirth, Direction.Prerequisite, Exact, Strength.None),
+        };
+        Assert.Empty(FellegiSunter.Score(evidence).Groups);
     }
 
     [Fact]
     public void Fellegi_sunter_dob_u_is_multiplied_by_the_number_of_profile_dobs()
     {
         var hit = CaseAnalyzer.Analyze(TxtCaseReader.Read(GoldenCases.GoldenCaseTests.Folder("GC-11"))).Hits[0];
-        var dob = Assert.Single(FellegiSunter.Score(hit.Identity.Evidence, hit.Profile).Groups); // 1973 and 1972
-        Assert.Equal(Math.Log2(FellegiSunter.PlaceholderM * 60 / 2), dob.Weight, 6);
+        var dob = Assert.Single(FellegiSunter.Score(hit.Identity.Evidence, hit.Profile).Groups, g => g.Group == EvidenceGroup.DateOfBirth); // 1973 and 1972
+        Assert.Equal(Math.Log2(0.91 * 50 / 2), dob.Weight, 6); // DOB m 0.91, LOW u 1/50 times two Profile DOBs
     }
 
     // Employment and document comparability.

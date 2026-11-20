@@ -1,5 +1,6 @@
 using Aml.Core.Cases;
 using Aml.Core.Identity;
+using Aml.Core.Normalization;
 using Aml.Core.Retrieval;
 using Aml.Core.Screening;
 using Aml.Core.Shared;
@@ -79,13 +80,13 @@ public class RetrievalAndScoringTests
     }
 
     [Fact]
-    public void Fellegi_sunter_calibration_weights_follow_the_strength_table_and_ignore_prerequisites()
+    public void Fellegi_sunter_calibration_weights_follow_the_placeholder_table_and_weigh_prerequisites()
     {
         var gc11 = CaseAnalyzer.Analyze(TxtCaseReader.Read(GoldenCases.GoldenCaseTests.Folder("GC-11"))).Hits[0].Identity;
         var weight = FellegiSunter.Score(gc11.Evidence);
-        var dob = Assert.Single(weight.Groups); // only the year-precision DOB weighs; name, gender and nationality do not
-        Assert.Equal(EvidenceGroup.DateOfBirth, dob.Group);
-        Assert.Equal(Math.Log2(FellegiSunter.PlaceholderM * 60), dob.Weight, 6);
+        // name, gender and nationality EXACT, a year-precision DOB: nothing else weighs
+        Assert.Equal([EvidenceGroup.Name, EvidenceGroup.Gender, EvidenceGroup.Nationality, EvidenceGroup.DateOfBirth], weight.Groups.Select(g => g.Group).Order());
+        Assert.Equal(Math.Log2(0.91 * 50), Assert.Single(weight.Groups, g => g.Group == EvidenceGroup.DateOfBirth).Weight, 6); // DOB m 0.91, LOW u 1/50
 
         var conflict = FellegiSunter.Score(new Dictionary<EvidenceGroup, Evidence>
         {
@@ -95,16 +96,117 @@ public class RetrievalAndScoringTests
     }
 
     [Fact]
-    public void A_pattern_keeps_support_and_conflict_and_leaves_every_other_group_out()
+    public void A_pattern_keeps_support_conflict_and_compared_prerequisites_and_leaves_every_other_group_out()
     {
         var pattern = FellegiSunter.Pattern(new Dictionary<EvidenceGroup, Evidence>
         {
             [EvidenceGroup.Name] = new(EvidenceGroup.Name, Direction.Prerequisite, ComparisonStatus.Exact),
+            [EvidenceGroup.Gender] = new(EvidenceGroup.Gender, Direction.Prerequisite, ComparisonStatus.SubjectMissing),
             [EvidenceGroup.DateOfBirth] = new(EvidenceGroup.DateOfBirth, Direction.Support, ComparisonStatus.Exact, Strength.High),
             [EvidenceGroup.Document] = new(EvidenceGroup.Document, Direction.Conflict, ComparisonStatus.Conflict),
             [EvidenceGroup.Address] = new(EvidenceGroup.Address, Direction.Neutral, ComparisonStatus.Uncertain),
         });
-        Assert.Equal([(EvidenceGroup.DateOfBirth, true), (EvidenceGroup.Document, false)], pattern.OrderBy(x => x.Key).Select(x => (x.Key, x.Value)));
+        Assert.Equal([(EvidenceGroup.Name, true), (EvidenceGroup.DateOfBirth, true), (EvidenceGroup.Document, false)], pattern.OrderBy(x => x.Key).Select(x => (x.Key, x.Value)));
+    }
+
+    // Placeholder m and u (FellegiSunter, identity-adjudication.md#calibration-weight): NAME 0.76 and 1/4,200,
+    // GENDER 0.99 and 0.5, NATIONALITY 0.99 and 0.1. Agreement weighs log2(m/u), disagreement log2((1−m)/(1−u)).
+    [Theory]
+    [InlineData(EvidenceGroup.Name, ComparisonStatus.Exact, null, true, 0.76, 1.0 / 4_200)]
+    [InlineData(EvidenceGroup.Name, ComparisonStatus.Partial, Findings.RomanizationVariant, false, 0.76, 1.0 / 4_200)]
+    [InlineData(EvidenceGroup.Name, ComparisonStatus.Partial, EvidenceDetails.NotIdenticalAfterNormalization, false, 0.76, 1.0 / 4_200)]
+    [InlineData(EvidenceGroup.Name, ComparisonStatus.Partial, NameComparison.NotComparableCrossScript, null, 0, 0)]
+    [InlineData(EvidenceGroup.Name, ComparisonStatus.SubjectMissing, null, null, 0, 0)]
+    [InlineData(EvidenceGroup.Gender, ComparisonStatus.Exact, null, true, 0.99, 0.5)]
+    [InlineData(EvidenceGroup.Gender, ComparisonStatus.Conflict, ReasonCodes.GenderConflict, false, 0.99, 0.5)]
+    [InlineData(EvidenceGroup.Gender, ComparisonStatus.ProfileMissing, null, null, 0, 0)]
+    [InlineData(EvidenceGroup.Nationality, ComparisonStatus.Exact, null, true, 0.99, 0.1)]
+    [InlineData(EvidenceGroup.Nationality, ComparisonStatus.Conflict, null, false, 0.99, 0.1)]
+    [InlineData(EvidenceGroup.Nationality, ComparisonStatus.SubjectMissing, null, null, 0, 0)]
+    public void A_prerequisite_agrees_when_exact_disagrees_when_compared_otherwise_and_is_left_out_when_not_compared(
+        EvidenceGroup group, ComparisonStatus status, string? detail, bool? agrees, double m, double u)
+    {
+        var evidence = new Dictionary<EvidenceGroup, Evidence> { [group] = new(group, Direction.Prerequisite, status, Strength.None, detail) };
+        var pattern = FellegiSunter.Pattern(evidence);
+        var weights = FellegiSunter.Score(evidence).Groups;
+        if (agrees is not { } a)
+        {
+            Assert.Empty(pattern);
+            Assert.Empty(weights);
+            return;
+        }
+        Assert.Equal(a, pattern[group]);
+        var w = Assert.Single(weights);
+        Assert.Equal((group, m, u), (w.Group, w.M, w.U));
+        Assert.Equal(a ? Math.Log2(m / u) : Math.Log2((1 - m) / (1 - u)), w.Weight, 12);
+    }
+
+    [Fact]
+    public void A_score_sums_the_weights_of_every_group_compared()
+    {
+        var evidence = new Dictionary<EvidenceGroup, Evidence>
+        {
+            [EvidenceGroup.Name] = new(EvidenceGroup.Name, Direction.Prerequisite, ComparisonStatus.Exact),
+            [EvidenceGroup.Gender] = new(EvidenceGroup.Gender, Direction.Prerequisite, ComparisonStatus.Conflict),
+            [EvidenceGroup.Nationality] = new(EvidenceGroup.Nationality, Direction.Prerequisite, ComparisonStatus.Exact),
+            [EvidenceGroup.DateOfBirth] = new(EvidenceGroup.DateOfBirth, Direction.Support, ComparisonStatus.Exact, Strength.Medium),
+            [EvidenceGroup.Document] = new(EvidenceGroup.Document, Direction.Conflict, ComparisonStatus.Conflict),
+            [EvidenceGroup.Address] = new(EvidenceGroup.Address, Direction.Neutral, ComparisonStatus.Uncertain),
+        };
+        var expected =
+            Math.Log2(0.76 / (1.0 / 4_200))     // NAME agrees: 11.640
+            + Math.Log2(0.01 / 0.5)             // GENDER disagrees: −5.644
+            + Math.Log2(0.99 / 0.1)             // NATIONALITY agrees: 3.307
+            + Math.Log2(0.91 / (1.0 / 440))     // DOB agrees at MONTH precision (MEDIUM, u 1/440): 8.645
+            + Math.Log2(0.04 / (1 - 1e-7));     // DOCUMENT disagrees (m 0.96, u 1e-7): −4.644
+        var score = FellegiSunter.Score(evidence);
+        Assert.Equal(5, score.Groups.Count);
+        Assert.Equal(expected, score.TotalWeight, 9);
+        Assert.Equal(13.305, score.TotalWeight, 3);
+    }
+
+    // Five groups, name included, drawn from known m, u and a match share of 0.1; EM recovers them from either start.
+    [Fact]
+    public void Em_over_five_groups_recovers_m_and_u_and_reaches_one_answer_from_two_starts()
+    {
+        var truth = new (EvidenceGroup Group, double M, double U)[]
+        {
+            (EvidenceGroup.Name, 0.8, 0.01), (EvidenceGroup.Gender, 0.95, 0.5), (EvidenceGroup.Nationality, 0.9, 0.1),
+            (EvidenceGroup.DateOfBirth, 0.9, 0.05), (EvidenceGroup.Document, 0.95, 0.01),
+        };
+        var random = new Random(20261120);
+        var patterns = Enumerable.Range(0, 5000).Select(i =>
+        {
+            var match = i % 10 == 0;
+            var p = new Dictionary<EvidenceGroup, bool>();
+            foreach (var (g, m, u) in truth)
+                if (g != EvidenceGroup.Document || random.NextDouble() < 0.5) // a document is on both sides for half the pairs
+                    p[g] = random.NextDouble() < (match ? m : u);
+            return (IReadOnlyDictionary<EvidenceGroup, bool>)p;
+        }).ToList();
+
+        var low = FellegiSunter.EstimateParameters(patterns, matchShare: 0.05);
+        var high = FellegiSunter.EstimateParameters(patterns, matchShare: 0.3);
+
+        // Tolerance: about three sampling standard errors (500 matches, 4,500 non-matches).
+        foreach (var estimate in new[] { low, high })
+        {
+            Assert.InRange(estimate.Iterations, 1, 199); // converged before the cap
+            Assert.Equal(0.1, estimate.MatchShare, 0.02);
+            foreach (var (g, m, u) in truth)
+            {
+                var e = Assert.Single(estimate.Groups, x => x.Group == g);
+                Assert.Equal(m, e.M, 0.06);
+                Assert.Equal(u, e.U, 0.025);
+            }
+        }
+        Assert.Equal(low.MatchShare, high.MatchShare, 1e-6);
+        foreach (var (l, h) in low.Groups.Zip(high.Groups))
+        {
+            Assert.Equal(l.Group, h.Group);
+            Assert.Equal(l.M, h.M, 1e-6);
+            Assert.Equal(l.U, h.U, 1e-6);
+        }
     }
 
     // Synthetic pairs drawn from known m, u and match share; EM recovers them without labels.

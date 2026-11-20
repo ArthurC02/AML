@@ -243,7 +243,7 @@ Insufficient or conflicting evidence
     → REVIEW
 ```
 
-Phase 1 has no automatic MATCH: the identity decision is NO_MATCH, REVIEW or PROBABLE_MATCH. PROBABLE_MATCH is internal ([ADR-0001](../adr/0001-identity-adjudication.md)). There is no numeric score ([ADR-0001](../adr/0001-identity-adjudication.md)); `FellegiSunter.Score` computes a calibration weight for Gate D only; the analysis does not run it, and it is outside the result and the explanation; agreeing with any one of k Profile DOBs is k times as likely by chance, so the DOB u is multiplied by k. The calibration tools are in place and are not wired to any decision: `FellegiSunter.Pattern` turns a pair's evidence into an agreement pattern (support agrees, conflict disagrees, everything else is missing), `EstimateParameters` estimates m, u per group and the match share from unlabelled patterns by expectation-maximization under conditional independence, `Weight` scores a pattern with the estimate, and `Calibrate` picks the highest weight threshold that keeps a required recall on labelled pairs, with the precision it gives.
+Phase 1 has no automatic MATCH: the identity decision is NO_MATCH, REVIEW or PROBABLE_MATCH. PROBABLE_MATCH is internal ([ADR-0001](../adr/0001-identity-adjudication.md)). There is no numeric score ([ADR-0001](../adr/0001-identity-adjudication.md)); `FellegiSunter.Score` computes a calibration weight for Gate D only ([calibration weight](#calibration-weight)); the analysis does not run it, and it is outside the result and the explanation. The calibration tools are in place and are not wired to any decision: `FellegiSunter.Pattern` turns a pair's evidence into an agreement pattern, `EstimateParameters` estimates m, u per group and the match share from unlabelled patterns by expectation-maximization under conditional independence, `Weight` scores a pattern with the estimate, and `Calibrate` picks the highest weight threshold that keeps a required recall on labelled pairs, with the precision it gives.
 
 ### Support strength
 
@@ -296,6 +296,43 @@ Golden Case check:
 | GC-12 | related party: name and nationality agree, gender missing; Profile has no DOB; nothing else comparable | 6 | REVIEW | REVIEW |
 
 Row 4 makes common names with a shared birth year PROBABLE_MATCH. That only raises review priority; GC-07 (highly similar, final NO_MATCH) will show whether it needs narrowing.
+
+### Calibration weight
+
+`FellegiSunter.Score` sums one weight per compared group: log₂(m/u) when it agrees, log₂((1−m)/(1−u)) when it disagrees, where m is the share of same persons that agree and u the share of different persons that agree by chance. It never decides, so the hit prerequisites weigh here although they never support: without them a pair's pattern holds only DATE_OF_BIRTH and DOCUMENT, and expectation-maximization over that does not converge on list data (three starts, three answers). With them it reaches one answer from every start.
+
+`Pattern` and `Score` read the evidence the same way, save a CONFLICT outside DATE_OF_BIRTH and DOCUMENT (a dated role, a stated age, birth date or gender, an entity identifier): `Pattern` marks it as disagreeing, `Score` gives it no weight, since no u is known for it.
+
+| Evidence | Pattern | Weight |
+|---|---|---|
+| SUPPORT in any group | agrees | u from the strength (DATE_OF_BIRTH: its measured u below; others: the rough u of [support strength](#support-strength)) |
+| CONFLICT in DATE_OF_BIRTH or DOCUMENT | disagrees | u of HIGH (DOB) or UNIQUE (document) |
+| prerequisite EXACT | agrees | the group's u below |
+| prerequisite CONFLICT (gender, nationality) or PARTIAL (name) | disagrees | the group's u below |
+| PARTIAL name with `NOT_COMPARABLE_CROSS_SCRIPT`, a value missing on either side, anything NEUTRAL | left out | none |
+
+A name has no CONFLICT: every compared name that is not EXACT is PARTIAL, similar or not, and row 4 reads it as not agreeing. So PARTIAL is the name's disagreement, and the name m below is the share of same persons whose names are EXACT. A romanization variant disagrees like any other PARTIAL name; a level of its own needs its own m and u from labelled pairs. Agreeing with any one of k Profile DOBs is k times as likely by chance, so the DOB u is multiplied by k.
+
+Placeholders, uncalibrated (`ModelVersion` `fs-calibration-0.2`):
+
+| Group | m | u | Where the numbers come from |
+|---|---|---|---|
+| NAME | 0.76 | 1/4,200 | m: EM. u: two occurrences of three-character full names in the annotated Chinese news corpus share the name at most 1 time in 4,200 (an upper bound: the same person recurring across reports counts); Latin-script list names agree far less often, about 1 in 100,000 across the two lists (a figure raised by people listed on both; within one list about 3 in 10,000,000) |
+| GENDER | 0.99 | 0.5 | m: EM gives 1.00, kept below 1 so a disagreement stays finite. u: a general population (0.85 on the mostly male lists) |
+| NATIONALITY | 0.99 | 0.1 | m: EM. u: 0.11 OFAC against itself, 0.018 UN against OFAC; it depends wholly on the customer population |
+| DATE_OF_BIRTH | 0.91 | HIGH 1/13,700, MEDIUM 1/440, LOW 1/50 | m: EM (any agreement). u: 2,000,000 random pairs of different OFAC persons, the share that gives a support of that strength among the pairs whose precision allows it: HIGH counts a day-precise agreement only (any agreement of a day-precise pair, also on the year alone, is 1 in 7,350); MEDIUM rests on 44 agreements |
+| DOCUMENT | 0.96 | 1e-7 | m: EM. u: no chance agreement in 12,810 comparable random pairs, which bounds it below 2.3e-4 and cannot confirm 1e-7 |
+| any other group | 0.95 | the rough u of its strength | not estimated: list data has no support in other groups |
+
+m comes from EM over 733 UN × 7,561 OFAC individuals with the prerequisites in the pattern (match share 1.08e-4, the same from three starts). The calibration run, its tool and its report stay outside the repository.
+
+Limits:
+
+- **Population.** A sanctions list is not a customer population: few nationalities, mostly male, and list dates cluster on placeholder days. The DOB u, measured on the list against itself, is an upper bound for a customer against a list; gender and nationality u depend on the customer population.
+- **Script.** Almost every list name is Latin script, so EM's name m says nothing about Chinese-character names, variant folding or romanization; the name u is a Chinese-corpus upper bound, not a list measurement.
+- **Upper bounds.** The name, DOB and document u are upper bounds or bounds from zero counts, not estimates; a weight from them is conservative on agreement.
+- **The matches are the estimate's own.** No pair is labelled: the same persons are those EM takes for matches, and 99% of the pairs it is sure of have an exact name, so the name m rests on the roughly 140 estimated matches whose names differ, and same persons spelled differently across the lists are under-represented.
+- **Independence.** EM assumes conditional independence between groups; the samples are too small to test name–nationality dependence.
 
 ## Reason code registry
 

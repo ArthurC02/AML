@@ -317,7 +317,9 @@ public class NewsDigestTests
         };
         var started = System.Diagnostics.Stopwatch.StartNew();
         Digest(news);
-        Assert.True(started.Elapsed < TimeSpan.FromSeconds(5), $"{shape} took {started.Elapsed}");
+        // Linear reading takes 3 to 4 s for the slowest shape alone and up to 6 s beside the other test classes on a loaded
+        // machine; quadratic reading of two million characters would take hours.
+        Assert.True(started.Elapsed < TimeSpan.FromSeconds(15), $"{shape} took {started.Elapsed}");
     }
 
     [Fact]

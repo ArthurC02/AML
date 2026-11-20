@@ -1,6 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!-- Zero dependencies: all decision logic is pure code. -->
   <ItemGroup>
+    <InternalsVisibleTo Include="Aml.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <!-- Public reference tables (attribution, source and license in each file's header lines). -->
     <EmbeddedResource Include="Normalization\Data\*.txt" LogicalName="%(Filename)%(Extension)" />
     <!-- Their notices and license texts go with every build that contains them. -->

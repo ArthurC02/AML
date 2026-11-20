@@ -70,7 +70,7 @@ public class ExplanationTests
         Assert.Contains(Findings.PostalCodeOnly, h.DataQualityFindings);
         Assert.Contains(Findings.DuplicatedAddressLine, h.DataQualityFindings);
         Assert.Contains("沒有任何佐證", h.Summary.KeyEvidenceOrGaps, StringComparison.Ordinal);
-        Assert.Contains("ADVERSE_MEDIA（FINANCIAL_CRIME、TAX_CRIME；法律階段 INDICTED）", h.Summary.ExternalData, StringComparison.Ordinal);
+        Assert.Contains("ADVERSE_MEDIA（FINANCIAL_CRIME、TAX_CRIME；法律階段 INDICTED（依據：階段關鍵詞（STAGE_KEYWORD））", h.Summary.ExternalData, StringComparison.Ordinal);
         Assert.Contains("身分判斷：無法確定是否同一人（REVIEW，第三階段第 6 列）", h.Summary.Conclusion, StringComparison.Ordinal);
 
         Assert.Collection(h.Sources,
@@ -150,7 +150,7 @@ public class ExplanationTests
         Assert.Equal(Uncertain, address.Status);
         Assert.Equal("Thôn Example, Xã An Hòa, Tỉnh Example（VN）", address.ProfileValue);
         Assert.Equal("SOFT_DIFFERENCE", address.Difference);
-        Assert.Contains("OFFICIAL_WANTED_LIST（法律階段 WANTED）", h.Summary.ExternalData, StringComparison.Ordinal);
+        Assert.Contains("OFFICIAL_WANTED_LIST（法律階段 WANTED（依據：官方通緝名單（STAGE_OFFICIAL_WANTED_LIST）））", h.Summary.ExternalData, StringComparison.Ordinal);
     }
 
     [Fact]

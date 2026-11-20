@@ -307,7 +307,7 @@ public static class ExplanationBuilder
     {
         var parts = new List<string>();
         if (c.RiskCategories.Count > 0) parts.Add(Join(c.RiskCategories));
-        if (c.LegalStage != LegalStage.Unknown) parts.Add("法律階段 " + CaseJson.Code(c.LegalStage));
+        if (c.LegalStage != LegalStage.Unknown) parts.Add("法律階段 " + CaseJson.Code(c.LegalStage) + (c.LegalStageBasis is { } b ? $"（依據：{Named(b)}）" : ""));
         if (c.Status != ConditionStatus.Hit) parts.Add("條件狀態 " + CaseJson.Code(c.Status) + (c.ReasonCodes.Count > 0 ? "，" + Join(c.ReasonCodes) : ""));
         return CaseJson.Code(c.Type) + (parts.Count > 0 ? $"（{string.Join("；", parts)}）" : "");
     }

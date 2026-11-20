@@ -2,8 +2,35 @@ using System.Text.RegularExpressions;
 
 namespace Aml.Core.Screening;
 
-/// <summary>One way a text tells a person's stage: the stage, or null when this rule does not speak.</summary>
-internal delegate LegalStage? StageRule<in T>(T text);
+/// <summary>One way a text tells a person's stage, under the code the catalog explains it by: the stage, or null when this rule does not speak.</summary>
+internal sealed record StageRule<T>(string Code, Func<T, LegalStage?> Read);
+
+/// <summary>The codes of the rules that give a legal stage (kind LEGAL_STAGE_BASIS in /api/codes), shared by the rules, the catalog and the tests.</summary>
+internal static class StageBasis
+{
+    // RulingReading.Readers, in their order.
+    internal const string OrderUnderHeading = "STAGE_ORDER_UNDER_HEADING";
+    internal const string ReleaseWholeText = "STAGE_RELEASE_WHOLE_TEXT";
+    internal const string AppealOfListedDefendant = "STAGE_APPEAL_OF_LISTED_DEFENDANT";
+    internal const string AppealOfOnlyDefendant = "STAGE_APPEAL_OF_ONLY_DEFENDANT";
+    internal const string AppealWithRecalledSentence = "STAGE_APPEAL_WITH_RECALLED_SENTENCE";
+    internal const string ProceedsConfiscated = "STAGE_PROCEEDS_CONFISCATED";
+    internal const string SentencedByRowNumber = "STAGE_SENTENCED_BY_ROW_NUMBER";
+    internal const string TriedElsewhere = "STAGE_TRIED_ELSEWHERE";
+
+    // LegalStageReading.Transitions, in their order.
+    internal const string Keyword = "STAGE_KEYWORD";
+    internal const string SentenceOpeningClause = "STAGE_SENTENCE_OPENING_CLAUSE";
+    internal const string FinalSettles = "STAGE_FINAL_SETTLES";
+    internal const string WantedNotice = "STAGE_WANTED_NOTICE";
+
+    // LegalStageReading.FromNews's closing decisions.
+    internal const string ListedDefendant = "STAGE_LISTED_DEFENDANT";
+    internal const string UnderInvestigation = "STAGE_UNDER_INVESTIGATION";
+
+    // Outside news: SourceConditions.Shape, the active official wanted list.
+    internal const string OfficialWantedList = "STAGE_OFFICIAL_WANTED_LIST";
+}
 
 /// <summary>
 /// The words of legal stages and the text helpers that the readers of news reports (<see cref="LegalStageReading"/>),
@@ -12,13 +39,20 @@ internal delegate LegalStage? StageRule<in T>(T text);
 /// </summary>
 internal static partial class StageWords
 {
-    /// <summary>The first rule that speaks, in the list's order (a decision list).</summary>
-    internal static LegalStage? FirstOf<T>(StageRule<T>[] rules, T text)
+    /// <summary>The first rule that speaks, in the list's order (a decision list), with its code.</summary>
+    internal static (LegalStage Stage, string Code)? FirstOf<T>(StageRule<T>[] rules, T text)
     {
         foreach (var rule in rules)
-            if (rule(text) is { } stage) return stage;
+            if (rule.Read(text) is { } stage) return (stage, rule.Code);
         return null;
     }
+
+    /// <summary>
+    /// What every rule of the list says (null: it does not speak), in the list's order. For measuring rules and finding
+    /// texts where two rules disagree; decisions use <see cref="FirstOf{T}"/>.
+    /// </summary>
+    internal static IReadOnlyList<(string Code, LegalStage? Stage)> AllOf<T>(StageRule<T>[] rules, T text) =>
+        [.. rules.Select(r => (r.Code, r.Read(text)))];
 
     // ---- Cutting text ----
 

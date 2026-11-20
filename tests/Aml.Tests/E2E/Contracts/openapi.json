@@ -4276,6 +4276,13 @@
               "string"
             ],
             "description": "管轄地"
+          },
+          "legalStageBasis": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "法律階段的依據規則，見 /api/codes"
           }
         }
       },

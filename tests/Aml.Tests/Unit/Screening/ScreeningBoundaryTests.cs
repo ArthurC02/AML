@@ -61,13 +61,13 @@ public class ScreeningBoundaryTests
     }
 
     [Theory]
-    [InlineData("Wanted Persons", "Active", ListType.OfficialWantedList, LegalStage.Wanted)]
-    [InlineData("Debarment", "Active", ListType.OtherOfficialList, LegalStage.Unknown)]
-    [InlineData("Wanted Persons", "Inactive", ListType.OtherOfficialList, LegalStage.Unknown)]
-    public void Blacklist_yes_takes_its_type_from_the_official_list_entry(string list, string status, ListType type, LegalStage stage)
+    [InlineData("Wanted Persons", "Active", ListType.OfficialWantedList, LegalStage.Wanted, StageBasis.OfficialWantedList)]
+    [InlineData("Debarment", "Active", ListType.OtherOfficialList, LegalStage.Unknown, null)]
+    [InlineData("Wanted Persons", "Inactive", ListType.OtherOfficialList, LegalStage.Unknown, null)]
+    public void Blacklist_yes_takes_its_type_from_the_official_list_entry(string list, string status, ListType type, LegalStage stage, string? basis)
     {
         var c = Assert.Single(Determine(Profile() with { OfficialList = new("MJIB", list, status, null) }, Flags(blacklist: FlagValue.Yes)));
-        Assert.Equal((type, stage), (c.Type, c.LegalStage));
+        Assert.Equal((type, stage, basis), (c.Type, c.LegalStage, c.LegalStageBasis));
     }
 
     [Fact]

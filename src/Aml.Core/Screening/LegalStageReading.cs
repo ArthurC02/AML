@@ -36,12 +36,16 @@ namespace Aml.Core.Screening;
 /// </remarks>
 internal static partial class LegalStageReading
 {
-    internal static LegalStage FromNews(string? news, IReadOnlyList<string> names)
+    /// <summary>The stage, and the code of the rule that gave it (null exactly when the stage is UNKNOWN).</summary>
+    internal readonly record struct StageReading(LegalStage Stage, string? Basis);
+
+    internal static StageReading FromNews(string? news, IReadOnlyList<string> names)
     {
-        if (news is null) return LegalStage.Unknown;
+        if (news is null) return new(LegalStage.Unknown, null);
         var stage = LegalStage.Unknown;
+        string? basis = null; // the code of the transition that last set the stage
         var text = ReportText.Prepare(news, names);
-        var (judgment, ordered, defendant, sole) = RulingReading.Read(news, names);
+        var (judgment, ordered, defendant, sole, orderBasis) = RulingReading.Read(news, names);
         var suspected = false;
         // A judgment names many people besides its defendants (witnesses, account holders, accomplices tried elsewhere):
         // for them its subjectless 起訴 is the defendants', and 起訴書, 起訴範圍 and 起訴意旨 are the case's papers.
@@ -65,17 +69,17 @@ internal static partial class LegalStageReading
                 var mine = StageWords.MentionsAnyName(text.Named.Substring(at, size), names) || (theirPart && ChargedPart().IsMatch(clause));
                 theirPart = StageWords.MentionsAnyName(text.Named.Substring(at, size), names) && TheirPart().IsMatch(clause);
                 if (!mine && (text.Named.AsSpan(at, size).Contains(RelationMark) || NamesAnotherPerson(clause, text.Surnames) || IndictsAnotherPerson(clause, text.Surnames, news))) continue;
-                if (StageWords.FirstOf(Transitions, new ClauseScope(clause, mine, sentence, sole, bystander, names, stage)) is { } next) stage = next;
+                if (StageWords.FirstOf(Transitions, new ClauseScope(clause, mine, sentence, sole, bystander, names, stage)) is { } next) (stage, basis) = next;
             }
         }
-        if (ordered is { } outcome) return outcome; // a judgment's order is its outcome
-        if (defendant && stage == LegalStage.Unknown) return LegalStage.Indicted; // a listed defendant stands indicted, whatever the order goes on to say
+        if (ordered is { } outcome) return new(outcome, orderBasis); // a judgment's order is its outcome
+        if (defendant && stage == LegalStage.Unknown) return new(LegalStage.Indicted, StageBasis.ListedDefendant); // a listed defendant stands indicted, whatever the order goes on to say
         // 偵辦 or 調查 somewhere in the text is the person's when a sentence naming them says they are under suspicion or
         // names a step (涉嫌, 約談, 移送 …); someone the text names only as a counterpart in the facts is not ALLEGED by it.
         // A text that never writes the Profile's names is about them as a whole.
         var underInvestigation = !bystander && (suspected || !StageWords.MentionsAnyName(text.Named, names))
             && (text.Blanked.Contains("偵辦", StringComparison.Ordinal) || text.Blanked.Contains("調查", StringComparison.Ordinal));
-        return stage == LegalStage.Unknown && underInvestigation ? LegalStage.Alleged : stage;
+        return stage == LegalStage.Unknown && underInvestigation ? new(LegalStage.Alleged, StageBasis.UnderInvestigation) : new(stage, basis);
     }
 
     // ---- The text, read once ----
@@ -135,7 +139,10 @@ internal static partial class LegalStageReading
 
     // The order of this list is the precedence: a stage keyword of the clause first; the others only where it has none.
     private static readonly StageRule<ClauseScope>[] Transitions =
-        [KeywordStage, SentencedOpening, FinalSettles, WantedWhileNoStage];
+    [
+        new(StageBasis.Keyword, KeywordStage), new(StageBasis.SentenceOpeningClause, SentencedOpening),
+        new(StageBasis.FinalSettles, FinalSettles), new(StageBasis.WantedNotice, WantedWhileNoStage),
+    ];
 
     // Someone a judgment names who is not its defendant gets a conviction or acquittal only from the clause
     // naming them: 被告依王大明指示…，量處被告有期徒刑七年 sentences the defendant.

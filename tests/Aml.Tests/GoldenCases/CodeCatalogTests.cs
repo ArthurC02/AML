@@ -29,6 +29,15 @@ public class CodeCatalogTests
         Assert.All(values, v => Assert.NotNull(CodeCatalog.Find(System.Text.Json.JsonSerializer.Serialize(v, v.GetType(), CaseJson.Options).Trim('"'))));
     }
 
+    [Fact]
+    public void Every_legal_stage_rule_is_in_the_catalog_and_nothing_else_is_of_its_kind()
+    {
+        var rules = typeof(StageBasis).GetFields(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
+            .Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()!).Order().ToList();
+        Assert.Equal(15, rules.Count);
+        Assert.Equal(rules, CodeCatalog.All.Values.Where(e => e.Kind == "LEGAL_STAGE_BASIS").Select(e => e.Code).Order());
+    }
+
     internal static void AssertKnown(CaseInput input, CaseAnalysis a)
     {
         var missing = EmittedCodes.Of(input, a).Where(c => !CodeCatalog.All.ContainsKey(c)).ToList();

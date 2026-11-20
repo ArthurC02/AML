@@ -24,20 +24,29 @@ namespace Aml.Core.Screening;
 /// </remarks>
 internal static partial class RulingReading
 {
-    /// <summary>Whether the text is a judgment or release; the person's stage by it (null: it does not say); whether they are a defendant of it, and its only one.</summary>
-    internal readonly record struct Reading(bool Judgment, LegalStage? Stage, bool Defendant, bool Sole);
+    /// <summary>
+    /// Whether the text is a judgment or release; the person's stage by it (null: it does not say); whether they are a
+    /// defendant of it, and its only one; the code of the reader that gave the stage (null when none spoke).
+    /// </summary>
+    internal readonly record struct Reading(bool Judgment, LegalStage? Stage, bool Defendant, bool Sole, string? Basis);
 
     internal static Reading Read(string news, IReadOnlyList<string> names) =>
-        RulingText.Parse(news, names) is { } text
-            ? new(true, StageWords.FirstOf(Readers, text), text.Defendant, text.Sole)
+        RulingText.Parse(news, names) is { } text && StageWords.FirstOf(Readers, text) is var first
+            ? new(true, first?.Stage, text.Defendant, text.Sole, first?.Code)
             : default;
+
+    /// <summary>What every reader says of the person, in the order of <see cref="Readers"/>; empty when the text is no ruling.</summary>
+    internal static IReadOnlyList<(string Code, LegalStage? Stage)> Trace(string news, IReadOnlyList<string> names) =>
+        RulingText.Parse(news, names) is { } text ? StageWords.AllOf(Readers, text) : [];
 
     // The order of this list is the precedence: what stands under the order's heading first, then the whole release,
     // then what a dismissed appeal leaves standing, then the forms that name the person outside a sentence of the order.
     private static readonly StageRule<RulingText>[] Readers =
     [
-        OrderUnderHeading, WholeRelease, AppealOfListedDefendant, AppealOfOnlyDefendant, AppealWithRecalledSentence,
-        ProceedsConfiscated, SentencedByRowNumber, TriedElsewhereNote,
+        new(StageBasis.OrderUnderHeading, OrderUnderHeading), new(StageBasis.ReleaseWholeText, WholeRelease),
+        new(StageBasis.AppealOfListedDefendant, AppealOfListedDefendant), new(StageBasis.AppealOfOnlyDefendant, AppealOfOnlyDefendant),
+        new(StageBasis.AppealWithRecalledSentence, AppealWithRecalledSentence), new(StageBasis.ProceedsConfiscated, ProceedsConfiscated),
+        new(StageBasis.SentencedByRowNumber, SentencedByRowNumber), new(StageBasis.TriedElsewhere, TriedElsewhereNote),
     ];
 
     /// <summary>The text is a court's press release of its ruling: it has a release's heading for the order, or opens in the court's own voice.</summary>

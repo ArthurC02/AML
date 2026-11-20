@@ -28,7 +28,8 @@ public sealed record SourceCondition(
     [property: Description("條件的理由碼")] IReadOnlyList<string> ReasonCodes,
     [property: Description("PEP 子類型，見 /api/codes")] string? PepType = null,
     [property: Description("制裁計畫")] string? Program = null,
-    [property: Description("管轄地")] string? Jurisdiction = null);
+    [property: Description("管轄地")] string? Jurisdiction = null,
+    [property: Description("法律階段的依據規則，見 /api/codes")] string? LegalStageBasis = null);
 
 /// <summary>List-type determination and source conditions (ADR-0005).</summary>
 public static partial class SourceConditions
@@ -166,14 +167,9 @@ public static partial class SourceConditions
 
     private static SourceCondition Shape(ListType t, SourceProfile profile, IReadOnlyList<string> risks, string? news, DateOnly today) => t switch
     {
-        ListType.AdverseMedia => Hit(t) with
-        {
-            RiskCategories = risks,
-            LegalStage = LegalStageReading.FromNews(news, profile.Names),
-            AmlRelevance = Relevance(risks, news, profile),
-        },
+        ListType.AdverseMedia => AdverseMedia(profile, risks, news),
         ListType.OtherOfficialList when IsActiveWantedList(profile.OfficialList) =>
-            Hit(ListType.OfficialWantedList) with { LegalStage = LegalStage.Wanted },
+            Hit(ListType.OfficialWantedList) with { LegalStage = LegalStage.Wanted, LegalStageBasis = StageBasis.OfficialWantedList },
         ListType.Sanction => Sanction(profile),
         ListType.Pep or ListType.Rca => Hit(t) with
         {
@@ -183,6 +179,18 @@ public static partial class SourceConditions
         ListType.Unknown => new SourceCondition(t, ConditionStatus.Unknown, ConditionBasis.Unmapped, [], LegalStage.Unknown, null, PolicyVersion, []),
         _ => Hit(t),
     };
+
+    private static SourceCondition AdverseMedia(SourceProfile profile, IReadOnlyList<string> risks, string? news)
+    {
+        var (stage, basis) = LegalStageReading.FromNews(news, profile.Names);
+        return Hit(ListType.AdverseMedia) with
+        {
+            RiskCategories = risks,
+            LegalStage = stage,
+            LegalStageBasis = basis,
+            AmlRelevance = Relevance(risks, news, profile),
+        };
+    }
 
     private static List<string> AdverseMediaRiskCategories(SourceProfile profile) =>
         SipCrimeRisks(profile).Concat(KeywordRisks(profile)).Distinct().ToList();

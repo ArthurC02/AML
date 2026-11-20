@@ -108,9 +108,11 @@ reasonCodes: []
 pepType: null             # PEP and RCA only, see /api/codes
 program: null             # SANCTION with a confirmed measure: the list name
 jurisdiction: null        # SANCTION with a confirmed measure: the authority
+legalStageBasis: null     # the rule that gave legalStage (kind LEGAL_STAGE_BASIS in /api/codes);
+                          # null exactly when legalStage is UNKNOWN
 ```
 
-The record is `SourceCondition`, at `conditions` of each hit. `type` is the bank's list type; `UNKNOWN` is an unmapped source category, left for the reviewer; `riskCategories` carries what the source alleges ([ADR-0005](../adr/0005-list-types-and-risk-categories.md)). A "Fraud HIT" is therefore an `ADVERSE_MEDIA` SourceConditionResult with `status: HIT` and `FRAUD` in `riskCategories`, not a separate condition type. Category and legal-stage values are listed in [watchlist and adverse information](watchlist-and-adverse-information.md). `amlRelevance` feeds Article 22 ② ([disposition recommendation](review-and-disposition.md#article-22-2-adverse-news-unrelated-to-mltfpf)).
+The record is `SourceCondition`, at `conditions` of each hit. `type` is the bank's list type; `UNKNOWN` is an unmapped source category, left for the reviewer; `riskCategories` carries what the source alleges ([ADR-0005](../adr/0005-list-types-and-risk-categories.md)). A "Fraud HIT" is therefore an `ADVERSE_MEDIA` SourceConditionResult with `status: HIT` and `FRAUD` in `riskCategories`, not a separate condition type. Category and legal-stage values are listed in [watchlist and adverse information](watchlist-and-adverse-information.md). `legalStageBasis` names the rule that read the stage from attached news (ADVERSE_MEDIA) or `STAGE_OFFICIAL_WANTED_LIST` for an active official wanted list; the explanation shows it as `法律階段 CONVICTED（依據：<name>（<code>））` ([stage from attached news](watchlist-and-adverse-information.md#stage-from-attached-news)). `amlRelevance` feeds Article 22 ② ([disposition recommendation](review-and-disposition.md#article-22-2-adverse-news-unrelated-to-mltfpf)).
 
 ## ScreeningAssessment
 

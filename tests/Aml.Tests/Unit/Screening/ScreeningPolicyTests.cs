@@ -413,8 +413,68 @@ public class ScreeningPolicyTests
     [InlineData("本院審理被告陳志明傷害案件，於今日宣判，判決被告陳志明犯傷害罪，處有期徒刑1年6月。", LegalStage.Convicted)]
     [InlineData("法院今日判決陳志明犯傷害罪，處有期徒刑1年6月。", LegalStage.Convicted)]
     [InlineData("本院於今日宣判，判決被告李小四對陳志明犯傷害罪，處有期徒刑1年6月。", LegalStage.Unknown)] // named in the sentence, but not whom the court ruled on
-    public void legal_stage_from_news(string news, LegalStage expected) =>
-        Assert.Equal(expected, Assert.Single(SourceConditions.Determine(Profile("Adverse Media"), false, news)).LegalStage);
+    public void legal_stage_from_news(string news, LegalStage expected)
+    {
+        var c = Assert.Single(SourceConditions.Determine(Profile("Adverse Media"), false, news));
+        Assert.Equal(expected, c.LegalStage);
+        Assert.Equal(c.LegalStage == LegalStage.Unknown, c.LegalStageBasis is null); // a stage always names its rule
+    }
+
+    // The rule that gave the stage (watchlist-and-adverse-information.md#stage-from-attached-news): every rule at least once.
+    [Theory]
+    [InlineData(OrderedJudgment, LegalStage.Convicted, StageBasis.OrderUnderHeading)]
+    [InlineData(OutsideTheHeading, LegalStage.Convicted, StageBasis.ReleaseWholeText)]
+    [InlineData(ListedAppellant, LegalStage.Convicted, StageBasis.AppealOfListedDefendant)]
+    [InlineData(OnlyDefendantAppealed, LegalStage.Convicted, StageBasis.AppealOfOnlyDefendant)]
+    [InlineData(AppealOfTheirPart, LegalStage.Convicted, StageBasis.AppealWithRecalledSentence)]
+    [InlineData(ProceedsTaken, LegalStage.Convicted, StageBasis.ProceedsConfiscated)]
+    [InlineData(SentencedByNumber, LegalStage.Convicted, StageBasis.SentencedByRowNumber)]
+    [InlineData(TriedInAnotherCase, LegalStage.Indicted, StageBasis.TriedElsewhere)]
+    [InlineData(ProsecutorAppealed, LegalStage.Indicted, StageBasis.ListedDefendant)]
+    [InlineData("陳志明遭起訴，一審遭判處有期徒刑一年。", LegalStage.Convicted, StageBasis.Keyword)]
+    [InlineData("法院今日判決陳志明犯傷害罪，處有期徒刑1年6月。", LegalStage.Convicted, StageBasis.SentenceOpeningClause)]
+    [InlineData("陳志明遭起訴，三審定讞。", LegalStage.Convicted, StageBasis.FinalSettles)]
+    [InlineData("陳志明棄保潛逃，檢方發布通緝。", LegalStage.Wanted, StageBasis.WantedNotice)]
+    [InlineData("檢方偵辦後，陳志明可能遭到起訴。", LegalStage.Alleged, StageBasis.UnderInvestigation)]
+    [InlineData("陳志明恐遭起訴。", LegalStage.Unknown, null)]
+    public void legal_stage_basis_from_news(string news, LegalStage expectedStage, string? expectedBasis)
+    {
+        var c = Assert.Single(SourceConditions.Determine(Profile("Adverse Media"), false, news));
+        Assert.Equal((expectedStage, expectedBasis), (c.LegalStage, c.LegalStageBasis));
+    }
+
+    private const string OrderedJudgment = "被告 陳志明\n上列被告因詐欺案件，經檢察官提起公訴，本院判決如下：\n主 文\n陳志明犯詐欺取財罪，處有期徒刑一年。\n理 由\n被告陳志明坦承犯行。";
+    private const string OutsideTheHeading = "本院114年度訴字第1號被告陳志明等人詐欺案件，於今日宣判。\n壹、判決主文：\n李小四處有期徒刑2年。\n貳、理由摘要：\n陳志明犯詐欺取財罪，處有期徒刑1年。";
+    private const string ListedAppellant = "上訴人即被告 陳志明\n主文\n上訴駁回。\n理由\n略。";
+    private const string OnlyDefendantAppealed = "被告陳志明殺人案件，經地方法院判決後，被告提起上訴，本院114年度上訴字第9號於今日宣示判決。\n壹、本院主文：\n上訴駁回。\n貳、事實摘要：\n略。";
+    private const string AppealOfTheirPart = "本院審理114年度上訴字第9號被告李小四等人銀行法案件於今日宣判。\n壹、判決主文：\n原判決關於李小四之宣告刑部分撤銷。\n其他上訴（即被告王大同、陳志明部分）駁回。\n貳、原審判決說明：\n被告均以量刑過重為由提起上訴。";
+    private const string ProceedsTaken = "壹、主文摘要說明：\n一、原判決關於李小四、陳志明之沒收部分均撤銷。\n二、李小四犯罪所得新臺幣5萬元、陳志明犯罪所得新臺幣2萬元，除應發還被害人外，沒收之。\n貳、理由\n略。";
+    private const string SentencedByNumber = "本院114年度訴字第1號被告李小四等24人案件，於今日宣判。\n壹、判決主文：\n㈠李小四等15人各犯發展組織罪，各處有期徒刑7年（編號1）、5年（編號2至3）。\n㈡王大同無罪。\n貳、犯罪事實摘要：\n李小四（編號1）、陳志明（編號3）共同吸收成員。";
+    private const string TriedInAnotherCase = "壹、主文要旨\n李小四犯詐欺取財罪，處有期徒刑2年。\n貳、事實摘要\n李小四指派陳志明（由本院另案審理）、王大同竊錄。";
+    private const string ProsecutorAppealed = "上訴人 臺灣臺北地方檢察署檢察官\n被告 陳志明\n主文\n上訴駁回。\n理由\n略。";
+
+    // The trace of the ruling readers agrees with the decision: its first reader that speaks is the reading, with its code.
+    [Theory]
+    [InlineData(OrderedJudgment)]
+    [InlineData(OutsideTheHeading)]
+    [InlineData(ListedAppellant)]
+    [InlineData(OnlyDefendantAppealed)]
+    [InlineData(AppealOfTheirPart)]
+    [InlineData(ProceedsTaken)]
+    [InlineData(SentencedByNumber)]
+    [InlineData(TriedInAnotherCase)]
+    [InlineData(ProsecutorAppealed)]
+    public void ruling_trace_first_speaker_is_the_reading(string news)
+    {
+        string[] names = ["陳志明"];
+        var reading = RulingReading.Read(news, names);
+        var trace = RulingReading.Trace(news, names);
+        Assert.Equal(8, trace.Count);
+        var first = trace.FirstOrDefault(r => r.Stage is not null);
+        Assert.Equal((first.Stage, first.Code), (reading.Stage, reading.Basis));
+        var stage = LegalStageReading.FromNews(news, names);
+        Assert.Equal(stage.Stage == LegalStage.Unknown, stage.Basis is null);
+    }
 
     [Fact]
     public void gc_12_stays_indicted()

@@ -679,6 +679,14 @@
                     "null"
                   ],
                   "default": null
+                },
+                "legalStageBasis": {
+                  "description": "法律階段的依據規則，見 /api/codes",
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "default": null
                 }
               },
               "required": [

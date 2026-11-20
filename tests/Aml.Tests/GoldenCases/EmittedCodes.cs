@@ -13,7 +13,7 @@ internal static class EmittedCodes
         var values = a.Hits.SelectMany(h =>
                 h.Identity.ReasonCodes.Concat(h.PairReasonCodes).Concat(h.Disposition.ReasonCodes).Concat(h.Disposition.PendingChecks)
                 .Concat(h.Identity.Evidence.Values.Select(v => v.Detail).OfType<string>())
-                .Concat(h.Conditions.SelectMany(c => c.ReasonCodes.Concat(c.RiskCategories).Concat(new[] { c.PepType }.OfType<string>())))
+                .Concat(h.Conditions.SelectMany(c => c.ReasonCodes.Concat(c.RiskCategories).Concat(new[] { c.PepType, c.LegalStageBasis }.OfType<string>())))
                 .Concat(h.Profile.Findings).Concat(new[] { h.Identity.HardConflict }.OfType<string>()))
             .Concat(e.Hits.SelectMany(h => h.DataQualityFindings
                 .Concat(h.Comparison.Select(r => r.Difference).OfType<string>().SelectMany(d => d.Split('；')))

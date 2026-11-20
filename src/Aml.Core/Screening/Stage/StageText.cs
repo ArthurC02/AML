@@ -1,11 +1,9 @@
-using System.Text.RegularExpressions;
-
 namespace Aml.Core.Screening.Stage;
 
 /// <summary>
 /// The mechanics of reading text that know nothing of stages: cutting it into sentences and clauses, folding and compacting
-/// characters, blanking spans out while keeping every position, finding names, and the mechanics of modals, negations and
-/// relations (their words are in <see cref="StageGlossary"/>).
+/// characters, finding names, and the mechanics of modals, negations and relations that the news digest and the news
+/// models' reading use (their words are in <see cref="StageGlossary"/>).
 /// </summary>
 internal static class StageText
 {
@@ -35,15 +33,6 @@ internal static class StageText
 
     // Full-width letters and digits are read as half-width ones: a name may be written either way (Ａ０５, A05).
     internal static string HalfWidth(string s) => string.Concat(s.Select(c => c is (>= 'Ａ' and <= 'Ｚ') or (>= 'ａ' and <= 'ｚ') or (>= '０' and <= '９') ? (char)(c - 0xFEE0) : c));
-
-    /// <summary>Each match of the pattern blanked out with full-width spaces, keeping every position.</summary>
-    internal static string Blank(Regex pattern, string text) => pattern.Replace(text, m => new string('　', m.Length));
-
-    /// <summary>Each match of the pattern in the text blanked out in <paramref name="kept"/>, keeping every position.</summary>
-    internal static void Blank(char[] kept, Regex pattern, string text)
-    {
-        foreach (Match m in pattern.Matches(text)) kept.AsSpan(m.Index, m.Length).Fill('　');
-    }
 
     // ---- Words ----
 
@@ -84,8 +73,8 @@ internal static class StageText
 
     // ---- What qualifies a keyword ----
 
-    // Where the first modal of the clause ends (past the end when there is none). A modal anywhere before the keyword makes
-    // it no stage (最重可判處, 檢方請求法院依法從重判處), but a word that only holds the modal's characters is not one.
+    // Where the first modal of the clause ends (past the end when there is none); used by the news digest. A modal anywhere
+    // before the keyword makes it no event (最重可判處, 檢方請求法院依法從重判處), but a word that only holds the modal's characters is not one.
     internal static int FirstModalEnd(string clause) => FirstModalEnd(clause, StageGlossary.Modals);
 
     /// <summary>Where the first of these modals ends in the clause, with their guards (past the end when there is none).</summary>

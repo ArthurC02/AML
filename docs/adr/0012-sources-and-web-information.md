@@ -1,7 +1,7 @@
 # ADR-0012: Sources, web information and the news digest
 
 - Status: Accepted. Web search and web identity evidence are decided but not built yet; until they are, the [news digest](../feature/watchlist-and-adverse-information.md#news-digest) and the [news models](../feature/watchlist-and-adverse-information.md#news-models) read only the news attached to a Profile. The news models feed no decision; the two stage models, when configured, vote with the rules on the legal stage ([three readers](../feature/watchlist-and-adverse-information.md#three-readers)); of the rule readings, the age, birth date and gender written next to the Profile person's name in attached news are identity evidence.
-- Date: 2026-11-02; updated 2026-11-10 (the small models read attached news beside the rules), 2026-11-19 (birth date and gender in attached news are identity evidence), 2026-11-20 (a person-stage classifier and a large language model vote with the rules on the legal stage)
+- Date: 2026-11-02; updated 2026-11-10 (the small models read attached news beside the rules), 2026-11-19 (birth date and gender in attached news are identity evidence), 2026-11-20 (a person-stage classifier and a large language model vote with the rules on the legal stage; the stage rules reduced to those the vote needs)
 
 ## Context
 
@@ -20,6 +20,7 @@ Reviewers read the news and judgments about a listed person to learn who is invo
 - **Every source used has a summary**: publisher, date, title, then the people and events in fixed sentence patterns, each phrase a slot of a cited sentence. Rewording never swaps actor and object, and the event date is never the publication date.
 - **Source condition, legal stage and AML relevance** keep their own rules over structured Profile fields; the digest does not set them.
 - **The legal stage in attached news is a vote.** Two optional stage models read it beside the rules (`IStageReader`): the person-stage classifier in the process (ONNX), and a large language model on an endpoint inside the bank (Ollama). With both answering, the stage at least two of the three give wins; all three different is UNKNOWN for a reviewer to read. With one model the rules' stage stands and a model that differs only orders review. Without models the rules read alone, as before. Every reader's stage, and the language model's quote, stays on the condition, so the reviewer sees who said what. A model that fails or times out drops out of that Case's vote; it never blocks the analysis.
+- **The stage rules are only those the vote needs** (2026-11-20): a rule whose removal kept the three-way vote above 0.90 (or not below its baseline) on every measured set was deleted, so the rules alone read the stage less well than before ([stage from attached news](../feature/watchlist-and-adverse-information.md#stage-from-attached-news)).
 
 ## Consequences
 

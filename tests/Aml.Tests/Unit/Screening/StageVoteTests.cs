@@ -35,7 +35,7 @@ public class StageVoteTests
     [InlineData(Indicted, StageBasis.Keyword, new[] { Convicted }, Indicted, StageBasis.Keyword, true)]
     [InlineData(Unknown, null, new[] { Alleged }, Unknown, null, true)]
     // Three: all the same.
-    [InlineData(Convicted, StageBasis.OrderUnderHeading, new[] { Convicted, Convicted }, Convicted, StageBasis.VoteUnanimous, false)]
+    [InlineData(Convicted, StageBasis.ReleaseWholeText, new[] { Convicted, Convicted }, Convicted, StageBasis.VoteUnanimous, false)]
     [InlineData(Unknown, null, new[] { Unknown, Unknown }, Unknown, StageBasis.VoteUnanimous, false)]
     // Three: two the same, whichever two.
     [InlineData(Indicted, StageBasis.Keyword, new[] { Indicted, Convicted }, Indicted, StageBasis.VoteMajority, false)]

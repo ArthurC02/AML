@@ -195,20 +195,13 @@ public static class CodeCatalog
         ("LEGAL_STAGE", "CONVICTED", "有罪判決", "已有罪判決。", "SourceConditions.Determine", Watchlist + "#legalprocedural-stage"),
         ("LEGAL_STAGE", "ACQUITTED", "無罪", "判決無罪。", "SourceConditions.Determine", Watchlist + "#legalprocedural-stage"),
         ("LEGAL_STAGE", "DISMISSED", "不起訴或駁回", "不起訴、撤回或駁回。", "SourceConditions.Determine", Watchlist + "#legalprocedural-stage"),
-        // Which rule gave the legal stage (SourceCondition.legalStageBasis): the ruling readers, the report transitions, the closing decisions.
+        // Which rule gave the legal stage (SourceCondition.legalStageBasis): the ruling readers, the report transitions, the closing decision.
         ("LEGAL_STAGE_BASIS", StageBasis.OrderUnderHeading, "主文所載", "判決或法院新聞稿主文標題下，以此人為主詞的句子判處刑罰或諭知無罪，因此讀為有罪或無罪。", "RulingRules.OrderUnderHeading", Watchlist + "#stage-from-attached-news"),
         ("LEGAL_STAGE_BASIS", StageBasis.ReleaseWholeText, "新聞稿全文所載", "法院新聞稿主文標題下沒有寫到此人，但新聞稿其他段落以主文的句型判處此人刑罰或諭知無罪。", "RulingRules.WholeRelease", Watchlist + "#stage-from-attached-news"),
-        ("LEGAL_STAGE_BASIS", StageBasis.AppealOfListedDefendant, "被告上訴駁回", "此人列為上訴人即被告，主文上訴駁回，原審的有罪判決維持，因此讀為有罪。", "RulingRules.AppealOfListedDefendant", Watchlist + "#stage-from-attached-news"),
-        ("LEGAL_STAGE_BASIS", StageBasis.AppealOfOnlyDefendant, "唯一被告上訴駁回", "法院新聞稿開頭寫此人是唯一被告且由被告提起上訴，主文上訴駁回，因此讀為有罪。", "RulingRules.AppealOfOnlyDefendant", Watchlist + "#stage-from-attached-news"),
-        ("LEGAL_STAGE_BASIS", StageBasis.AppealWithRecalledSentence, "上訴駁回維持所述刑罰", "法院新聞稿駁回上訴，並寫到此人先前被判處的刑罰或駁回的是此人部分，因此讀為有罪。", "RulingRules.AppealWithRecalledSentence", Watchlist + "#stage-from-attached-news"),
         ("LEGAL_STAGE_BASIS", StageBasis.ProceedsConfiscated, "主文沒收犯罪所得", "法院新聞稿的主文沒收此人的犯罪所得，因此讀為有罪。", "RulingRules.ProceedsConfiscated", Watchlist + "#stage-from-attached-news"),
         ("LEGAL_STAGE_BASIS", StageBasis.SentencedByRowNumber, "依編號判處", "法院新聞稿以編號列被告，主文判處刑罰的句子涵蓋此人的編號，因此讀為有罪。", "RulingRules.SentencedByRowNumber", Watchlist + "#stage-from-attached-news"),
-        ("LEGAL_STAGE_BASIS", StageBasis.TriedElsewhere, "另案審理中", "法院新聞稿在此人姓名後註明本院審理中或另案審理，此人已起訴但不在本判決中，因此讀為起訴。", "RulingRules.TriedElsewhereNote", Watchlist + "#stage-from-attached-news"),
         ("LEGAL_STAGE_BASIS", StageBasis.Keyword, "階段關鍵詞", "報導中此人的子句寫到起訴、不起訴、判刑或無罪等階段用語，取子句中最後一個。", "ReportRules.KeywordStage", Watchlist + "#stage-from-attached-news"),
-        ("LEGAL_STAGE_BASIS", StageBasis.SentenceOpeningClause, "子句以處刑開頭", "子句以「處有期徒刑」等開頭，且全文只有此人一名被告，或同句寫明判決此人，因此讀為有罪。", "ReportRules.SentencedOpening", Watchlist + "#stage-from-attached-news"),
-        ("LEGAL_STAGE_BASIS", StageBasis.FinalSettles, "定讞", "此人已起訴或尚無階段時，報導寫到定讞，因此讀為有罪。", "ReportRules.FinalSettles", Watchlist + "#stage-from-attached-news"),
         ("LEGAL_STAGE_BASIS", StageBasis.WantedNotice, "通緝", "報導寫到此人遭通緝，且沒有其他司法階段，因此讀為通緝。", "ReportRules.WantedWhileNoStage", Watchlist + "#stage-from-attached-news"),
-        ("LEGAL_STAGE_BASIS", StageBasis.ListedDefendant, "判決所列被告", "此人列為判決的被告，但沒有讀到其他階段，因此讀為起訴。", "ReportRules.Closing", Watchlist + "#stage-from-attached-news"),
         ("LEGAL_STAGE_BASIS", StageBasis.UnderInvestigation, "偵辦或調查中", "沒有讀到其他階段，但報導寫到偵辦或調查，且寫到此人涉嫌，或全文未寫出此人姓名（整篇即在報導此人），因此讀為涉嫌。", "ReportRules.Closing", Watchlist + "#stage-from-attached-news"),
         ("LEGAL_STAGE_BASIS", StageBasis.OfficialWantedList, "官方通緝名單", "名單是現行有效的官方通緝名單，因此讀為通緝。", "SourceConditions.Shape", Watchlist + "#stage-from-attached-news"),
         // The rules and the two stage models vote (StageVote): only when both models are configured and answered.

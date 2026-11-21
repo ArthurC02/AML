@@ -78,7 +78,7 @@ public static class CodeCatalog
         ("CONDITION_REASON", "UNMAPPED_CATEGORY", "未對應的類別", "名單類別沒有對應的名單類型；UNKNOWN，待複核。", "SourceConditions.Determine", Watchlist + "#reason-codes"),
         ("CONDITION_REASON", "SANCTION_MEASURE_NOT_CONFIRMED", "制裁措施未確認", "制裁名單未確認現行措施；條件為 UNKNOWN。", "SourceConditions.Determine", "docs/feature/sanctions-screening.md#sanction-condition"),
         ("CONDITION_REASON", "RCA_OUTSIDE_STATUTORY_SCOPE", "RCA 超出法定範圍", "關係不在法定 RCA 範圍內。", "SourceConditions.Determine", "docs/feature/pep-rca-screening.md#rca-relationship-scope"),
-        ("CONDITION_REASON", StageVote.ReadersDisagree, "法律階段讀取者不一致", "法律階段模型與規則讀出的階段不同（只有一個模型時，階段仍取規則的讀法），或三方各異（階段為 UNKNOWN）；複核人員須自行閱讀新聞判斷階段。各方讀出的階段見 stageReaders。", "StageVote.Decide", Watchlist + "#three-readers"),
+        ("CONDITION_REASON", StageVote.ReadersDisagree, "法律階段讀取者不一致", "法律階段模型與規則讀出的階段不同（只有一個模型時，階段仍取規則的讀法），或三方未一致（兩方相同或三方各異，階段為 UNKNOWN）；複核人員須自行閱讀新聞判斷階段。各方讀出的階段見 stageReaders。", "StageVote.Decide", Watchlist + "#three-readers"),
         ("PEP_TYPE", "PEP_FAMILY", "PEP 家屬", "名單類別表明為 PEP 的家庭成員。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#pep-source-attributes"),
         ("PEP_TYPE", "PEP_CLOSE_ASSOCIATE", "PEP 密切關係人", "名單類別表明為 PEP 的密切關係人。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#pep-source-attributes"),
         ("PEP_TYPE", "RCA_UNCONFIRMED", "RCA 關係未確認", "RCA 名單，但關係類型未說明。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#rca-relationship-scope"),
@@ -206,7 +206,7 @@ public static class CodeCatalog
         ("LEGAL_STAGE_BASIS", StageBasis.OfficialWantedList, "官方通緝名單", "名單是現行有效的官方通緝名單，因此讀為通緝。", "SourceConditions.Shape", Watchlist + "#stage-from-attached-news"),
         // The rules and the two stage models vote (StageVote): only when both models are configured and answered.
         ("LEGAL_STAGE_BASIS", StageBasis.VoteUnanimous, "三方一致", "規則、階段分類模型與大型語言模型讀出相同的法律階段，因此取該階段。", "StageVote.Decide", Watchlist + "#three-readers"),
-        ("LEGAL_STAGE_BASIS", StageBasis.VoteMajority, "多數決", "規則、階段分類模型與大型語言模型中有兩方讀出相同的法律階段，因此取該階段；各方讀出的階段見 stageReaders。", "StageVote.Decide", Watchlist + "#three-readers"),
+        ("LEGAL_STAGE_BASIS", StageBasis.VoteMajority, "兩方相同", "規則、階段分類模型與大型語言模型中只有兩方讀出相同的法律階段，不足以自動判定，因此階段為 UNKNOWN，並以 STAGE_READERS_DISAGREE 交人工判讀；各方讀出的階段見 stageReaders。", "StageVote.Decide", Watchlist + "#three-readers"),
         ("LEGAL_STAGE_BASIS", StageBasis.VoteSplit, "三方各異", "規則、階段分類模型與大型語言模型讀出的法律階段各不相同，因此階段為 UNKNOWN，並以 STAGE_READERS_DISAGREE 交人工判讀。", "StageVote.Decide", Watchlist + "#three-readers"),
         ("NEWS_EVENT", "INVESTIGATION", "偵辦或調查", "報導寫到偵辦、偵查、調查或立案。", "NewsDigests.Build", Watchlist + "#news-digest"),
         ("NEWS_EVENT", "SEARCH", "搜索", "報導寫到搜索或搜查。", "NewsDigests.Build", Watchlist + "#news-digest"),

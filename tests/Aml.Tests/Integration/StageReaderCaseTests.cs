@@ -34,7 +34,7 @@ public class StageReaderCaseTests : ServiceTestBase
     }
 
     [Fact]
-    public async Task Two_models_outvote_the_rules_and_the_stored_case_shows_every_reader()
+    public async Task Two_models_against_the_rules_leave_the_stage_unknown_and_the_stored_case_shows_every_reader()
     {
         var rulesOnly = await Analyse("rules");
         var voted = await Analyse("vote", new Reader("classifier", LegalStage.Convicted), new Reader("llm", LegalStage.Convicted));
@@ -42,11 +42,13 @@ public class StageReaderCaseTests : ServiceTestBase
         var before = Assert.Single(Assert.Single(rulesOnly.Result.Hits).Conditions);
         var after = Assert.Single(Assert.Single(voted.Result.Hits).Conditions);
         Assert.Equal((LegalStage.Indicted, StageBasis.Keyword, null), (before.LegalStage, before.LegalStageBasis, before.StageReaders));
-        Assert.Equal((LegalStage.Convicted, StageBasis.VoteMajority), (after.LegalStage, after.LegalStageBasis));
+        Assert.Equal((LegalStage.Unknown, StageBasis.VoteMajority), (after.LegalStage, after.LegalStageBasis));
+        Assert.Equal([StageVote.ReadersDisagree], after.ReasonCodes);
         Assert.Equal([new("rules", LegalStage.Indicted, StageBasis.Keyword), new("classifier", LegalStage.Convicted), new StageReaderResult("llm", LegalStage.Convicted)],
             after.StageReaders!);
-        // The stage is the only thing the vote changes: the pair, its review and the identity stand.
-        Assert.Equal(JsonSerializer.Serialize(before with { LegalStage = after.LegalStage, LegalStageBasis = after.LegalStageBasis, StageReaders = after.StageReaders }),
+        // The stage and its disagreement are the only things the vote changes: the pair, its review and the identity stand.
+        Assert.Empty(before.ReasonCodes);
+        Assert.Equal(JsonSerializer.Serialize(before with { LegalStage = after.LegalStage, LegalStageBasis = after.LegalStageBasis, StageReaders = after.StageReaders, ReasonCodes = after.ReasonCodes }),
             JsonSerializer.Serialize(after));
         Assert.Equal(JsonSerializer.Serialize(Assert.Single(rulesOnly.Result.Hits) with { Conditions = [] }), JsonSerializer.Serialize(Assert.Single(voted.Result.Hits) with { Conditions = [] }));
         Assert.Equal(rulesOnly.CaseResult, voted.CaseResult);

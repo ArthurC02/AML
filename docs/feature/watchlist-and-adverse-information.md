@@ -229,10 +229,12 @@ The rules above are one of up to three readers of the stage. Two models may read
 | The rules and one model, the same stage | the rules' | the rules' | none |
 | The rules and one model, different stages | the rules' (a model alone never changes the stage) | the rules' | `STAGE_READERS_DISAGREE` |
 | All three the same | that stage | `STAGE_VOTE_UNANIMOUS` | none |
-| Two of the three the same | that stage | `STAGE_VOTE_MAJORITY` | none |
+| Two of the three the same | UNKNOWN (two alike are not enough to decide) | `STAGE_VOTE_MAJORITY` | `STAGE_READERS_DISAGREE` |
 | All three different | UNKNOWN | `STAGE_VOTE_SPLIT` | `STAGE_READERS_DISAGREE` |
 
-`STAGE_READERS_DISAGREE` tells the reviewer to read the stage in the news themselves; it does not change the condition's status or the pair's result (an ADVERSE_MEDIA condition is a HIT whatever its stage, so its pair is in review unless identity says NO_MATCH). With a vote basis, the stage may be UNKNOWN and still carry a basis. Whenever a model is configured, the condition carries `stageReaders`: each reader that answered, in the order rules, classifier, llm, with its stage, the rules' own basis, and the language model's quote with `quoteInText` (whether the quote, all whitespace removed, is in the news text, whitespace removed). A model that was not configured or did not answer is not listed. The explanation shows it beside the stage: `法律階段 CONVICTED（依據：多數決（STAGE_VOTE_MAJORITY））；各讀取者：rules INDICTED、classifier CONVICTED、llm CONVICTED（引文「…」，原文可查到）`. With no model configured nothing of this appears and every output is as the rules alone make it. Without attached news no model is asked.
+**Why only unanimity decides.** The stage is advisory to the reviewer (the system identifies; humans decide), so what counts is how often an automatic stage is wrong and how much is left to read. Through `SourceConditions.Determine` with the classifier and the language model's one-person answers (as below), all three alike gave the reference stage for 141 of 141 persons (dev), 98 of 100 (dev2), 251 of 255 (v9), 69 of 69 (accept), 87 of 90 (accept3) and 193 of 193 (accept4), and on the held-back sets, computed once, 219 of 222 (v11) and 111 of 113 (accept5): 0.967 or more on every set. Two alike were right far less often (40 of 42, 18 of 24, 101 of 122, 13 of 19, 60 of 71, 50 of 61). So a stage is given only when the three agree, for 52 % (accept3) to 79 % (dev2) of the persons; every other person's stage is UNKNOWN with each reader's stage shown. No reader reaches 0.90 on court releases of accept3's kind on its own or by a two-to-one vote (measured with more court-release training data, a larger language model and a revised prompt); the counts of "the vote" elsewhere in this section are of the earlier two-of-three vote.
+
+`STAGE_READERS_DISAGREE` tells the reviewer to read the stage in the news themselves; it does not change the condition's status or the pair's result (an ADVERSE_MEDIA condition is a HIT whatever its stage, so its pair is in review unless identity says NO_MATCH). With a vote basis, the stage may be UNKNOWN and still carry a basis. Whenever a model is configured, the condition carries `stageReaders`: each reader that answered, in the order rules, classifier, llm, with its stage, the rules' own basis, and the language model's quote with `quoteInText` (whether the quote, all whitespace removed, is in the news text, whitespace removed). A model that was not configured or did not answer is not listed. The explanation shows it beside the stage: `法律階段 UNKNOWN（依據：兩方相同（STAGE_VOTE_MAJORITY））；各讀取者：rules INDICTED、classifier CONVICTED、llm CONVICTED（引文「…」，原文可查到）`. With no model configured nothing of this appears and every output is as the rules alone make it. Without attached news no model is asked.
 
 **A missing model.** A model that is not configured is not registered, and the vote has one reader fewer. One that fails (the ONNX run throws; the language model's server answers with an error, times out, or gives no stage for person 1 in the asked JSON) answers nothing for that Case, and the vote goes on without it: a failure never blocks the analysis, it moves the row of the table up. With only the classifier the rules decide and the classifier can only order review; the same with only the language model.
 
@@ -242,7 +244,7 @@ The rules above are one of up to three readers of the stage. Two models may read
 
 **Measured.** Per person, each annotated suspect taken as the Profile person, persons whose stage is the reference's, on the sets measured for the rules above (v11 and accept5 held back: the rules were not written looking at them, and no reader was tuned on them). The classifier is the final epoch of one training run; the language model and the vote were run outside the repository, with the inputs of training and of the measured run (above), not through this code.
 
-| Set | Persons | Rules | Classifier | Gemma 4 12B | Vote |
+| Set | Persons | Rules | Classifier | Gemma 4 12B | Vote (two of three) |
 |---|---|---|---|---|---|
 | dev | 185 | 178 | 170 | 163 | 182 |
 | dev2 | 126 | 122 | 107 | 115 | 119 |
@@ -256,7 +258,7 @@ The rules above are one of up to three readers of the stage. Two models may read
 
 That table is of the fuller rules, before they were reduced to those the vote needs. Measured since through this code (`SourceConditions.Determine` with the classifier run here and Gemma's answers replayed), with the rules as they are now:
 
-| Set | Persons | Rules | Classifier | Gemma 4 12B | Vote |
+| Set | Persons | Rules | Classifier | Gemma 4 12B | Vote (two of three) |
 |---|---|---|---|---|---|
 | dev | 185 | 171 | 171 | 163 | 181 |
 | dev2 | 126 | 120 | 106 | 115 | 119 |
@@ -265,7 +267,7 @@ That table is of the fuller rules, before they were reduced to those the vote ne
 | accept3 | 172 | 129 | 116 | 154 | 147 |
 | accept4 | 257 | 212 | 230 | 251 | 244 |
 
-Where all three agree they are right 99.5 % of the time or more (with the fuller rules). The vote gains most where the rules were not written against the text (v11: 335 against 295) and costs a little where they were (dev2, accept5): on a court release of fixed form the rules are near exact and the models are what is outvoted. The table is the evidence for the vote's shape: no reader alone is best on every set, and a stage two readers give alike is rarely wrong.
+Where all three agree they are right 99.5 % of the time or more (with the fuller rules). The vote gains most where the rules were not written against the text (v11: 335 against 295) and costs a little where they were (dev2, accept5): on a court release of fixed form the rules are near exact and the models are what is outvoted. The tables measure the earlier two-of-three vote (column "Vote"); they show that no reader alone is best on every set. That a stage only two readers give alike is too often wrong to stand, and so only unanimity decides, is measured in [why only unanimity decides](#three-readers) above.
 
 **Cost.** The classifier runs one ONNX pass of at most 512 tokens per Profile person and document. The language model's call takes seconds to minutes on the bank's server and runs inside the synchronous analysis; `StageModels:LlmTimeoutSeconds` bounds it and is to be set below `Batch:Timeout` (2 min), else a slow answer makes the batch job time out instead of dropping the reader. Neither model's version is recorded in the revision, only the reader names on the condition (a known limit).
 

@@ -37,10 +37,12 @@ public class StageVoteTests
     // Three: all the same.
     [InlineData(Convicted, StageBasis.ReleaseWholeText, new[] { Convicted, Convicted }, Convicted, StageBasis.VoteUnanimous, false)]
     [InlineData(Unknown, null, new[] { Unknown, Unknown }, Unknown, StageBasis.VoteUnanimous, false)]
-    // Three: two the same, whichever two.
-    [InlineData(Indicted, StageBasis.Keyword, new[] { Indicted, Convicted }, Indicted, StageBasis.VoteMajority, false)]
-    [InlineData(Indicted, StageBasis.Keyword, new[] { Convicted, Indicted }, Indicted, StageBasis.VoteMajority, false)]
-    [InlineData(Indicted, StageBasis.Keyword, new[] { Convicted, Convicted }, Convicted, StageBasis.VoteMajority, false)]
+    // Three: two the same is not enough, whichever reader is the odd one out, UNKNOWN among the two or not.
+    [InlineData(Indicted, StageBasis.Keyword, new[] { Indicted, Convicted }, Unknown, StageBasis.VoteMajority, true)]
+    [InlineData(Indicted, StageBasis.Keyword, new[] { Convicted, Indicted }, Unknown, StageBasis.VoteMajority, true)]
+    [InlineData(Indicted, StageBasis.Keyword, new[] { Convicted, Convicted }, Unknown, StageBasis.VoteMajority, true)]
+    [InlineData(Unknown, null, new[] { Unknown, Convicted }, Unknown, StageBasis.VoteMajority, true)]
+    [InlineData(Indicted, StageBasis.Keyword, new[] { Unknown, Unknown }, Unknown, StageBasis.VoteMajority, true)]
     // Three: all different.
     [InlineData(Indicted, StageBasis.Keyword, new[] { Convicted, Alleged }, Unknown, StageBasis.VoteSplit, true)]
     public void The_vote_follows_its_table(LegalStage rules, string? rulesBasis, LegalStage[] models, LegalStage stage, string? basis, bool disagree) =>

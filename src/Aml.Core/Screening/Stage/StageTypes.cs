@@ -30,8 +30,8 @@ internal static class StageBasis
 
 /// <summary>
 /// The stage a news text tells of the person, and the code of the rule that gave it: from the rules alone, null exactly
-/// when the stage is UNKNOWN; from the vote of three readers, a STAGE_VOTE_* code also with UNKNOWN (a split, or two
-/// readers agreeing on UNKNOWN).
+/// when the stage is UNKNOWN; from the vote of three readers, a STAGE_VOTE_* code also with UNKNOWN (all three on
+/// UNKNOWN, or any vote short of unanimity).
 /// </summary>
 internal readonly record struct StageReading(LegalStage Stage, string? Basis);
 

@@ -8,8 +8,8 @@ namespace Aml.Core.Screening.Stage;
 /// <list type="table">
 /// <item>rules alone: the rules' stage and basis, unchanged.</item>
 /// <item>rules and one model: the rules' stage and basis; a model that differs adds STAGE_READERS_DISAGREE.</item>
-/// <item>three, all the same: that stage, STAGE_VOTE_UNANIMOUS.</item>
-/// <item>three, two the same: that stage, STAGE_VOTE_MAJORITY.</item>
+/// <item>three, all the same: that stage, STAGE_VOTE_UNANIMOUS; only unanimity decides.</item>
+/// <item>three, two the same (UNKNOWN among them or not): UNKNOWN, STAGE_VOTE_MAJORITY, and STAGE_READERS_DISAGREE.</item>
 /// <item>three, all different: UNKNOWN, STAGE_VOTE_SPLIT, and STAGE_READERS_DISAGREE.</item>
 /// </list>
 /// </summary>
@@ -26,10 +26,9 @@ internal static class StageVote
         if (models.Count == 0) return (rules.Stage, rules.Basis, false);
         if (models.Count == 1) return (rules.Stage, rules.Basis, models[0] != rules.Stage);
         LegalStage[] all = [rules.Stage, .. models];
-        var top = all.GroupBy(s => s).OrderByDescending(g => g.Count()).ToList();
-        if (top[0].Count() == all.Length) return (top[0].Key, StageBasis.VoteUnanimous, false);
-        if (top[0].Count() >= 2 && (top.Count == 1 || top[1].Count() < top[0].Count())) return (top[0].Key, StageBasis.VoteMajority, false);
-        return (LegalStage.Unknown, StageBasis.VoteSplit, true);
+        var distinct = all.Distinct().Count();
+        if (distinct == 1) return (rules.Stage, StageBasis.VoteUnanimous, false);
+        return (LegalStage.Unknown, distinct < all.Length ? StageBasis.VoteMajority : StageBasis.VoteSplit, true);
     }
 
     /// <summary>Asks every model, then votes; each reader's stage (and quote) is kept for the explanation.</summary>

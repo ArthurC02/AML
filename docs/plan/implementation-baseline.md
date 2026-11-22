@@ -67,9 +67,15 @@ AML/
 │       ├── Program.cs            # DI, OpenAPI, OpenTelemetry, health check, endpoint registration
 │       ├── Endpoints/            # minimal API endpoints per resource (cases, batches, profiles, codes), upload reading, problems
 │       └── Workers/JobWorker.cs  # BackgroundService
-├── tools/                        # working tools for the stage models, outside the product (see plan/stage-model-training.md)
+├── tools/                        # working tools for the models, outside the product (plan/stage-model-training.md, plan/news-model-training.md)
 │   ├── Aml.StageEval/            # system-level stage measurement through SourceConditions.Determine (built by CI)
 │   ├── stage-model/              # person-stage classifier: rows, training, ONNX export, scoring (Python)
+│   ├── llm-stage/                # language model stage reader: inference and fine-tune jobs
+│   ├── stage-rules/              # rule pruning: one rule off at a time, measured with Aml.StageEval
+│   ├── labels/                   # labelling brief, sampling, two-pass merge, recheck
+│   ├── judgments/                # Judicial Yuan judgment lookup (measured, not adopted)
+│   ├── news-model/               # NER and event models: rows, jobs, trainers, export, scoring
+│   ├── data/                     # data bundle for another machine: manifest, verify, pseudonymised copy, remove
 │   └── colab/                    # generic Colab job packager and runner
 └── tests/
     └── Aml.Tests/

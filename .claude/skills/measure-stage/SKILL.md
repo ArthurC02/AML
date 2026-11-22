@@ -9,14 +9,15 @@ Why and what is judged: `docs/plan/stage-model-training.md` (sections "What is j
 
 ## Run
 
-From the repo root, with the language model answers to replay (default: the deployed model's cached answers named in that doc):
+From the repo root (prefix shell commands as AGENTS.md says, e.g. `rtk proxy` where the host has rtk):
 
 ```bash
-A=C:/tmp/aml-train/downloads/aml49/out/gemma4_12b-it-q4_K_M
-rtk proxy dotnet run -c Release --project tools/Aml.StageEval -- $A $A out=C:/tmp/eval-sys/out-<change>
+dotnet run -c Release --project tools/Aml.StageEval -- <answers> <answers> out=<new folder for this change>
 ```
 
-- Arguments: `<answers for report sets> <answers for court sets> [--heldback] [onnx=<classifier dir>] [out=<dir>] [judgments=<dir>] [sets=<dir with report/ and court/>]`. The tool prints the paths it uses first; check them.
+- Locations differ per host; find them before running. `<answers>` is the folder of the deployed language model's cached answers (one `<set>.jsonl` per measured set; the doc's "Where things live" names which model and job produced them). `sets=` is the folder with the measured sets (`report/`, `court/`), `onnx=` the deployed classifier (`model.onnx`, `vocab.txt`, `labels.json`). The built-in defaults are one machine's; on another host pass all three, from the environment, the user's notes or by asking. If you cannot find them, stop and ask; never measure against guessed or partial data.
+- The tool prints the paths it uses first and exits 2 on a missing folder or file; check the printed paths before reading the table.
+- Arguments: `<answers for report sets> <answers for court sets> [--heldback] [onnx=<classifier dir>] [out=<dir>] [judgments=<dir>] [sets=<dir with report/ and court/>]`.
 - Measure the baseline and the change with the same answers, classifier and sets; write each to its own `out=` folder.
 - A new classifier: `onnx=<its dir>`. A new language model or prompt: its answers folder as the two positional arguments.
 - Held-back check, only once the change is final and its development numbers pass: add `--heldback`. Never run it to choose between variants.

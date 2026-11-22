@@ -1,7 +1,9 @@
 """Gemma 12B with one person per call (job49) against the reference and against the earlier all-persons runs on the same
 persons. Counts only, never names or quotes.
-usage: score_one.py <out dir>   (e.g. AML_TRAIN/downloads/aml49/out; the model folder inside is read, or the dir
-        itself when it holds the <set>.jsonl files)
+usage: score_one.py <out dir> [--heldback]   (e.g. AML_TRAIN/downloads/aml49/out; the model folder inside is read, or
+        the dir itself when it holds the <set>.jsonl files)
+Development sets only; --heldback also scores the held-back v11 and accept5 (the same aggregate counts, nothing per
+person), only once the design is fixed.
 Persons = every suspect (gold.suspects) of every document of the set's source that has one (report sets:
 measurements/report/<set>-stage.jsonl, court sets: measurements/court/<set>.jsonl); reference = gold.person_stage.
 All-persons run = downloads/aml45 (report sets) or downloads/aml48 (court sets), same model. A person absent from an
@@ -53,10 +55,12 @@ def score(s, one_path, all_path):
 
 
 def main():
-    root = sys.argv[1]
+    args = [a for a in sys.argv[1:] if a != "--heldback"]
+    if len(args) != 1: sys.exit(__doc__)
+    root, heldback = args[0], "--heldback" in sys.argv
     if os.path.isdir(os.path.join(root, TAG)): root = os.path.join(root, TAG)
     tot = collections.Counter(); n = 0
-    for s in SETS:
+    for s in [s for s in SETS if heldback or not paths.held([s])]:
         p = os.path.join(root, s + ".jsonl")
         if not os.path.exists(p): print("[%s] no one-person output" % s); continue
         c, k = score(s, p, earlier(s)); tot += c; n += k

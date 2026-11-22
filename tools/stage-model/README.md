@@ -14,12 +14,12 @@ The data holds real names. It stays outside the repo; the scripts print counts o
 | `add17.py [--verdicts] [--out DIR]` | `data/` plus the v17 double-labelled court releases (agreed persons only, overlap with evaluation dropped) | `DIR/data/`, `labels/v17/a,b`, `court/raw/` | `DIR/data17/` (`--verdicts`: `DIR/data17v/`, verdicts and rulings only) |
 | `train_stage.py [--heldback]` | fine-tune, predictions per epoch on the development sets (`--sets`, default `dev,dev2,v9`); standalone (runs on Colab from a folder holding it and `data/`). The held-back v11 is never in `--sets`: `--heldback` evaluates it once after the last epoch, aggregate counts only, no file | `data/` | `out/pred-<set>-e<k>.jsonl` (development sets only), `--save DIR` weights |
 | `export_onnx.py <saved> <out> [<data> <set>]` | ONNX opset 17 + tokenizer + `labels.json`; checks 20 rows against PyTorch, last line `ONNX_OK` | saved model | `<out>/model.onnx` ... |
-| `gold.py verify [court]` | agreement of the reference port with the .NET evaluator on the development sets; the held-back v11 and accept5 are skipped (optional: needs `aml-eval-r4` built in `AML_EVAL`) | development sets | stdout (its blanked copies go to a temporary folder removed afterwards) |
+| `gold.py verify [court] [out=<dir>]` | agreement of the reference port with `tools/Aml.StageEval`'s reference column (`ReferenceStage.Of`, the same derivation), every suspect and every row; the held-back v11 and accept5 are skipped. Run the current evaluator first (its header ends in the `judgment` column; rows from an older evaluator fail the header check on purpose, so re-run it); `out=` is its `out=` folder | development sets, `<out>/<set>.tsv` | stdout |
 | `score.py <pred> <sg.tsv>` | classifier against the rules on the same persons | | stdout |
-| `score_gemma.py <out dir>` / `score_one.py <out dir>` | LLM runs (all persons / one person per call) against reference and rules | downloaded Colab output | stdout |
+| `score_gemma.py <out dir> [--heldback]` / `score_one.py <out dir> [--heldback]` | LLM runs (all persons / one person per call) against reference and rules, development sets only; `--heldback` adds the held-back v11 (and accept5), aggregate counts only, once the design is fixed | downloaded Colab output | stdout |
 | `selfcheck.py` | asserts on `textutil` and `gold` with made-up inputs; no data, no GPU | | `selfcheck OK` |
 
-`paths.py` holds every location, `textutil.py` the three helpers vendored from the label-to-training-data step.
+`paths.py` holds every location (also imported by `tools/labels` and `tools/judgments`), `textutil.py` the three helpers vendored from the label-to-training-data step.
 
 ## Environment
 
@@ -27,7 +27,9 @@ The data holds real names. It stays outside the repo; the scripts print counts o
 |---|---|---|
 | `AML_DATA` | `C:/tmp/aml-data` | `labels/`, `court/raw/` |
 | `AML_TRAIN` | `C:/tmp/aml-train` | `data-r12/`, `measurements/{report,court}/`, `models/bert-base-chinese`, `downloads/` |
-| `AML_EVAL` | `C:/tmp/aml-eval-r4` | optional evaluator and its `sg-<set>-r17.tsv` |
+| `AML_EVAL` | `C:/tmp/aml-eval-r4` | the outside evaluator's `sg-<set>-r17.tsv` rows (`score.py`, `score_gemma.py`) |
+| `AML_STAGE_EVAL_OUT` | `C:/tmp/eval-sys/out` | `tools/Aml.StageEval`'s `out=` folder (`gold.py verify` without `out=`) |
+| `AML_JUDGMENTS` | `C:/tmp/jud` | `tools/judgments`: `jids.jsonl` and the fetched `docs/` |
 | `AML_STAGE_WORK` | `AML_TRAIN/stage-clf` | output root when `--out` is not given |
 
 Packages: `requirements.txt` (pinned; Colab keeps its own torch).

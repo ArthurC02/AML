@@ -12,7 +12,8 @@ keyring: never print, copy or move them, and never put them in a job folder.
 `run.sh` runs on the VM as `bash /content/job<name>/run.sh` with that folder as working directory, detached; its
 stdout/stderr go to `run.log`. It must
 
-- `cd /content/job<name> || exit 1` first (the folder name is fixed by the package name);
+- define `log`/`fail` first, then `cd /content/job<name> || fail ...` (the folder name is fixed by the package name; a
+  failing `cd` or settings file is a failure like any other);
 - append progress lines to `log.txt`, at least one every few minutes (the runner stops a job whose last `log.txt` line
   has not changed for the stall limit, default 45 min). Lines with `step N/M` are shown as progress; lines matching the
   milestone regex (`DONE|FAIL |ONNX_|epoch |saved |versions ` unless `--milestones` says otherwise) are printed by peek;
@@ -25,9 +26,9 @@ stdout/stderr go to `run.log`. It must
 Keep it LF-only. Example:
 
 ```bash
-cd /content/job61 || exit 1
 log() { echo "$(date +%H:%M:%S) $*" >> log.txt; }
 fail() { log "FAIL $1"; echo "$1" > fail.txt; exit 1; }
+cd /content/job61 || fail "cd /content/job61 failed"
 nvidia-smi > gpu.log 2>&1 || fail "nvidia-smi failed"
 python3 -I train.py > train.log 2>&1 || fail "train.py exited $?"
 log "JOB_DONE"; echo DONE > done.txt

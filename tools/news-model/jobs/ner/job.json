@@ -1,0 +1,17 @@
+{
+ "model": "ner",
+ "epochs": 30,
+ "lr": 0.001,
+ "dropout": null,
+ "max_position_embeddings": null,
+ "training_entity_mask_probability": 0.0,
+ "training_target_contrast_weight": 0.0,
+ "training_bio_penalty_weight": null,
+ "training_entity_role_loss_weight": null,
+ "document_parent_dev_counts": null,
+ "ner_ascii_lower": false,
+ "event_pooling": null,
+ "initial": null,
+ "strict_dev_target": 0.9,
+ "evaluation_scope": "fixed task dev F1"
+}

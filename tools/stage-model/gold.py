@@ -4,13 +4,16 @@ A suspect is a people entry with role PER-* and party Suspect. Its events are th
 `mention` is one of its forms (exact string; persons sharing a form share rows). Rows carrying "prior" are left
 out whole; labels with a '-' (negated, requested, ...) are ignored; the highest step wins.
 
-usage: gold.py verify         -> agreement with the evaluator on the development *-stage.jsonl files. Counts only.
-       gold.py verify court   -> the same on measurements/court/accept, accept3, accept4.jsonl.
-The held-back sets (v11, accept5) are never verified. verify is optional: it needs the .NET evaluator aml-eval-r4
-built in AML_EVAL (bin/Release/net10.0/aml-eval.dll, plus its sg-<set>-r17.tsv files for the report sets). stage()
-and person_stage() need nothing.
+usage: gold.py verify [out=<dir>]        -> agreement with tools/Aml.StageEval on the development *-stage.jsonl files.
+       gold.py verify court [out=<dir>]  -> the same on measurements/court/accept, accept3, accept4.jsonl.
+Counts only. The held-back sets (v11, accept5) are never verified. verify reads the per-person rows Aml.StageEval wrote
+(<out>/<set>.tsv, column reference = ReferenceStage.Of, the same derivation; default AML_STAGE_EVAL_OUT, see paths.py),
+so run the evaluator first; exit 1 when a file's header is not the evaluator's, or a set agrees on fewer than all its
+persons, or its row count differs (stale or partial rows). The rows must come from the current tools/Aml.StageEval (header
+ending in the judgment column); rows from an older evaluator fail the header check on purpose: re-run the evaluator.
+Any other command prints this and exits 1. stage() and person_stage() need nothing.
 """
-import json, os, subprocess, sys, tempfile
+import json, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # python -I leaves the script folder off the path
 import paths
 
@@ -34,51 +37,39 @@ def person_stage(doc, p):
 
 
 REPORT = paths.REPORT
-EVAL = paths.EVAL
 SETS = ["dev", "dev2", "v9", "v11"]
 
 
 COURT = paths.COURT
 COURT_SETS = ["accept", "accept3", "accept4", "accept5"]
-HELD = {"v11", "accept5"}  # held-back sets: verify skips them
+HEADER = "doc\tperson\treference\trules\tclassifier\tllm\tvote\tbasis\tjudgment"  # tools/Aml.StageEval/Program.cs
 
 
-def verify(court=False):
-    """Two references: (1) the evaluator run now on a copy of each file whose text is a neutral sentence, so the rules
-    say Unknown for everyone and stageout lists every suspect whose reference is not Unknown; (2) sg-<set>-r17.tsv
-    (the rows where the rules and the reference differed in the r17 run): its gold column (report sets only).
-    court=True: the court press-release sets (measurements/court/<set>.jsonl), reference (1) only.
-    The copies (they hold person mentions) live in a temporary folder removed on return."""
-    with tempfile.TemporaryDirectory() as tmp:
-        for s in [s for s in (COURT_SETS if court else SETS) if s not in HELD]:
-            docs = [json.loads(l) for l in open(COURT + s + ".jsonl" if court else REPORT + s + "-stage.jsonl", encoding="utf-8")]
-            mine = {(d["doc"], p["id"]): person_stage(d, p) for d in docs for p in suspects(d)}
-            n_rows = sum(len(suspects(d)) for d in docs)
-            blank, out = os.path.join(tmp, s + ".jsonl"), os.path.join(tmp, s + ".tsv")
-            with open(blank, "w", encoding="utf-8") as w:
-                for d in docs: w.write(json.dumps({**d, "text": "本案。"}, ensure_ascii=False) + "\n")
-            con = subprocess.run(["dotnet", EVAL + "bin/Release/net10.0/aml-eval.dll", "none", "docs=" + blank, "stage", "stageout=" + out],
-                                 capture_output=True, text=True, encoding="utf-8").stdout
-            rule_not_unknown = sum(int(l.split()[-1]) for l in con.splitlines() if l.strip().startswith("gold ") and l.split()[3] != "Unknown")
-            ev = {}
-            with open(out, encoding="utf-8") as r:
-                for l in r:
-                    f = l.rstrip("\n").split("\t"); ev[(f[0], f[1])] = f[2].upper()
-            ref = {k: ev.get(k, "UNKNOWN") for k in mine}
-            a1 = sum(ref[k] == v for k, v in mine.items())
-            if court:
-                print(f"{s}: documents {len(docs)} suspects {len(mine)} (rows {n_rows}) | evaluator-now agrees {a1}/{len(mine)} (rule not Unknown on blank text: "
-                      f"{rule_not_unknown}, listed {len(ev)}, listed but unknown to port {len(set(ev) - set(mine))})")
-                continue
-            sg = {}
-            for l in open(EVAL + "sg-%s-r17.tsv" % s, encoding="utf-8"):
-                f = l.rstrip("\n").split("\t"); sg[(f[0], f[1])] = f[2].upper()
-            a2 = sum(mine.get(k) == v for k, v in sg.items())
-            print(f"{s}: suspects {len(mine)} (rows {n_rows}) | evaluator-now agrees {a1}/{len(mine)} (rule not Unknown on blank text: {rule_not_unknown}, "
-                  f"listed {len(ev)}, listed but unknown to port {len(set(ev) - set(mine))}) | sg-r17 gold agrees {a2}/{len(sg)}")
+def verify(court=False, out=None):
+    """The reference column of Aml.StageEval's per-person rows (<out>/<set>.tsv: doc, person, reference, ...; written for
+    the development sets only) against person_stage, both ways: every suspect of the set and every row of the evaluator.
+    court=True: the court press-release sets (measurements/court/<set>.jsonl). False when a file's header is not the
+    evaluator's, a set agrees on fewer than all its persons or its row count differs (stale or partial rows)."""
+    out = out or paths.STAGE_EVAL_OUT; ok = True
+    for s in [s for s in (COURT_SETS if court else SETS) if not paths.held([s])]:  # held-back sets are skipped
+        docs = [json.loads(l) for l in open(COURT + s + ".jsonl" if court else REPORT + s + "-stage.jsonl", encoding="utf-8")]
+        mine = {(d["doc"], p["id"]): person_stage(d, p) for d in docs for p in suspects(d)}
+        n_rows = sum(len(suspects(d)) for d in docs)
+        lines = [l.rstrip("\r\n").split("\t") for l in open(os.path.join(out, s + ".tsv"), encoding="utf-8")]
+        if not lines or "\t".join(lines[0]) != HEADER: print(f"{s}: FAIL header is not Aml.StageEval's"); ok = False; continue
+        rows = lines[1:]
+        ev = {(f[0], f[1]): f[2].upper() for f in rows}
+        agree = sum(ev.get(k) == v for k, v in mine.items())
+        good = agree == len(mine) and len(rows) == n_rows
+        ok &= good
+        print(f"{s}: documents {len(docs)} suspects {len(mine)} (rows {n_rows}) | evaluator rows {len(rows)} | agrees {agree}/{len(mine)} "
+              f"| rows unknown to port {len(set(ev) - set(mine))}" + ("" if good else " | FAIL"))
+    return ok
 
 
 if __name__ == "__main__":
     assert stage(["Indictment", "Conviction-Negated"]) == "INDICTED" and stage(["prior"]) == "UNKNOWN" and stage(["Search"]) == "ALLEGED"
-    if sys.argv[1:] == ["verify"]: verify()
-    if sys.argv[1:] == ["verify", "court"]: verify(court=True)
+    opt = [a for a in sys.argv[1:] if a.startswith("out=")]
+    args = [a for a in sys.argv[1:] if a not in opt]
+    if args in (["verify"], ["verify", "court"]): sys.exit(0 if verify(court=args[1:] == ["court"], out=opt[0][4:] if opt else None) else 1)
+    sys.exit(__doc__)

@@ -1,5 +1,7 @@
 """Gemma (job45) against the reference and against the rules on the same persons. Counts only, never names or quotes.
-usage: score_gemma.py <out dir>   (e.g. AML_TRAIN/downloads/aml45/out: one folder per model, <set>.jsonl inside)
+usage: score_gemma.py <out dir> [--heldback]   (e.g. AML_TRAIN/downloads/aml45/out: one folder per model, <set>.jsonl inside)
+Development sets only; --heldback also scores the held-back v11 (the same aggregate counts, nothing per person), only
+once the design is fixed.
 Persons = every suspect (gold.suspects) of every document of measurements/report/<set>-stage.jsonl that has one;
 reference = gold.person_stage. Rules: sg-<set>-r17.tsv lists exactly the suspects the rules got wrong (doc, person id,
 reference, rule stage); everyone else the rules got right. A person whose document is absent from the output counts as
@@ -57,11 +59,13 @@ def score(path, s):
 
 
 def main():
-    root = sys.argv[1]
+    args = [a for a in sys.argv[1:] if a != "--heldback"]
+    if len(args) != 1: sys.exit(__doc__)
+    root, heldback = args[0], "--heldback" in sys.argv
     for m in sorted(os.listdir(root)):
         if not os.path.isdir(os.path.join(root, m)): continue
         print("model", m)
-        for s in SETS:
+        for s in [s for s in SETS if heldback or not paths.held([s])]:
             p = os.path.join(root, m, s + ".jsonl")
             if os.path.exists(p): score(p, s)
             else: print("  [%s] no output" % s)

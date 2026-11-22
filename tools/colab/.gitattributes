@@ -1,2 +1,0 @@
-# run_job.sh and the VM-side templates run under bash/Linux: keep LF on Windows checkouts (core.autocrlf).
-* text eol=lf

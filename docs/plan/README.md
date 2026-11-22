@@ -10,3 +10,4 @@ How the PoC is built, validated and accepted.
 | [Open questions](open-questions.md) | pending bank decisions and answered questions |
 | [Operations runbook](operations-runbook.md) | Gate D draft: operations, audit, disaster recovery |
 | [News model training](news-model-training.md) | model/data/runtime boundaries, acceptance gates, error diagnosis, verified candidate choice and artifact map |
+| [Stage model training](stage-model-training.md) | how the stage classifier and the language model are built and measured, the criterion (unanimous precision and coverage), tools, Colab, decisions in force with evidence |

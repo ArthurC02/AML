@@ -44,7 +44,7 @@ AML/
 │   │   │   └── Data/*.txt        # embedded reference tables (see Third-party data)
 │   │   ├── Identity/             # evidence groups, HardConflictGate, IdentityDecisionPolicy (with Contrast), Fellegi-Sunter calibration
 │   │   ├── Screening/            # source-condition policies, combination matrix, DispositionPolicy, risk scoring
-│   │   │   └── Stage/            # legal stage from attached news: glossary, patterns, form readers, types, rules, entry points
+│   │   │   └── Stage/            # legal stage from attached news: glossary, patterns, form readers, types, rules, entry points, StageVote (rules + stage models; with both models only a unanimous vote gives the stage)
 │   │   ├── Retrieval/            # ProfileIndex (alias, BM25, n-gram, reading-key routes), ProfileMerge
 │   │   ├── Cases/                # CaseAnalyzer, Case records, revision changes, lineage, quality, CaseViews and page tokens, CaseJson (JSON form and schemas)
 │   │   ├── Explanation/          # ExplanationBuilder, NewsDigest (rules), NewsModelReading (corrections of the news models' output)

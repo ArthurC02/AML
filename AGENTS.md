@@ -1,6 +1,6 @@
 # AGENTS.md
 
-AML screening PoC: given a customer (or related party) and candidate list Profiles (Sanction, PEP/RCA, official lists, adverse news and court rulings), it decides whether they are the same person and whether the source condition holds, and explains every decision. Rules and algorithms decide; when stage models are configured, the legal stage of attached news is a vote of the rules, a classifier and a large language model (`Screening/Stage/StageVote.cs`, ADR-0012); a model enters a decision only on measured evidence. API only, no UI. C# / .NET 10, SQLite in the PoC.
+AML screening PoC: given a customer (or related party) and candidate list Profiles (Sanction, PEP/RCA, official lists, adverse news and court rulings), it decides whether they are the same person and whether the source condition holds, and explains every decision. Rules and algorithms decide; with both optional stage models configured, the legal stage of attached news is given only when the rules, a classifier and a large language model all read the same stage, else it is UNKNOWN for a reviewer; with one model or none the rules' stage stands (`Screening/Stage/StageVote.cs`, ADR-0012); a model enters a decision only on measured evidence. API only, no UI. C# / .NET 10, SQLite in the PoC.
 
 ## Mental model in five facts
 
@@ -33,7 +33,9 @@ Api ──► Services ──► Core
 | Legal stage from attached news | `Core/Screening/Stage/`, one concern a file: `StageGlossary` (words, limits), `StagePatterns` (regexes built from them), `StageText` / `RulingForm` / `ReportForm` (reading the form), `StageTypes` (data), `RulingRules` / `ReportRules` (what a form means), `RulingReading` / `LegalStageReading` (entry points, rule order). A new wording goes into the lowest of these that can hold it |
 | Names, dates, addresses | `Core/Normalization/`; spec `docs/feature/extraction-and-normalization.md` |
 | Explanation and news digest | `Core/Explanation/ExplanationBuilder.cs`, `NewsDigest.cs`; news models `NewsModelReading.cs`, `Infra/Models/` |
+| Stage models and the vote | `Core/Screening/Stage/StageVote.cs`, `Core/Ports/IStageReader.cs`, `Infra/Models/OnnxStageClassifier.cs`, `OllamaStageReader.cs` (prompt `stage-prompt.txt`, as measured); configuration `StageModels:*` in `Api/Program.cs`; codes `STAGE_VOTE_*`, `STAGE_READERS_DISAGREE`; spec `docs/feature/watchlist-and-adverse-information.md#three-readers`. Both models are optional and absent in CI, so their tests skip |
 | Training or measuring the news models (labels, Colab, end-to-end F1) | `docs/plan/news-model-training.md` (data and models live outside the repo) |
+| Training or measuring the stage models, or judging a stage-rule change | `docs/plan/stage-model-training.md`: judged by the unanimous vote's precision and coverage through `SourceConditions.Determine`, never by one reader's count |
 | REST, batch, job table | `Api/Endpoints/`, `Services/BatchService.cs`, `Infra/Jobs/JobStore.cs`; spec `docs/feature/pipeline-api-and-batch.md` |
 | Storage | `Infra/Persistence/`; spec `docs/feature/persistence.md` |
 | Web text (crawler, PDF) | `Infra/Web/`; spec `docs/feature/web-text.md` |
@@ -44,15 +46,16 @@ Api ──► Services ──► Core
 
 ## Commands
 
-Prefix agent shell commands with `rtk`; use `rtk proxy` for passthrough. The local reference is `C:\Users\a8022\.codex\RTK.md`. Apply that prefix when executing the commands below.
+Prefix agent shell commands with `rtk`; use `rtk proxy` for passthrough. `rtk dotnet test` can report "Zero tests ran"; run the suite as `rtk proxy dotnet test --solution Aml.slnx`. The local reference is `C:\Users\a8022\.codex\RTK.md`. Apply that prefix when executing the commands below.
 
 ```bash
 dotnet build Aml.slnx --no-incremental          # must be 0 warnings (TreatWarningsAsErrors)
 dotnet format Aml.slnx --verify-no-changes
-dotnet test --solution Aml.slnx                 # whole suite, a few seconds
+dotnet test --solution Aml.slnx                 # whole suite, a few seconds (agents: rtk proxy dotnet test ...)
 tests/Aml.Tests/bin/Debug/net10.0/Aml.Tests.exe -namespace "Aml.Tests.Unit.*"   # inner loop
 AML_UPDATE_SNAPSHOTS=1 dotnet test --solution Aml.slnx   # only after an intended contract/example change; review the diff
 AML_NEWS_MODELS=<dir with ner/ and ev/> dotnet test --solution Aml.slnx   # also runs the trained news models on a Case (skipped without it)
+AML_STAGE_MODEL=<classifier onnx dir> dotnet test --solution Aml.slnx      # also runs the stage classifier (StageReaderCaseTests; parity rows via AML_STAGE_PARITY_ROWS / _PRED)
 dotnet tool restore && dotnet stryker -f stryker-new-logic.json -m "**/Identity/IdentityDecisionPolicy.cs"   # mutation test one file
 ```
 

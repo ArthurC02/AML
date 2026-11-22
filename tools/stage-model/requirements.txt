@@ -1,0 +1,11 @@
+# Versions of the local training venv (Python 3.14) the scripts were last run with.
+# torch is the CPU build locally (2.15.0+cpu, from https://download.pytorch.org/whl/cpu); on Colab keep the torch the
+# runtime ships and install only the rest. gold.py, score*.py, add17.py's own code and selfcheck.py need the stdlib only.
+torch==2.15.0
+transformers==5.22.2
+tokenizers==0.23.3
+safetensors==0.8.0
+huggingface_hub==2.4.0
+numpy==2.5.4
+onnx==1.23.2
+onnxruntime==1.31.1

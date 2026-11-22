@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- System-level stage measurement (docs/plan/stage-model-training.md): runs the real SourceConditions.Determine with the
+       ONNX stage classifier and replayed language model answers over the annotated sets. Not shipped; data stays outside the repo. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Aml.Core\Aml.Core.csproj" />
+    <ProjectReference Include="..\..\src\Aml.Infra\Aml.Infra.csproj" />
+  </ItemGroup>
+</Project>

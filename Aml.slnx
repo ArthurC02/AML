@@ -8,4 +8,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/Aml.Tests/Aml.Tests.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Aml.StageEval/Aml.StageEval.csproj" />
+  </Folder>
 </Solution>

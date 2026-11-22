@@ -1,6 +1,6 @@
 # Stage model training and measurement
 
-How the two optional stage readers (the person-stage classifier and the large language model) are built and measured, and how a change to them or to the stage rules is judged. The product behaviour is specified in [three readers](../feature/watchlist-and-adverse-information.md#three-readers); this document is the working side: data, tools, decisions in force and the evidence behind them. Data, models and tools live outside the repository (`C:\tmp\…`); nothing here is needed to build or test the solution.
+How the two optional stage readers (the person-stage classifier and the large language model) are built and measured, and how a change to them or to the stage rules is judged. The product behaviour is specified in [three readers](../feature/watchlist-and-adverse-information.md#three-readers); this document is the working side: data, tools, decisions in force and the evidence behind them. The tools are in `tools/` (the agent skills `measure-stage` and `colab-job` in `.claude/skills/` walk through them); data, labels, models and results stay outside the repository (`C:\tmp\…`, set by arguments or environment variables), and nothing here is needed to run the product or its tests.
 
 ## What is judged
 
@@ -23,30 +23,30 @@ Train data never shares a document id or a text with any of the eight (each buil
 
 ## Where things live
 
-All paths are outside the repository.
+Tools are in the repository; data, models and results are outside it.
 
 | Responsibility | Location |
 |---|---|
-| Classifier rows, trainer, scorers, ONNX export | `C:\tmp\aml-train\stage-clf\` (`prep_stage.py` builds `data\`; `add17.py` adds the v17 court rows to `data17\` / `data17v\`; `train_stage.py --save`, `export_onnx.py`, `score*.py`) |
+| System-level evaluator | `tools/Aml.StageEval` (`dotnet run -c Release --project tools/Aml.StageEval -- <report answers> <court answers> [--heldback] [onnx=<dir>] [out=<dir>] [judgments=<dir>] [sets=<dir>]`): runs the real ONNX classifier and replays the language model's answers through `SourceConditions.Determine`, prints the paths it uses, then per set RULES, CLASSIF, LLM, VOTE, SPLIT, DECIDED and RIGHT (the unanimous persons and how many of them are right); per-person stage rows in `<out>\<set>.tsv` for development sets only. Defaults: sets `C:\tmp\aml-train\measurements\`, classifier aml47, out `C:\tmp\eval-sys\out\` |
+| Classifier rows, trainer, scorers, ONNX export | `tools/stage-model/` (Python, pinned `requirements.txt`; data locations from `AML_DATA` / `AML_TRAIN` in `paths.py`; `prep_stage.py` builds the rows, `add17.py` adds the v17 court rows, `train_stage.py --save`, `export_onnx.py`, `score*.py`; `selfcheck.py` runs without data); its outputs under `C:\tmp\aml-train\stage-clf\` |
 | Deployed classifier | `C:\tmp\aml-train\downloads\aml47\onnx\` (`model.onnx`, `vocab.txt`, `labels.json`): the folder `StageModels:ClassifierDirectory` points at |
 | Language model answers replayed in measurement | `C:\tmp\aml-train\downloads\aml49\out\gemma4_12b-it-q4_K_M\` (Gemma 4 12B q4_K_M, one person per call, the runtime prompt) |
-| System-level evaluator | `C:\tmp\eval-sys\` (`run.sh <report answers> <court answers> [--heldback] [onnx=<dir>] [out=<dir>] [judgments=<dir>]`): builds against this checkout, runs the real ONNX classifier and replays the language model's answers, prints per set RULES, CLASSIF, LLM, VOTE, SPLIT, DECIDED and RIGHT (the unanimous persons and how many of them are right); per-person stage rows in `out\<set>.tsv` for development sets only |
 | Rule switch-off copy (which rules the vote needs) | `C:\tmp\exp-prune\` (`drive_court.py`, `score.py`; environment `SCORE_GEMMA_REPORT` / `SCORE_GEMMA_COURT`) |
-| Colab jobs | `C:\tmp\colab\run<N>.sh` and `C:\tmp\colab\home\job<N>\` with `mk<N>.py`, `chk<N>.py`, `start`, `peek`, `pack` scripts; downloads in `C:\tmp\aml-train\downloads\aml<N>\` |
+| Colab jobs | `tools/colab/` (`colabjob.py package` / `check`, `run_job.sh`); job folders and packages in `C:\tmp\colab\home\` (`AML_COLAB_HOME`), downloads in `C:\tmp\aml-train\downloads\aml<N>\`. Jobs up to 55 were run with per-job copies (`C:\tmp\colab\run<N>.sh`) |
 | Labels and the working log of every round | `C:\tmp\aml-data\labels\` (court releases `v12`–`v17`, recheck `v14r`), log `C:\tmp\aml-data\labels\v6\progress.md` |
 
 ## Running a job on Colab
 
 The `colab` CLI runs in the Docker container `colab` (see [news model training](news-model-training.md#colab-is-temporary-execution-not-durable-storage) for the mounts and the keyring rule). Small models (the classifier, the news models) run on a T4; Gemma 4 runs on an L4 (`--gpu L4`: 24 GB, bf16, about twice the T4's speed for the 12B model).
 
-- Build a job with its `mk<N>.py` and check it with `chk<N>.py` until it prints ALL OK: archive SHA equals the start script's, members and data byte-identical to the measured ones, no train document in any evaluation set. Derive a new job from an old one by deliberate, diffed edits, never by replacing numbers wholesale.
-- `run<N>.sh` opens the session, uploads, starts, watches (`peek`), packs, downloads with SHA checks and stops the session; every Colab call runs under `timeout`, and any abnormal state (fail file, no progress for 45 minutes, a start that hangs) stops the session. After every run confirm by hand that `colab sessions` shows none.
+- A job is a folder with a `run.sh` that writes `log.txt`, `fail.txt` or `done.txt` and its results in `out/` ([contract](../../tools/colab/README.md)). Its data must be byte-identical to the measured rows and share no document with an evaluation set; check that before packaging. Derive a new job from an old one by deliberate, diffed edits, never by replacing numbers wholesale.
+- `colabjob.py package` builds the archive, its parts and the start, peek and pack scripts; `check` must print ALL OK (archive SHA equals the start script's and the joined parts', `run.sh` LF-only and valid bash). `run_job.sh <name> <T4|L4> <download dir>` opens the session, uploads, starts, watches, packs, downloads with SHA checks and stops the session; every Colab call runs under `timeout`, and any abnormal state (fail file, no progress for 45 minutes, a start that hangs) stops the session. `--dry-run` prints the sequence without Colab. After every run confirm by hand that `colab sessions` shows none.
 - A start exec can hang without starting the job: the runner then stops the session; start it again.
 - The Unsloth recipe for Gemma 4 pins `transformers==5.5.0`, which loads E4B but not 12B; the 12B job installs the newest release. Unsloth exports Gemma 4 GGUF only as Q8_0, BF16 or F16, so a fine-tuned model is measured as Q8_0 in Ollama (a q4 deployment needs its own measure). Training examples reach 15,076 tokens, so `MAXLEN` is 16,384; the job checks on 20 examples that only the answer is trained on before it trains.
 
 ## Decisions in force and their evidence
 
-Each run's counts and its job, download folder and settings are recorded in the working log (`C:\tmp\aml-data\labels\v6\progress.md`); the per-person stage rows of the development sets are under `C:\tmp\eval-sys\out*\`.
+Each run's counts and its job, download folder and settings are recorded in the working log (`C:\tmp\aml-data\labels\v6\progress.md`); the per-person stage rows of the development sets are under `C:\tmp\eval-sys\out*\`. The counts below are what `tools/Aml.StageEval` prints with the defaults and the answers named above.
 
 | Question | Decision | Evidence (through `SourceConditions.Determine`) |
 |---|---|---|

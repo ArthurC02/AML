@@ -22,6 +22,7 @@ Api ──► Services ──► Core
 - `Aml.Services`: orchestration (`CaseService`, `BatchService`, `ListService`).
 - `Aml.Infra`: implements the ports and readers: `Persistence/` (Dapper + DbUp, SQL only in `Sql/Sql.sqlite.xml`, schema `Scripts/Sqlite/0001_schema.sql`), `Txt/`, `Html/`, `Web/`, `Excel/`, `Jobs/`. Depends on Core only.
 - `Aml.Api`: composition root and minimal-API endpoints; no business logic.
+- `tools/`: working tools for the stage models, not part of the product: `Aml.StageEval` (console, uses Core and Infra, built by CI), `stage-model/` (Python) and `colab/`. Data, labels and models stay outside the repo; the tools print counts only.
 
 ## Read first, by task
 
@@ -35,7 +36,7 @@ Api ──► Services ──► Core
 | Explanation and news digest | `Core/Explanation/ExplanationBuilder.cs`, `NewsDigest.cs`; news models `NewsModelReading.cs`, `Infra/Models/` |
 | Stage models and the vote | `Core/Screening/Stage/StageVote.cs`, `Core/Ports/IStageReader.cs`, `Infra/Models/OnnxStageClassifier.cs`, `OllamaStageReader.cs` (prompt `stage-prompt.txt`, as measured); configuration `StageModels:*` in `Api/Program.cs`; codes `STAGE_VOTE_*`, `STAGE_READERS_DISAGREE`; spec `docs/feature/watchlist-and-adverse-information.md#three-readers`. Both models are optional and absent in CI, so their tests skip |
 | Training or measuring the news models (labels, Colab, end-to-end F1) | `docs/plan/news-model-training.md` (data and models live outside the repo) |
-| Training or measuring the stage models, or judging a stage-rule change | `docs/plan/stage-model-training.md`: judged by the unanimous vote's precision and coverage through `SourceConditions.Determine`, never by one reader's count |
+| Training or measuring the stage models, or judging a stage-rule change | `docs/plan/stage-model-training.md`: judged by the unanimous vote's precision and coverage through `SourceConditions.Determine` (`tools/Aml.StageEval`, skill `measure-stage`), never by one reader's count; classifier pipeline `tools/stage-model/`; Colab jobs `tools/colab/` (skill `colab-job`) |
 | REST, batch, job table | `Api/Endpoints/`, `Services/BatchService.cs`, `Infra/Jobs/JobStore.cs`; spec `docs/feature/pipeline-api-and-batch.md` |
 | Storage | `Infra/Persistence/`; spec `docs/feature/persistence.md` |
 | Web text (crawler, PDF) | `Infra/Web/`; spec `docs/feature/web-text.md` |
@@ -56,6 +57,7 @@ tests/Aml.Tests/bin/Debug/net10.0/Aml.Tests.exe -namespace "Aml.Tests.Unit.*"   
 AML_UPDATE_SNAPSHOTS=1 dotnet test --solution Aml.slnx   # only after an intended contract/example change; review the diff
 AML_NEWS_MODELS=<dir with ner/ and ev/> dotnet test --solution Aml.slnx   # also runs the trained news models on a Case (skipped without it)
 AML_STAGE_MODEL=<classifier onnx dir> dotnet test --solution Aml.slnx      # also runs the stage classifier (StageReaderCaseTests; parity rows via AML_STAGE_PARITY_ROWS / _PRED)
+dotnet run -c Release --project tools/Aml.StageEval -- <llm answers> <llm answers> out=<dir>   # stage vote per measured set (skill measure-stage)
 dotnet tool restore && dotnet stryker -f stryker-new-logic.json -m "**/Identity/IdentityDecisionPolicy.cs"   # mutation test one file
 ```
 

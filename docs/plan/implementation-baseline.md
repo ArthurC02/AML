@@ -67,6 +67,10 @@ AML/
 │       ├── Program.cs            # DI, OpenAPI, OpenTelemetry, health check, endpoint registration
 │       ├── Endpoints/            # minimal API endpoints per resource (cases, batches, profiles, codes), upload reading, problems
 │       └── Workers/JobWorker.cs  # BackgroundService
+├── tools/                        # working tools for the stage models, outside the product (see plan/stage-model-training.md)
+│   ├── Aml.StageEval/            # system-level stage measurement through SourceConditions.Determine (built by CI)
+│   ├── stage-model/              # person-stage classifier: rows, training, ONNX export, scoring (Python)
+│   └── colab/                    # generic Colab job packager and runner
 └── tests/
     └── Aml.Tests/
         ├── Unit/                 # in process, no database: Cases, Extraction, Identity, Names, Retrieval, Screening

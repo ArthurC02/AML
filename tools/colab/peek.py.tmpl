@@ -1,0 +1,19 @@
+import pathlib,subprocess,re
+# VM side, filled in by colabjob.py. Prints, in this order: "PEEK done=<bool> alive=<bool> fail=<bool>", the last
+# "step N/M" log line, "LAST <log line count> <last log line>", the last 40 milestone lines, FAILTXT when fail.txt
+# exists, and TAIL (ends of log.txt and every *.log) when the job is neither alive nor done.
+ALIVE=@ALIVE@
+MILESTONES=@MILESTONES@
+j=pathlib.Path('/content/job@NAME@')
+pat='job@NAME@/[r]un.sh'+('|'+ALIVE if ALIVE else '')
+alive=bool(subprocess.run(['pgrep','-f',pat],capture_output=True,text=True).stdout.strip())
+rd=lambda n: (j/n).read_text(errors='replace') if (j/n).exists() else ''
+log=rd('log.txt'); lines=log.splitlines()
+done=(j/'done.txt').exists(); fail=(j/'fail.txt').exists()
+print('PEEK done=%s alive=%s fail=%s' % (done, alive, fail))
+steps=[l for l in lines if re.search(r'step \d+/\d+',l)]; print(steps[-1][:200] if steps else 'no step yet')
+print('LAST %d %s' % (len(lines), lines[-1][:160] if lines else ''))
+for l in [l for l in lines if re.search(MILESTONES,l)][-40:]: print(l[:300])
+if fail: print('FAILTXT', rd('fail.txt')[:300])
+if not alive and not done:
+    print('TAIL', log[-800:], *('| %s %s' % (p.name, p.read_text(errors='replace')[-400:]) for p in sorted(j.glob('*.log'))))

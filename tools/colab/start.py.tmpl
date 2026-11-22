@@ -1,0 +1,18 @@
+import hashlib, pathlib, subprocess
+# VM side, filled in by colabjob.py: join the uploaded parts, check the archive sha, unpack to /content and start
+# run.sh detached. A second call after a successful start prints ALREADY and does nothing.
+job=pathlib.Path('/content/job@NAME@')
+if (job/'run.log').exists():
+    print('ALREADY job@NAME@')
+else:
+    archive=pathlib.Path('/content/job@NAME@.tgz')
+    with archive.open('wb') as out:
+        for part in sorted(pathlib.Path('/').glob('j@NAME@.part.*')):
+            out.write(part.read_bytes())
+    got=hashlib.file_digest(archive.open('rb'),'sha256').hexdigest()
+    if got != '@SHA@':
+        print('BADSHA job@NAME@', got); raise SystemExit(1)
+    subprocess.run(['tar','xzf',str(archive),'-C','/content'],check=True)
+    with open('/content/job@NAME@/run.log','ab') as log:
+        subprocess.Popen(['bash','/content/job@NAME@/run.sh'],cwd='/content/job@NAME@',stdin=subprocess.DEVNULL,stdout=log,stderr=log,start_new_session=True)
+    print('STARTED job@NAME@')

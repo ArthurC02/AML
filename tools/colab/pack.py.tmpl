@@ -1,0 +1,19 @@
+import tarfile,hashlib,pathlib
+# VM side, filled in by colabjob.py. Packs log.txt, out/, fail.txt, done.txt and the EXTRA files or folders listed at
+# package time (model weights only if listed there). Rewritten on every call, so a pack after a failure or at the time
+# limit takes what is there. The archive is cut into 40 MiB parts for download; one line "PART <name> <md5>" per part,
+# then "PACKED <sha256 of the archive> <bytes> <parts>".
+EXTRA=@EXTRA@
+j=pathlib.Path('/content/job@NAME@'); out=pathlib.Path('/content/out@NAME@.tar'); P=40*1024*1024
+for old in pathlib.Path('/content').glob('out@NAME@.part.*'): old.unlink()
+with tarfile.open(out,'w') as t:  # not compressed: float weights hardly shrink
+    for f in ['log.txt','out','fail.txt','done.txt']+EXTRA:
+        if (j/f).exists(): t.add(j/f,arcname=f)
+sha=hashlib.sha256(); n=0
+with out.open('rb') as f:
+    while True:
+        b=f.read(P)
+        if not b: break
+        sha.update(b); name='out@NAME@.part.%02d'%n; pathlib.Path('/content/'+name).write_bytes(b)
+        print('PART',name,hashlib.md5(b).hexdigest()); n+=1
+print('PACKED',sha.hexdigest(),out.stat().st_size,n)

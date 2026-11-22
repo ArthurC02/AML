@@ -16,7 +16,7 @@ A change to a reader or to the vote is adopted only if, on each of the six devel
 | Set | Kind | Use |
 |---|---|---|
 | dev (185 persons), dev2 (126), v9 (390) | reports, press releases, judgments | development: may be looked at |
-| accept (93), accept3 (172), accept4 (257) | court press releases | development: may be looked at |
+| accept (114), accept3 (172), accept4 (257) | court press releases | development: may be looked at |
 | v11 (362), accept5 (148) | reports; court press releases | held back: aggregate counts only, computed once at the end of a change, never used for a choice; texts and per-person rows never opened |
 
 Train data never shares a document id or a text with any of the eight (each builder asserts it). Reference stages come from the annotated events (`gold.py`, the evaluator's derivation); court sets from two blind labelling passes, keeping the persons both give the same stage. A recheck of accept3's hardest 27 persons by two further blind passes confirmed 26 and split on 1, so the remaining misses there are the readers', not the labels'.
@@ -35,7 +35,7 @@ Tools are in the repository; data, models and results are outside it.
 | Labelling procedure | `tools/labels/` (the blind-pass brief, `choose.py`, `merge.py`, `recheck.py`; skill `label-data`) |
 | Moving the data to another machine | `tools/data/` (`bundle.py build\|verify\|remove`, `pseudonymise.py`; skill `data-bundle`): copies everything the tools read except weights into one root with the same layout and a `MANIFEST.json` (role train, dev or heldback, SHA-256, counts per set), and a pseudonymised copy; both are personal data and travel only encrypted |
 | Judgment lookup (measured, not adopted) | `tools/judgments/` (`jids.py`; `fetch.py` is run by the account holder, who types the password) |
-| Language model answers replayed in measurement | `C:\tmp\aml-train\downloads\aml49\out\gemma4_12b-it-q4_K_M\` (Gemma 4 12B q4_K_M, one person per call, the runtime prompt) |
+| Language model answers replayed in measurement | `C:\tmp\aml-train\downloads\answers-20261123\gemma4_12b-it-q4_K_M\` (aml49's answers, accept from job56); before, `C:\tmp\aml-train\downloads\aml49\out\gemma4_12b-it-q4_K_M\` (Gemma 4 12B q4_K_M, one person per call, the runtime prompt) |
 | Colab jobs | `tools/colab/` (`colabjob.py package` / `check`, `run_job.sh`); job folders and packages in `C:\tmp\colab\home\` (`AML_COLAB_HOME`), downloads in `C:\tmp\aml-train\downloads\aml<N>\`. Jobs up to 55 were run with per-job copies (`C:\tmp\colab\run<N>.sh`) |
 | Labels and the working log of every round | `C:\tmp\aml-data\labels\` (court releases `v12`–`v17`, recheck `v14r`), log `C:\tmp\aml-data\labels\v6\progress.md` |
 
@@ -54,7 +54,9 @@ Each run's counts and its job, download folder and settings are recorded in the 
 
 | Question | Decision | Evidence (through `SourceConditions.Determine`) |
 |---|---|---|
-| Which vote decides | only all three alike; otherwise UNKNOWN for a reviewer | all three alike right 141/141, 98/100, 251/255, 69/69, 87/90, 193/193; held-back 219/222, 111/113; two alike right only 68–95 % |
+| Which vote decides | only all three alike; otherwise UNKNOWN for a reviewer | all three alike right 142/142, 98/100, 255/259, 85/85, 87/90, 193/193; held-back 220/223, 111/113 (rules as of 2026-11-23, answers `downloads\answers-20261123\`: aml49's plus job56's for accept); at the first measure, with accept at 93 persons, 141/141, 98/100, 251/255, 69/69, 87/90, 193/193 and 219/222, 111/113; two alike right only 68–95 % |
+| Stage rules | the wanted-notice rule deleted (2026-11-23), the rest kept | `tools/stage-rules/prune.py` under the unanimous vote: without it no development set's precision falls and dev decides one person more, v9 four (142/142, 255/259); accept unchanged at 85/85; held-back 220/223 against 219/222, 111/113 unchanged. The other rules lower a set's precision when removed, or (the subjectless step) keep it only by deciding 73 fewer persons on v9 |
+| The accept set | 114 persons in 40 releases | one labelling pass of round v13 wrote 21 persons' forms as a string, so the agreement merge dropped them; written as lists, both passes agree on all 21, and the set was rebuilt (`tools/labels/merge.py`; the 93 earlier persons unchanged). The deployed model's answers for accept were asked again (job56, all 114): 92 of the 93 earlier answers came back the same |
 | Which classifier | aml47 (bert-base-chinese, job47) | more court-release rows (v17, 249 or 209 rows) raised the classifier on accept3 (112 → 128 / 136) but lowered accept4 (230 → 216 / 218) and the vote: not adopted |
 | Which language model and prompt | Gemma 4 12B q4_K_M with the measured prompt (`Infra/Models/stage-prompt.txt`) | the 26B mixture-of-experts model alone: accept3 152, the same as the 12B asked one person per call; a prompt with the label brief's INDICTED and UNKNOWN definitions: dev2 110 → 100, v9 355 → 341; neither adopted |
 | Fine-tuning the language model | not adopted (E4B, 12B) | QLoRA on the classifier's 2,795 train rows, measured as Q8_0. E4B alone close to the 12B (dev 179, v9 358, accept3 150), but its errors join the classifier's, and unanimous precision falls on dev2 (0.962), v9 (0.970), accept (0.958), accept4 (0.990). The fine-tuned 12B (job55) alone 180, 108, 360, 88, 146, 244; unanimous right/decided 158/158, 100/104, 250/254, 70/73, 88/91, 193/194: more coverage on dev, but precision falls on dev2 (0.962), accept (0.959) and accept4 (0.995) and v9 is just below (250/254 against 251/255): the same joining of errors |

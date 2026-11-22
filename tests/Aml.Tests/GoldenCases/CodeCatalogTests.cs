@@ -35,7 +35,7 @@ public class CodeCatalogTests
     {
         var rules = typeof(StageBasis).GetFields(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)
             .Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()!).Order().ToList();
-        Assert.Equal(11, rules.Count);
+        Assert.Equal(10, rules.Count);
         Assert.Equal(rules, CodeCatalog.All.Values.Where(e => e.Kind == "LEGAL_STAGE_BASIS").Select(e => e.Code).Order());
     }
 

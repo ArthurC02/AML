@@ -1,7 +1,8 @@
 """Asserts on the pure parts with made-up input; no data, no GPU, no network: common (cut, forms, data_line, user_turn),
-jobs/infer/infer.py read_doc (prompt rendering, answer parsing) against a fake Ollama, build_job's job.env. Prints
+jobs/infer/infer.py read_doc (prompt rendering, answer parsing) against a fake Ollama and its SETS, build_job's job.env
+and --sets. Prints
 'selfcheck OK'."""
-import json, os, pathlib, shutil, sys, tempfile, types
+import contextlib, io, json, os, pathlib, shutil, sys, tempfile, types
 sys.dont_write_bytecode = True  # no __pycache__ in the repo folders it imports from
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import common, build_job
@@ -25,7 +26,21 @@ for bad in ["$(x)", "a;b", "a'b", "", "a  b"]:
     try: build_job.env_text({"MODEL": bad}); raise SystemExit("accepted " + repr(bad))
     except AssertionError: pass
 
-# infer.py against a fake requests: the prompt it sends and how it reads answers
+# --sets: SETS order, unknown names refused, held-back ones only with a warning line; job.env SETS read back
+assert build_job.pick_sets(None) == common.SETS and build_job.pick_sets("accept") == ["accept"]
+for bad in ["acept", "accept,x", ",", ""]:
+    try: build_job.pick_sets(bad); raise AssertionError("accepted " + repr(bad))
+    except SystemExit: pass
+out = io.StringIO()
+with contextlib.redirect_stdout(out): got = build_job.pick_sets("accept5,dev,v11,dev")
+assert got == ["dev", "v11", "accept5"] and out.getvalue().startswith("WARNING held-back sets accept5,v11 "), (got, out.getvalue())
+with contextlib.redirect_stdout(out := io.StringIO()): build_job.pick_sets("dev,accept")
+assert out.getvalue() == ""
+assert build_job.job_sets({"KIND": "infer", "MODELS": "m", "SETS": "accept v11"}) == ["accept", "v11"]
+assert build_job.job_sets({"KIND": "infer", "MODELS": "m"}) == common.SETS  # older jobs and every finetune job
+
+# infer.py against a fake requests: the prompt it sends and how it reads answers (SETS from the environment, as run.sh exports it)
+os.environ["SETS"] = "accept v11"
 prompt = "人：{{PERSONS}}\n文：{{TEXT}}\n"
 sent, answers = [], []
 class Resp:
@@ -40,6 +55,7 @@ try:
     pathlib.Path(tmp, "prompt.txt").write_text(prompt, encoding="utf-8")
     os.chdir(tmp); sys.path.insert(0, tmp)
     import infer
+    assert infer.SETS == ["accept", "v11"] and infer.ALL == common.SETS
     d = {"doc": "d1", "text": "陳志明經起訴。李小四到案。", "persons": [{"id": "P1", "forms": ["陳志明", "志明"]}, {"id": "P2", "forms": ["李小四"]}]}
     answers += [json.dumps({"persons": [{"id": "P1", "stage": "INDICTED", "quote": "陳志明 經起訴"}, {"id": "P9", "stage": "CONVICTED", "quote": ""}]}),
                 json.dumps({"persons": [{"id": "P2", "stage": "GUILTY", "quote": ""}]})]
@@ -55,5 +71,5 @@ try:
     assert r["cut"] and r["error"] == "JSONDecodeError" and r["persons"][0]["stage"] == "MISSING"  # the error names no text
     assert sent[0]["messages"][0]["content"] == common.user_turn(prompt, "1", ["陳志明"], common.cut(long))  # = sft.py's user turn
 finally:
-    os.chdir(cwd); shutil.rmtree(tmp)
+    os.chdir(cwd); shutil.rmtree(tmp); del os.environ["SETS"]
 print("selfcheck OK")

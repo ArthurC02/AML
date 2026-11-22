@@ -16,13 +16,13 @@ counts, document ids, stage names and server status to `log.txt`, never text. Ru
 | `jobs/infer/run.sh` | installs and serves Ollama, pulls each of `MODELS`, runs `infer.py` |
 | `jobs/finetune/train.py` | Unsloth `FastModel` 4-bit, LoRA r 16 / alpha 16 on the language layers, loss on the answer only (checked on 20 encoded examples), one epoch (or `MAX_STEPS`), batch 1 x 8, lr 1e-4 cosine; drops examples over `MAXLEN` tokens (fails above 5 %); saves `lora/`, exports a Q8_0 GGUF (path in `gguf.txt`) |
 | `jobs/finetune/run.sh` | Unsloth's Gemma 4 install recipe (transformers pinned to 5.5.0 or the newest, `TRANSFORMERS`), `train.py`, then Ollama: model `ft` from the GGUF with the base model's template lines, `infer.py ft` |
-| `build_job.py` | builds a job folder `AML_COLAB_HOME/job<name>/`: the scripts above, `prompt.txt` copied from `src/Aml.Infra/Models/stage-prompt.txt`, `job.env` (the parameters), `data/<set>.jsonl` for the eight measured sets (suspects only: id and their forms, no stage), and for a fine-tune `data/train.jsonl`; `check <name>` re-verifies all of it (below) |
+| `build_job.py` | builds a job folder `AML_COLAB_HOME/job<name>/`: the scripts above, `prompt.txt` copied from `src/Aml.Infra/Models/stage-prompt.txt`, `job.env` (the parameters), `data/<set>.jsonl` for the measured sets (suspects only: id and their forms, no stage; an inference job the `--sets`, recorded as `SETS` in `job.env` and read by `infer.py`, default all eight; a fine-tune all eight), and for a fine-tune `data/train.jsonl`; `check <name>` re-verifies all of it (below) |
 | `sft.py` | builds the fine-tune examples: one per classifier train row (`AML_STAGE_WORK/data17v/train.jsonl`, tools/stage-model), the user turn the runtime prompt for person `1`, the answer `{"persons":[{"id":"1","stage":...,"quote":""}]}`; asserts every rebuilt row equals its source row and that no train document id or text is in an evaluation set; writes `AML_LLM_WORK/data/train.jsonl` |
 | `common.py` | locations, set list, the text cut, person forms, the per-call prompt, the data line |
-| `selfcheck.py` | asserts on the helpers, `infer.py`'s prompt and answer reading against a fake Ollama, and `job.env` quoting; no data, GPU or network; prints `selfcheck OK` |
+| `selfcheck.py` | asserts on the helpers, `infer.py`'s prompt and answer reading against a fake Ollama and its `SETS`, `job.env` quoting and `--sets`; no data, GPU or network; prints `selfcheck OK` |
 
 `build_job.py check <name>` (ends `ALL OK`, exit 1 otherwise): scripts and prompt byte-identical to their sources;
-exactly the expected files; every evaluation file byte-identical to a fresh build from the measured rows, keys
+exactly the expected files, the data files those of `SETS` (all eight in a job.env without it); every evaluation file byte-identical to a fresh build from the measured rows, keys
 doc/text/persons/id/forms only; for a fine-tune, `train.jsonl` byte-identical to sft.py's output, every example wrapping
 the current prompt, no train text (cut) equal to an evaluation text and no train source document in an evaluation set;
 `run.sh` LF-only and passing `bash -n`; sha256 of every file.
@@ -47,17 +47,19 @@ export AML_TRAIN=/path/to/aml-train AML_COLAB_HOME=/path/to/colab/home
 
 ```bash
 python -I -X utf8 tools/llm-stage/selfcheck.py
-python -I -X utf8 tools/llm-stage/build_job.py infer <name>            # --models a,b for other Ollama tags
+python -I -X utf8 tools/llm-stage/build_job.py infer <name>            # --models a,b for other Ollama tags; --sets a,b for some sets
 python -I -X utf8 tools/llm-stage/build_job.py check <name>            # ALL OK
-python -I tools/colab/colabjob.py package $AML_COLAB_HOME/job<name> <name> --alive infer.py
+python -I tools/colab/colabjob.py package $AML_COLAB_HOME/job<name> <name> --alive infer.py --milestones 'DONE|FAIL |MODEL_START| sanity | think: | pulled | tps '
 python -I tools/colab/colabjob.py check <name>                         # ALL OK
 bash tools/colab/run_job.sh <name> L4 $AML_TRAIN/downloads/aml<name>          # --dry-run first to see the steps
 dotnet run -c Release --project tools/Aml.StageEval -- <dl>/out/gemma4_12b-it-q4_K_M <dl>/out/gemma4_12b-it-q4_K_M
 ```
 
-One call per suspect: 1,733 over the eight sets (the runner's default limit is 12 h). The job answers the held-back
-v11 and accept5 too, so the evaluator has their cached answers; their outputs (`out/<model tag>/v11.jsonl`,
-`accept5.jsonl`) are not opened or scored before the end (no StageEval `--heldback`, no `score_one.py --heldback`).
+One call per suspect: 1,754 over the eight sets at the last build (`check` prints the count; the runner's default limit
+is 12 h). The default job answers the held-back v11 and accept5 too, so the evaluator has their cached answers; their
+outputs (`out/<model tag>/v11.jsonl`, `accept5.jsonl`) are not opened or scored before the end (no StageEval
+`--heldback`, no `score_one.py --heldback`). `--sets` takes known names only (kept in the set order); a held-back set
+goes in only when listed, and the builder then prints a WARNING line. `--sets accept` alone is 40 documents, 114 calls.
 
 ## Fine-tune and measure
 

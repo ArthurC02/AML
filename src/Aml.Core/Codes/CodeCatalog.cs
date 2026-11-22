@@ -201,7 +201,6 @@ public static class CodeCatalog
         ("LEGAL_STAGE_BASIS", StageBasis.ProceedsConfiscated, "主文沒收犯罪所得", "法院新聞稿的主文沒收此人的犯罪所得，因此讀為有罪。", "RulingRules.ProceedsConfiscated", Watchlist + "#stage-from-attached-news"),
         ("LEGAL_STAGE_BASIS", StageBasis.SentencedByRowNumber, "依編號判處", "法院新聞稿以編號列被告，主文判處刑罰的句子涵蓋此人的編號，因此讀為有罪。", "RulingRules.SentencedByRowNumber", Watchlist + "#stage-from-attached-news"),
         ("LEGAL_STAGE_BASIS", StageBasis.Keyword, "階段關鍵詞", "報導中此人的子句寫到起訴、不起訴、判刑或無罪等階段用語，取子句中最後一個。", "ReportRules.KeywordStage", Watchlist + "#stage-from-attached-news"),
-        ("LEGAL_STAGE_BASIS", StageBasis.WantedNotice, "通緝", "報導寫到此人遭通緝，且沒有其他司法階段，因此讀為通緝。", "ReportRules.WantedWhileNoStage", Watchlist + "#stage-from-attached-news"),
         ("LEGAL_STAGE_BASIS", StageBasis.UnderInvestigation, "偵辦或調查中", "沒有讀到其他階段，但報導寫到偵辦或調查，且寫到此人涉嫌，或全文未寫出此人姓名（整篇即在報導此人），因此讀為涉嫌。", "ReportRules.Closing", Watchlist + "#stage-from-attached-news"),
         ("LEGAL_STAGE_BASIS", StageBasis.OfficialWantedList, "官方通緝名單", "名單是現行有效的官方通緝名單，因此讀為通緝。", "SourceConditions.Shape", Watchlist + "#stage-from-attached-news"),
         // The rules and the two stage models vote (StageVote): only when both models are configured and answered.

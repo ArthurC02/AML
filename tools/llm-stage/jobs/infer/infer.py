@@ -1,5 +1,6 @@
-"""Language-model stage reader on the Colab VM (tools/llm-stage, one person per call, all eight sets): Gemma 4 through Ollama reads each listed person's legal stage. Standard library + requests.
+"""Language-model stage reader on the Colab VM (tools/llm-stage, one person per call): Gemma 4 through Ollama reads each listed person's legal stage. Standard library + requests.
 usage: infer.py <model> [<model> ...]   (run from the job folder: data/<set>.jsonl, prompt.txt; writes out/, log.txt)
+The sets: environment SETS (space-separated, from job.env via run.sh), all eight when unset.
 One /api/chat call per (document, person), the prompt listing that person only (stream false, JSON-schema format, temperature 0, seed 1). Output per model:
 out/<model made filename-safe>/<set>.jsonl, one line per document, appended and flushed; a restart skips documents already
 written. Before each model's full run the first 3 documents of the first set are checked (the sanity pass): 2 or more without parseable
@@ -8,7 +9,9 @@ import json, os, re, sys, time
 import requests
 
 URL = "http://127.0.0.1:11434"
-SETS = ["dev", "dev2", "v9", "accept", "accept3", "accept4", "v11", "accept5"]
+ALL = ["dev", "dev2", "v9", "accept", "accept3", "accept4", "v11", "accept5"]
+SETS = os.environ.get("SETS", " ".join(ALL)).split()
+assert SETS and set(SETS) <= set(ALL), "SETS: names from %s" % " ".join(ALL)
 STAGES = ["CONVICTED", "ACQUITTED", "DISMISSED", "INDICTED", "WANTED", "ALLEGED", "UNKNOWN"]
 OPTIONS = {"temperature": 0, "seed": 1, "num_ctx": 24576, "num_predict": 4096}
 CHUNK = 1

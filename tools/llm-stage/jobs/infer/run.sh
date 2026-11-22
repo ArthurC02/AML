@@ -1,7 +1,7 @@
 #!/bin/bash
 # Language-model stage reader inference on the Colab VM (built by tools/llm-stage/build_job.py; settings in job.env):
-# install Ollama (official script, no account), serve it, pull each model in MODELS, run infer.py on all eight sets,
-# one person per call. Any failing step writes fail.txt and exits non-zero. Progress lines go to log.txt (read by peek).
+# install Ollama (official script, no account), serve it, pull each model in MODELS, run infer.py on the sets in SETS
+# (all eight when job.env has none), one person per call. Any failing step writes fail.txt and exits non-zero. Progress lines go to log.txt (read by peek).
 log() { echo "$(date +%H:%M:%S) $*" >> log.txt; }
 fail() { log "FAIL $1"; echo "$1" > fail.txt; exit 1; }
 cd "$(dirname "$0")" || fail "cd to the job folder failed"

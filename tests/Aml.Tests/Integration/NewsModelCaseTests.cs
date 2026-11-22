@@ -67,8 +67,8 @@ public class NewsModelCaseTests : ServiceTestBase
     [InlineData("sentence", "林美玲因詐欺遭檢方起訴，臺北地院判林美玲有期徒刑二年。", LegalStage.Convicted, NewsParty.Suspect, "Indictment,Conviction", "Acquittal", null, "", "")]
     [InlineData("acquitted", "林美玲被訴詐欺一案，臺北地院審理後判林美玲無罪。", LegalStage.Acquitted, NewsParty.Suspect, "Acquittal", "Conviction", null, "", "")]
     [InlineData("reversed", "林美玲一審遭判處有期徒刑二年，二審改判無罪。", LegalStage.Acquitted, NewsParty.Suspect, "Conviction,Acquittal", "", null, "", "")]
-    // Wanted, with no judicial step told.
-    [InlineData("wanted", "林美玲涉嫌詐欺，棄保潛逃，臺北地檢署已對林美玲發布通緝。", LegalStage.Wanted, NewsParty.Suspect, "WantedNotice", "Indictment,Conviction", null, "", "")]
+    // Wanted, with no judicial step told: the models state the notice; 通緝 in a report is no stage.
+    [InlineData("wanted", "林美玲涉嫌詐欺，棄保潛逃，臺北地檢署已對林美玲發布通緝。", LegalStage.Unknown, NewsParty.Suspect, "WantedNotice", "Indictment,Conviction", null, "", "")]
     // The husband is indicted, not the Profile person.
     [InlineData("relative", "林美玲的丈夫王大明涉嫌詐欺，王大明遭檢方起訴。", LegalStage.Unknown, null, "", "Indictment,Conviction", "王大明", "Indictment", "Conviction")]
     public async Task The_trained_models_and_the_rules_read_the_same_case(string key, string text, LegalStage stage, NewsParty? party,

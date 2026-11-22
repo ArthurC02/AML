@@ -1,6 +1,7 @@
 """Build or check a language-model stage reader job folder for tools/colab. Prints counts and hashes only.
 
-usage: build_job.py infer <name> [--models TAG[,TAG...]]     Ollama tags; default gemma4:12b-it-q4_K_M (the deployed model)
+usage: build_job.py infer <name> [--models TAG[,TAG...]] [--sets SET[,SET...]]
+                                     Ollama tags; default gemma4:12b-it-q4_K_M (the deployed model); sets default all eight
        build_job.py finetune <name> [--size 12b|e4b] [--maxlen N] [--steps N] [--transformers latest|pin]
        build_job.py check <name>
 
@@ -9,15 +10,18 @@ build writes AML_COLAB_HOME/job<name>/ (refuses if it exists):
   infer.py      jobs/infer/infer.py (both kinds)
   train.py      jobs/finetune/train.py (finetune)
   prompt.txt    src/Aml.Infra/Models/stage-prompt.txt, the runtime prompt (copied, asserted byte-identical)
-  job.env       the parameters run.sh exports (KIND, MODELS | MODEL, BASE, TRANSFORMERS, MAXLEN, MAX_STEPS)
-  data/<set>.jsonl   the eight measured sets as infer.py reads them (common.data_line)
+  job.env       the parameters run.sh exports (KIND, MODELS, SETS | MODEL, BASE, TRANSFORMERS, MAXLEN, MAX_STEPS)
+  data/<set>.jsonl   the measured sets as infer.py reads them (common.data_line): infer the --sets (SETS in job.env,
+                read by infer.py), finetune all eight
+--sets: known names only, kept in the common.SETS order; a held-back set (paths.HELD) only when listed, with a WARNING
+line (its answers are for the evaluator's cache, not to be opened or scored before the end).
   data/train.jsonl   sft.py's output (finetune)
 --size picks MODEL, BASE and the default --transformers: 12b = unsloth/gemma-4-12b-it, gemma4:12b-it-q4_K_M, latest;
 e4b = unsloth/gemma-4-E4B-it, gemma4:e4b-it-q4_K_M, pin (transformers 5.5.0, the Unsloth E4B notebook's pin).
 --steps -1 (default) trains one epoch. --maxlen default 16384.
 
 check: the scripts and prompt byte-identical to their sources; the folder holds exactly the expected files; job.env
-well formed; every evaluation file byte-identical to a fresh build from the measured rows, keys doc/text/persons/id/forms
+well formed; the data files exactly those of SETS (all eight without it), each byte-identical to a fresh build from the measured rows, keys doc/text/persons/id/forms
 only, unique documents, non-empty persons; finetune: train.jsonl byte-identical to sft.py's output, each example a user
 turn wrapping the current prompt plus a one-person answer with a known stage, no train text equal to an evaluation
 text (cut as the runtime cuts) and no train source document id in an evaluation set; run.sh without CR and passing
@@ -53,6 +57,22 @@ def read_env(path):
     return dict(re.fullmatch(r"([A-Z_]+)='([^']*)'", l).groups() for l in path.read_text(encoding="utf-8").splitlines())
 
 
+def pick_sets(arg):
+    """--sets a,b as known set names in the SETS order; None: all eight. Unknown names exit; held-back ones warn."""
+    if arg is None: return list(SETS)
+    names = [n for n in arg.split(",") if n]
+    bad = sorted(set(names) - set(SETS))
+    if bad or not names: sys.exit("--sets: unknown %s (known: %s)" % (",".join(bad) or "(none given)", ",".join(SETS)))
+    held = common.paths.held(names)
+    if held: print("WARNING held-back sets %s in the job: answers for the evaluator's cache only, not opened or scored before the end" % ",".join(held))
+    return [s for s in SETS if s in names]
+
+
+def job_sets(env):
+    """The sets a job answers: SETS in job.env, all eight when absent (older infer jobs, every finetune job)."""
+    return env["SETS"].split() if "SETS" in env else list(SETS)
+
+
 def build(kind, name, env):
     J = common.HOME / ("job" + name)
     if J.exists(): sys.exit("%s exists: pick another name or delete it" % J)
@@ -63,7 +83,7 @@ def build(kind, name, env):
     for f, s in files(kind).items(): shutil.copyfile(s, J / f)
     assert (J / "prompt.txt").read_bytes() == PROMPT_FILE.read_bytes()
     (J / "job.env").write_text(text, encoding="utf-8", newline="\n")
-    for s in SETS:
+    for s in job_sets(env):
         b = common.eval_bytes(s); (J / "data" / (s + ".jsonl")).write_bytes(b)
         docs = [json.loads(l) for l in b.decode("utf-8").splitlines()]
         print("%s: documents %d persons %d" % (s, len(docs), sum(len(d["persons"]) for d in docs)))
@@ -71,7 +91,7 @@ def build(kind, name, env):
         shutil.copyfile(common.SFT, J / "data" / "train.jsonl")
         print("train: examples %d" % sum(1 for _ in open(J / "data" / "train.jsonl", encoding="utf-8")))
     print("built %s (%s)\nnext: python -I tools/llm-stage/build_job.py check %s" % (J, " ".join("%s=%s" % kv for kv in env.items()), name))
-    print("      python -I tools/colab/colabjob.py package %s %s %s" % (J, name, "--alive infer.py" if kind == "infer" else "--extra lora,Modelfile --alive 'train.py|infer.py'"))
+    print("      python -I tools/colab/colabjob.py package %s %s %s" % (J, name, "--alive infer.py --milestones 'DONE|FAIL |MODEL_START| sanity | think: | pulled | tps '" if kind == "infer" else "--extra lora,Modelfile --alive 'train.py|infer.py'"))
     print("      python -I tools/colab/colabjob.py check %s && bash tools/colab/run_job.sh %s L4 <download dir>" % (name, name))
 
 
@@ -80,10 +100,13 @@ def check(name):
     def c(cond, msg):
         nonlocal ok; ok &= bool(cond); print(("ok   " if cond else "FAIL ") + msg)
     J = common.HOME / ("job" + name)
-    env = read_env(J / "job.env"); kind = env.get("KIND")
-    c(kind in KEYS and list(env) == KEYS[kind] and all(VALUE.fullmatch(v) for v in env.values()), "job.env: " + " ".join("%s=%s" % kv for kv in env.items()))
-    if kind not in KEYS: return False
-    want = set(files(kind)) | {"job.env"} | {"data/%s.jsonl" % s for s in SETS} | ({"data/train.jsonl"} if kind == "finetune" else set())
+    env = read_env(J / "job.env"); kind = env.get("KIND"); sets = job_sets(env)
+    keys = KEYS.get(kind, []) + (["SETS"] if kind == "infer" and "SETS" in env else [])
+    c(kind in KEYS and list(env) == keys and all(VALUE.fullmatch(v) for v in env.values()), "job.env: " + " ".join("%s=%s" % kv for kv in env.items()))
+    c(sets and sets == [s for s in SETS if s in sets], "sets %s: known, unique, in the SETS order%s"
+      % (",".join(sets), "; held-back " + ",".join(common.paths.held(sets)) if common.paths.held(sets) else ""))
+    if kind not in KEYS or not set(sets) <= set(SETS): print("CHECK FAILED"); return False
+    want = set(files(kind)) | {"job.env"} | {"data/%s.jsonl" % s for s in sets} | ({"data/train.jsonl"} if kind == "finetune" else set())
     have = {p.relative_to(J).as_posix() for p in J.rglob("*") if p.is_file()}
     c(have == want, "folder holds exactly the expected %d files%s" % (len(want), "" if have == want else ": extra %s missing %s" % (sorted(have - want), sorted(want - have))))
     for f, s in files(kind).items():
@@ -95,7 +118,7 @@ def check(name):
         except SyntaxError as e: c(False, "compiles %s: %s" % (f, e.msg))
 
     ev, calls = [], 0
-    for s in SETS:
+    for s in sets:
         b = (J / "data" / (s + ".jsonl")).read_bytes(); docs = [json.loads(l) for l in b.decode("utf-8").splitlines()]; ev += docs
         c(b == common.eval_bytes(s), "data/%s.jsonl byte-identical to the measured rows, sha256 %s" % (s, sha(b)))
         ks = {k for d in docs for k in d} | {k for d in docs for p in d["persons"] for k in p}
@@ -105,7 +128,7 @@ def check(name):
           "%s: documents %d persons %d (cut by infer.py %d), unique ids, forms present"
           % (s, len(docs), sum(len(d["persons"]) for d in docs), sum(len(d["text"]) > common.LONG for d in docs)))
         calls += sum(len(d["persons"]) for d in docs)
-    print("     calls (persons over all sets) %d" % calls)
+    print("     calls (persons over the %d sets) %d, documents %d" % (len(sets), calls, len(ev)))
 
     if kind == "finetune":
         b = (J / "data" / "train.jsonl").read_bytes()
@@ -129,6 +152,7 @@ def main():
     a = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = a.add_subparsers(dest="cmd", required=True)
     i = sub.add_parser("infer"); i.add_argument("name"); i.add_argument("--models", default="gemma4:12b-it-q4_K_M")
+    i.add_argument("--sets", help="comma-separated measured sets (default all eight): " + ",".join(SETS))
     f = sub.add_parser("finetune"); f.add_argument("name"); f.add_argument("--size", choices=SIZES, default="12b")
     f.add_argument("--maxlen", type=int, default=16384); f.add_argument("--steps", type=int, default=-1)
     f.add_argument("--transformers", choices=["latest", "pin"])
@@ -136,7 +160,7 @@ def main():
     args = a.parse_args()
     if not re.fullmatch(r"[A-Za-z0-9_-]+", args.name): a.error("name: letters, digits, _ and - only")
     if args.cmd == "check": sys.exit(0 if check(args.name) else 1)
-    if args.cmd == "infer": env = {"KIND": "infer", "MODELS": " ".join(m for m in args.models.split(",") if m)}
+    if args.cmd == "infer": env = {"KIND": "infer", "MODELS": " ".join(m for m in args.models.split(",") if m), "SETS": " ".join(pick_sets(args.sets))}
     else:
         model, base, tf = SIZES[args.size]
         env = {"KIND": "finetune", "MODEL": model, "BASE": base, "TRANSFORMERS": args.transformers or tf,

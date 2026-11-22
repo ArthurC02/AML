@@ -14,7 +14,6 @@ internal static class StageBasis
 
     // LegalStageReading.Transitions, in their order.
     internal const string Keyword = "STAGE_KEYWORD";
-    internal const string WantedNotice = "STAGE_WANTED_NOTICE";
 
     // ReportRules.Closing, the closing decision of LegalStageReading.FromNews.
     internal const string UnderInvestigation = "STAGE_UNDER_INVESTIGATION";
@@ -74,8 +73,6 @@ internal sealed class RulingText
 internal readonly record struct SentenceScope(string Text, bool Own, bool Attributable);
 
 /// <summary>
-/// A clause of the report; <see cref="Mine"/> says it names the person; <see cref="Stage"/> is the stage read so far, and
-/// <see cref="StageOwn"/> says a sentence naming the person gave it; <see cref="Named"/> says this clause or one before it
-/// in the sentence is the person's.
+/// A clause of the report; <see cref="Mine"/> says it names the person.
 /// </summary>
-internal readonly record struct ClauseScope(string Clause, bool Mine, SentenceScope Sentence, bool Bystander, LegalStage Stage, bool StageOwn, bool Named);
+internal readonly record struct ClauseScope(string Clause, bool Mine, SentenceScope Sentence, bool Bystander);

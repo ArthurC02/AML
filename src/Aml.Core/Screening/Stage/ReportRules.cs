@@ -16,15 +16,6 @@ internal static class ReportRules
     internal static LegalStage? KeywordStage(ClauseScope c) =>
         LastStageIn(c.Clause, c.Sentence.Attributable && (!c.Bystander || c.Mine), c.Sentence.Own && (!c.Bystander || c.Mine));
 
-    // A wanted notice in a sentence naming the person is a stage only until a judicial one is told, before or after it
-    // (起訴後棄保遭通緝 stays INDICTED); it beats a judicial stage that no sentence naming them told
-    // (檢察官起訴被告等十人。王大同另發布通緝). A judgment's bystander is wanted only by the clause naming them, or one
-    // after it in the sentence with no subject of its own (陳志明經傳喚未到，由本院通緝中; not 李小四由本院通緝中，
-    // 陳志明由本院另行審結, 陳志明到庭，李小四則由本院通緝中 or 陳志明提告後，…，被告遭通緝).
-    internal static LegalStage? WantedWhileNoStage(ClauseScope c) =>
-        c.Sentence.Own && (!c.Bystander || c.Mine || c.Named && StagePatterns.OpensWithoutSubject().IsMatch(c.Clause))
-            && (c.Stage == LegalStage.Unknown || !c.StageOwn) && StagePatterns.WantedNotice().IsMatch(c.Clause) ? LegalStage.Wanted : null;
-
     // ---- What the report says of the person as a whole ----
 
     // A judgment names many people besides its defendants (witnesses, account holders, accomplices tried elsewhere):

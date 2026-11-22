@@ -93,8 +93,8 @@ def report(name, base, now):
 
 def selfcheck():
     assert falls((10, 0, 10, 10), (10, 0, 11, 10)) and falls((10, 0, 10, 9), (10, 0, 9, 8)) and not falls((10, 0, 10, 9), (10, 0, 9, 9)) and not falls((10, 0, 5, 5), (10, 0, 0, 0))
-    m = ENTRY.findall("[ new(StageBasis.Keyword, ReportRules.KeywordStage), new(StageBasis.WantedNotice, ReportRules.WantedWhileNoStage), ]")
-    assert m == ["Keyword", "WantedNotice"], m
+    m = ENTRY.findall("[ new(StageBasis.Keyword, ReportRules.KeywordStage), new(StageBasis.MadeUp, ReportRules.MadeUpStage), ]")
+    assert m == ["Keyword", "MadeUp"], m
     base = {s: (10, 4, 8, 7) for s in DEV}
     assert verdict(base, dict(base)) == "no effect" and verdict(base, {**base, "v9": (10, 3, 8, 7)}) == "may go"
     assert verdict(base, {**base, "dev": (10, 4, 7, 7)}) == "may go" and verdict(base, {**base, "dev": (10, 4, 8, 6)}) == "precision falls"

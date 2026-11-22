@@ -26,9 +26,6 @@ internal static partial class StagePatterns
     [GeneratedRegex("(?<!" + StageGlossary.NotIndictedBefore + ")起訴(?!" + StageGlossary.IndictmentNouns + ")|聲請簡易判決處刑")]
     internal static partial Regex Indictment();
 
-    [GeneratedRegex("(?<!(?:" + StageGlossary.WantedLifted + ")[^，,]{0,8})通緝")]
-    internal static partial Regex WantedNotice();
-
     // A report also words a sentence as 判 with the penalty itself: 判陳志明有期徒刑三年, 遭判無期徒刑, 重判十五年, 判1年6月.
     // Between 判 and the penalty only 決 / 處 and a name (他, 她, or two to four characters) fit; 審判 (but 一審判他五年,
     // 原審判…), 裁判, 談判, 誤判, 判斷, 判決前, 宣判時間 … are other words, and 判賠 names no penalty.
@@ -56,12 +53,6 @@ internal static partial class StagePatterns
 
     [GeneratedRegex(StageGlossary.SuspicionWords)]
     internal static partial Regex Suspicion();
-
-    // ---- Whose a report's clause is ----
-
-    // 王大同經合法傳喚未到，由本院通緝中: a clause with no subject of its own, and no 被告 (…，被告遭通緝 is the defendant's).
-    [GeneratedRegex(@"^(?![^，,]*被告)\s*(?:" + StageGlossary.SubjectlessOpeners + "|通緝)")]
-    internal static partial Regex OpensWithoutSubject();
 
     // ---- What kind of ruling text, and where its order is ----
 

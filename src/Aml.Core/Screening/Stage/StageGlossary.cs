@@ -9,7 +9,7 @@ namespace Aml.Core.Screening.Stage;
 internal static class StageGlossary
 {
     /// <summary>The version of this glossary; change it with any entry.</summary>
-    internal const string Version = "stage-glossary-4";
+    internal const string Version = "stage-glossary-5";
 
     // ---- Stages and penalties ----
 
@@ -34,12 +34,6 @@ internal static class StageGlossary
 
     /// <summary>What after 起訴 makes it a noun, no step (pattern Indictment): 起訴罪名, 起訴法條.</summary>
     internal const string IndictmentNouns = "罪名|法條";
-
-    /// <summary>
-    /// Words that, up to eight characters before 通緝, lift the wanted notice (pattern WantedNotice): 撤銷通緝, 解除通緝.
-    /// A word that does not lift it would lose real wanted notices.
-    /// </summary>
-    internal const string WantedLifted = "撤銷|解除|撤回";
 
     /// <summary>
     /// Words that are a conviction by themselves (pattern Conviction: CONVICTED). A word that may also stand for a request or a
@@ -179,13 +173,6 @@ internal static class StageGlossary
     /// word that is no relation would take a person's own steps away from them.
     /// </summary>
     internal const string RelationWords = "丈夫|先生|太太|老公|老婆|配偶|前妻|前夫|前女友|前男友|男友|友人|助理|秘書|司機|特助|部屬|下屬|員工|同事|合夥人|律師";
-
-    /// <summary>
-    /// Words that open a clause with no subject of its own (pattern OpensWithoutSubject: 王大同經合法傳喚未到，由本院通緝中):
-    /// a wanted notice there goes on about the one a clause before it named, also for someone a judgment only names. A word
-    /// that may open a subject (a surname) would give them another person's notice.
-    /// </summary>
-    internal const string SubjectlessOpeners = "經|由|遭|被|並|且|而|另|現|仍";
 
     /// <summary>
     /// What may stand before 被告 on a judgment's defendant line (pattern DefendantLine). A longer word stands before the word it

@@ -15,10 +15,8 @@ namespace Aml.Core.Screening.Stage;
 ///   sentences are not theirs (GC-12).
 /// - A dismissal or indictment counts in such a sentence, or in any other outside a judgment's bystander: a subjectless 檢方已起訴 or a collective
 ///   起訴七人 (GC-12) is the person's. 不起訴, 緩起訴, 撤回起訴 and 撤回公訴 are DISMISSED, never INDICTED.
-/// - Someone a judgment names who is not its defendant gets a stage only from the clause naming them, a wanted notice
-///   from that clause or a later one of the sentence with no subject of its own (經, 由, 遭 … or 通緝 opening it, no 被告).
-/// - The last stage in the text wins; 通緝 is WANTED only while no judicial stage is told (in a sentence naming the
-///   person: none that such a sentence told). 偵辦 or 調查 give ALLEGED only when there is no stage.
+/// - Someone a judgment names who is not its defendant gets a stage only from the clause naming them.
+/// - The last stage in the text wins; 通緝 in a report is no stage. 偵辦 or 調查 give ALLEGED only when there is no stage.
 /// </remarks>
 internal static class LegalStageReading
 {
@@ -27,7 +25,6 @@ internal static class LegalStageReading
         if (news is null) return new(LegalStage.Unknown, null);
         var stage = LegalStage.Unknown;
         string? basis = null; // the code of the transition that last set the stage
-        var stageOwn = false; // a sentence naming the person set it
         var ruling = RulingReading.Read(news, names);
         var suspected = false;
         var bystander = ReportRules.Bystander(ruling);
@@ -35,23 +32,20 @@ internal static class LegalStageReading
         {
             var sentence = ReportForm.Scope(news, start, length, names, bystander);
             suspected |= ReportRules.SaysSuspected(sentence);
-            var named = false; // a clause of this sentence, up to this one, is the person's
             foreach (var (at, size) in StageText.Spans(news, start, length, StageText.ClauseEnds))
             {
                 var clause = news.Substring(at, size);
-                var mine = ReportForm.IsMine(clause, names);
-                named |= mine;
-                var scope = new ClauseScope(clause, mine, sentence, bystander, stage, stageOwn, named);
-                if (DecisionList.FirstOf(Transitions, scope) is { } next) (stage, basis, stageOwn) = (next.Stage, next.Code, sentence.Own);
+                var scope = new ClauseScope(clause, ReportForm.IsMine(clause, names), sentence, bystander);
+                if (DecisionList.FirstOf(Transitions, scope) is { } next) (stage, basis) = (next.Stage, next.Code);
             }
         }
         return ReportRules.Closing(ruling, stage, basis, bystander, suspected, news, names);
     }
 
-    // The order of this list is the precedence: a stage keyword of the clause first; a wanted notice only where it has none.
+    // The order of this list is the precedence.
     private static readonly StageRule<ClauseScope>[] Transitions =
     [
-        new(StageBasis.Keyword, ReportRules.KeywordStage), new(StageBasis.WantedNotice, ReportRules.WantedWhileNoStage),
+        new(StageBasis.Keyword, ReportRules.KeywordStage),
     ];
 }
 

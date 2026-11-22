@@ -54,7 +54,7 @@ Each script has `--selfcheck` (made-up input, no data).
 | v17 (train) | two blind passes, `add17.py` | `add17.py` and `add17.py --verdicts` byte-identical to `data17/` and `data17v/`; `merge.py v17` agrees on 250 persons, 249 after `add17.py` drops one overlapping document |
 | v14r (recheck of accept3) | 27 persons, two blind passes | `compare`: 26 confirmed, 1 split, as recorded; `pick` on today's rows finds 24 of the 27 (the other 3 were chosen because two language models both missed them, which the evaluator's rows do not hold) and 1 more |
 
-Known: in v13 pass `a` 21 persons have `forms` as one string instead of a list, so the merge matched none of them and
-accept holds 93 persons where, read as lists, both passes agree on 114. The set is left as
-measured until its owner decides to rebuild it (which moves every accept baseline). `merge.py check` reports it, and
-`merge.py v13` now refuses the round until pass `a` is fixed.
+Fixed 2026-11-23: v13 pass `a` had 21 persons with `forms` as one string instead of a list, so the merge matched none
+of them and accept held 93 persons. Each string was one form; written as one-element lists, both passes agree on all
+114 and accept was rebuilt (the earlier files are kept beside them as `*.bak-20261123`). `merge.py` now refuses a pass
+with such format errors.

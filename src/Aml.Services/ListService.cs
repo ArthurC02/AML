@@ -102,7 +102,7 @@ public sealed class ListService(
             .Where(f => f.ProfileId is not null && profileIds.Contains(f.ProfileId))
             .ToLookup(f => f.ProfileId!, f => (f.CaseId, Hash: Hash(f.Value)), StringComparer.Ordinal);
 
-    public async Task<CaseRecord> ReanalyzeWithLatestProfilesAsync(string caseId, CancellationToken ct, Func<Task>? beforeWrite = null)
+    public async Task<CaseRecord> ReanalyzeWithLatestProfilesAsync(string caseId, CancellationToken ct, Func<Task>? beforeWrite = null, bool writeIfStageAnswerMissing = true)
     {
         var input = await caseStore.LatestInputAsync(caseId, ct).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"Case {caseId} has no stored input");
@@ -113,7 +113,7 @@ public sealed class ListService(
         var inputAlreadyMatchesListDatabase = updated.Count == input.Count && updated.All(f => input.TryGetValue(f.Key, out var v) && v == f.Value);
         if (inputAlreadyMatchesListDatabase)
             return await caseStore.GetAsync(caseId, ct).ConfigureAwait(false) ?? throw new KeyNotFoundException($"Case {caseId} not found");
-        return await cases.ReanalyzeAsync(caseId, readCase(updated), ct, updated, beforeWrite).ConfigureAwait(false)
+        return await cases.ReanalyzeAsync(caseId, readCase(updated), ct, updated, beforeWrite, writeIfStageAnswerMissing).ConfigureAwait(false)
             ?? throw new KeyNotFoundException($"Case {caseId} not found");
     }
 

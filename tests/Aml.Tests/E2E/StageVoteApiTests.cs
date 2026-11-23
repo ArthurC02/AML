@@ -42,9 +42,14 @@ public sealed class StageVoteApiTests(ApiHost api) : IClassFixture<ApiHost>
     [InlineData("INDICTED", "INDICTED", "INDICTED", "STAGE_VOTE_UNANIMOUS", "", "rules:INDICTED,classifier:INDICTED,llm:INDICTED")]
     [InlineData("CONVICTED", "CONVICTED", "UNKNOWN", "STAGE_VOTE_MAJORITY", "STAGE_READERS_DISAGREE", "rules:INDICTED,classifier:CONVICTED,llm:CONVICTED")]
     [InlineData("CONVICTED", "-", "INDICTED", "STAGE_KEYWORD", "STAGE_READERS_DISAGREE", "rules:INDICTED,classifier:CONVICTED")]
-    // A configured model that gives no answer is named without a stage, and the condition says so.
-    [InlineData("CONVICTED", "null", "INDICTED", "STAGE_KEYWORD", "STAGE_READERS_DISAGREE,STAGE_READER_NO_ANSWER", "rules:INDICTED,classifier:CONVICTED,llm:-")]
-    [InlineData("throw", "CONVICTED", "INDICTED", "STAGE_KEYWORD", "STAGE_READERS_DISAGREE,STAGE_READER_NO_ANSWER", "rules:INDICTED,classifier:-,llm:CONVICTED")]
+    // A configured model whose answer is missing is named without a stage, the stage is UNKNOWN without a basis ("-"), and
+    // the condition carries the indicator.
+    [InlineData("CONVICTED", "null", "UNKNOWN", "-", "STAGE_READERS_DISAGREE,STAGE_READER_NO_ANSWER", "rules:INDICTED,classifier:CONVICTED,llm:-")]
+    [InlineData("throw", "CONVICTED", "UNKNOWN", "-", "STAGE_READERS_DISAGREE,STAGE_READER_NO_ANSWER", "rules:INDICTED,classifier:-,llm:CONVICTED")]
+    // The same Case with one model: an answer UNKNOWN is a stage (the rules' stands, the difference orders review); a missing
+    // answer is not, and only it carries the indicator.
+    [InlineData("-", "UNKNOWN", "INDICTED", "STAGE_KEYWORD", "STAGE_READERS_DISAGREE", "rules:INDICTED,llm:UNKNOWN")]
+    [InlineData("-", "null", "UNKNOWN", "-", "STAGE_READER_NO_ANSWER", "rules:INDICTED,llm:-")]
     public async Task The_stage_models_vote_with_the_rules_and_leave_identity_alone(string classifier, string llm, string stage, string basis, string reasons, string readers)
     {
         var ct = TestContext.Current.CancellationToken;
@@ -64,7 +69,7 @@ public sealed class StageVoteApiTests(ApiHost api) : IClassFixture<ApiHost>
         var hit = Assert.Single(revision.GetProperty("result").GetProperty("hits").EnumerateArray());
         var c = Assert.Single(hit.GetProperty("conditions").EnumerateArray());
 
-        Assert.Equal(("ADVERSE_MEDIA", "HIT", stage, basis), (c.GetProperty("type").GetString(), c.GetProperty("status").GetString(), c.GetProperty("legalStage").GetString(), c.GetProperty("legalStageBasis").GetString()));
+        Assert.Equal(("ADVERSE_MEDIA", "HIT", stage, basis), (c.GetProperty("type").GetString(), c.GetProperty("status").GetString(), c.GetProperty("legalStage").GetString(), c.TryGetProperty("legalStageBasis", out var b) && b.ValueKind == JsonValueKind.String ? b.GetString() : "-"));
         Assert.Equal(reasons.Length == 0 ? [] : reasons.Split(','), c.GetProperty("reasonCodes").EnumerateArray().Select(r => r.GetString()));
         var stageReaders = c.GetProperty("stageReaders").EnumerateArray().ToList();
         Assert.Equal(readers.Split(','), stageReaders.Select(r => $"{r.GetProperty("reader").GetString()}:{(r.TryGetProperty("stage", out var s) ? s.GetString() : "-")}"));
@@ -77,7 +82,7 @@ public sealed class StageVoteApiTests(ApiHost api) : IClassFixture<ApiHost>
 
         // Every code the stored revision carries is in the catalog.
         var codes = Codes(revision).Select(Core.Codes.CodeCatalog.Key).Distinct().ToList();
-        Assert.Contains(basis, codes);
+        if (basis != "-") Assert.Contains(basis, codes);
         foreach (var code in codes)
         {
             using var entry = await client.GetAsync("/api/codes/" + Uri.EscapeDataString(code), ct);

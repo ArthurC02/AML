@@ -25,7 +25,7 @@ dotnet run -c Release --project tools/Aml.StageEval -- <answers> <answers> out=<
 
 ## Read
 
-Per set: `n` persons; `RULES`, `CLASSIF`, `LLM`, `VOTE` = persons each reader (or the vote) gets right (diagnostics only); `SPLIT` = readers disagree; `llm-none` / `clf-none` = reader gave no answer; `DECIDED` = all three alike (the automatic stage); `RIGHT` = of those, how many match the reference stage.
+Per set: `n` persons; `RULES`, `CLASSIF`, `LLM`, `VOTE` = persons each reader (or the vote) gets right (diagnostics only); `SPLIT` = readers disagree; `llm-none` / `clf-none` = the reader's answer is missing (`-` in the `.tsv` rows, apart from an answer `Unknown`; the vote is then UNKNOWN, never decided; a replayed `MISSING` counts as missing); `DECIDED` = all three alike (the automatic stage); `RIGHT` = of those, how many match the reference stage.
 
 - Precision = RIGHT / DECIDED. Coverage = DECIDED / n.
 - Per-person rows (`out/<set>.tsv`: doc id, person id, reference and each reader's stage, basis) exist for development sets only; use them to find where a change moves.

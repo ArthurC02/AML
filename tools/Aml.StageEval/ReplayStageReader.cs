@@ -4,7 +4,9 @@ using Aml.Core.Screening;
 
 namespace Aml.StageEval;
 
-/// <summary>The language model reader replayed: the cached answer for (doc, person id), null when absent or not a stage.</summary>
+/// <summary>The language model reader replayed: the cached answer for (doc, person id); null (a missing answer, printed "-")
+/// when absent or not a stage. The cached MISSING joins a failed call and an answer without the person, so it stays missing
+/// and is never read as UNKNOWN: an UNKNOWN replayed could make a unanimous vote the measured run never had.</summary>
 internal sealed class ReplayStageReader : IStageReader
 {
     private readonly Dictionary<(string, string), StageAnswer> answers = [];

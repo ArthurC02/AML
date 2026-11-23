@@ -52,7 +52,7 @@ public sealed partial class OnnxStageClassifier : IStageReader, IDisposable
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
-            return null; // a failing reader drops out of the vote; it never blocks the analysis
+            return null; // only a failure is missing (every run gives a label): the vote gives UNKNOWN with STAGE_READER_NO_ANSWER
         }
     }
 

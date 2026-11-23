@@ -55,6 +55,7 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
     public const string InvalidInput = "INVALID_INPUT";
     public const string InvalidPayload = "INVALID_PAYLOAD";
     public const string Timeout = "TIMEOUT";
+    public const string StageNoAnswer = "STAGE_NO_ANSWER"; // a configured stage model's answer is missing; retried, the last attempt writes
     public const string LeaseExpired = "LEASE_EXPIRED"; // written by the job store when it reclaims an expired lease
     public const string ReleaseLimit = "RELEASE_LIMIT"; // written by the job store when a job interrupted past Batch:MaxReleases spends its attempts
 
@@ -210,6 +211,11 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
                 Warn?.Invoke($"Job {job.JobId}: not released on shutdown, its lease had passed to another worker");
             AmlTelemetry.JobAttempts.Add(1, new KeyValuePair<string, object?>("outcome", "RELEASED"));
         }
+        catch (StageAnswerMissingException)
+        {
+            // Not written (only attempts before the last hold it back): retried after the backoff, never DEAD_LETTER from here.
+            await FailAsync(job, StageNoAnswer, deadLetter: false).ConfigureAwait(false);
+        }
 #pragma warning disable CA1031 // failure isolation: one item's error must not stop the batch
         catch (Exception e)
 #pragma warning restore CA1031
@@ -233,13 +239,17 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         }
     }
 
-    // Case creation is idempotent on (trigger, subject), so a retry after a crash reuses the stored revision.
+    // Case creation is idempotent on (trigger, subject), so a retry after a crash reuses the stored revision. A missing stage
+    // answer holds the write back while attempts are left; the last attempt writes it (UNKNOWN with STAGE_READER_NO_ANSWER).
     private Task<CaseRecord> AnalyzeOrReanalyzeAsync(ClaimedJob job, BatchItemRequest? item, CaseInput? input, ReanalysisJob? reanalysis,
-        CancellationToken deadline, CancellationToken ct) =>
-        item is not null
-            ? cases.CreateAsync(item.SubjectRef, item.TriggerEventId, input!, deadline, item.Files, () => RenewLeaseBeforeWriteAsync(job, ct), caseId: job.JobId)
+        CancellationToken deadline, CancellationToken ct)
+    {
+        var lastAttempt = job.AttemptCount >= options.MaxAttempts;
+        return item is not null
+            ? cases.CreateAsync(item.SubjectRef, item.TriggerEventId, input!, deadline, item.Files, () => RenewLeaseBeforeWriteAsync(job, ct), job.JobId, lastAttempt)
             : (lists ?? throw new InvalidOperationException("REANALYZE_CASE needs the list service"))
-                .ReanalyzeWithLatestProfilesAsync(reanalysis!.CaseId, deadline, () => RenewLeaseBeforeWriteAsync(job, ct));
+                .ReanalyzeWithLatestProfilesAsync(reanalysis!.CaseId, deadline, () => RenewLeaseBeforeWriteAsync(job, ct), lastAttempt);
+    }
 
     private static (BatchItemRequest? Item, ReanalysisJob? Reanalysis) ReadPayload(ClaimedJob job)
     {

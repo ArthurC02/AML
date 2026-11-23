@@ -21,12 +21,14 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
     /// </summary>
     /// <param name="caseId">The id of a new Case; a fresh v7 Guid when null. A batch item passes its job's id, so a re-run of
     /// the job after a lost write stores the same Case.</param>
+    /// <param name="writeIfStageAnswerMissing">False: an analysis in which a configured stage model's answer is missing is not
+    /// written and throws <see cref="StageAnswerMissingException"/> (a batch job with attempts left retries it).</param>
     public async Task<CaseRecord> CreateAsync(string subjectRef, string triggerEventId, CaseInput input, CancellationToken ct,
-        IReadOnlyDictionary<string, string>? files = null, Func<Task>? beforeWrite = null, string? caseId = null) =>
-        (await CreateOrGetAsync(subjectRef, triggerEventId, input, ct, files, beforeWrite, caseId).ConfigureAwait(false)).Case;
+        IReadOnlyDictionary<string, string>? files = null, Func<Task>? beforeWrite = null, string? caseId = null, bool writeIfStageAnswerMissing = true) =>
+        (await CreateOrGetAsync(subjectRef, triggerEventId, input, ct, files, beforeWrite, caseId, writeIfStageAnswerMissing).ConfigureAwait(false)).Case;
 
     public async Task<(CaseRecord Case, bool Inserted)> CreateOrGetAsync(string subjectRef, string triggerEventId, CaseInput input, CancellationToken ct,
-        IReadOnlyDictionary<string, string>? files = null, Func<Task>? beforeWrite = null, string? caseId = null)
+        IReadOnlyDictionary<string, string>? files = null, Func<Task>? beforeWrite = null, string? caseId = null, bool writeIfStageAnswerMissing = true)
     {
         var now = clock.GetUtcNow();
         var id = caseId ?? Guid.CreateVersion7().ToString();
@@ -34,14 +36,14 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
         var created = await store.CreateAsync(record, ct).ConfigureAwait(false);
         var inserted = created == record; // not the id: a replayed batch item finds its Case stored under the id it passed
         if (created.CurrentRevision > 0) return (created, inserted);
-        return (await AnalyzeAsync(created, input, files, beforeWrite, ct, yieldToConcurrentFirstRevision: true).ConfigureAwait(false), inserted);
+        return (await AnalyzeAsync(created, input, files, beforeWrite, writeIfStageAnswerMissing, ct, yieldToConcurrentFirstRevision: true).ConfigureAwait(false), inserted);
     }
 
     public async Task<CaseRecord?> ReanalyzeAsync(string caseId, CaseInput input, CancellationToken ct,
-        IReadOnlyDictionary<string, string>? files = null, Func<Task>? beforeWrite = null)
+        IReadOnlyDictionary<string, string>? files = null, Func<Task>? beforeWrite = null, bool writeIfStageAnswerMissing = true)
     {
         var existing = await store.GetAsync(caseId, ct).ConfigureAwait(false);
-        return existing is null ? null : await AnalyzeAsync(existing, input, files, beforeWrite, ct).ConfigureAwait(false);
+        return existing is null ? null : await AnalyzeAsync(existing, input, files, beforeWrite, writeIfStageAnswerMissing, ct).ConfigureAwait(false);
     }
 
     public Task<CaseRecord?> GetAsync(string caseId, CancellationToken ct) => store.GetAsync(caseId, ct);
@@ -97,7 +99,7 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
     }
 
     private async Task<CaseRecord> AnalyzeAsync(CaseRecord current, CaseInput input, IReadOnlyDictionary<string, string>? files, Func<Task>? beforeWrite,
-        CancellationToken ct, bool yieldToConcurrentFirstRevision = false)
+        bool writeIfStageAnswerMissing, CancellationToken ct, bool yieldToConcurrentFirstRevision = false)
     {
         using var activity = AmlTelemetry.Source.StartActivity("AnalyzeCase");
         activity?.SetTag("aml.case_id", current.CaseId);
@@ -107,6 +109,7 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
         // A budgeted reader (the language model) gets a fresh budget for this analysis.
         var readers = stageModels.Select(r => r is BudgetedStageReader b ? b.ForAnalysis(clock) : r).ToList();
         var analysis = CaseAnalyzer.Analyze(input, asOf: asOf, stageReaders: readers);
+        if (!writeIfStageAnswerMissing && CaseLifecycle.StageAnswerMissing(analysis)) throw new StageAnswerMissingException();
         var execution = CaseLifecycle.Execution(analysis);
         var lineage = AnalysisLineage.Of(input, await ProfileUsesAsync(input, files, ct).ConfigureAwait(false), asOf);
 
@@ -149,4 +152,15 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
         current.EffectiveRevision is { } effective
             ? RevisionChanges.Compare(await SnapshotAsync(current.CaseId, effective, ct).ConfigureAwait(false), RevisionChanges.Snapshot(analysis))
             : null;
+}
+
+/// <summary>An analysis held back unwritten because a configured stage model's answer is missing (STAGE_READER_NO_ANSWER);
+/// the batch job fails with STAGE_NO_ANSWER and retries.</summary>
+public sealed class StageAnswerMissingException : Exception
+{
+    public StageAnswerMissingException() : base("A configured stage model's answer is missing; the analysis was not written") { }
+
+    public StageAnswerMissingException(string message) : base(message) { }
+
+    public StageAnswerMissingException(string message, Exception inner) : base(message, inner) { }
 }

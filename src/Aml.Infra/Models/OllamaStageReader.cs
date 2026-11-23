@@ -9,8 +9,10 @@ namespace Aml.Infra.Models;
 /// The large language model reader (Gemma 4 through Ollama's /api/chat, watchlist-and-adverse-information.md#three-readers):
 /// one call per document with the fixed prompt (Models/stage-prompt.txt, as measured), the Profile person as person 1 with
 /// the Profile's names, and a JSON schema the answer must follow. Only the news text and the Profile's names are sent
-/// (security-and-privacy.md). Any failure (HTTP error, timeout through the client's Timeout or the call's own limit, unreadable
-/// answer) is null: the vote then goes on without this reader. Not logged: Infra has no logger (a known limit).
+/// (security-and-privacy.md). A well-formed answer without a known stage for person 1 (an empty persons list included) is the
+/// model's answer UNKNOWN. Any failure (HTTP error, timeout through the client's Timeout or the call's own limit, unreadable
+/// answer) is null, a missing answer: the vote then gives UNKNOWN with STAGE_READER_NO_ANSWER. Not logged: Infra has no
+/// logger (a known limit).
 /// </summary>
 /// <param name="http">A client whose BaseAddress is the Ollama endpoint and whose Timeout is the reader's timeout.</param>
 public sealed class OllamaStageReader(HttpClient http, string model) : IStageReader
@@ -46,7 +48,7 @@ public sealed class OllamaStageReader(HttpClient http, string model) : IStageRea
         }
         catch (Exception e) when (e is not OutOfMemoryException)
         {
-            return null; // a failing reader drops out of the vote; it never blocks the analysis
+            return null; // a missing answer: the vote gives UNKNOWN with STAGE_READER_NO_ANSWER; it never blocks the analysis
         }
     }
 
@@ -92,20 +94,25 @@ public sealed class OllamaStageReader(HttpClient http, string model) : IStageRea
     };
 
     // Ollama's reply holds the model's JSON as text in message.content; the first entry for person 1 with a known stage counts.
+    // A reply that follows the schema but holds no entry for person 1 (an empty list included) is the model's answer that it
+    // read no stage: UNKNOWN. A reply that does not parse, lacks persons, or gives person 1 only a stage outside the schema
+    // cannot be read, and so is missing.
     private static StageAnswer? Answer(string reply)
     {
         using var outer = JsonDocument.Parse(reply);
         var content = outer.RootElement.GetProperty("message").GetProperty("content").GetString() ?? "";
         using var inner = JsonDocument.Parse(content);
+        var unreadable = false;
         foreach (var person in inner.RootElement.GetProperty("persons").EnumerateArray())
         {
             var id = person.TryGetProperty("id", out var i) ? i.ToString() : "";
+            if (id != PersonId) continue;
             var stage = person.TryGetProperty("stage", out var s) && s.ValueKind == JsonValueKind.String ? s.GetString() : null;
-            if (id != PersonId || stage is null || !Stages.Contains(stage)) continue;
+            if (stage is null || !Stages.Contains(stage)) { unreadable = true; continue; }
             var quote = person.TryGetProperty("quote", out var q) ? q.ToString() : "";
             return new(Enum.Parse<LegalStage>(stage, ignoreCase: true), quote.Length > 0 ? quote : null);
         }
-        return null;
+        return unreadable ? null : new(LegalStage.Unknown);
     }
 
     private static string LoadPrompt()

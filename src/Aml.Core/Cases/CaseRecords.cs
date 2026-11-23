@@ -50,6 +50,11 @@ public static class CaseLifecycle
         _ => CaseStatus.InReview,
     };
 
+    /// <summary>A configured stage model's answer is missing on some condition (STAGE_READER_NO_ANSWER): a batch job retries
+    /// before it writes (pipeline-api-and-batch.md#durable-batch-execution).</summary>
+    public static bool StageAnswerMissing(CaseAnalysis a) =>
+        a.Hits.Any(h => h.Conditions.Any(c => c.ReasonCodes.Contains(Screening.Stage.StageVote.ReaderNoAnswer)));
+
     private static bool IsIncomplete(CaseAnalysis a) => a.NotEvaluatedProfiles.Count > 0;
 
     private static bool EveryNoHitExcludedByValidatedHardConflict(CaseAnalysis a) =>

@@ -46,7 +46,22 @@ public class StageVoteTests
     // Three: all different.
     [InlineData(Indicted, StageBasis.Keyword, new[] { Convicted, Alleged }, Unknown, StageBasis.VoteSplit, true)]
     public void The_vote_follows_its_table(LegalStage rules, string? rulesBasis, LegalStage[] models, LegalStage stage, string? basis, bool disagree) =>
-        Assert.Equal((stage, basis, disagree), StageVote.Decide(new(rules, rulesBasis), models));
+        Assert.Equal((stage, basis, disagree, false), StageVote.Decide(new(rules, rulesBasis), [.. models.Select(m => (LegalStage?)m)]));
+
+    // The row "a configured model's answer is missing": UNKNOWN, no basis, the indicator, whatever the others read and however
+    // many models are configured; the answers given only say whether the readers that answered disagree.
+    [Theory]
+    // One model configured, its answer missing: not the rules' stage alone.
+    [InlineData(Indicted, StageBasis.Keyword, new LegalStage[0], 1, false)]
+    [InlineData(Unknown, null, new LegalStage[0], 1, false)]
+    // Two configured, one missing: not a "unanimous" of the two that remain, nor the rules' stage.
+    [InlineData(Indicted, StageBasis.Keyword, new[] { Indicted }, 1, false)]
+    [InlineData(Indicted, StageBasis.Keyword, new[] { Convicted }, 1, true)]
+    // Two configured, both missing.
+    [InlineData(Convicted, StageBasis.ReleaseWholeText, new LegalStage[0], 2, false)]
+    public void A_missing_answer_leaves_the_stage_unknown_with_the_indicator(LegalStage rules, string? rulesBasis, LegalStage[] answered, int missing, bool disagree) =>
+        Assert.Equal((Unknown, (string?)null, disagree, true),
+            StageVote.Decide(new(rules, rulesBasis), [.. answered.Select(m => (LegalStage?)m), .. Enumerable.Repeat((LegalStage?)null, missing)]));
 
     [Fact]
     public void Without_stage_models_the_condition_is_the_rules_alone()
@@ -63,17 +78,19 @@ public class StageVoteTests
         public StageAnswer? Read(string text, IReadOnlyList<string> names) => throw e;
     }
 
-    // A model fails by answering nothing or by throwing (a timeout is a cancellation); either way it drops out of the vote
-    // (ADR-0012), is listed without a stage, and the condition says so.
+    // A model fails by answering nothing or by throwing (a timeout is a cancellation); either way its answer is missing
+    // (ADR-0012): it is listed without a stage, the stage is UNKNOWN without a basis, and the condition carries the indicator.
+    // The classifier answers (here differing from the rules), fails too, or is not configured (the llm the only model).
     [Theory]
-    [InlineData("null", false)]
-    [InlineData("throw", false)]
-    [InlineData("timeout", false)]
-    // One of two fails: the vote is the rules and one model's, which here disagree.
-    [InlineData("null", true)]
-    [InlineData("throw", true)]
-    [InlineData("timeout", true)]
-    public void A_model_that_does_not_answer_drops_out_of_the_vote_and_is_named_without_a_stage(string failure, bool classifierAnswers)
+    [InlineData("null", "fails")]
+    [InlineData("throw", "fails")]
+    [InlineData("timeout", "fails")]
+    [InlineData("null", "answers")]
+    [InlineData("throw", "answers")]
+    [InlineData("timeout", "answers")]
+    [InlineData("null", "absent")]
+    [InlineData("timeout", "absent")]
+    public void A_model_that_does_not_answer_is_named_without_a_stage_and_the_stage_is_unknown(string failure, string classifier)
     {
         IStageReader Failing(string name) => failure switch
         {
@@ -81,11 +98,31 @@ public class StageVoteTests
             "timeout" => new Throwing(name, new TaskCanceledException("model timed out")),
             _ => new Reader(name, null),
         };
-        var c = Adverse(News, classifierAnswers ? new Reader("classifier", new(Convicted)) : Failing("classifier"), Failing("llm"));
+        IStageReader[] models = classifier switch
+        {
+            "answers" => [new Reader("classifier", new(Convicted)), Failing("llm")],
+            "fails" => [Failing("classifier"), Failing("llm")],
+            _ => [Failing("llm")],
+        };
+        var c = Adverse(News, models);
+        Assert.Equal((Unknown, (string?)null), (c.LegalStage, c.LegalStageBasis));
+        StageReaderResult[] readers = classifier switch
+        {
+            "answers" => [new("rules", Indicted, StageBasis.Keyword), new("classifier", Convicted), new("llm", null)],
+            "fails" => [new("rules", Indicted, StageBasis.Keyword), new("classifier", null), new("llm", null)],
+            _ => [new("rules", Indicted, StageBasis.Keyword), new("llm", null)],
+        };
+        Assert.Equal(readers, c.StageReaders!);
+        Assert.Equal(classifier == "answers" ? [StageVote.ReadersDisagree, StageVote.ReaderNoAnswer] : [StageVote.ReaderNoAnswer], c.ReasonCodes);
+    }
+
+    // Configured on purpose with one model that answers: today's row, the rules' stage stands and a difference orders review.
+    [Fact]
+    public void One_configured_model_that_answers_leaves_the_rules_stage()
+    {
+        var c = Adverse(News, new Reader("llm", new(Convicted)));
         Assert.Equal((Indicted, StageBasis.Keyword), (c.LegalStage, c.LegalStageBasis));
-        Assert.Equal([new("rules", Indicted, StageBasis.Keyword), new("classifier", classifierAnswers ? Convicted : null), new StageReaderResult("llm", null)],
-            c.StageReaders!);
-        Assert.Equal(classifierAnswers ? [StageVote.ReadersDisagree, StageVote.ReaderNoAnswer] : [StageVote.ReaderNoAnswer], c.ReasonCodes);
+        Assert.Equal([StageVote.ReadersDisagree], c.ReasonCodes);
     }
 
     [Fact]

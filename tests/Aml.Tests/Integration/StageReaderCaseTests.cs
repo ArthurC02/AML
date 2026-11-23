@@ -70,7 +70,9 @@ public class StageReaderCaseTests : ServiceTestBase
         var conditions = (await _cases.GetAnalysisAsync(created.CaseId, 1, ct))!.Result.Hits.Select(h => Assert.Single(h.Conditions)).ToList();
         Assert.Equal([[StageVote.ReadersDisagree], [StageVote.ReadersDisagree], [StageVote.ReaderNoAnswer]], conditions.Select(c => c.ReasonCodes));
         Assert.Equal([LegalStage.Convicted, LegalStage.Convicted, null], conditions.Select(c => c.StageReaders![1].Stage));
-        Assert.All(conditions, c => Assert.Equal((LegalStage.Indicted, StageBasis.Keyword), (c.LegalStage, c.LegalStageBasis)));
+        // The rules and one model that answered: the rules' stage; the hit whose answer is missing: UNKNOWN, no basis.
+        Assert.Equal([(LegalStage.Indicted, StageBasis.Keyword), (LegalStage.Indicted, StageBasis.Keyword), (LegalStage.Unknown, (string?)null)],
+            conditions.Select(c => (c.LegalStage, c.LegalStageBasis)));
 
         // A re-analysis has a budget of its own.
         given.Clear();
@@ -78,26 +80,58 @@ public class StageReaderCaseTests : ServiceTestBase
         Assert.Equal([TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(30)], given);
     }
 
-    /// <summary>A batch job whose language model is slow on every hit succeeds with a revision: the model's time stays within the
-    /// budget, below the job's deadline, so the job is not TIMEOUT.</summary>
-    [Fact]
-    public async Task A_batch_job_with_a_slow_language_model_on_every_hit_succeeds_with_a_revision()
+    /// <summary>
+    /// A batch job whose language model's answers are missing is retried before it writes (pipeline-api-and-batch.md#durable-batch-execution):
+    /// attempts 1 and 2 fail with STAGE_NO_ANSWER and write nothing. On attempt 3 the model answers and the revision has the
+    /// voted stage; or it never answers, and the last attempt writes UNKNOWN with STAGE_READER_NO_ANSWER and the job succeeds,
+    /// not DEAD_LETTER. The slow model's time stays within the budget, below the job's deadline, so no attempt is TIMEOUT.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_batch_job_retries_a_missing_stage_answer_and_its_last_attempt_writes(bool answersOnAttempt3)
     {
         var ct = TestContext.Current.CancellationToken;
         var clock = new ManualTimeProvider(T0);
-        var given = new List<TimeSpan>();
+        var attempt = 0;
         var options = new BatchOptions();
-        var batch = new BatchService(_jobs, new CaseService(_cases, clock, stageReaders: [Slow(clock, given, answers: false)]), _ => ThreeHits(), options, clock);
-        var b = await batch.SubmitAsync([new BatchItemRequest("s-slow", "e-slow", new Dictionary<string, string>())], ct);
-        var start = clock.GetUtcNow();
-        await batch.RunOnceAsync(ct);
+        // Silent: takes all the time it is given, then no answer. Answering: INDICTED at once, as the rules and the classifier.
+        var llm = new BudgetedStageReader("llm", (_, _, timeout) =>
+        {
+            if (answersOnAttempt3 && attempt == 3) return new(LegalStage.Indicted);
+            clock.Advance(timeout);
+            return null;
+        }, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(90));
+        var service = new CaseService(_cases, clock, stageReaders: [new Reader("classifier", LegalStage.Indicted), llm]);
+        var batch = new BatchService(_jobs, service, _ => ThreeHits(), options, clock);
+        var b = await batch.SubmitAsync([new BatchItemRequest("s-retry-" + answersOnAttempt3, "e-retry", new Dictionary<string, string>())], ct);
+
+        for (attempt = 1; attempt <= 2; attempt++)
+        {
+            var start = clock.GetUtcNow();
+            Assert.Equal(1, await batch.RunOnceAsync(ct));
+            Assert.True(clock.GetUtcNow() - start < options.Timeout);
+            var failed = Assert.Single((await batch.GetAsync(b.BatchId, ct))!.Items);
+            Assert.Equal((JobStatus.Pending, BatchService.StageNoAnswer, attempt, (int?)null), (failed.Status, failed.ErrorCode, failed.AttemptCount, failed.AnalysisRevision));
+            Assert.Equal(0, (await _cases.GetAsync(failed.JobId, ct))!.CurrentRevision); // nothing written
+            clock.Advance(TimeSpan.FromMinutes(1)); // past the backoff (10 s, then 20 s)
+        }
+        Assert.Equal(1, await batch.RunOnceAsync(ct));
 
         var item = Assert.Single((await batch.GetAsync(b.BatchId, ct))!.Items);
-        Assert.Equal((JobStatus.Succeeded, (string?)null, (int?)1), (item.Status, item.ErrorCode, item.AnalysisRevision));
-        Assert.Equal(TimeSpan.FromSeconds(90), clock.GetUtcNow() - start);
-        Assert.True(clock.GetUtcNow() - start < options.Timeout);
-        var conditions = (await _cases.GetAnalysisAsync(item.CaseId!, 1, ct))!.Result.Hits.Select(h => Assert.Single(h.Conditions));
-        Assert.All(conditions, c => Assert.Equal([StageVote.ReaderNoAnswer], c.ReasonCodes));
+        Assert.Equal((JobStatus.Succeeded, 3, (int?)1), (item.Status, item.AttemptCount, item.AnalysisRevision));
+        Assert.Equal(1, (await _cases.GetAsync(item.CaseId!, ct))!.CurrentRevision);
+        var conditions = (await _cases.GetAnalysisAsync(item.CaseId!, 1, ct))!.Result.Hits.Select(h => Assert.Single(h.Conditions)).ToList();
+        Assert.Equal(3, conditions.Count);
+        if (answersOnAttempt3)
+            Assert.All(conditions, c => Assert.Equal((LegalStage.Indicted, StageBasis.VoteUnanimous, 0), (c.LegalStage, c.LegalStageBasis, c.ReasonCodes.Count)));
+        else
+            Assert.All(conditions, c =>
+            {
+                Assert.Equal((LegalStage.Unknown, (string?)null), (c.LegalStage, c.LegalStageBasis));
+                Assert.Equal([StageVote.ReaderNoAnswer], c.ReasonCodes);
+                Assert.Null(c.StageReaders![2].Stage);
+            });
     }
 
     [Fact]

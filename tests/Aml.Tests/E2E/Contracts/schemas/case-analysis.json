@@ -689,7 +689,7 @@
                   "default": null
                 },
                 "stageReaders": {
-                  "description": "各讀取者讀出的法律階段：規則與每個設定的法律階段模型（未回答者無階段）；未設定模型時省略",
+                  "description": "各讀取者讀出的法律階段：規則與每個設定的法律階段模型（回答缺值者無階段）；未設定模型時省略",
                   "type": [
                     "array",
                     "null"
@@ -705,7 +705,7 @@
                         "type": "string"
                       },
                       "stage": {
-                        "description": "此讀取者讀出的法律階段；模型未回答時省略（STAGE_READER_NO_ANSWER）",
+                        "description": "此讀取者讀出的法律階段；模型回答缺值時省略（STAGE_READER_NO_ANSWER），與回答 UNKNOWN 不同",
                         "enum": [
                           "UNKNOWN",
                           "ALLEGED",

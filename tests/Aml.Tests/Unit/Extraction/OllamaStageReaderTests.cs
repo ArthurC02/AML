@@ -44,10 +44,17 @@ public class OllamaStageReaderTests
         Assert.Equal(new StageAnswer(LegalStage.Unknown), Read((_, _) => Reply("""{"persons":[{"id":"1","stage":"UNKNOWN","quote":""}]}""")).Answer);
     }
 
+    // A well-formed answer without a stage for person 1 is the model's answer: UNKNOWN, not a missing one.
+    [Theory]
+    [InlineData("""{"persons":[]}""")]
+    [InlineData("""{"persons":[{"id":"2","stage":"CONVICTED","quote":"x"}]}""")]
+    public void A_well_formed_answer_without_person_one_is_unknown(string content) =>
+        Assert.Equal(new StageAnswer(LegalStage.Unknown), Read((_, _) => Reply(content)).Answer);
+
+    // An answer that cannot be read is missing (null).
     [Theory]
     [InlineData("not json")]
     [InlineData("""{"persons":[{"id":"1","stage":"ARRESTED","quote":""}]}""")]
-    [InlineData("""{"persons":[]}""")]
     [InlineData("""{"people":[]}""")]
     public void An_unreadable_answer_is_none(string content) => Assert.Null(Read((_, _) => Reply(content)).Answer);
 

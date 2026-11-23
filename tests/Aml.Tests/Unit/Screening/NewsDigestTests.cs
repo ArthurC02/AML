@@ -273,6 +273,9 @@ public class NewsDigestTests
         var indictment = Assert.Single(d.Events);
         Assert.Equal(["MARKET_ABUSE", "MONEY_LAUNDERING"], indictment.OffenceCategories);
         Assert.Equal("8年", indictment.RequestedPenalty);
+        // The same term asked of each defendant.
+        Assert.Equal("五年", Assert.Single(Digest("檢方起訴王大明等三人，求刑各五年。").Events).RequestedPenalty);
+        Assert.Equal("6年", Assert.Single(Digest("檢方起訴王大明、李小華，求處有期徒刑各6年。").Events).RequestedPenalty);
         Assert.All(indictment.OffenceCategories, c => Assert.NotNull(Aml.Core.Codes.CodeCatalog.Find(c)));
 
         var final = Assert.Single(Digest("王大明詐欺案判處有期徒刑3年，緩刑5年，全案定讞。").Events, e => e.Type == NewsEventType.Conviction);

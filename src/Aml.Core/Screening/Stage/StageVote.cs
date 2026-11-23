@@ -38,13 +38,29 @@ internal static class StageVote
         var squashed = Squash(news);
         var readers = new List<StageReaderResult> { new(Rules, rules.Stage, rules.Basis) };
         foreach (var model in models)
-            if (model.Read(news, names) is { } answer)
+            if (Ask(model, news, names) is { } answer)
             {
                 var quote = string.IsNullOrEmpty(answer.Quote) ? null : answer.Quote;
                 readers.Add(new(model.Name, answer.Stage, Quote: quote, QuoteInText: quote is null ? null : Squash(quote) is { Length: > 0 } q && squashed.Contains(q, StringComparison.Ordinal)));
             }
         var (stage, basis, disagree) = Decide(rules, [.. readers.Skip(1).Select(r => r.Stage)]);
         return (new(stage, basis), disagree, readers);
+    }
+
+    // Any failure of a reader drops it from the vote; it never blocks the analysis (ADR-0012). No caller token reaches here,
+    // so a cancellation is the reader's own (a timeout) and is a failure like any other.
+    private static StageAnswer? Ask(IStageReader model, string news, IReadOnlyList<string> names)
+    {
+        try
+        {
+            return model.Read(news, names);
+        }
+#pragma warning disable CA1031 // failure isolation: a reader that throws is a reader that did not answer
+        catch (Exception e) when (e is not OutOfMemoryException)
+#pragma warning restore CA1031
+        {
+            return null;
+        }
     }
 
     private static string Squash(string s) => string.Concat(s.Where(c => !char.IsWhiteSpace(c)));

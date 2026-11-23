@@ -144,7 +144,7 @@ public sealed class BatchTests : IDisposable
         Assert.Equal((2, 0), (colons.Queued, colons.Duplicates.Count));
 
         // The way forward: the fixed files create the Case directly; no Case row was left behind.
-        var files = Directory.GetFiles(GoldenCases.GoldenCaseTests.Folder("GC-11"), "*.txt").ToDictionary(p => Path.GetFileName(p), File.ReadAllText);
+        var files = GoldenCaseFiles.Read("GC-11");
         var (created, inserted) = await cases.CreateOrGetAsync("s1", "e1", TxtCaseReader.ReadFiles(files), ct, files);
         Assert.Equal((true, 1), (inserted, created.CurrentRevision));
     }

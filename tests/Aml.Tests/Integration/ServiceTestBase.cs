@@ -26,7 +26,6 @@ public abstract class ServiceTestBase : IDisposable
     protected readonly ListService _listService;
     protected static readonly DateTimeOffset T0 = new(2026, 11, 4, 0, 0, 0, TimeSpan.Zero);
 
-    protected static readonly string Gc11 = GoldenCases.GoldenCaseTests.Folder("GC-11");
     protected const string ProfileName = "名單資料_90000011.txt";
 
     protected ServiceTestBase()
@@ -45,8 +44,7 @@ public abstract class ServiceTestBase : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    protected static Dictionary<string, string> CaseFiles() =>
-        Directory.GetFiles(Gc11, "*.txt").ToDictionary(p => Path.GetFileName(p), File.ReadAllText);
+    protected static Dictionary<string, string> CaseFiles() => GoldenCaseFiles.Read("GC-11");
 
     protected BatchService Batch(BatchOptions? options = null) =>
         new(_jobs, _caseService, TxtCaseReader.ReadFiles, options ?? new BatchOptions(), TimeProvider.System, _listService);

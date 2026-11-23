@@ -47,17 +47,23 @@ if (builder.Configuration["NewsModels:Directory"] is { Length: > 0 } modelDirect
     builder.Services.AddSingleton<INewsModel>(new OnnxNewsModel(modelDirectory));
 // The stage models are optional too: each one configured votes with the rules on the stage in attached news (StageVote);
 // none configured, the rules alone give it.
+var batchOptions = builder.Configuration.GetSection("Batch").Get<BatchOptions>() ?? new BatchOptions();
+batchOptions.Validate();
 var stageModels = builder.Configuration.GetSection("StageModels");
 if (stageModels["ClassifierDirectory"] is { Length: > 0 } classifierDirectory)
     builder.Services.AddSingleton<IStageReader>(new OnnxStageClassifier(classifierDirectory));
 if (stageModels["LlmUrl"] is { Length: > 0 } llmUrl)
+{
+    // Below the batch deadline, so a slow server drops the language model from the vote instead of timing out the job (ADR-0012).
+    var llmTimeout = TimeSpan.FromSeconds(stageModels.GetValue<double?>("LlmTimeoutSeconds") ?? 60);
+    if (llmTimeout <= TimeSpan.Zero || llmTimeout >= batchOptions.Timeout)
+        throw new InvalidOperationException("StageModels:LlmTimeoutSeconds must be above zero and below Batch:Timeout.");
     builder.Services.AddSingleton<IStageReader>(new OllamaStageReader(
-        new HttpClient { BaseAddress = new Uri(llmUrl), Timeout = TimeSpan.FromSeconds(stageModels.GetValue<double?>("LlmTimeoutSeconds") ?? 60) },
+        new HttpClient { BaseAddress = new Uri(llmUrl), Timeout = llmTimeout },
         stageModels["LlmModel"] is { Length: > 0 } llmModel ? llmModel : throw new InvalidOperationException("StageModels:LlmUrl needs StageModels:LlmModel.")));
+}
 builder.Services.AddSingleton<CaseService>();
 builder.Services.AddSingleton<IJobStore, JobStore>();
-var batchOptions = builder.Configuration.GetSection("Batch").Get<BatchOptions>() ?? new BatchOptions();
-batchOptions.Validate();
 builder.Services.AddSingleton(batchOptions);
 // Long enough for running jobs to settle (JobWorker drains them); the host's default of 30 s is shorter than one job's deadline.
 builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = batchOptions.ShutdownTimeout);

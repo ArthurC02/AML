@@ -9,8 +9,7 @@ namespace Aml.Tests.Integration;
 /// <summary>AI-ready data of a stored revision: the fact tables agree with the JSON, and the lineage names what it was computed from.</summary>
 public sealed class AnalysisDataTests : ServiceTestBase
 {
-    private static Dictionary<string, string> Files(string gc) =>
-        Directory.GetFiles(GoldenCases.GoldenCaseTests.Folder(gc), "*.txt").ToDictionary(p => Path.GetFileName(p), File.ReadAllText);
+    private static Dictionary<string, string> Files(string gc) => GoldenCaseFiles.Read(gc);
 
     private sealed record HitRow(long HitNumber, string ProfileId, string ConditionTypes, string LegalStage, string IdentityDecision, long? Stage3Row, string? HardConflict, string PairResult, string? ReviewPriority);
 

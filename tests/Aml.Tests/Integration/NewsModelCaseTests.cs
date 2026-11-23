@@ -23,7 +23,7 @@ public class NewsModelCaseTests : ServiceTestBase
     // GC-02 with the news saying the Profile person was indicted (as AUG-02-05).
     private static Dictionary<string, string> IndictedCase()
     {
-        var files = Directory.GetFiles(GoldenCases.GoldenCaseTests.Folder("GC-02"), "*.txt").ToDictionary(p => Path.GetFileName(p), File.ReadAllText);
+        var files = GoldenCaseFiles.Read("GC-02");
         Assert.Contains("檢方已分案偵辦。", files[News], StringComparison.Ordinal);
         files[News] = files[News].Replace("檢方已分案偵辦。", "檢方已起訴林美玲。", StringComparison.Ordinal);
         return files;
@@ -48,38 +48,85 @@ public class NewsModelCaseTests : ServiceTestBase
         被告林美玲向被害人佯稱投資獲利，致被害人陷於錯誤而匯款。被告王大明被訴部分，不能證明其犯罪。
         """;
 
+    /// <summary>Made-up news of nine kinds about GC-02's Profile person (the stage reader tests read the same texts).</summary>
+    internal static readonly Dictionary<string, string> Texts = new()
+    {
+        // A judgment with two defendants: the Profile person is convicted, the co-defendant acquitted.
+        ["judgment"] = Judgment,
+        // The Profile person is the victim of someone else's indicted fraud: no step is theirs.
+        ["victim"] = "王大明涉嫌以假投資詐騙，檢方已起訴王大明。被害人林美玲表示遭騙新臺幣一百萬元。",
+        // One name stands for a group: the arrest and the referral are the Profile person's too.
+        ["group"] = "警方昨日逮捕林美玲等3人，全案依詐欺罪嫌移送臺北地檢署偵辦。",
+        // The prosecutor decided not to indict.
+        ["dismissed"] = "林美玲涉嫌詐欺一案，檢察官偵查後認罪嫌不足，對林美玲為不起訴處分。",
+        // A report's own wording of a judgment, and a reversal on appeal.
+        ["sentence"] = "林美玲因詐欺遭檢方起訴，臺北地院判林美玲有期徒刑二年。",
+        ["acquitted"] = "林美玲被訴詐欺一案，臺北地院審理後判林美玲無罪。",
+        ["reversed"] = "林美玲一審遭判處有期徒刑二年，二審改判無罪。",
+        // Wanted, with no judicial step told.
+        ["wanted"] = "林美玲涉嫌詐欺，棄保潛逃，臺北地檢署已對林美玲發布通緝。",
+        // The husband is indicted, not the Profile person.
+        ["relative"] = "林美玲的丈夫王大明涉嫌詐欺，王大明遭檢方起訴。",
+    };
+
+    /// <summary>GC-02's Case with one of <see cref="Texts"/> as its attached news.</summary>
+    internal static (Dictionary<string, string> Files, Core.Subjects.CaseInput Input) CaseWith(string key)
+    {
+        var files = IndictedCase();
+        var read = TxtCaseReader.ReadFiles(files);
+        return (files, read with { NewsByProfileId = read.NewsByProfileId.ToDictionary(n => n.Key, n => n.Value with { Text = Texts[key].ReplaceLineEndings("\n") }) });
+    }
+
     /// <summary>
-    /// Made-up news of nine kinds on GC-02's Case, read by the trained models (AML_NEWS_MODELS; skipped without it). The
-    /// expectations are what the reviewer of a Case on this Profile person needs, not what the models happen to give: the
-    /// person's own stage, nobody else's step, and the rules and the models saying the same. In every row the Case itself
-    /// must stay as it is without the models.
+    /// The rules' stage of each text, without any model (watchlist-and-adverse-information.md#stage-from-attached-news).
+    /// The news models never change it (the theory below checks the whole Case is the same with them).
     /// </summary>
     [Theory]
-    // A judgment with two defendants: the Profile person is convicted, the co-defendant acquitted.
-    [InlineData("judgment", Judgment, LegalStage.Convicted, NewsParty.Suspect, "Conviction", "Acquittal", "王大明", "Acquittal", "Conviction")]
-    // The Profile person is the victim of someone else's indicted fraud: no step is theirs.
-    [InlineData("victim", "王大明涉嫌以假投資詐騙，檢方已起訴王大明。被害人林美玲表示遭騙新臺幣一百萬元。", LegalStage.Unknown, NewsParty.Victim, "", "Indictment,Conviction,Arrest", "王大明", "Indictment", "Conviction")]
-    // One name stands for a group: the arrest and the referral are the Profile person's too.
-    [InlineData("group", "警方昨日逮捕林美玲等3人，全案依詐欺罪嫌移送臺北地檢署偵辦。", LegalStage.Alleged, NewsParty.Suspect, "Arrest,Referral", "Indictment,Conviction", null, "", "")]
-    // The prosecutor decided not to indict.
-    [InlineData("dismissed", "林美玲涉嫌詐欺一案，檢察官偵查後認罪嫌不足，對林美玲為不起訴處分。", LegalStage.Dismissed, NewsParty.Suspect, "NonIndictment", "Conviction", null, "", "")]
-    // A report's own wording of a judgment, and a reversal on appeal.
-    [InlineData("sentence", "林美玲因詐欺遭檢方起訴，臺北地院判林美玲有期徒刑二年。", LegalStage.Convicted, NewsParty.Suspect, "Indictment,Conviction", "Acquittal", null, "", "")]
-    [InlineData("acquitted", "林美玲被訴詐欺一案，臺北地院審理後判林美玲無罪。", LegalStage.Acquitted, NewsParty.Suspect, "Acquittal", "Conviction", null, "", "")]
-    [InlineData("reversed", "林美玲一審遭判處有期徒刑二年，二審改判無罪。", LegalStage.Acquitted, NewsParty.Suspect, "Conviction,Acquittal", "", null, "", "")]
-    // Wanted, with no judicial step told: the models state the notice; 通緝 in a report is no stage.
-    [InlineData("wanted", "林美玲涉嫌詐欺，棄保潛逃，臺北地檢署已對林美玲發布通緝。", LegalStage.Unknown, NewsParty.Suspect, "WantedNotice", "Indictment,Conviction", null, "", "")]
-    // The husband is indicted, not the Profile person.
-    [InlineData("relative", "林美玲的丈夫王大明涉嫌詐欺，王大明遭檢方起訴。", LegalStage.Unknown, null, "", "Indictment,Conviction", "王大明", "Indictment", "Conviction")]
-    public async Task The_trained_models_and_the_rules_read_the_same_case(string key, string text, LegalStage stage, NewsParty? party,
+    [InlineData("judgment", LegalStage.Convicted)]
+    // "a relative, a victim or witness and another person's clause are read as the rest of the text … So a Profile person who
+    // is only the victim, or only a relative, of someone the text says was indicted reads INDICTED by the rules alone":
+    // the over-reading only the stage models' vote can stop.
+    [InlineData("victim", LegalStage.Indicted)]
+    [InlineData("group", LegalStage.Alleged)]
+    [InlineData("dismissed", LegalStage.Dismissed)]
+    [InlineData("sentence", LegalStage.Convicted)]
+    [InlineData("acquitted", LegalStage.Acquitted)]
+    [InlineData("reversed", LegalStage.Acquitted)]
+    // "通緝 in a report is no stage".
+    [InlineData("wanted", LegalStage.Unknown)]
+    [InlineData("relative", LegalStage.Indicted)]
+    public async Task The_rules_read_the_stage_of_each_text(string key, LegalStage stage)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (files, input) = CaseWith(key);
+        var created = await new CaseService(_cases, TimeProvider.System).CreateAsync($"s-{key}-rules", $"e-{key}-rules", input, ct, files);
+        var hit = Assert.Single((await _cases.GetAnalysisAsync(created.CaseId, 1, ct))!.Result.Hits);
+        Assert.Equal(stage, Assert.Single(hit.Conditions).LegalStage);
+    }
+
+    /// <summary>
+    /// The same texts read by the trained models (AML_NEWS_MODELS; skipped without it). The expectations are what the
+    /// reviewer of a Case on this Profile person needs, not what the models happen to give: nobody else's step is the
+    /// person's, and in every row the Case itself stays as it is without the models.
+    /// </summary>
+    [Theory]
+    [InlineData("judgment", NewsParty.Suspect, "Conviction", "Acquittal", "王大明", "Acquittal", "Conviction")]
+    [InlineData("victim", NewsParty.Victim, "", "Indictment,Conviction,Arrest", "王大明", "Indictment", "Conviction")]
+    [InlineData("group", NewsParty.Suspect, "Arrest,Referral", "Indictment,Conviction", null, "", "")]
+    [InlineData("dismissed", NewsParty.Suspect, "NonIndictment", "Conviction", null, "", "")]
+    [InlineData("sentence", NewsParty.Suspect, "Indictment,Conviction", "Acquittal", null, "", "")]
+    [InlineData("acquitted", NewsParty.Suspect, "Acquittal", "Conviction", null, "", "")]
+    [InlineData("reversed", NewsParty.Suspect, "Conviction,Acquittal", "", null, "", "")]
+    // The models state the wanted notice.
+    [InlineData("wanted", NewsParty.Suspect, "WantedNotice", "Indictment,Conviction", null, "", "")]
+    [InlineData("relative", null, "", "Indictment,Conviction", "王大明", "Indictment", "Conviction")]
+    public async Task The_trained_models_and_the_rules_read_the_same_case(string key, NewsParty? party,
         string stated, string notStated, string? other, string otherStated, string otherNotStated)
     {
         var directory = Environment.GetEnvironmentVariable("AML_NEWS_MODELS");
         Assert.SkipWhen(string.IsNullOrEmpty(directory), "AML_NEWS_MODELS is not set: the trained models are outside the repository");
         var ct = TestContext.Current.CancellationToken;
-        var files = IndictedCase();
-        var read = TxtCaseReader.ReadFiles(files);
-        var input = read with { NewsByProfileId = read.NewsByProfileId.ToDictionary(n => n.Key, n => n.Value with { Text = text.ReplaceLineEndings("\n") }) };
+        var (files, input) = CaseWith(key);
         using var model = new OnnxNewsModel(directory!);
         async Task<AnalysisRecord> Run(INewsModel? m, string k) =>
             (await _cases.GetAnalysisAsync((await new CaseService(_cases, TimeProvider.System, newsModel: m).CreateAsync($"s-{key}-{k}", $"e-{key}-{k}", input, ct, files)).CaseId, 1, ct))!;
@@ -88,7 +135,6 @@ public class NewsModelCaseTests : ServiceTestBase
         var withModels = await Run(model, "models");
 
         AssertSameCase(rulesOnly, withModels);
-        Assert.Equal(stage, Assert.Single(Assert.Single(withModels.Result.Hits).Conditions).LegalStage);
         var entities = Assert.Single(withModels.Explanation!.Hits).NewsDigest!.Model!.Entities;
         static string[] Steps(NewsModelEntity e) => [.. e.Events.Where(x => x.Certainty == NewsCertainty.Stated).Select(x => x.Type.ToString())];
         static string[] List(string csv) => csv.Split(',', StringSplitOptions.RemoveEmptyEntries);

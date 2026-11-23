@@ -75,6 +75,13 @@ public sealed class ManualTimeProvider(DateTimeOffset start) : TimeProvider
     public void Advance(TimeSpan by) => _now += by;
 }
 
+public static class GoldenCaseFiles
+{
+    /// <summary>A Golden Case's .txt files by file name, as the upload API and the services take them.</summary>
+    public static Dictionary<string, string> Read(string gc) =>
+        Directory.GetFiles(GoldenCases.GoldenCaseTests.Folder(gc), "*.txt").ToDictionary(p => Path.GetFileName(p), File.ReadAllText);
+}
+
 public static class Wait
 {
     /// <summary>Polls until <paramref name="done"/> holds; fails with <paramref name="what"/> instead of timing out silently.</summary>

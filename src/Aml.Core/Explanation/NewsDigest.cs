@@ -755,8 +755,8 @@ public static partial class NewsDigests
     [GeneratedRegex(@"有期徒刑[\d一二三四五六七八九十兩]+年(?:[\d一二三四五六七八九十兩]+個?月)?|(?:判處|判刑)(?<years>[\d一二三四五六七八九十兩]+年(?:[\d一二三四五六七八九十兩]+個?月)?)|無期徒刑|死刑|拘役[\d一二三四五六七八九十兩]+日|緩刑[\d一二三四五六七八九十兩]+年|併科罰金(?:新[台臺]幣)?[\d,.一二三四五六七八九十兩百千萬億]+元|得易科罰金|易科罰金|褫奪公權[\d一二三四五六七八九十兩]+年", RegexOptions.NonBacktracking)]
     private static partial Regex PenaltyPattern();
 
-    // 求刑 is what the prosecutor asks, not a sentence.
-    [GeneratedRegex(@"(?:具體)?求(?:刑|處)(?:有期徒刑)?(?<years>[\d一二三四五六七八九十兩]+年(?:[\d一二三四五六七八九十兩]+個?月)?)|求處無期徒刑|求處死刑", RegexOptions.NonBacktracking)]
+    // 求刑 is what the prosecutor asks, not a sentence; 各 asks the same term of each defendant (求處各5年, 求刑有期徒刑各5年).
+    [GeneratedRegex(@"(?:具體)?求(?:刑|處)各?(?:有期徒刑)?各?(?<years>[\d一二三四五六七八九十兩]+年(?:[\d一二三四五六七八九十兩]+個?月)?)|求處無期徒刑|求處死刑", RegexOptions.NonBacktracking)]
     private static partial Regex RequestedPenaltyPattern();
 
     [GeneratedRegex("判決確定|定讞|全案確定|確定在案")]

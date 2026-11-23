@@ -26,7 +26,7 @@ public class StageReaderCaseTests : ServiceTestBase
     private async Task<AnalysisRecord> Analyse(string key, params IStageReader[] readers)
     {
         var ct = TestContext.Current.CancellationToken;
-        var files = Directory.GetFiles(GoldenCases.GoldenCaseTests.Folder("GC-02"), "*.txt").ToDictionary(p => Path.GetFileName(p), File.ReadAllText);
+        var files = GoldenCaseFiles.Read("GC-02");
         const string News = "新聞資訊_90000021.txt";
         files[News] = files[News].Replace("檢方已分案偵辦。", "檢方已起訴林美玲。", StringComparison.Ordinal);
         var created = await new CaseService(_cases, TimeProvider.System, stageReaders: readers).CreateAsync("s-" + key, "e-" + key, TxtCaseReader.ReadFiles(files), ct, files);
@@ -56,6 +56,79 @@ public class StageReaderCaseTests : ServiceTestBase
         // The stored record still meets its published schema.
         var json = JsonSerializer.Serialize(voted.Result, CaseJson.Options);
         Assert.Empty(GoldenCases.SchemaCheck.Errors(CaseJson.Schema(typeof(CaseAnalysis)), JsonNode.Parse(json), "$"));
+    }
+
+    private sealed class Recording : IStageReader
+    {
+        public List<(string Text, IReadOnlyList<string> Names)> Calls { get; } = [];
+        public string Name => "llm";
+
+        public StageAnswer? Read(string text, IReadOnlyList<string> names)
+        {
+            Calls.Add((text, [.. names]));
+            return null;
+        }
+    }
+
+    /// <summary>A model is given the attached news and the Profile's names, and no customer field (security-and-privacy.md: customer data stays in the bank).</summary>
+    [Fact]
+    public async Task A_stage_reader_receives_only_the_news_and_the_profile_names()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var files = GoldenCaseFiles.Read("GC-11");
+        var input = TxtCaseReader.ReadFiles(files);
+        var reader = new Recording();
+        await new CaseService(_cases, TimeProvider.System, stageReaders: [reader]).CreateAsync("s-privacy", "e-privacy", input, ct, files);
+
+        var (profileId, news) = Assert.Single(input.NewsByProfileId);
+        var (text, names) = Assert.Single(reader.Calls);
+        Assert.Equal(news.Text, text);
+        Assert.Equal(input.Profiles[profileId].Names, names);
+
+        // Every customer value that is not also one of the Profile's names: identifiers, birth date as written in Taiwan, addresses, work, relatives.
+        var s = input.Subject;
+        var customer = new List<string?> { s.Document?.Number, s.ReferenceNumber, s.TaxId?.Value, s.Occupation };
+        customer.AddRange(s.Names.Except(names));
+        customer.AddRange(s.Addresses.SelectMany(a => new[] { a.Raw, a.Normalized }));
+        customer.AddRange((s.Employments ?? []).Select(x => x.Organization));
+        customer.AddRange((s.Relatives ?? []).Select(x => x.Name));
+        if (s.DateOfBirth is { Year: var y, Month: { } m, Day: { } d })
+            customer.AddRange([$"{y}-{m:00}-{d:00}", $"{y}/{m}/{d}", $"{y}/{m:00}/{d:00}", $"{y - 1911}年{m}月{d}日", $"{y - 1911}/{m:00}/{d:00}", $"{y}{m:00}{d:00}"]);
+        var values = customer.OfType<string>().Where(v => v.Trim().Length >= 3).ToList();
+        Assert.True(values.Count >= 8, $"only {values.Count} customer values to look for");
+        Assert.All(values, v => Assert.False(text.Contains(v, StringComparison.Ordinal) || names.Any(n => n.Contains(v, StringComparison.Ordinal)), "a customer value reached the stage reader"));
+    }
+
+    /// <summary>A reader that answers what another one answered: the third vote agreeing with the classifier.</summary>
+    private sealed class Echo(IStageReader of) : IStageReader
+    {
+        public string Name => "llm";
+        public StageAnswer? Read(string text, IReadOnlyList<string> names) => of.Read(text, names);
+    }
+
+    /// <summary>
+    /// The guard against the rules' over-reading (watchlist-and-adverse-information.md#stage-from-attached-news): the rules
+    /// read INDICTED for a Profile person who is only the victim or a relative of the indicted person; the trained classifier
+    /// (AML_STAGE_MODEL; skipped without it) does not, so with a third reader agreeing with it the vote leaves the stage UNKNOWN.
+    /// </summary>
+    [Theory]
+    [InlineData("victim")]
+    [InlineData("relative")]
+    public async Task The_classifier_stops_the_rules_reading_another_persons_indictment(string key)
+    {
+        var directory = Environment.GetEnvironmentVariable("AML_STAGE_MODEL");
+        Assert.SkipWhen(string.IsNullOrEmpty(directory), "AML_STAGE_MODEL is not set: the trained model is outside the repository");
+        var ct = TestContext.Current.CancellationToken;
+        using var classifier = new OnnxStageClassifier(directory!);
+        var (files, input) = NewsModelCaseTests.CaseWith(key);
+        var created = await new CaseService(_cases, TimeProvider.System, stageReaders: [classifier, new Echo(classifier)]).CreateAsync("s-guard-" + key, "e-guard-" + key, input, ct, files);
+        var c = Assert.Single(Assert.Single((await _cases.GetAnalysisAsync(created.CaseId, 1, ct))!.Result.Hits).Conditions);
+
+        TestContext.Current.SendDiagnosticMessage($"{key}: {string.Join(", ", c.StageReaders!.Select(r => $"{r.Reader} {r.Stage}"))}");
+        Assert.Equal(LegalStage.Indicted, c.StageReaders![0].Stage);
+        Assert.NotEqual(LegalStage.Indicted, c.StageReaders[1].Stage);
+        Assert.Equal((LegalStage.Unknown, StageBasis.VoteMajority), (c.LegalStage, c.LegalStageBasis));
+        Assert.Equal([StageVote.ReadersDisagree], c.ReasonCodes);
     }
 
     /// <summary>

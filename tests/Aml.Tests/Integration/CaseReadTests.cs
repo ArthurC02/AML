@@ -36,7 +36,7 @@ public sealed class CaseReadTests : ServiceTestBase
     public async Task A_case_candidate_list_cut_by_top_is_marked_truncated(CandidateSource source)
     {
         var ct = TestContext.Current.CancellationToken;
-        var files = Directory.GetFiles(GoldenCases.GoldenCaseTests.Folder("GC-01"), "*.txt").ToDictionary(p => Path.GetFileName(p), File.ReadAllText);
+        var files = GoldenCaseFiles.Read("GC-01");
         var created = await _caseService.CreateAsync("s", "e", TxtCaseReader.ReadFiles(files), ct, files);
 
         var all = (await _listService.CaseCandidatesAsync(created.CaseId, source, 10, ct))!;

@@ -57,10 +57,26 @@ public class StageVoteTests
         Assert.Empty(c.ReasonCodes);
     }
 
-    [Fact]
-    public void A_model_that_does_not_answer_leaves_the_rules_alone_and_is_not_listed()
+    private sealed class Throwing(string name, Exception e) : IStageReader
     {
-        var c = Adverse(News, new Reader("classifier", null), new Reader("llm", null));
+        public string Name => name;
+        public StageAnswer? Read(string text, IReadOnlyList<string> names) => throw e;
+    }
+
+    // A model fails by answering nothing or by throwing (a timeout is a cancellation); either way it drops out (ADR-0012).
+    [Theory]
+    [InlineData("null")]
+    [InlineData("throw")]
+    [InlineData("timeout")]
+    public void A_model_that_does_not_answer_leaves_the_rules_alone_and_is_not_listed(string failure)
+    {
+        IStageReader Failing(string name) => failure switch
+        {
+            "throw" => new Throwing(name, new InvalidOperationException("model failed")),
+            "timeout" => new Throwing(name, new TaskCanceledException("model timed out")),
+            _ => new Reader(name, null),
+        };
+        var c = Adverse(News, Failing("classifier"), Failing("llm"));
         Assert.Equal((Indicted, StageBasis.Keyword), (c.LegalStage, c.LegalStageBasis));
         Assert.Equal([new StageReaderResult("rules", Indicted, StageBasis.Keyword)], c.StageReaders!);
         Assert.Empty(c.ReasonCodes);

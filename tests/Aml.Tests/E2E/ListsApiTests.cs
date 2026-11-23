@@ -9,7 +9,6 @@ namespace Aml.Tests.E2E;
 public sealed class ListsApiTests(ApiHost api) : IClassFixture<ApiHost>
 {
 
-    private static readonly string Gc11 = GoldenCases.GoldenCaseTests.Folder("GC-11");
     private const string ProfileName = "名單資料_90000011.txt";
 
     private static MultipartFormDataContent Files(params (string Name, string Content)[] files)
@@ -30,7 +29,7 @@ public sealed class ListsApiTests(ApiHost api) : IClassFixture<ApiHost>
     {
         var ct = TestContext.Current.CancellationToken;
         var http = api.CreateClient();
-        var caseFiles = Directory.GetFiles(Gc11, "*.txt").Select(p => (Path.GetFileName(p), File.ReadAllText(p))).ToArray();
+        var caseFiles = GoldenCaseFiles.Read("GC-11").Select(f => (f.Key, f.Value)).ToArray();
         var create = Files(caseFiles);
         create.Add(new StringContent("subject-11"), "subjectRef");
         create.Add(new StringContent("event-11"), "triggerEventId");

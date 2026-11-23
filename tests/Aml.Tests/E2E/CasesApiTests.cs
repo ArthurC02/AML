@@ -9,15 +9,11 @@ namespace Aml.Tests.E2E;
 public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
 {
 
-    private static MultipartFormDataContent Upload(string gc, string trigger)
+    private static MultipartFormDataContent Upload(string gc, string trigger, string? subject = null)
     {
-        var form = new MultipartFormDataContent
-        {
-            { new StringContent("subject-" + gc), "subjectRef" },
-            { new StringContent(trigger), "triggerEventId" },
-        };
-        foreach (var path in Directory.GetFiles(GoldenCases.GoldenCaseTests.Folder(gc), "*.txt"))
-            form.Add(new ByteArrayContent(File.ReadAllBytes(path)), "files", Path.GetFileName(path));
+        var form = Files(gc);
+        form.Add(new StringContent(subject ?? "subject-" + gc), "subjectRef");
+        form.Add(new StringContent(trigger), "triggerEventId");
         return form;
     }
 
@@ -52,6 +48,90 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(caseId, again.GetProperty("caseId").GetString());
         Assert.Equal(1, again.GetProperty("currentRevision").GetInt32());
     }
+
+    /// <summary>
+    /// What a reviewer reads of each hit, through the API, as the Golden Cases' expected.yaml gives it. A hit is
+    /// "condition type|status|basis|legal stage|legal stage basis|identity decision|pair result|review priority|pair reason codes|identity reason codes";
+    /// "-" is null (absent from the JSON), lists are comma-separated. Stage bases from watchlist-and-adverse-information.md#stage-from-attached-news,
+    /// priorities from pipeline-api-and-batch.md#explanation-contents; a pair not in REVIEW has no review priority.
+    /// The news digest (watchlist-and-adverse-information.md#news-digest): an event type the news states (with the requested penalty
+    /// after a colon: the term asked), and one it must not hold.
+    /// </summary>
+    [Theory]
+    [InlineData("GC-01", null, null,
+        "ADVERSE_MEDIA|HIT|CATEGORY_MAPPING|UNKNOWN|-|NO_MATCH|NO_HIT|-||-",
+        "ADVERSE_MEDIA|HIT|CATEGORY_MAPPING|UNKNOWN|-|NO_MATCH|NO_HIT|-||-")]
+    [InlineData("GC-02", null, "INDICTMENT", // 分案偵辦 is not reported as indictment
+        "ADVERSE_MEDIA|HIT|CATEGORY_MAPPING|ALLEGED|STAGE_UNDER_INVESTIGATION|REVIEW|REVIEW|LOW||NO_NON_PREREQUISITE_SUPPORT,NO_BILATERAL_DIRECT_IDENTIFIER")]
+    [InlineData("GC-03", null, null,
+        "OFFICIAL_WANTED_LIST|HIT|CATEGORY_MAPPING|WANTED|STAGE_OFFICIAL_WANTED_LIST|PROBABLE_MATCH|REVIEW|HIGH||CONSISTENT_AT_AVAILABLE_PRECISION,NO_BILATERAL_DIRECT_IDENTIFIER")]
+    [InlineData("GC-11", null, null,
+        "ADVERSE_MEDIA|HIT|CATEGORY_MAPPING|UNKNOWN|-|PROBABLE_MATCH|REVIEW|HIGH||CONSISTENT_AT_AVAILABLE_PRECISION,NO_BILATERAL_DIRECT_IDENTIFIER")]
+    [InlineData("GC-12", "INDICTMENT:十八年", "CONVICTION", // indictment and the 18-year sentencing request asked of each; 求刑 is not a sentence
+        "ADVERSE_MEDIA|HIT|CATEGORY_MAPPING|INDICTED|STAGE_KEYWORD|REVIEW|REVIEW|LOW||NO_NON_PREREQUISITE_SUPPORT,NO_BILATERAL_DIRECT_IDENTIFIER")]
+    public async Task Case_outputs_carry_conditions_pair_results_and_codes(string gc, string? profileEvent, string? absentEvent, params string[] expectedHits)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        using var client = api.CreateClient();
+        using var created = await client.PostAsync("/api/cases", Upload(gc, "evt-outputs-" + gc, "subject-outputs-" + gc), ct);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var caseId = (await created.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("caseId").GetString();
+        var revision = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/revisions/1", ct);
+        var hits = revision.GetProperty("result").GetProperty("hits").EnumerateArray().ToList();
+        var explained = revision.GetProperty("explanation").GetProperty("hits").EnumerateArray().ToList();
+        var newsFiles = GoldenCaseFiles.Read(gc).Keys.Where(n => n.StartsWith("新聞資訊_", StringComparison.Ordinal)).ToList();
+
+        Assert.Equal(expectedHits.Length, hits.Count);
+        foreach (var (hit, e, expected) in hits.Zip(explained, expectedHits))
+        {
+            var f = expected.Split('|');
+            var c = Assert.Single(hit.GetProperty("conditions").EnumerateArray());
+            Assert.Equal(f[..5], new[] { Str(c, "type"), Str(c, "status"), Str(c, "basis"), Str(c, "legalStage"), Str(c, "legalStageBasis") ?? "-" });
+            Assert.Empty(Strings(c, "reasonCodes")); // the rules alone: no condition reason (#three-readers)
+            Assert.False(c.TryGetProperty("stageReaders", out _)); // no model configured
+            var identity = hit.GetProperty("identity");
+            Assert.Equal(f[5..8], new[] { Str(identity, "decision"), Str(hit, "pairResult"), Str(hit, "reviewPriority") ?? "-" });
+            Assert.Equal(List(f[8]), Strings(hit, "pairReasonCodes"));
+            if (f[9] != "-") Assert.Equal(List(f[9]), Strings(identity, "reasonCodes"));
+
+            // The explanation names the condition, and its stage with the catalog's name of the rule that gave it.
+            var external = e.GetProperty("summary").GetProperty("externalData").GetString()!;
+            Assert.Contains("判定為 " + f[0], external, StringComparison.Ordinal);
+            if (f[4] != "-")
+            {
+                var rule = await client.GetFromJsonAsync<JsonElement>("/api/codes/" + f[4], ct);
+                Assert.Contains($"法律階段 {f[3]}（依據：{rule.GetProperty("name").GetString()}（{f[4]}））", external, StringComparison.Ordinal);
+            }
+
+            // Each hit with attached news carries its digest, citing the attached news source; the Profile person comes first.
+            var profileId = Str(e, "profileId")!;
+            var hasNews = newsFiles.Contains($"新聞資訊_{profileId}.txt");
+            Assert.Equal(hasNews, e.GetProperty("attachedNews").GetBoolean());
+            Assert.Equal(hasNews, e.TryGetProperty("newsDigest", out var digest));
+            if (!hasNews) continue;
+            var cited = Assert.Single(e.GetProperty("sources").EnumerateArray(), s => s.GetProperty("attachedToProfile").GetBoolean() && Str(s, "usedFor") == "LEGAL_STAGE");
+            Assert.Equal(Str(cited, "ref"), Str(digest, "sourceRef"));
+            var summary = Strings(digest, "summary");
+            Assert.Contains($"[{Str(digest, "sourceRef")}]", summary[0], StringComparison.Ordinal);
+            var first = digest.GetProperty("people")[0];
+            Assert.Equal("PROFILE_NAME", Str(first, "match"));
+            Assert.Contains(Str(first, "name"), Strings(hit.GetProperty("profile"), "names"));
+            var events = digest.GetProperty("events").EnumerateArray().ToList();
+            if (profileEvent?.Split(':') is [var type, .. var asked])
+                Assert.Contains(events, v => Str(v, "type") == type && Str(v, "certainty") == "STATED" && Str(v, "requestedPenalty") == asked.SingleOrDefault());
+            if (absentEvent is not null) Assert.DoesNotContain(events, v => Str(v, "type") == absentEvent);
+            Assert.All(events, v => Assert.False(v.TryGetProperty("penalty", out _) && Str(v, "type") != "CONVICTION")); // a penalty only on a conviction
+            // An event about nobody named is said so in the summary.
+            if (events.Any(v => Str(v, "actor") is null)) Assert.Contains(summary, l => l.Contains("未指明對象", StringComparison.Ordinal));
+        }
+    }
+
+    private static string? Str(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind != JsonValueKind.Null ? v.GetString() : null;
+
+    private static string[] Strings(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Array ? [.. v.EnumerateArray().Select(x => x.GetString()!)] : [];
+
+    private static string[] List(string commaSeparated) => commaSeparated.Length == 0 ? [] : commaSeparated.Split(',');
 
     [Fact]
     public async Task A_case_reads_from_summary_to_hit_detail_to_its_revisions()
@@ -140,7 +220,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
     {
         var ct = TestContext.Current.CancellationToken;
         using var client = api.CreateClient();
-        var files = Directory.GetFiles(GoldenCases.GoldenCaseTests.Folder("GC-11"), "*.txt").ToDictionary(p => Path.GetFileName(p), File.ReadAllText);
+        var files = GoldenCaseFiles.Read("GC-11");
         var body = new { subjectRef = "subject-json", triggerEventId = "evt-json", files };
 
         using var created = await client.PostAsJsonAsync("/api/cases", body, ct);
@@ -204,13 +284,21 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(HttpStatusCode.NotFound, again.StatusCode);
     }
 
+    /// <summary>Settings that cannot work stop the start; the message names the setting. A language model's timeout must stay
+    /// below the batch deadline, else a slow answer times the job out instead of dropping the reader (ADR-0012).</summary>
     [Theory]
-    [InlineData("0", "64")]
-    [InlineData("16", "-1")]
-    public void A_workbook_limit_that_cannot_work_stops_the_start(string concurrency, string queue)
+    [InlineData("Api:WorkbookConcurrency", "Api:WorkbookConcurrency=0", "Api:WorkbookQueue=64")]
+    [InlineData("Api:WorkbookConcurrency", "Api:WorkbookConcurrency=16", "Api:WorkbookQueue=-1")]
+    [InlineData("StageModels:LlmTimeoutSeconds", "StageModels:LlmUrl=http://127.0.0.1:9/", "StageModels:LlmModel=m", "StageModels:LlmTimeoutSeconds=120")]
+    [InlineData("StageModels:LlmTimeoutSeconds", "StageModels:LlmUrl=http://127.0.0.1:9/", "StageModels:LlmModel=m", "StageModels:LlmTimeoutSeconds=0")]
+    [InlineData("StageModels:LlmTimeoutSeconds", "StageModels:LlmUrl=http://127.0.0.1:9/", "StageModels:LlmModel=m", "Batch:Timeout=00:00:30")]
+    public void A_setting_that_cannot_work_stops_the_start(string named, params string[] settings)
     {
-        using var broken = api.WithWebHostBuilder(b => b.UseSetting("Api:WorkbookConcurrency", concurrency).UseSetting("Api:WorkbookQueue", queue));
-        Assert.Contains("Api:WorkbookConcurrency", Assert.Throws<InvalidOperationException>(() => broken.CreateClient()).Message, StringComparison.Ordinal);
+        using var broken = api.WithWebHostBuilder(b =>
+        {
+            foreach (var s in settings) b.UseSetting(s[..s.IndexOf('=')], s[(s.IndexOf('=') + 1)..]);
+        });
+        Assert.Contains(named, Assert.Throws<InvalidOperationException>(() => broken.CreateClient()).Message, StringComparison.Ordinal);
     }
 
     /// <summary>A Case store whose GetAsync says it was entered, then waits until <see cref="Open"/> is set.</summary>
@@ -240,12 +328,8 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
     private static MultipartFormDataContent Files(string gc, Func<string, string, string>? edit = null)
     {
         var form = new MultipartFormDataContent();
-        foreach (var path in Directory.GetFiles(GoldenCases.GoldenCaseTests.Folder(gc), "*.txt"))
-        {
-            var name = Path.GetFileName(path);
-            var text = File.ReadAllText(path);
+        foreach (var (name, text) in GoldenCaseFiles.Read(gc))
             form.Add(new StringContent(edit?.Invoke(name, text) ?? text), "files", name);
-        }
         return form;
     }
 
@@ -257,6 +341,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         using var client = api.CreateClient();
         using var created = await client.PostAsync("/api/cases", Upload("GC-11", "evt-reanalysis"), ct);
         var caseId = (await created.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("caseId").GetString();
+        var first = await client.GetStringAsync($"/api/cases/{caseId}/revisions/1", ct);
 
         // Unchanged inputs: revision 2, no changes.
         using var same = await client.PostAsync($"/api/cases/{caseId}/analyses", Files("GC-11"), ct);
@@ -276,7 +361,8 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Contains(changes, c => c.GetProperty("kind").GetString() == "IDENTITY_CHANGED"
             && c.GetProperty("from").GetString() == "PROBABLE_MATCH" && c.GetProperty("to").GetString() == "REVIEW");
 
-        // Revision 2 is kept unchanged as history.
+        // Revisions are append-only: revision 1 reads byte for byte as before, and revision 2 is kept unchanged as history.
+        Assert.Equal(first, await client.GetStringAsync($"/api/cases/{caseId}/revisions/1", ct));
         var rev2 = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/revisions/2", ct);
         Assert.Equal("PROBABLE_MATCH", rev2.GetProperty("result").GetProperty("hits")[0].GetProperty("identity").GetProperty("decision").GetString());
     }
@@ -472,7 +558,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         {
             subjectRef = "subject-" + gc,
             triggerEventId = "batch-" + gc,
-            files = Directory.GetFiles(GoldenCases.GoldenCaseTests.Folder(gc), "*.txt").ToDictionary(p => Path.GetFileName(p), File.ReadAllText),
+            files = GoldenCaseFiles.Read(gc),
         };
 
         using var posted = await client.PostAsJsonAsync("/api/batches", new[] { Item("GC-11"), Item("GC-12") }, ct);

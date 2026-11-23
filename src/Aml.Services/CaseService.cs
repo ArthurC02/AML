@@ -104,7 +104,9 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
         var started = Stopwatch.GetTimestamp();
         // The service's clock, not the machine's: a re-analysis on a given day reads the same, and tests can fix the day.
         var asOf = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
-        var analysis = CaseAnalyzer.Analyze(input, asOf: asOf, stageReaders: stageModels);
+        // A budgeted reader (the language model) gets a fresh budget for this analysis.
+        var readers = stageModels.Select(r => r is BudgetedStageReader b ? b.ForAnalysis(clock) : r).ToList();
+        var analysis = CaseAnalyzer.Analyze(input, asOf: asOf, stageReaders: readers);
         var execution = CaseLifecycle.Execution(analysis);
         var lineage = AnalysisLineage.Of(input, await ProfileUsesAsync(input, files, ct).ConfigureAwait(false), asOf);
 

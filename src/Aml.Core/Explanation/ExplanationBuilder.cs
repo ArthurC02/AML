@@ -312,9 +312,10 @@ public static class ExplanationBuilder
             parts.Add("法律階段 " + CaseJson.Code(c.LegalStage) + (c.LegalStageBasis is { } b ? $"（依據：{Named(b)}）" : ""));
         if (c.StageReaders is { } readers)
         {
-            parts.Add("各讀取者：" + Join(readers.Select(r => $"{r.Reader} {CaseJson.Code(r.Stage)}"
+            parts.Add("各讀取者：" + Join(readers.Select(r => $"{r.Reader} {(r.Stage is { } s ? CaseJson.Code(s) : "未回答")}"
                 + (r.Quote is { } q ? $"（引文「{q}」，{(r.QuoteInText == true ? "原文可查到" : "原文查無")}）" : ""))));
-            if (c.Status == ConditionStatus.Hit && c.ReasonCodes.Contains(StageVote.ReadersDisagree)) parts.Add(Named(StageVote.ReadersDisagree));
+            foreach (var code in new[] { StageVote.ReadersDisagree, StageVote.ReaderNoAnswer })
+                if (c.Status == ConditionStatus.Hit && c.ReasonCodes.Contains(code)) parts.Add(Named(code));
         }
         if (c.Status != ConditionStatus.Hit) parts.Add("條件狀態 " + CaseJson.Code(c.Status) + (c.ReasonCodes.Count > 0 ? "，" + Join(c.ReasonCodes) : ""));
         return CaseJson.Code(c.Type) + (parts.Count > 0 ? $"（{string.Join("；", parts)}）" : "");

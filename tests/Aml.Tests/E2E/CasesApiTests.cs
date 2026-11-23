@@ -298,13 +298,18 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
     }
 
     /// <summary>Settings that cannot work stop the start; the message names the setting. A language model's timeout must stay
-    /// below the batch deadline, else a slow answer times the job out instead of dropping the reader (ADR-0012).</summary>
+    /// below the batch deadline, and so must the budget of all its calls in one analysis, else slow answers time the job out
+    /// instead of dropping the reader (ADR-0012).</summary>
     [Theory]
     [InlineData("Api:WorkbookConcurrency", "Api:WorkbookConcurrency=0", "Api:WorkbookQueue=64")]
     [InlineData("Api:WorkbookConcurrency", "Api:WorkbookConcurrency=16", "Api:WorkbookQueue=-1")]
     [InlineData("StageModels:LlmTimeoutSeconds", "StageModels:LlmUrl=http://127.0.0.1:9/", "StageModels:LlmModel=m", "StageModels:LlmTimeoutSeconds=120")]
     [InlineData("StageModels:LlmTimeoutSeconds", "StageModels:LlmUrl=http://127.0.0.1:9/", "StageModels:LlmModel=m", "StageModels:LlmTimeoutSeconds=0")]
     [InlineData("StageModels:LlmTimeoutSeconds", "StageModels:LlmUrl=http://127.0.0.1:9/", "StageModels:LlmModel=m", "Batch:Timeout=00:00:30")]
+    // The budget of one analysis's language-model calls: at least one call's timeout, below the batch deadline.
+    [InlineData("StageModels:LlmBudgetSeconds", "StageModels:LlmUrl=http://127.0.0.1:9/", "StageModels:LlmModel=m", "StageModels:LlmBudgetSeconds=0")]
+    [InlineData("StageModels:LlmBudgetSeconds", "StageModels:LlmUrl=http://127.0.0.1:9/", "StageModels:LlmModel=m", "StageModels:LlmBudgetSeconds=30")]
+    [InlineData("StageModels:LlmBudgetSeconds", "StageModels:LlmUrl=http://127.0.0.1:9/", "StageModels:LlmModel=m", "StageModels:LlmBudgetSeconds=120")]
     public void A_setting_that_cannot_work_stops_the_start(string named, params string[] settings)
     {
         using var broken = api.WithWebHostBuilder(b =>

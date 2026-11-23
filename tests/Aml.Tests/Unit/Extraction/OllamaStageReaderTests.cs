@@ -60,6 +60,31 @@ public class OllamaStageReaderTests
             timeout: TimeSpan.FromMilliseconds(50)).Answer);
     }
 
+    /// <summary>A call's own limit (what is left of a Case's budget) cuts off a held answer; an answer within it counts.</summary>
+    [Fact]
+    public async Task A_call_past_its_own_limit_is_none_and_one_within_it_gives_the_stage()
+    {
+        using var gate = new ManualResetEventSlim();
+        var server = new Server((_, ct) =>
+        {
+            WaitHandle.WaitAny([gate.WaitHandle, ct.WaitHandle]);
+            ct.ThrowIfCancellationRequested();
+            return Reply("""{"persons":[{"id":"1","stage":"INDICTED","quote":""}]}""");
+        });
+        using var http = new HttpClient(server) { BaseAddress = new Uri("http://ollama.test:11434"), Timeout = TimeSpan.FromSeconds(120) };
+        var reader = new OllamaStageReader(http, "gemma4:12b-it-q4_K_M");
+        try
+        {
+            var held = Task.Run(() => reader.Read("檢方今日起訴陳志明。", ["陳志明"], TimeSpan.FromMilliseconds(50)), TestContext.Current.CancellationToken);
+            Assert.Null(await held.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken)); // safety bound only
+        }
+        finally
+        {
+            gate.Set();
+        }
+        Assert.Equal(new StageAnswer(LegalStage.Indicted), reader.Read("檢方今日起訴陳志明。", ["陳志明"], TimeSpan.FromSeconds(120)));
+    }
+
     [Fact]
     public void It_sends_the_prompt_the_schema_and_the_measured_options()
     {

@@ -79,6 +79,7 @@ public static class CodeCatalog
         ("CONDITION_REASON", "SANCTION_MEASURE_NOT_CONFIRMED", "制裁措施未確認", "制裁名單未確認現行措施；條件為 UNKNOWN。", "SourceConditions.Determine", "docs/feature/sanctions-screening.md#sanction-condition"),
         ("CONDITION_REASON", "RCA_OUTSIDE_STATUTORY_SCOPE", "RCA 超出法定範圍", "關係不在法定 RCA 範圍內。", "SourceConditions.Determine", "docs/feature/pep-rca-screening.md#rca-relationship-scope"),
         ("CONDITION_REASON", StageVote.ReadersDisagree, "法律階段讀取者不一致", "法律階段模型與規則讀出的階段不同（只有一個模型時，階段仍取規則的讀法），或三方未一致（兩方相同或三方各異，階段為 UNKNOWN）；複核人員須自行閱讀新聞判斷階段。各方讀出的階段見 stageReaders。", "StageVote.Decide", Watchlist + "#three-readers"),
+        ("CONDITION_REASON", StageVote.ReaderNoAnswer, "法律階段模型未回答", "已設定的法律階段模型沒有給出回答（錯誤、逾時、本次分析的大型語言模型時間預算已用完，或回答中沒有此人的階段）；投票不計入此模型，與未設定時相同。未回答的模型列在 stageReaders 中，沒有階段。", "StageVote.Read", Watchlist + "#three-readers"),
         ("PEP_TYPE", "PEP_FAMILY", "PEP 家屬", "名單類別表明為 PEP 的家庭成員。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#pep-source-attributes"),
         ("PEP_TYPE", "PEP_CLOSE_ASSOCIATE", "PEP 密切關係人", "名單類別表明為 PEP 的密切關係人。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#pep-source-attributes"),
         ("PEP_TYPE", "RCA_UNCONFIRMED", "RCA 關係未確認", "RCA 名單，但關係類型未說明。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#rca-relationship-scope"),

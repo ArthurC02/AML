@@ -33,6 +33,73 @@ public class StageReaderCaseTests : ServiceTestBase
         return (await _cases.GetAnalysisAsync(created.CaseId, 1, ct))!;
     }
 
+    // GC-02's indicted Case with its one adverse hit three times, under three Profile ids, each with the news attached.
+    private static Core.Subjects.CaseInput ThreeHits()
+    {
+        var files = GoldenCaseFiles.Read("GC-02");
+        const string News = "新聞資訊_90000021.txt";
+        files[News] = files[News].Replace("檢方已分案偵辦。", "檢方已起訴林美玲。", StringComparison.Ordinal);
+        var one = TxtCaseReader.ReadFiles(files);
+        var (id, news) = Assert.Single(one.NewsByProfileId);
+        string[] ids = [id, id + "1", id + "2"];
+        return one with
+        {
+            Rows = [.. one.Rows.Where(r => r.ProfileId != id), .. ids.SelectMany(i => one.Rows.Where(r => r.ProfileId == id).Select(r => r with { ProfileId = i }))],
+            Profiles = ids.ToDictionary(i => i, i => one.Profiles[id] with { ProfileKey = Core.Retrieval.ProfileKeys.Prefix + i }),
+            NewsByProfileId = ids.ToDictionary(i => i, i => news with { ProfileId = i }),
+        };
+    }
+
+    // A language model that takes all the time it is given, then answers CONVICTED (the rules read INDICTED), or nothing.
+    private static BudgetedStageReader Slow(ManualTimeProvider clock, List<TimeSpan> given, bool answers) =>
+        new("llm", (_, _, timeout) => { given.Add(timeout); clock.Advance(timeout); return answers ? new(LegalStage.Convicted) : null; },
+            TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(90));
+
+    /// <summary>One budget for every language-model call of one analysis (ADR-0012): timeout 60 s, budget 90 s, three hits.</summary>
+    [Fact]
+    public async Task A_slow_language_model_spends_one_budget_per_analysis_and_the_hits_past_it_go_without_its_answer()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var clock = new ManualTimeProvider(T0);
+        var given = new List<TimeSpan>();
+        var service = new CaseService(_cases, clock, stageReaders: [Slow(clock, given, answers: true)]);
+        var created = await service.CreateAsync("s-budget", "e-budget", ThreeHits(), ct);
+
+        Assert.Equal(1, created.CurrentRevision);
+        Assert.Equal([TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(30)], given); // the third hit's model is not asked
+        var conditions = (await _cases.GetAnalysisAsync(created.CaseId, 1, ct))!.Result.Hits.Select(h => Assert.Single(h.Conditions)).ToList();
+        Assert.Equal([[StageVote.ReadersDisagree], [StageVote.ReadersDisagree], [StageVote.ReaderNoAnswer]], conditions.Select(c => c.ReasonCodes));
+        Assert.Equal([LegalStage.Convicted, LegalStage.Convicted, null], conditions.Select(c => c.StageReaders![1].Stage));
+        Assert.All(conditions, c => Assert.Equal((LegalStage.Indicted, StageBasis.Keyword), (c.LegalStage, c.LegalStageBasis)));
+
+        // A re-analysis has a budget of its own.
+        given.Clear();
+        Assert.Equal(2, (await service.ReanalyzeAsync(created.CaseId, ThreeHits(), ct))!.CurrentRevision);
+        Assert.Equal([TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(30)], given);
+    }
+
+    /// <summary>A batch job whose language model is slow on every hit succeeds with a revision: the model's time stays within the
+    /// budget, below the job's deadline, so the job is not TIMEOUT.</summary>
+    [Fact]
+    public async Task A_batch_job_with_a_slow_language_model_on_every_hit_succeeds_with_a_revision()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var clock = new ManualTimeProvider(T0);
+        var given = new List<TimeSpan>();
+        var options = new BatchOptions();
+        var batch = new BatchService(_jobs, new CaseService(_cases, clock, stageReaders: [Slow(clock, given, answers: false)]), _ => ThreeHits(), options, clock);
+        var b = await batch.SubmitAsync([new BatchItemRequest("s-slow", "e-slow", new Dictionary<string, string>())], ct);
+        var start = clock.GetUtcNow();
+        await batch.RunOnceAsync(ct);
+
+        var item = Assert.Single((await batch.GetAsync(b.BatchId, ct))!.Items);
+        Assert.Equal((JobStatus.Succeeded, (string?)null, (int?)1), (item.Status, item.ErrorCode, item.AnalysisRevision));
+        Assert.Equal(TimeSpan.FromSeconds(90), clock.GetUtcNow() - start);
+        Assert.True(clock.GetUtcNow() - start < options.Timeout);
+        var conditions = (await _cases.GetAnalysisAsync(item.CaseId!, 1, ct))!.Result.Hits.Select(h => Assert.Single(h.Conditions));
+        Assert.All(conditions, c => Assert.Equal([StageVote.ReaderNoAnswer], c.ReasonCodes));
+    }
+
     [Fact]
     public async Task Two_models_against_the_rules_leave_the_stage_unknown_and_the_stored_case_shows_every_reader()
     {

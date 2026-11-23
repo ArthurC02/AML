@@ -9,8 +9,8 @@ namespace Aml.Infra.Models;
 /// The large language model reader (Gemma 4 through Ollama's /api/chat, watchlist-and-adverse-information.md#three-readers):
 /// one call per document with the fixed prompt (Models/stage-prompt.txt, as measured), the Profile person as person 1 with
 /// the Profile's names, and a JSON schema the answer must follow. Only the news text and the Profile's names are sent
-/// (security-and-privacy.md). Any failure (HTTP error, timeout through the client's Timeout, unreadable answer) is null:
-/// the vote then goes on without this reader.
+/// (security-and-privacy.md). Any failure (HTTP error, timeout through the client's Timeout or the call's own limit, unreadable
+/// answer) is null: the vote then goes on without this reader. Not logged: Infra has no logger (a known limit).
 /// </summary>
 /// <param name="http">A client whose BaseAddress is the Ollama endpoint and whose Timeout is the reader's timeout.</param>
 public sealed class OllamaStageReader(HttpClient http, string model) : IStageReader
@@ -26,17 +26,22 @@ public sealed class OllamaStageReader(HttpClient http, string model) : IStageRea
 
     public string Name => "llm";
 
-    public StageAnswer? Read(string text, IReadOnlyList<string> names)
+    public StageAnswer? Read(string text, IReadOnlyList<string> names) => Read(text, names, Timeout.InfiniteTimeSpan);
+
+    /// <summary>One call cut off after <paramref name="timeout"/> as well as the client's Timeout: what is left of a Case's
+    /// language-model budget (BudgetedStageReader).</summary>
+    public StageAnswer? Read(string text, IReadOnlyList<string> names, TimeSpan timeout)
     {
         try
         {
+            using var limit = new CancellationTokenSource(timeout);
             using var request = new HttpRequestMessage(HttpMethod.Post, "api/chat")
             {
                 Content = new StringContent(Body(text, names).ToJsonString(), System.Text.Encoding.UTF8, "application/json"),
             };
-            using var response = http.Send(request);
+            using var response = http.Send(request, limit.Token);
             if (!response.IsSuccessStatusCode) return null;
-            using var reader = new StreamReader(response.Content.ReadAsStream());
+            using var reader = new StreamReader(response.Content.ReadAsStream(limit.Token));
             return Answer(reader.ReadToEnd());
         }
         catch (Exception e) when (e is not OutOfMemoryException)

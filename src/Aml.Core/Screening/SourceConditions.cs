@@ -32,12 +32,12 @@ public sealed record SourceCondition(
     [property: Description("制裁計畫")] string? Program = null,
     [property: Description("管轄地")] string? Jurisdiction = null,
     [property: Description("法律階段的依據規則，見 /api/codes")] string? LegalStageBasis = null,
-    [property: Description("各讀取者讀出的法律階段：規則與每個有回答的法律階段模型；未設定模型時省略")] IReadOnlyList<StageReaderResult>? StageReaders = null);
+    [property: Description("各讀取者讀出的法律階段：規則與每個設定的法律階段模型（未回答者無階段）；未設定模型時省略")] IReadOnlyList<StageReaderResult>? StageReaders = null);
 
 /// <summary>What one reader of the attached news read as the Profile person's legal stage (watchlist-and-adverse-information.md#three-readers).</summary>
 public sealed record StageReaderResult(
     [property: Description("讀取者：rules（規則）、classifier（階段分類模型）或 llm（大型語言模型）")] string Reader,
-    [property: Description("此讀取者讀出的法律階段")] LegalStage Stage,
+    [property: Description("此讀取者讀出的法律階段；模型未回答時省略（STAGE_READER_NO_ANSWER）")] LegalStage? Stage,
     [property: Description("規則的依據，見 /api/codes；僅 rules 有")] string? Basis = null,
     [property: Description("模型引用的原文；沒有引文時省略")] string? Quote = null,
     [property: Description("去除空白後，引文是否出現在新聞原文中；沒有引文時省略")] bool? QuoteInText = null);
@@ -207,13 +207,13 @@ public static partial class SourceConditions
             AmlRelevance = Relevance(risks, news, profile),
         };
         if (news is null || stageReaders.Count == 0) return c;
-        var ((stage, basis), disagree, readers) = StageVote.Read(rules, news, profile.Names, stageReaders);
+        var ((stage, basis), disagree, noAnswer, readers) = StageVote.Read(rules, news, profile.Names, stageReaders);
         return c with
         {
             LegalStage = stage,
             LegalStageBasis = basis,
             StageReaders = readers,
-            ReasonCodes = disagree ? [StageVote.ReadersDisagree] : [],
+            ReasonCodes = [.. new[] { disagree ? StageVote.ReadersDisagree : null, noAnswer ? StageVote.ReaderNoAnswer : null }.OfType<string>()],
         };
     }
 

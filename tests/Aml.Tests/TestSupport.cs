@@ -72,6 +72,9 @@ public sealed class ManualTimeProvider(DateTimeOffset start) : TimeProvider
 {
     private DateTimeOffset _now = start;
     public override DateTimeOffset GetUtcNow() => _now;
+    // The monotonic clock moves with Advance too (GetElapsedTime).
+    public override long GetTimestamp() => _now.UtcTicks;
+    public override long TimestampFrequency => TimeSpan.TicksPerSecond;
     public void Advance(TimeSpan by) => _now += by;
 }
 

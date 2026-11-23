@@ -63,12 +63,17 @@ public class StageVoteTests
         public StageAnswer? Read(string text, IReadOnlyList<string> names) => throw e;
     }
 
-    // A model fails by answering nothing or by throwing (a timeout is a cancellation); either way it drops out (ADR-0012).
+    // A model fails by answering nothing or by throwing (a timeout is a cancellation); either way it drops out of the vote
+    // (ADR-0012), is listed without a stage, and the condition says so.
     [Theory]
-    [InlineData("null")]
-    [InlineData("throw")]
-    [InlineData("timeout")]
-    public void A_model_that_does_not_answer_leaves_the_rules_alone_and_is_not_listed(string failure)
+    [InlineData("null", false)]
+    [InlineData("throw", false)]
+    [InlineData("timeout", false)]
+    // One of two fails: the vote is the rules and one model's, which here disagree.
+    [InlineData("null", true)]
+    [InlineData("throw", true)]
+    [InlineData("timeout", true)]
+    public void A_model_that_does_not_answer_drops_out_of_the_vote_and_is_named_without_a_stage(string failure, bool classifierAnswers)
     {
         IStageReader Failing(string name) => failure switch
         {
@@ -76,10 +81,11 @@ public class StageVoteTests
             "timeout" => new Throwing(name, new TaskCanceledException("model timed out")),
             _ => new Reader(name, null),
         };
-        var c = Adverse(News, Failing("classifier"), Failing("llm"));
+        var c = Adverse(News, classifierAnswers ? new Reader("classifier", new(Convicted)) : Failing("classifier"), Failing("llm"));
         Assert.Equal((Indicted, StageBasis.Keyword), (c.LegalStage, c.LegalStageBasis));
-        Assert.Equal([new StageReaderResult("rules", Indicted, StageBasis.Keyword)], c.StageReaders!);
-        Assert.Empty(c.ReasonCodes);
+        Assert.Equal([new("rules", Indicted, StageBasis.Keyword), new("classifier", classifierAnswers ? Convicted : null), new StageReaderResult("llm", null)],
+            c.StageReaders!);
+        Assert.Equal(classifierAnswers ? [StageVote.ReadersDisagree, StageVote.ReaderNoAnswer] : [StageVote.ReaderNoAnswer], c.ReasonCodes);
     }
 
     [Fact]

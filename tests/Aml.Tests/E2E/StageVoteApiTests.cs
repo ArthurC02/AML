@@ -37,13 +37,14 @@ public sealed class StageVoteApiTests(ApiHost api) : IClassFixture<ApiHost>
 
     /// <param name="classifier">The classifier's answer; "-" when it is not configured.</param>
     /// <param name="llm">The language model's answer; "-" when it is not configured.</param>
-    /// <param name="readers">The condition's stageReaders as reader:stage, in order.</param>
+    /// <param name="readers">The condition's stageReaders as reader:stage, in order; "-" for a reader without a stage.</param>
     [Theory]
     [InlineData("INDICTED", "INDICTED", "INDICTED", "STAGE_VOTE_UNANIMOUS", "", "rules:INDICTED,classifier:INDICTED,llm:INDICTED")]
     [InlineData("CONVICTED", "CONVICTED", "UNKNOWN", "STAGE_VOTE_MAJORITY", "STAGE_READERS_DISAGREE", "rules:INDICTED,classifier:CONVICTED,llm:CONVICTED")]
     [InlineData("CONVICTED", "-", "INDICTED", "STAGE_KEYWORD", "STAGE_READERS_DISAGREE", "rules:INDICTED,classifier:CONVICTED")]
-    [InlineData("CONVICTED", "null", "INDICTED", "STAGE_KEYWORD", "STAGE_READERS_DISAGREE", "rules:INDICTED,classifier:CONVICTED")]
-    [InlineData("throw", "CONVICTED", "INDICTED", "STAGE_KEYWORD", "STAGE_READERS_DISAGREE", "rules:INDICTED,llm:CONVICTED")]
+    // A configured model that gives no answer is named without a stage, and the condition says so.
+    [InlineData("CONVICTED", "null", "INDICTED", "STAGE_KEYWORD", "STAGE_READERS_DISAGREE,STAGE_READER_NO_ANSWER", "rules:INDICTED,classifier:CONVICTED,llm:-")]
+    [InlineData("throw", "CONVICTED", "INDICTED", "STAGE_KEYWORD", "STAGE_READERS_DISAGREE,STAGE_READER_NO_ANSWER", "rules:INDICTED,classifier:-,llm:CONVICTED")]
     public async Task The_stage_models_vote_with_the_rules_and_leave_identity_alone(string classifier, string llm, string stage, string basis, string reasons, string readers)
     {
         var ct = TestContext.Current.CancellationToken;
@@ -66,7 +67,7 @@ public sealed class StageVoteApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(("ADVERSE_MEDIA", "HIT", stage, basis), (c.GetProperty("type").GetString(), c.GetProperty("status").GetString(), c.GetProperty("legalStage").GetString(), c.GetProperty("legalStageBasis").GetString()));
         Assert.Equal(reasons.Length == 0 ? [] : reasons.Split(','), c.GetProperty("reasonCodes").EnumerateArray().Select(r => r.GetString()));
         var stageReaders = c.GetProperty("stageReaders").EnumerateArray().ToList();
-        Assert.Equal(readers.Split(','), stageReaders.Select(r => $"{r.GetProperty("reader").GetString()}:{r.GetProperty("stage").GetString()}"));
+        Assert.Equal(readers.Split(','), stageReaders.Select(r => $"{r.GetProperty("reader").GetString()}:{(r.TryGetProperty("stage", out var s) ? s.GetString() : "-")}"));
         Assert.Equal("STAGE_KEYWORD", stageReaders[0].GetProperty("basis").GetString()); // the rules' own basis stays on their line
 
         // Identity is decided apart from the stage: GC-12's expected.yaml, as without models.

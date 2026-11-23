@@ -82,7 +82,7 @@ foreach (var (name, file, answersDir, held) in sets)
             llm.Key = (d.Name, p.Id);
             var c = SourceConditions.Determine(profile, false, d.Text, stageReaders: [classifier, llm]).Single();
             var readers = c.StageReaders ?? [];
-            string Of(string r) => readers.FirstOrDefault(x => x.Reader == r)?.Stage.ToString() ?? "-";
+            string Of(string r) => readers.FirstOrDefault(x => x.Reader == r)?.Stage?.ToString() ?? "-";
             string ru = Of("rules"), cl = Of("classifier"), ll = Of("llm"), vo = c.LegalStage.ToString();
             n++; rules += ru == gold ? 1 : 0; clf += cl == gold ? 1 : 0; lm += ll == gold ? 1 : 0; vote += vo == gold ? 1 : 0;
             if (c.LegalStageBasis == "STAGE_VOTE_UNANIMOUS") { decided++; decidedRight += vo == gold ? 1 : 0; }

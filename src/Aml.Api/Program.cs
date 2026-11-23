@@ -54,13 +54,18 @@ if (stageModels["ClassifierDirectory"] is { Length: > 0 } classifierDirectory)
     builder.Services.AddSingleton<IStageReader>(new OnnxStageClassifier(classifierDirectory));
 if (stageModels["LlmUrl"] is { Length: > 0 } llmUrl)
 {
-    // Below the batch deadline, so a slow server drops the language model from the vote instead of timing out the job (ADR-0012).
+    // One call's timeout, and the budget of all calls in one analysis of a Case, below the batch deadline: a slow server
+    // costs the Case its language-model answers instead of timing out the job (ADR-0012).
     var llmTimeout = TimeSpan.FromSeconds(stageModels.GetValue<double?>("LlmTimeoutSeconds") ?? 60);
     if (llmTimeout <= TimeSpan.Zero || llmTimeout >= batchOptions.Timeout)
         throw new InvalidOperationException("StageModels:LlmTimeoutSeconds must be above zero and below Batch:Timeout.");
-    builder.Services.AddSingleton<IStageReader>(new OllamaStageReader(
+    var llmBudget = TimeSpan.FromSeconds(stageModels.GetValue<double?>("LlmBudgetSeconds") ?? 90);
+    if (llmBudget < llmTimeout || llmBudget >= batchOptions.Timeout)
+        throw new InvalidOperationException("StageModels:LlmBudgetSeconds must be at least StageModels:LlmTimeoutSeconds and below Batch:Timeout.");
+    var llm = new OllamaStageReader(
         new HttpClient { BaseAddress = new Uri(llmUrl), Timeout = llmTimeout },
-        stageModels["LlmModel"] is { Length: > 0 } llmModel ? llmModel : throw new InvalidOperationException("StageModels:LlmUrl needs StageModels:LlmModel.")));
+        stageModels["LlmModel"] is { Length: > 0 } llmModel ? llmModel : throw new InvalidOperationException("StageModels:LlmUrl needs StageModels:LlmModel."));
+    builder.Services.AddSingleton<IStageReader>(new BudgetedStageReader(llm.Name, llm.Read, llmTimeout, llmBudget));
 }
 builder.Services.AddSingleton<CaseService>();
 builder.Services.AddSingleton<IJobStore, JobStore>();

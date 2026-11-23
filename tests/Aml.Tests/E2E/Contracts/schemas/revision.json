@@ -725,7 +725,7 @@
                       "default": null
                     },
                     "stageReaders": {
-                      "description": "各讀取者讀出的法律階段：規則與每個有回答的法律階段模型；未設定模型時省略",
+                      "description": "各讀取者讀出的法律階段：規則與每個設定的法律階段模型（未回答者無階段）；未設定模型時省略",
                       "type": [
                         "array",
                         "null"
@@ -741,7 +741,7 @@
                             "type": "string"
                           },
                           "stage": {
-                            "description": "此讀取者讀出的法律階段",
+                            "description": "此讀取者讀出的法律階段；模型未回答時省略（STAGE_READER_NO_ANSWER）",
                             "enum": [
                               "UNKNOWN",
                               "ALLEGED",
@@ -749,7 +749,8 @@
                               "WANTED",
                               "CONVICTED",
                               "ACQUITTED",
-                              "DISMISSED"
+                              "DISMISSED",
+                              null
                             ]
                           },
                           "basis": {
@@ -778,8 +779,7 @@
                           }
                         },
                         "required": [
-                          "reader",
-                          "stage"
+                          "reader"
                         ]
                       },
                       "default": null

@@ -45,7 +45,7 @@ CLOSURE = [
     ("aml-train", "measurements/ner-ascii-validation", r"token-ids-dev\.jsonl"),         # news-model e2e.sh idsref=
     ("aml-train", "stage-clf", r"data(17v?)?/[^/]+\.(jsonl|txt)"),                     # classifier rows
     ("aml-train", "gemma-ft", r"data/train\.jsonl"),                                    # sft.py output
-    ("aml-train", "downloads", r"aml[^/]+/out/[^/]+/" + SETS8 + r"\.jsonl"),            # language-model answers
+    ("aml-train", "downloads", r"aml[^/]+/out/[^/]+/" + SETS8 + r"\.jsonl|aml56/out/.+|answers-20261123/.+"),  # language-model answers (the evaluator's: answers-20261123)
     ("aml-train", "snapshots/before-review24-corrections-20261114", r"data/[^/]+\.(jsonl|json)"),  # NER20's rows
     ("aml-train", "models/bert-base-chinese", r"(config|tokenizer|tokenizer_config|special_tokens_map)\.json|vocab\.txt"),
 ]
@@ -64,10 +64,10 @@ def closure(src):
     for root, folder, pat in CLOSURE:
         rx = re.compile(pat); base = pathlib.Path(src[root]) / folder
         for dp, dn, fn in os.walk(base):
-            dn[:] = [d for d in dn if d != "__pycache__"]
+            dn[:] = [d for d in dn if d != "__pycache__" and ".bak-" not in d]  # backups of superseded data never travel
             for f in fn:
                 p = pathlib.Path(dp) / f; rel = p.relative_to(base).as_posix()
-                if rx.fullmatch(rel) and not WEIGHTS.fullmatch(f): out[(root, folder + "/" + rel)] = p
+                if rx.fullmatch(rel) and not WEIGHTS.fullmatch(f) and ".bak-" not in rel: out[(root, folder + "/" + rel)] = p
     return out
 
 
@@ -78,7 +78,7 @@ def classify(root, rel):
         if parts[0] == "labels": role, s = "labels", parts[1] if len(parts) > 2 else "labels"
         else: role, s = "raw", parts[0]
     elif parts[0] == "models": role, s = "tokenizer", "bert-base-chinese"
-    elif parts[0] == "downloads": role, s = "answers", "%s/%s:%s" % (parts[1], parts[3], stem)
+    elif parts[0] == "downloads": role, s = "answers", "%s/%s:%s" % (parts[1], parts[-2], stem)
     elif parts[0] in ("data-r11", "data-r12", "data-dev2", "snapshots"):
         rnd = {"data-r11": "r11", "data-r12": "r12", "data-dev2": "dev2", "snapshots": "ner20"}[parts[0]]
         split = stem.split("-")[-1] if "-" in stem else stem

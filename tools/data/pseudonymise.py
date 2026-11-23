@@ -472,7 +472,7 @@ def main():
 PSEUDO = """PSEUDONYMISED, NOT ANONYMOUS. Every person name the labels know is replaced by a generated name (consistently, same
 length), but the texts are public reports: case numbers, dates, places, courts, amounts and quotes can still identify
 the people, and people the labels do not list keep their names. An NER sample of 120 texts still found person spans in
-27 (an upper bound: NER also flags non-names), so this copy is not name-free. Treat this copy as personal data too: keep it
+24 (an upper bound: NER also flags non-names), so this copy is not name-free. Treat this copy as personal data too: keep it
 encrypted at rest, record every copy, and delete a removed judgment from it as well (bundle.py remove). The map back to
 the real names exists only inside the encrypted original (PSEUDONYM-MAP.json) and must never be copied here."""
 

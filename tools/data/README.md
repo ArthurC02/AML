@@ -7,7 +7,7 @@ deployed classifier, the news models and base models come separately.
 
 **The data is sensitive personal data**: real names of people in criminal proceedings. The scripts print counts and
 hashes only. The original bundle exists unencrypted only while it is being packed; the pseudonymised copy is still
-personal data. An NER sample of 120 texts of the pseudonymised copy still found person spans in 27 (an upper bound: NER
+personal data. An NER sample of 120 texts of the pseudonymised copy still found person spans in 24 (an upper bound: NER
 also flags non-names), so the copy is not name-free and must be encrypted and handled as personal data.
 
 | Script | Does |
@@ -59,7 +59,7 @@ set AML_TRAIN=<dir>\original\aml-train
 
 The tools then run unchanged (`AML_STAGE_WORK`, `AML_LLM_WORK`, `AML_COLAB_HOME`, `AML_JUDGMENTS`, `AML_STAGE_EVAL_OUT`
 point outputs elsewhere). `tools/Aml.StageEval` takes `sets=<AML_TRAIN>\measurements`, the answer folder
-`<AML_TRAIN>\downloads\aml49\out\gemma4_12b-it-q4_K_M` (twice) and `onnx=` the classifier folder, which is not bundled.
+`<AML_TRAIN>\downloads\answers-20261123\gemma4_12b-it-q4_K_M` (twice) and `onnx=` the classifier folder, which is not bundled.
 Record the copy in the register.
 
 ## Remove a judgment from every copy
@@ -99,7 +99,8 @@ replayed by (document, person id), so StageEval's LLM column is the cached readi
 - Model weights and base models (`models/`, `*.safetensors`, `*.onnx`, `*.bin`, `*.gguf`, `*.pt`), caches
   (`measurements/*/cache*`), classifier predictions (`downloads/aml*/out/pred-*`), older data rounds (`data-r4` ...
   `data-r10`, `data-v*`), snapshots other than NER20's rows, the crawler (`labels/tools/`), original HTML / PDF and full
-  `.txt` extractions next to the `.main.txt` / `.para.txt` the tools read, one-off scripts.
+  `.txt` extractions next to the `.main.txt` / `.para.txt` the tools read, one-off scripts, backups of superseded data
+  (any path containing `.bak-`).
 - `AML_JUDGMENTS` (`jids.jsonl`: `tools/judgments/jids.py` rebuilds it from the bundle; fetched judgments are not kept).
 - The outside evaluator `aml-eval-r4` (`AML_EVAL`) and its own documents, which `score.py`, `score_gemma.py` and
   `tools/news-model/e2e.sh` read.

@@ -39,4 +39,22 @@ doc = {"people": [
 assert [p["id"] for p in gold.suspects(doc)] == ["P1", "P2"]
 assert {p["id"]: gold.person_stage(doc, p) for p in gold.suspects(doc)} == {"P1": "INDICTED", "P2": "ALLEGED"}
 assert gold.person_stage({"people": [], "events": []}, {"mentions": ["陳志明"]}) == "UNKNOWN"
+
+# prep_stage --nonsuspects: other named persons become UNKNOWN rows; a person sharing a form with a suspect, a Witness
+# with a labelled event row and a person without a form in the text are left out; the cap keeps Victim/Other first
+import prep_stage
+prep_stage.row = lambda d, p: {"person": p["id"], "stage": "INDICTED" if p["id"] == "P5" else "UNKNOWN", "no_form": p["id"] == "P6"}
+ns_doc = {"doc": "d", "people": doc["people"] + [
+    {"id": "P4", "role": "PER-Victim", "party": "Victim", "mentions": ["陳某"]},
+    {"id": "P5", "role": "PER-Official", "party": "Official", "mentions": ["張檢察官"]},
+    {"id": "P6", "role": "PER-Victim", "party": "Victim", "mentions": ["林一"]},
+    {"id": "P7", "role": "PER-Other", "party": "Witness", "mentions": ["趙二"]}],
+    "events": doc["events"] + [{"mention": "趙二", "labels": []}]}
+ns, left = prep_stage.nonsuspects([ns_doc])
+assert [(k, r["person"], r["stage"]) for k, r in ns] == [("Official", "P5", "UNKNOWN"), ("Witness", "P7", "UNKNOWN")]
+assert left == {"Witness with events": 1, "shares a form with a suspect": 1, "no form in text": 1, "kept, own events give a stage": 1}
+assert [r for k, r in prep_stage.cap([("Official", 1), ("Victim", 2), ("Official", 3), ("Other", 4)], 3) if k != "Official"] == [2, 4]
+assert [r for _, r in prep_stage.cap([("Official", 1), ("Victim", 2), ("Other", 3)], 2)] == [2, 3]
+o = prep_stage.officials([("Official", 1), ("Witness", 2), ("Official", 3), ("Victim", 4), ("Official", 5)], 1)
+assert len(o) == 3 and [r for k, r in o if k != "Official"] == [2, 4]
 print("selfcheck OK")

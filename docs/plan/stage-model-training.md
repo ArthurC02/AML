@@ -63,3 +63,16 @@ Each run's counts and its job, download folder and settings are recorded in the 
 | Judgments behind court releases | not used for the stage | the Judicial Yuan judgment API (account, 00:00–06:00 only, judgment id from court, case number and date) found 56 of 110 releases; 45 of those judgments mask names as surname + ○○, so 92 of 191 persons cannot be found in them; judgment-first precision 0.81–0.87 |
 
 The general finding: the readers fail where the court-release form is hard (a defendant without a judgment, a person only said to take part, tables of masked names), and making two readers learn from the same labels makes them fail together. What keeps the automatic stage precise is the independence of the three readers, so a change that raises one reader by training it on the others' labels has to be measured on the unanimous precision, not on its own count.
+
+### Persons who are not suspects
+
+The measured sets hold suspects only. On the three report development sets the labels also mark 924 persons as not suspects (officials, victims, witnesses, others); the right answer for them is no stage. Measured 2026-11-23 with the deployed readers (classifier aml47, which never saw a non-suspect in training; Gemma 4 12B with the deployed prompt):
+
+- the rules alone give a stage to 358 (dev 137 of 515, dev2 89 of 105, v9 132 of 304);
+- the classifier gives a stage to 670;
+- rules and classifier give the same stage to 182; asked for those, the language model answers UNKNOWN for 160;
+- all three agree on a wrong stage for 20 (dev 1, dev2 17, v9 2).
+
+All 20 are ALLEGED, none INDICTED or later; by role Official 18, Other 2, Victim 0 of 175, Witness 0 of 20. Two blind label rechecks confirmed all 20 as non-suspects, mostly officials handling the case. So without models about 4 in 10 non-suspects get a stage; with the unanimous vote about 2 in 100, ALLEGED only. The court release sets carry no labels for persons other than defendants and are not measured. The classifier's training option for these persons (`tools/stage-model`, `--nonsuspects`) is prepared, not trained or adopted.
+
+To repeat: a measurement root in the set format (`report/<set>-stage.jsonl`) holding the non-suspect persons with gold no stage (UNKNOWN), the language model's answers for them, then `tools/Aml.StageEval` with `sets=<that root>` (a set without a file is skipped). A wrong automatic stage is DECIDED − RIGHT.

@@ -20,6 +20,7 @@ dotnet run -c Release --project tools/Aml.StageEval -- <answers> <answers> out=<
 - Arguments: `<answers for report sets> <answers for court sets> [--heldback] [onnx=<classifier dir>] [out=<dir>] [judgments=<dir>] [sets=<dir with report/ and court/>]`.
 - Measure the baseline and the change with the same answers, classifier and sets; write each to its own `out=` folder.
 - A new classifier: `onnx=<its dir>`. A new language model or prompt: its answers folder as the two positional arguments.
+- Persons who are not suspects (officials, victims, witnesses): a separate measurement root in the same set format, holding those persons with reference stage UNKNOWN, and the language model's answers for them; pass it as `sets=`. A set without a file is skipped, so a root may hold only the report sets. Every decided person who is not RIGHT got a wrong automatic stage; the baseline is in the doc's "Persons who are not suspects".
 - Held-back check, only once the change is final and its development numbers pass: add `--heldback`. Never run it to choose between variants.
 
 ## Read

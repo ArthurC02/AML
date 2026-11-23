@@ -1,3 +1,4 @@
+using System.Reflection;
 using Aml.Core.Ports;
 using Aml.Core.Subjects;
 using Aml.Infra.Jobs;
@@ -153,20 +154,46 @@ public sealed class BatchTests : IDisposable
     public async Task Claimed_jobs_run_at_the_same_time_up_to_MaxWorkers()
     {
         var ct = TestContext.Current.CancellationToken;
-        // Each read waits until all four are in flight: run one after another, the first would wait alone and time out.
-        using var allIn = new CountdownEvent(4);
-        var together = 0;
-        var batch = new BatchService(_jobs, new CaseService(new CaseStore(_db), TimeProvider.System), _ =>
-            {
-                allIn.Signal();
-                if (allIn.Wait(TimeSpan.FromSeconds(10), ct)) Interlocked.Increment(ref together);
-                throw new InvalidOperationException("stop here");
-            },
-            new BatchOptions { MaxWorkers = 4 }, TimeProvider.System);
-        await batch.SubmitAsync([.. Enumerable.Range(1, 4).Select(i => new BatchItemRequest("s1", $"e{i}", new Dictionary<string, string>()))], ct);
+        // Each job's outcome write waits, without holding a thread, until the test opens the gate; the test opens it only once
+        // all four are waiting there, so all four were in flight at once. Run one after another, only the first would get there.
+        var store = DispatchProxy.Create<IJobStore, GatedFail>();
+        var gate = (GatedFail)(object)store;
+        gate.Inner = _jobs;
+        var clock = new ManualTimeProvider(T0);
+        var batch = new BatchService(store, new CaseService(new CaseStore(_db), clock), _ => throw new InvalidOperationException("stop here"),
+            new BatchOptions { MaxWorkers = 4 }, clock);
+        var submitted = await batch.SubmitAsync([.. Enumerable.Range(1, 4).Select(i => new BatchItemRequest("s1", $"e{i}", new Dictionary<string, string>()))], ct);
 
-        Assert.Equal(4, await batch.RunOnceAsync(ct));
-        Assert.Equal(4, together);
+        var run = batch.RunOnceAsync(ct);
+        try
+        {
+            await gate.AllIn.Task.WaitAsync(TimeSpan.FromSeconds(30), ct); // only bounds the hang of a regression; nothing waits on the clock to pass
+        }
+        finally
+        {
+            gate.Open.TrySetResult();
+        }
+        Assert.Equal(4, await run);
+        Assert.All(await _jobs.ListItemsAsync(submitted.BatchId, ct), j => Assert.Equal((JobStatus.DeadLetter, BatchService.InvalidInput), (j.Status, j.ErrorCode)));
+    }
+
+    /// <summary>A job store whose FailAsync counts its callers in, sets <see cref="AllIn"/> at the fourth, then waits for <see cref="Open"/>.</summary>
+    public class GatedFail : DispatchProxy
+    {
+        private int _in;
+        internal IJobStore Inner { get; set; } = null!;
+        internal TaskCompletionSource AllIn { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Open { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) =>
+            targetMethod!.Name == nameof(IJobStore.FailAsync) ? HeldAsync(targetMethod, args) : targetMethod.Invoke(Inner, args);
+
+        private async Task<bool> HeldAsync(MethodInfo targetMethod, object?[]? args)
+        {
+            if (Interlocked.Increment(ref _in) == 4) AllIn.TrySetResult();
+            await Open.Task;
+            return await (Task<bool>)targetMethod.Invoke(Inner, args)!;
+        }
     }
 
     [Fact]

@@ -10,7 +10,7 @@ The data holds real names. It stays outside the repo; the scripts print counts o
 
 | Script | Does | Reads | Writes |
 |---|---|---|---|
-| `prep_stage.py [--out DIR]` | one row per (document, suspect): name, evidence with the person's forms marked, reference stage | `data-r12/`, label dirs, `measurements/report`, `measurements/court`, tokenizer | `DIR/data/<set>.jsonl`, `stats.txt`, `stats-court.txt` |
+| `prep_stage.py [--out DIR] [--nonsuspects [--officials N]]` | one row per (document, suspect): name, evidence with the person's forms marked, reference stage | `data-r12/`, label dirs, `measurements/report`, `measurements/court`, tokenizer | `DIR/data/<set>.jsonl`, `stats.txt`, `stats-court.txt` |
 | `add17.py [--verdicts] [--out DIR]` | `data/` plus the v17 double-labelled court releases (agreed persons only, overlap with evaluation dropped) | `DIR/data/`, `labels/v17/a,b`, `court/raw/` | `DIR/data17/` (`--verdicts`: `DIR/data17v/`, verdicts and rulings only) |
 | `train_stage.py [--heldback]` | fine-tune, predictions per epoch on the development sets (`--sets`, default `dev,dev2,v9`); standalone (runs on Colab from a folder holding it and `data/`). The held-back v11 is never in `--sets`: `--heldback` evaluates it once after the last epoch, aggregate counts only, no file | `data/` | `out/pred-<set>-e<k>.jsonl` (development sets only), `--save DIR` weights |
 | `export_onnx.py <saved> <out> [<data> <set>]` | ONNX opset 17 + tokenizer + `labels.json`; checks 20 rows against PyTorch, last line `ONNX_OK` | saved model | `<out>/model.onnx` ... |
@@ -18,6 +18,14 @@ The data holds real names. It stays outside the repo; the scripts print counts o
 | `score.py <pred> <sg.tsv>` | classifier against the rules on the same persons | | stdout |
 | `score_gemma.py <out dir> [--heldback]` / `score_one.py <out dir> [--heldback]` | LLM runs (all persons / one person per call) against reference and rules, development sets only; `--heldback` adds the held-back v11 (and accept5), aggregate counts only, once the design is fixed | downloaded Colab output | stdout |
 | `selfcheck.py` | asserts on `textutil` and `gold` with made-up inputs; no data, no GPU | | `selfcheck OK` |
+
+`--nonsuspects` adds to `train.jsonl` one `UNKNOWN` (no stage) row per other named person of the train documents
+(Victim, Official, Witness, Other), built as a suspect's row is. Left out: a person sharing a form with a suspect of the
+document, a Witness with a labelled event, a person with no form in the text. The rows are capped at the suspect row
+count (Victim and Other first, Witness and Official drawn with a fixed seed); `--officials N` replaces that cap with
+every Victim, Other and Witness plus a seeded sample of N Officials. The development and court files are unchanged, and
+without the options the output is byte-identical to the rows aml47 was trained on. Status: prepared only; no classifier
+has been trained on these rows, and none is adopted.
 
 `paths.py` holds every location (also imported by `tools/labels` and `tools/judgments`), `textutil.py` the three helpers vendored from the label-to-training-data step.
 

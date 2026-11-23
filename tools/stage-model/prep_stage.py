@@ -1,5 +1,10 @@
 """Rows for the person-level legal-stage classifier: one per (document, annotated suspect). Prints counts only.
-usage: prep_stage.py [--out DIR]   writes DIR/data/ (default AML_STAGE_WORK, see paths.py)
+usage: prep_stage.py [--out DIR] [--nonsuspects]   writes DIR/data/ (default AML_STAGE_WORK, see paths.py)
+  --nonsuspects: train.jsonl also gets one UNKNOWN row per other named person (Victim, Official, Witness, Other) of the
+          train documents, built by row() as a suspect's is; left out: a person sharing a form with a suspect of the
+          document, a Witness with event rows, a person with no form in the text. Capped at the suspect row count,
+          Victim and Other kept first, Witness and Official drawn together (seeded). Every other file is unchanged.
+  --officials N (with --nonsuspects): no overall cap; every Victim, Other and Witness, and a seeded sample of N Officials.
 
 Documents
   train : prep_r12's train split (data-r12/split.json) minus every document of dev-, dev2-, v9-, v11-stage.jsonl (and
@@ -27,7 +32,6 @@ import collections, glob, hashlib, json, os, random, re, statistics, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import paths, textutil, gold
 from train_stage import enc
-from transformers import AutoTokenizer
 
 R12, REPORT = paths.R12, paths.REPORT
 SETS = ["dev", "dev2", "v9", "v11"]
@@ -35,7 +39,11 @@ COURT, COURT_SETS = gold.COURT, gold.COURT_SETS  # court press-release evaluatio
 HEAD, BUDGET = 60, 512
 SENT = re.compile(r"[^。！？；!?;\n]*[。！？；!?;]?")
 OUT = paths.out_dir(sys.argv) + "data/"
-tok = AutoTokenizer.from_pretrained(paths.BERT)
+NONSUSPECTS = "--nonsuspects" in sys.argv
+OFFICIALS = int(sys.argv[sys.argv.index("--officials") + 1]) if "--officials" in sys.argv else None
+NS_RANK = {"Victim": 0, "Other": 0, "Witness": 1, "Official": 1}  # lower rank kept first up to the cap; a seeded draw within a rank
+NS_SEED = 1  # ponytail: cap = 1 non-suspect row per suspect row, by role rank; tune the ratio if the classifier over-answers UNKNOWN
+tok = None  # the bert tokenizer, loaded by the first row() (selfcheck.py imports this file without it)
 
 
 def kind(doc, text):
@@ -53,6 +61,10 @@ def spans(text, forms):
 
 
 def row(d, p):
+    global tok
+    if tok is None:
+        from transformers import AutoTokenizer
+        tok = AutoTokenizer.from_pretrained(paths.BERT)
     text, forms = d["text"], [m for m in p["mentions"] if len(m) >= 2]
     others = {m for q in d["people"] if q["role"].startswith("PER-") for m in q["mentions"] if len(m) >= 2}
     sents = [(m.start(), m.end()) for m in SENT.finditer(text) if m.group().strip()]
@@ -122,6 +134,37 @@ def train_docs(exclude):
         yield {"doc": r["doc"], "text": r["text"], "people": people, "events": events}
 
 
+def nonsuspects(docs):
+    """--nonsuspects: (party, row with stage UNKNOWN) per eligible other named person, and the exclusion counts."""
+    out, c = [], collections.Counter()
+    for d in docs:
+        sus = {m for p in gold.suspects(d) for m in p["mentions"]}
+        for p in d["people"]:
+            if not p["role"].startswith("PER-") or p["party"] == "Suspect": continue
+            ms = set(p["mentions"])
+            if ms & sus: c["shares a form with a suspect"] += 1; continue
+            if p["party"] == "Witness" and any(e["mention"] in ms and e["labels"] for e in d["events"]): c["Witness with events"] += 1; continue
+            r = row(d, p)
+            if r["no_form"]: c["no form in text"] += 1; continue
+            c["kept, own events give a stage"] += r["stage"] != "UNKNOWN"
+            out.append((p["party"], dict(r, stage="UNKNOWN")))
+    return out, c
+
+
+def cap(ns, n):
+    """At most n of the (party, row) pairs: by NS_RANK, a seeded draw within a rank; document order kept."""
+    rng = random.Random(NS_SEED)
+    keep = sorted(range(len(ns)), key=lambda i: (NS_RANK[ns[i][0]], rng.random()))[:n]
+    return [ns[i] for i in sorted(keep)]
+
+
+def officials(ns, n):
+    """--officials n: every non-Official pair, n Officials by a seeded draw; document order kept."""
+    o = [i for i, (k, _) in enumerate(ns) if k == "Official"]
+    keep = set(random.Random(NS_SEED).sample(o, min(n, len(o))))
+    return [x for i, x in enumerate(ns) if x[0] != "Official" or i in keep]
+
+
 def pct(xs, q): return sorted(xs)[min(len(xs) - 1, int(q * len(xs)))] if xs else 0
 
 
@@ -146,11 +189,17 @@ def main():
         shared = train_ids & {d["doc"] for d in evdocs[s]}; assert not shared, s
         th = {hashlib.md5(d["text"].encode()).hexdigest() for d in docs["train"]}
         P("check: train /", s, "shared doc ids", len(shared), "| identical texts", sum(hashlib.md5(d["text"].encode()).hexdigest() in th for d in evdocs[s]))
+    if NONSUSPECTS:
+        ns, c = nonsuspects(docs["train"])
+        kept = cap(ns, len(rows["train"])) if OFFICIALS is None else officials(ns, OFFICIALS)
+        P("\nnon-suspects (train docs only): suspect rows", len(rows["train"]), dict(collections.Counter(r["stage"] for r in rows["train"]).most_common()))
+        P("  left out", dict(c)); P("  rows per party before cap", dict(collections.Counter(k for k, _ in ns)), "| after cap", dict(collections.Counter(k for k, _ in kept)))
+        rows["train"] = rows["train"] + [r for _, r in kept]
     for k, rs in rows.items(): write(k, docs[k], rs, P)
     tr = rows["train"]
     P("\ntrain UNKNOWN %d of %d (%.3f)" % (sum(r["stage"] == "UNKNOWN" for r in tr), len(tr), sum(r["stage"] == "UNKNOWN" for r in tr) / len(tr)))
     random.seed(1); ok = bad = 0
-    people = {(d["doc"], p["id"]): set(p["mentions"]) for d in docs["train"] for p in gold.suspects(d)}
+    people = {(d["doc"], p["id"]): set(p["mentions"]) for d in docs["train"] for p in d["people"]}
     for r in random.sample(tr, 20):
         for m in re.findall(r"\[unused1\](.*?)\[unused2\]", r["evidence"]):
             if m in people[(r["doc"], r["person"])]: ok += 1

@@ -37,8 +37,13 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         var hit = revision.GetProperty("result").GetProperty("hits")[0];
         Assert.Equal(identityDecision, hit.GetProperty("identity").GetProperty("decision").GetString());
         var first = revision.GetProperty("explanation").GetProperty("hits")[0];
-        Assert.Equal(9, first.GetProperty("comparison").GetArrayLength());
-        Assert.False(string.IsNullOrEmpty(first.GetProperty("summary").GetProperty("conclusion").GetString()));
+        Assert.Equal(ComparisonFields, first.GetProperty("comparison").EnumerateArray().Select(r => r.GetProperty("field").GetString()));
+        // pipeline-api-and-batch.md#explanation-contents: each decision in words, then its code in brackets.
+        var conclusion = first.GetProperty("summary").GetProperty("conclusion").GetString()!;
+        Assert.StartsWith("身分判斷：", conclusion, StringComparison.Ordinal);
+        Assert.Contains($"（{identityDecision}，", conclusion, StringComparison.Ordinal);
+        Assert.Contains("；對外結果：", conclusion, StringComparison.Ordinal);
+        Assert.Contains($"（{hit.GetProperty("pairResult").GetString()}）", conclusion, StringComparison.Ordinal);
 
         // Same trigger and subject: the existing Case comes back with 200, no new revision.
         using var repeated = await client.PostAsync("/api/cases", Upload(gc, "evt-" + gc), ct);
@@ -126,6 +131,10 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         }
     }
 
+    /// <summary>The nine fields of the comparison table, in order and wording (pipeline-api-and-batch.md#explanation-contents).</summary>
+    private static readonly string[] ComparisonFields =
+        ["中文姓名", "英文姓名", "國籍／所在地國家", "年齡（出生日期）", "性別", "證件號碼／統編", "地址", "職業／任職機構", "其他可識別身分資訊"];
+
     private static string? Str(JsonElement e, string name) => e.TryGetProperty(name, out var v) && v.ValueKind != JsonValueKind.Null ? v.GetString() : null;
 
     private static string[] Strings(JsonElement e, string name) =>
@@ -144,7 +153,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         var caseId = summary.GetProperty("caseId").GetString();
         Assert.Equal($"/api/cases/{caseId}", created.Headers.Location?.OriginalString);
         Assert.Equal("REVIEW", summary.GetProperty("result").GetString());
-        Assert.False(string.IsNullOrEmpty(summary.GetProperty("conclusion").GetString()));
+        Assert.Equal("案件結果 REVIEW（revision 1）：1 個 hit，1 個需複核", summary.GetProperty("conclusion").GetString()); // pipeline-api-and-batch.md#views
 
         var line = summary.GetProperty("hits")[0];
         Assert.Equal(("90000031", "DJ:90000031"), (line.GetProperty("profileId").GetString(), line.GetProperty("profileKey").GetString()));
@@ -153,9 +162,11 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(4, hit.GetProperty("stage3Row").GetInt32());
         Assert.Equal("90000031", hit.GetProperty("profileId").GetString());
         Assert.False(hit.TryGetProperty("comparison", out _));
-        Assert.True(hit.GetProperty("wouldChangeIf").GetArrayLength() > 0);
+        // identity-adjudication.md#contrastive-explanation, GC-03 on row 4: a full DOB that agrees keeps row 4 and is not listed.
+        Assert.Equal([("DOCUMENT", "AGREE", 2, "UNIQUE_IDENTIFIER_AGREEMENT"), ("DOCUMENT", "CONFLICT", 1, "DOCUMENT_IDENTITY_CONFLICT"), ("DATE_OF_BIRTH", "CONFLICT", 1, "FULL_DOB_CONFLICT")],
+            hit.GetProperty("wouldChangeIf").EnumerateArray().Select(w => (Str(w, "field"), Str(w, "assumption"), w.GetProperty("stage3Row").GetInt32(), Str(w, "reasonCode"))));
         var detail = await client.GetFromJsonAsync<JsonElement>(hit.GetProperty("detail").GetString(), ct);
-        Assert.Equal(9, detail.GetProperty("comparison").GetArrayLength());
+        Assert.Equal(ComparisonFields, detail.GetProperty("comparison").EnumerateArray().Select(r => r.GetProperty("field").GetString()));
         Assert.Equal(detail.GetRawText(), (await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/hits/1", ct)).GetRawText());
         using var missing = await client.GetAsync($"/api/cases/{caseId}/hits/99", ct);
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
@@ -169,7 +180,9 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(2, (await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/hits/1?view=summary", ct)).GetProperty("revision").GetInt32());
         var revision = await client.GetFromJsonAsync<JsonElement>((await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}?view=summary", ct)).GetProperty("revision").GetString(), ct);
         Assert.Equal(2, revision.GetProperty("revision").GetInt32());
-        Assert.True(revision.GetProperty("lineage").GetProperty("inputFiles").GetArrayLength() > 0);
+        // pipeline-api-and-batch.md#lineage-and-quality: every input file, with its SHA-256.
+        Assert.Equal(GoldenCaseFiles.Read("GC-03").Keys.Order(StringComparer.Ordinal),
+            revision.GetProperty("lineage").GetProperty("inputFiles").EnumerateArray().Select(f => f.GetProperty("name").GetString()!).Order(StringComparer.Ordinal));
         Assert.Equal(1, revision.GetProperty("quality").GetProperty("hits").GetInt32());
         // The Case itself (view=full, the default) carries the full record of its effective revision.
         var full = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}", ct);
@@ -199,7 +212,7 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.True(workbook.Headers.CacheControl?.NoStore);
         Assert.Equal(["nosniff"], workbook.Headers.GetValues("X-Content-Type-Options"));
         var sheets = GoldenCases.WorkbookTests.Read(await workbook.Content.ReadAsByteArrayAsync(ct));
-        Assert.Equal(11, sheets.Count);
+        Assert.Equal(["說明", "命中", "比對", "證據", "來源", "新聞人物", "新聞事件", "模型人物", "模型事件", "變更", "代碼"], sheets.Select(s => s.Name)); // pipeline-api-and-batch.md#case-workbook
         var fullBook = GoldenCases.WorkbookTests.Read(await client.GetByteArrayAsync($"/api/cases/{caseId}/workbook?view=full", ct));
         Assert.Contains("受檢對象的值", fullBook.Single(s => s.Name == "比對").Rows[0]);
         Assert.DoesNotContain("受檢對象的值", sheets.Single(s => s.Name == "比對").Rows[0]);

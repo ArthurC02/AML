@@ -44,7 +44,11 @@ var sets = new List<(string Name, string File, string Answers, bool Held)>
     ("accept3", Court("accept3.jsonl"), courtAnswers, false), ("accept4", Court("accept4.jsonl"), courtAnswers, false),
 };
 if (heldback) { sets.Add(("v11", Report("v11-stage.jsonl"), reportAnswers, true)); sets.Add(("accept5", Court("accept5.jsonl"), courtAnswers, true)); }
-foreach (var f in sets.SelectMany(s => new[] { s.File, Path.Combine(s.Answers, s.Name + ".jsonl") }))
+// A set whose file is absent is skipped (a measurement root may hold only some sets); its answers are then not needed.
+foreach (var s in sets.Where(s => !File.Exists(s.File))) Console.WriteLine($"skipped {s.Name}: no file {s.File}");
+sets.RemoveAll(s => !File.Exists(s.File));
+if (sets.Count == 0) { Console.Error.WriteLine($"no set file under {setDir}"); return 2; }
+foreach (var f in sets.Select(s => Path.Combine(s.Answers, s.Name + ".jsonl")))
 {
     if (!File.Exists(f)) { Console.Error.WriteLine($"no file {f}"); return 2; }
 }

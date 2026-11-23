@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -5,6 +6,8 @@ using Aml.Core.Ports;
 using Aml.Core.Screening;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Aml.Tests.E2E;
 
@@ -26,6 +29,21 @@ public sealed class StageVoteApiTests(ApiHost api) : IClassFixture<ApiHost>
             "throw" => throw new InvalidOperationException("model failed"),
             _ => new(Enum.Parse<LegalStage>(answer, ignoreCase: true)),
         };
+    }
+
+    /// <summary>Keeps the host's stage-reader warnings as (reader, failure), from the structured fields, not the message.</summary>
+    private sealed class StageReaderLog : ILoggerProvider, ILogger
+    {
+        public ConcurrentQueue<(LogLevel Level, string? Reader, string? Failure)> Entries { get; } = new();
+        public ILogger CreateLogger(string categoryName) => categoryName == typeof(Api.LoggingStageReader).FullName ? this : NullLogger.Instance;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            var fields = (state as IEnumerable<KeyValuePair<string, object?>>)?.ToDictionary(f => f.Key, f => f.Value) ?? [];
+            Entries.Enqueue((logLevel, fields.GetValueOrDefault("Reader") as string, fields.GetValueOrDefault("Failure") as string));
+        }
+        public void Dispose() { }
     }
 
     // Properties whose values are catalog codes (a value may carry detail after the code, and a difference joins several with ；).
@@ -53,8 +71,10 @@ public sealed class StageVoteApiTests(ApiHost api) : IClassFixture<ApiHost>
     public async Task The_stage_models_vote_with_the_rules_and_leave_identity_alone(string classifier, string llm, string stage, string basis, string reasons, string readers)
     {
         var ct = TestContext.Current.CancellationToken;
+        var log = new StageReaderLog();
         await using var host = api.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
         {
+            s.AddSingleton<ILoggerProvider>(log);
             if (classifier != "-") s.AddSingleton<IStageReader>(new Model("classifier", classifier));
             if (llm != "-") s.AddSingleton<IStageReader>(new Model("llm", llm));
         }));
@@ -74,6 +94,12 @@ public sealed class StageVoteApiTests(ApiHost api) : IClassFixture<ApiHost>
         var stageReaders = c.GetProperty("stageReaders").EnumerateArray().ToList();
         Assert.Equal(readers.Split(','), stageReaders.Select(r => $"{r.GetProperty("reader").GetString()}:{(r.TryGetProperty("stage", out var s) ? s.GetString() : "-")}"));
         Assert.Equal("STAGE_KEYWORD", stageReaders[0].GetProperty("basis").GetString()); // the rules' own basis stays on their line
+
+        // The host logs each missing answer once (LoggingStageReader through CaseService), and nothing when every reader answers.
+        Assert.Equal(
+            new[] { ("classifier", classifier), ("llm", llm) }.Where(m => m.Item2 is "null" or "throw")
+                .Select(m => (LogLevel.Warning, (string?)m.Item1, (string?)(m.Item2 == "null" ? "no answer" : nameof(InvalidOperationException)))),
+            log.Entries);
 
         // Identity is decided apart from the stage: GC-12's expected.yaml, as without models.
         Assert.Equal(("REVIEW", 6, "REVIEW", "LOW", 0),

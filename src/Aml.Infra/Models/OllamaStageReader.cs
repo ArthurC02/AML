@@ -11,8 +11,8 @@ namespace Aml.Infra.Models;
 /// the Profile's names, and a JSON schema the answer must follow. Only the news text and the Profile's names are sent
 /// (security-and-privacy.md). A well-formed answer without a known stage for person 1 (an empty persons list included) is the
 /// model's answer UNKNOWN. Any failure (HTTP error, timeout through the client's Timeout or the call's own limit, unreadable
-/// answer) is null, a missing answer: the vote then gives UNKNOWN with STAGE_READER_NO_ANSWER. Not logged: Infra has no
-/// logger (a known limit).
+/// answer) is null, a missing answer: the vote then gives UNKNOWN with STAGE_READER_NO_ANSWER. Infra has no logger: the host
+/// logs the missing answer (Aml.Api.LoggingStageReader), without the failure's own detail.
 /// </summary>
 /// <param name="http">A client whose BaseAddress is the Ollama endpoint and whose Timeout is the reader's timeout.</param>
 public sealed class OllamaStageReader(HttpClient http, string model) : IStageReader

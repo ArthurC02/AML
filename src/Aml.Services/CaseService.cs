@@ -8,8 +8,10 @@ namespace Aml.Services;
 
 /// <summary>Sole writer of Case state. Runs AnalyzeCase synchronously.</summary>
 /// <remarks>ponytail: POST /api/cases analyzes inline; high-volume callers use POST /api/batches.</remarks>
+/// <param name="observeStageReader">Wraps each stage reader of one analysis (after its budget is taken), so the host can log
+/// a missing answer; it must return what the reader returns or rethrow what it throws.</param>
 public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore? lists = null, Func<string, string>? exportText = null,
-    INewsModel? newsModel = null, IEnumerable<IStageReader>? stageReaders = null)
+    INewsModel? newsModel = null, IEnumerable<IStageReader>? stageReaders = null, Func<IStageReader, IStageReader>? observeStageReader = null)
 {
     private readonly IStageReader[] stageModels = [.. stageReaders ?? []];
 
@@ -107,7 +109,8 @@ public sealed class CaseService(ICaseStore store, TimeProvider clock, IListStore
         // The service's clock, not the machine's: a re-analysis on a given day reads the same, and tests can fix the day.
         var asOf = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
         // A budgeted reader (the language model) gets a fresh budget for this analysis.
-        var readers = stageModels.Select(r => r is BudgetedStageReader b ? b.ForAnalysis(clock) : r).ToList();
+        var readers = stageModels.Select(r => r is BudgetedStageReader b ? b.ForAnalysis(clock) : r)
+            .Select(r => observeStageReader is null ? r : observeStageReader(r)).ToList();
         var analysis = CaseAnalyzer.Analyze(input, asOf: asOf, stageReaders: readers);
         if (!writeIfStageAnswerMissing && CaseLifecycle.StageAnswerMissing(analysis)) throw new StageAnswerMissingException();
         var execution = CaseLifecycle.Execution(analysis);

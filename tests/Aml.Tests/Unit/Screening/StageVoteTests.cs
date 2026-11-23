@@ -138,6 +138,28 @@ public class StageVoteTests
         Assert.Equal(new StageReaderResult("llm", Indicted), Adverse(News, new Reader("llm", new(Indicted, ""))).StageReaders![1]);
     }
 
+    // The 負面新聞 flag sets the adverse-media condition's status; the model is asked whatever it is, and a missing answer is
+    // marked on the condition every time. Only a raised condition (HIT or UNKNOWN) makes a batch job retry: a NOT_HIT
+    // condition's stage is one no reviewer acts on (pipeline-api-and-batch.md#durable-batch-execution).
+    [Theory]
+    [InlineData(FlagValue.Yes, ConditionStatus.Hit, new[] { StageVote.ReaderNoAnswer }, true)]
+    [InlineData(FlagValue.Unparseable, ConditionStatus.Unknown, new[] { StageVote.ReaderNoAnswer, SourceConditions.FlagUnparseable, SourceConditions.FlagCategoryConflict }, true)]
+    [InlineData(FlagValue.No, ConditionStatus.NotHit, new[] { StageVote.ReaderNoAnswer, SourceConditions.FlagCategoryConflict }, false)]
+    public void Only_a_missing_answer_on_a_raised_condition_holds_a_batch_write_back(FlagValue adverseNews, ConditionStatus status, string[] codes, bool retry)
+    {
+        var reader = new Reader("llm", null);
+        var subject = new ScreenedSubject(SubjectRole.Customer, null, ["陳志明"], Core.Shared.Gender.Male, new Core.Shared.PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
+        var a = Core.Cases.CaseAnalyzer.Analyze(new CaseInput(subject,
+            [new CandidateRow("陳志明", "1", null, false, new ListFlags(FlagValue.Missing, FlagValue.Missing, adverseNews))],
+            new Dictionary<string, SourceProfile> { ["1"] = Person }, new Dictionary<string, NewsItem> { ["1"] = new("1", null, "t", null, null, News) }, []),
+            stageReaders: [reader]);
+
+        var c = Assert.Single(Assert.Single(a.Hits).Conditions);
+        Assert.Equal((status, Unknown, 1), (c.Status, c.LegalStage, reader.Calls));
+        Assert.Equal(codes, c.ReasonCodes);
+        Assert.Equal(retry, Core.Cases.CaseLifecycle.StageAnswerMissing(a));
+    }
+
     [Fact]
     public void Without_news_no_model_is_asked()
     {

@@ -1,3 +1,4 @@
+using Aml.Api;
 using Aml.Api.Endpoints;
 using Aml.Api.Workers;
 using Aml.Core.Cases;
@@ -67,6 +68,12 @@ if (stageModels["LlmUrl"] is { Length: > 0 } llmUrl)
         stageModels["LlmModel"] is { Length: > 0 } llmModel ? llmModel : throw new InvalidOperationException("StageModels:LlmUrl needs StageModels:LlmModel."));
     builder.Services.AddSingleton<IStageReader>(new BudgetedStageReader(llm.Name, llm.Read, llmTimeout, llmBudget));
 }
+// Each reader of an analysis logs a missing answer (its name, the kind of failure, the time), never the text it was given.
+builder.Services.AddSingleton<Func<IStageReader, IStageReader>>(sp =>
+{
+    var (logger, clock) = (sp.GetRequiredService<ILogger<LoggingStageReader>>(), sp.GetRequiredService<TimeProvider>());
+    return reader => new LoggingStageReader(reader, logger, clock);
+});
 builder.Services.AddSingleton<CaseService>();
 builder.Services.AddSingleton<IJobStore, JobStore>();
 builder.Services.AddSingleton(batchOptions);

@@ -112,8 +112,14 @@ public class StageReaderCaseTests : ServiceTestBase
             Assert.Equal(1, await batch.RunOnceAsync(ct));
             Assert.True(clock.GetUtcNow() - start < options.Timeout);
             var failed = Assert.Single((await batch.GetAsync(b.BatchId, ct))!.Items);
-            Assert.Equal((JobStatus.Pending, BatchService.StageNoAnswer, attempt, (int?)null), (failed.Status, failed.ErrorCode, failed.AttemptCount, failed.AnalysisRevision));
-            Assert.Equal(0, (await _cases.GetAsync(failed.JobId, ct))!.CurrentRevision); // nothing written
+            Assert.Equal((JobStatus.Pending, BatchService.StageNoAnswer, attempt, (string?)null, (int?)null),
+                (failed.Status, failed.ErrorCode, failed.AttemptCount, failed.CaseId, failed.AnalysisRevision));
+            // While the job retries, its Case (the job's id) exists unanalysed: what GET /api/cases/{caseId} and its revisions show.
+            var summary = (await service.GetSummaryAsync(failed.JobId, ct))!;
+            Assert.Equal((CaseStatus.Open, 0, (int?)null, (ScreeningAssessment?)null, "尚未分析", (IReadOnlyList<HitLine>?)null, (string?)null),
+                (summary.Status, summary.CurrentRevision, summary.EffectiveRevision, summary.Result, summary.Conclusion, summary.Hits, summary.Revision));
+            Assert.Null((await service.GetDetailAsync(failed.JobId, ct))!.Effective);
+            Assert.Empty((await service.GetRevisionsAsync(failed.JobId, ct))!);
             clock.Advance(TimeSpan.FromMinutes(1)); // past the backoff (10 s, then 20 s)
         }
         Assert.Equal(1, await batch.RunOnceAsync(ct));
@@ -132,6 +138,42 @@ public class StageReaderCaseTests : ServiceTestBase
                 Assert.Equal([StageVote.ReaderNoAnswer], c.ReasonCodes);
                 Assert.Null(c.StageReaders![2].Stage);
             });
+    }
+
+    /// <summary>
+    /// A REANALYZE_CASE job retries a missing stage answer as a new Case's job does: attempts 1 and 2 fail with
+    /// STAGE_NO_ANSWER and the Case keeps its revision; the last attempt writes revision 2 with UNKNOWN and
+    /// STAGE_READER_NO_ANSWER, and the job succeeds.
+    /// </summary>
+    [Fact]
+    public async Task A_reanalysis_job_retries_a_missing_stage_answer_and_its_last_attempt_writes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var clock = new ManualTimeProvider(T0);
+        var service = new CaseService(_cases, clock, _lists, TxtCaseReader.ProfileExportText, stageReaders: [new Recording()]);
+        var list = new ListService(_lists, _cases, service, TxtCaseReader.ParseProfile, TxtCaseReader.ReadFiles, clock, TxtCaseReader.ProfileExportText);
+        var files = CaseFiles();
+        var c = await service.CreateAsync("s-reanalyse", "e-reanalyse", TxtCaseReader.ReadFiles(files), ct, files); // the API writes at once
+        var updated = files[ProfileName].Replace("Date of Birth\t1973", "Date of Birth\t1973/6/12", StringComparison.Ordinal);
+        var report = await list.ImportAsync(new Dictionary<string, string> { [ProfileName] = updated }, ct);
+        var batch = new BatchService(_jobs, service, TxtCaseReader.ReadFiles, new BatchOptions(), clock, list);
+
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            Assert.Equal(1, await batch.RunOnceAsync(ct));
+            var failed = Assert.Single(await _jobs.ListItemsAsync(report.BatchId!, ct));
+            Assert.Equal((JobStatus.Pending, BatchService.StageNoAnswer, attempt, (int?)null), (failed.Status, failed.ErrorCode, failed.AttemptCount, failed.AnalysisRevision));
+            Assert.Equal(1, (await _cases.GetAsync(c.CaseId, ct))!.CurrentRevision); // nothing written
+            clock.Advance(TimeSpan.FromMinutes(1)); // past the backoff (10 s, then 20 s)
+        }
+        Assert.Equal(1, await batch.RunOnceAsync(ct));
+
+        var item = Assert.Single(await _jobs.ListItemsAsync(report.BatchId!, ct));
+        Assert.Equal((JobStatus.Succeeded, 3, (int?)2, (string?)null), (item.Status, item.AttemptCount, item.AnalysisRevision, item.ErrorCode));
+        var adverse = Assert.Single(Assert.Single((await _cases.GetAnalysisAsync(c.CaseId, 2, ct))!.Result.Hits).Conditions, k => k.Type == ListType.AdverseMedia);
+        Assert.Equal((ConditionStatus.Hit, LegalStage.Unknown, (string?)null), (adverse.Status, adverse.LegalStage, adverse.LegalStageBasis));
+        Assert.Equal([StageVote.ReaderNoAnswer], adverse.ReasonCodes);
+        Assert.Null(adverse.StageReaders![1].Stage);
     }
 
     [Fact]

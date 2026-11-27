@@ -192,7 +192,7 @@ One factor per kind of source, applied to stated identity values and to conditio
 | NAME, GENDER, NATIONALITY agreement | — | 0 |
 | DATE_OF_BIRTH more than two years apart (validated hard rule, 2026-11-27) | `FULL_DOB_CONFLICT` / `DOB_CONFLICT` | veto NO_MATCH, no item |
 | stated birth dates and dated age (attached news or a received page) all more than two years apart, no Profile DOB (validated hard rule, 2026-11-27) | `STATED_DOB_CONFLICT` | veto NO_MATCH |
-| customer under 14 on the header date of an attached item naming the person as accused or officer, no Profile DOB (advisory, 2026-11-27: a hint until measured on real Cases) | `AGE_IMPLAUSIBLE_AT_DOCUMENT` | no item (0) and no veto: an unapproved weight would be a new weight; the hint is for the reviewer, and stage 3 row 1 holds the pair at REVIEW |
+| customer under 14 on the header date of an attached item naming the person as accused or officer, or at the earliest event the Profile notes date for the person, no Profile DOB (advisory, 2026-11-27: a hint until measured on real Cases) | `AGE_IMPLAUSIBLE_AT_DOCUMENT` | no item (0) and no veto: an unapproved weight would be a new weight; the hint is for the reviewer, and stage 3 row 1 holds the pair at REVIEW |
 | a received page's stated birth date within two years, not equal | `PAGE_BIRTH_DATE_WITHIN_TOLERANCE` | 0 (neutral) |
 | DOCUMENT conflict (pending hard rule) | `DOCUMENT_IDENTITY_CONFLICT` | −40 |
 | stated age or birth date differs | `AGE_DIFFERENCE_AT_REPORT` / `NEWS_BIRTH_DATE_DIFFERENCE` | −8 × reliability |

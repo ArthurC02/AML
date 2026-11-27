@@ -5179,7 +5179,7 @@
                 "type": "null"
               },
               {
-                "description": "名單的英文附註（Watchlist ProfileNotes），依原文保存並依標籤分段；不加解讀，不參與任何判斷。沒有附註時為 null",
+                "description": "名單的英文附註（Watchlist ProfileNotes），依原文保存並依標籤分段；只讀其中名單人物事件的日期，作身分的年齡提示（AGE_IMPLAUSIBLE_AT_DOCUMENT，不自動判定），其餘不參與判斷。沒有附註時為 null",
                 "$ref": "#/components/schemas/ProfileNotes"
               }
             ]

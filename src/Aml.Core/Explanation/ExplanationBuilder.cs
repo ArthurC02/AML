@@ -135,7 +135,8 @@ public static class ExplanationBuilder
 
     // The advisory implausible age at a dated document is said first, in full, and leads the conflicts: it is the one thing
     // the reviewer must read, since nothing concluded on it.
-    private static readonly string[] DocumentAgeHintLabel = ["附加新聞日期時的年齡"];
+    private static string[] DocumentAgeHintLabel(string? hint) =>
+        hint is null ? [] : [hint.StartsWith(EvidenceBuilder.NotesHintPrefix, StringComparison.Ordinal) ? "名單附註事件時的年齡" : "附加新聞日期時的年齡"];
 
     private static string? DocumentAgeHint(IReadOnlyDictionary<EvidenceGroup, Evidence> e) =>
         e.GetValueOrDefault(EvidenceGroup.TemporalRole) is { Detail: ReasonCodes.AgeImplausibleAtDocument, Note: { } note } ? note : null;
@@ -143,7 +144,7 @@ public static class ExplanationBuilder
     private static string AgreementsAndDifferences(List<ComparisonRow> rows, List<string> unknown, IReadOnlyDictionary<EvidenceGroup, Evidence> e, bool newsDisagrees) =>
         (DocumentAgeHint(e) is { } hint ? $"{hint}。" : "")
         + $"相符：{OrMissing(Join(rows.Where(r => r.Status is ComparisonStatus.Exact or ComparisonStatus.Partial).Select(r => r.Field)), "無")}；"
-        + $"衝突：{OrMissing(Join((DocumentAgeHint(e) is null ? [] : DocumentAgeHintLabel).Concat(rows.Where(r => r.Status == ComparisonStatus.Conflict).Select(r => r.Field))
+        + $"衝突：{OrMissing(Join(DocumentAgeHintLabel(DocumentAgeHint(e)).Concat(rows.Where(r => r.Status == ComparisonStatus.Conflict).Select(r => r.Field))
             .Concat(NewsStated.Where(n => e.GetValueOrDefault(n.Group)?.Status == ComparisonStatus.Conflict).Select(n => n.Label))), "無")}；"
         + $"無法比對：{OrMissing(Join(unknown), "無")}。"
         // The Profile's own field agrees with the customer and the news next to the name says otherwise: said in words,

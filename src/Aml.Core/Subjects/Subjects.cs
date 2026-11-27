@@ -109,7 +109,7 @@ public sealed record SourceProfile(
     [property: Description("指控相關國家")] IReadOnlyList<string>? AllegationCountries = null,
     [property: Description("居住國家（Resident of）；不是國籍，不參與比對")] IReadOnlyList<string>? ResidenceCountries = null,
     [property: Description("名單記載是否已故（已故?）；未記載或無法讀取時為 null")] bool? Deceased = null,
-    [property: Description("名單的英文附註（Watchlist ProfileNotes），依原文保存並依標籤分段；不加解讀，不參與任何判斷。沒有附註時為 null")] ProfileNotes? Notes = null);
+    [property: Description("名單的英文附註（Watchlist ProfileNotes），依原文保存並依標籤分段；只讀其中名單人物事件的日期，作身分的年齡提示（AGE_IMPLAUSIBLE_AT_DOCUMENT，不自動判定），其餘不參與判斷。沒有附註時為 null")] ProfileNotes? Notes = null);
 
 public sealed record ProfileNotes(
     [property: Description("附註原文")][property: Sensitivity(Sensitivity.Personal)] string Raw,

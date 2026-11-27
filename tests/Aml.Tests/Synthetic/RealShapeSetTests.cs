@@ -18,8 +18,10 @@ public class RealShapeSetTests
     {
         var cases = Set.Value;
         Assert.Equal(SyntheticCaseGenerator.Digest([.. cases.Select(c => c.Case)]), SyntheticCaseGenerator.Digest([.. SyntheticCaseGenerator.RealShape().Select(c => c.Case)]));
-        Assert.Equal((32, 10, 12), (cases.Count, cases.Count(c => c.News.Count == 2), cases.Count(c => c.Case.Candidates[0].SamePerson)));
-        Assert.Equal("8F2C3008CF9B0BB5", SyntheticCaseGenerator.Digest([.. cases.Select(c => c.Case)]));
+        Assert.Equal((44, 10, 21), (cases.Count, cases.Count(c => c.News.Count == 2), cases.Count(c => c.Case.Candidates[0].SamePerson)));
+        Assert.Equal("F15748E64F39BB5B", SyntheticCaseGenerator.Digest([.. cases.Select(c => c.Case)]));
+        // The plain and dated-role Cases keep their digest: the notes-event Cases come after them.
+        Assert.Equal("8F2C3008CF9B0BB5", SyntheticCaseGenerator.Digest([.. cases.Take(SyntheticCaseGenerator.RealShapeCount + SyntheticCaseGenerator.DatedRoleCases.Length).Select(c => c.Case)]));
         // The first 20 have their own digest, independent of the dated-role Cases after them.
         Assert.Equal("1F854D1C0FEF1703", SyntheticCaseGenerator.Digest([.. cases.Take(SyntheticCaseGenerator.RealShapeCount).Select(c => c.Case)]));
     }
@@ -28,7 +30,7 @@ public class RealShapeSetTests
     public void A_child_customer_against_a_namesake_a_dated_item_reads_as_a_sentenced_director_or_a_defendant_is_hinted_not_concluded()
     {
         var outcomes = SyntheticMeasure.Run([.. Set.Value.Select(c => c.Case)], SyntheticAssumptions.Default.AsOf);
-        string KindOf(PairOutcome o) => o.Truth.Tags.FirstOrDefault(t => t.StartsWith("dated-role:", StringComparison.Ordinal)) ?? "plain";
+        string KindOf(PairOutcome o) => o.Truth.Tags.FirstOrDefault(t => t.StartsWith("dated-role:", StringComparison.Ordinal) || t.StartsWith("notes-event:", StringComparison.Ordinal)) ?? "plain";
         static bool Hinted(PairOutcome o) => o.Hit!.Identity.Evidence.GetValueOrDefault(EvidenceGroup.TemporalRole)?.Detail == ReasonCodes.AgeImplausibleAtDocument;
         // Advisory: every hinted pair is REVIEW on row 1; nothing in the set is concluded NO_MATCH by it.
         Assert.All(outcomes.Where(Hinted), o => Assert.Equal((IdentityDecision.Review, 1), (o.Hit!.Identity.Decision, o.Hit.Identity.Stage3Row)));
@@ -44,8 +46,38 @@ public class RealShapeSetTests
             ["dated-role:ChildVictim"] = (2, 0),
             ["dated-role:ChildJudge"] = (2, 0),
             ["dated-role:AdultDirector"] = (2, 0),
+            // From the Profile notes: the three strangers hinted; the same-person traps (a relative's conviction, a company's
+            // founding, the review date, the person's birth, a law named by year, 30 or 15 at the event, a later event only,
+            // no dates) never.
+            ["notes-event:ChargedAtThree"] = (1, 1),
+            ["notes-event:ActsBeforeBirth"] = (1, 1),
+            ["notes-event:ConvictedAtTen"] = (1, 1),
+            ["notes-event:RelativeConviction"] = (1, 0),
+            ["notes-event:CompanyFounded"] = (1, 0),
+            ["notes-event:ReviewDate"] = (1, 0),
+            ["notes-event:PersonsBirth"] = (1, 0),
+            ["notes-event:LawByYear"] = (1, 0),
+            ["notes-event:ThirtyAtEvent"] = (1, 0),
+            ["notes-event:FifteenAtEvent"] = (1, 0),
+            ["notes-event:LaterEventOnly"] = (1, 0),
+            ["notes-event:NoDates"] = (1, 0),
         }, byKind);
         Assert.DoesNotContain(outcomes, o => o.Truth.SamePerson && o.Hit!.Identity.Decision == IdentityDecision.NoMatch);
+    }
+
+    [Fact]
+    public void What_if_a_notes_event_concluded_counted_and_not_enabled()
+    {
+        // Measurement only: the pairs a concluding version would decide NO_MATCH, right (strangers) and wrong (the same person).
+        var ages = Set.Value.Select(c =>
+        {
+            var input = TxtCaseReader.ReadFiles(c.Case.Files);
+            var t = c.Case.Candidates[0];
+            return (t.SamePerson, Age: HardConflictGate.ImplausibleAgeInNotes(input.Subject, input.Profiles[t.ProfileId])?.MaxAge);
+        }).ToList();
+        (int Right, int Wrong) WhatIf(int under) => (ages.Count(a => !a.SamePerson && a.Age < under), ages.Count(a => a.SamePerson && a.Age < under));
+        Assert.Equal((1, 0), WhatIf(0));  // not yet born at the earliest event
+        Assert.Equal((3, 0), WhatIf(HardConflictGate.MinimumRoleAge)); // under 14
     }
 
     [Fact]

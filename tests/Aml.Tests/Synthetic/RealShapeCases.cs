@@ -39,21 +39,42 @@ public sealed partial class SyntheticCaseGenerator
 
     public enum DatedRole { ChildDirector, ChildDefendant, ChildVictim, ChildJudge, AdultDirector }
 
+    /// <summary>
+    /// The Cases after the dated-role ones, one per entry: English notes dating events. The first three are strangers the
+    /// advisory hint should reach (a customer born 2000 to 2009 against a namesake charged when the customer was 3, acting
+    /// in years before the customer's birth, convicted when the customer was 10); the rest are the same person, an adult
+    /// customer (or 15 at the event), whose notes hold a year a naive reader would take for the person's event.
+    /// </summary>
+    public static readonly NotesEvent[] NotesEventCases =
+        [NotesEvent.ChargedAtThree, NotesEvent.ActsBeforeBirth, NotesEvent.ConvictedAtTen, NotesEvent.RelativeConviction, NotesEvent.CompanyFounded,
+         NotesEvent.ReviewDate, NotesEvent.PersonsBirth, NotesEvent.LawByYear, NotesEvent.ThirtyAtEvent, NotesEvent.FifteenAtEvent,
+         NotesEvent.LaterEventOnly, NotesEvent.NoDates];
+
+    public enum NotesEvent
+    {
+        ChargedAtThree, ActsBeforeBirth, ConvictedAtTen,
+        RelativeConviction, CompanyFounded, ReviewDate, PersonsBirth, LawByYear, ThirtyAtEvent, FifteenAtEvent, LaterEventOnly, NoDates,
+    }
+
     public static IReadOnlyList<RealShapeCase> RealShape()
     {
         var g = new SyntheticCaseGenerator(SyntheticAssumptions.Default with { Seed = RealShapeSeed });
         return [.. Enumerable.Range(0, RealShapeCount).Select(i => g.RealShapeCase($"REAL-{i + 1:000}", i)),
-            .. DatedRoleCases.Select((kind, k) => g.RealShapeCase($"REAL-{RealShapeCount + k + 1:000}", 2 * k, kind))];
+            .. DatedRoleCases.Select((kind, k) => g.RealShapeCase($"REAL-{RealShapeCount + k + 1:000}", 2 * k, kind)),
+            .. NotesEventCases.Select((kind, k) => g.RealShapeCase($"REAL-{RealShapeCount + DatedRoleCases.Length + k + 1:000}", 2 * k, notesEvent: kind))];
     }
 
-    private RealShapeCase RealShapeCase(string id, int i, DatedRole? dated = null)
+    private RealShapeCase RealShapeCase(string id, int i, DatedRole? dated = null, NotesEvent? notesEvent = null)
     {
         var customer = NewPerson();
         var child = dated is not (null or DatedRole.AdultDirector);
         if (child) customer = customer with { Dob = RandomDob(r.Next(2005, 2009)) };
-        var same = dated is null ? i % 2 == 0 : dated == DatedRole.AdultDirector;
+        var notesStranger = notesEvent is NotesEvent.ChargedAtThree or NotesEvent.ActsBeforeBirth or NotesEvent.ConvictedAtTen;
+        if (notesStranger || notesEvent == NotesEvent.FifteenAtEvent) customer = customer with { Dob = RandomDob(r.Next(2000, 2010)) };
+        else if (notesEvent is not null) customer = customer with { Dob = RandomDob(r.Next(1960, 1980)) };
+        var same = notesEvent is not null ? !notesStranger : dated is null ? i % 2 == 0 : dated == DatedRole.AdultDirector;
         // A dated-role stranger has the customer's very name and gender: only the item's date and role tell them apart.
-        var p = same ? customer : dated is null ? Stranger(customer) : NewPerson() with { Surname = customer.Surname, Given = customer.Given, Gender = customer.Gender };
+        var p = same ? customer : dated is null && notesEvent is null ? Stranger(customer) : NewPerson() with { Surname = customer.Surname, Given = customer.Given, Gender = customer.Gender };
         var pid = $"79{++profileSeq:000000}";
 
         // Customer: the export's labels in its order; "-" is its empty marker, a blank title an empty line.
@@ -77,9 +98,27 @@ public sealed partial class SyntheticCaseGenerator
 
         // Profile, with the vendor's notes: on one line after "Watchlist ProfileNotes:", or as a section with wrapped lines.
         var reviewed = new DateOnly(2026, r.Next(1, 11), r.Next(1, 28));
+        var n = $"{p.RomanSurname} {p.RomanGiven}";
+        var y = customer.Dob.Year;
+        var fifteen = new DateOnly(y, customer.Dob.Month!.Value, customer.Dob.Day!.Value).AddYears(15).AddDays(10);
+        var narrative = notesEvent switch
+        {
+            NotesEvent.ChargedAtThree => $"{n} was charged by the Sample District Prosecutors Office in {y + 3} with fraud.",
+            NotesEvent.ActsBeforeBirth => $"{n} defrauded investors between {y - 6} and {y - 3} and was indicted in {y + 1} with fraud.",
+            NotesEvent.ConvictedAtTen => $"{n} was convicted in {y + 10} in a case linked with fraud.",
+            NotesEvent.RelativeConviction => $"{n}'s father was convicted in {y - 5}. {n} was charged in {y + 30} with fraud.",
+            NotesEvent.CompanyFounded => $"Sample Trading Co. was founded in {y - 10}. {n} was indicted in {y + 35} with fraud.",
+            NotesEvent.ReviewDate => $"The record of {n} was last updated in {y + 5}. {n} was charged in {y + 40} with fraud.",
+            NotesEvent.PersonsBirth => $"{n} was born in {y}. He was sentenced in {y + 28} for offences linked with fraud.",
+            NotesEvent.LawByYear => $"{n} was charged in {y + 33} under the {y - 3} Securities and Exchange Act in a case linked with fraud.",
+            NotesEvent.ThirtyAtEvent => $"{n} was convicted in {y + 30} in a case linked with fraud.",
+            NotesEvent.FifteenAtEvent => $"{n} was arrested on {fifteen.ToString("d MMMM yyyy", System.Globalization.CultureInfo.InvariantCulture)} in a case linked with fraud.",
+            NotesEvent.LaterEventOnly => $"In {y + 2} his uncle was jailed; {n} was indicted in {y + 31} with fraud.",
+            _ => $"{n} was charged by the Sample District Prosecutors Office with fraud.",
+        };
         var notes = $"Last Reviewed Date: {reviewed.ToString("dd-MMM-yyyy", System.Globalization.CultureInfo.InvariantCulture)} "
             + "Keywords: fraud, breach of trust Companies mentioned: Sample Trading Co. "
-            + $"Profile: {p.RomanSurname} {p.RomanGiven} was charged by the Sample District Prosecutors Office with fraud.";
+            + $"Profile: {narrative}";
         var noteLabels = new[] { "Last Reviewed Date", "Keywords", "Companies mentioned", "Profile" };
         var notesText = i % 3 == 0
             ? "ProfileNotes:\n" + notes.Replace(" Keywords:", "\nKeywords:", StringComparison.Ordinal).Replace(" with fraud.", "\nwith fraud.", StringComparison.Ordinal)
@@ -133,8 +172,9 @@ public sealed partial class SyntheticCaseGenerator
         }
 
         var expected = new ExpectedProfile([p.Hant, $"{p.RomanSurname} {p.RomanGiven}"], p.Gender, [], ["TW"], [], null, on);
-        var truth = new CandidateTruth(pid, RecordKind.News, same, ListType.AdverseMedia, true, news.Count > 1 || dated is not null ? null : LegalStage.Indicted,
-            [.. same ? [] : new[] { p.Hant == customer.Hant ? "stranger:same-name" : "stranger:near-name" }, .. dated is { } d ? new[] { $"dated-role:{d}" } : []], expected, 1);
+        var truth = new CandidateTruth(pid, RecordKind.News, same, ListType.AdverseMedia, true, news.Count > 1 || dated is not null || notesEvent is not null ? null : LegalStage.Indicted,
+            [.. same ? [] : new[] { p.Hant == customer.Hant ? "stranger:same-name" : "stranger:near-name" }, .. dated is { } d ? new[] { $"dated-role:{d}" } : [],
+             .. notesEvent is { } e ? new[] { $"notes-event:{e}" } : []], expected, 1);
         var subject = new ExpectedSubject([customer.Hant, customer.BankEnglish], customer.Gender, customer.Dob, "TW", customer.NationalId);
         return new RealShapeCase(new SyntheticCase(id, false, files, subject, [truth]), alias, title, birthPlace, noteLabels, news, decision, reason);
     }

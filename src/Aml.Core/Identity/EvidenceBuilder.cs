@@ -103,6 +103,9 @@ public static class EvidenceBuilder
     /// </summary>
     public static Evidence? TemporalEvidence(ScreenedSubject s, SourceProfile p, NewsItem? news) => TemporalEvidence(s, p, news is null ? [] : [news]);
 
+    /// <summary>The opening of the advisory hint's note when the Profile notes ground it (the explanation names that source).</summary>
+    public const string NotesHintPrefix = "名單附註";
+
     /// <inheritdoc cref="TemporalEvidence(ScreenedSubject, SourceProfile, NewsItem?)"/>
     /// <param name="hint">False leaves out the advisory AGE_IMPLAUSIBLE_AT_DOCUMENT (a pair a hard conflict decides).</param>
     public static Evidence? TemporalEvidence(ScreenedSubject s, SourceProfile p, IReadOnlyList<NewsItem> news, bool hint = true)
@@ -111,13 +114,17 @@ public static class EvidenceBuilder
         if (s.DateOfBirth is not { Precision: DatePrecision.Day } dob) return null;
         var events = p.Roles.Select(r => r.From).OfType<PartialDate>().ToList();
         events.AddRange(news.Select(n => n.PublishedOn).OfType<PartialDate>());
-        if (events.Count == 0) return null;
         if (HardConflictGate.RoleConflict(dob, p) is { } hard)
             return new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, hard);
         // Advisory: a conflict that never concludes; stage 3 row 1 holds the pair at REVIEW for a reviewer to read it.
+        // An attached item's header date first, then the Profile notes' earliest event.
         if (hint && HardConflictGate.ImplausibleAgeAtDocument(s, p, news) is { } d)
             return new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.AgeImplausibleAtDocument,
                 $"第 {d.Item} 則附加新聞（報導日期 {d.On}）稱名單人物為「{d.Role}」，當日客戶最多 {d.MaxAge} 歲；未自動判定，請覆核");
+        if (hint && HardConflictGate.ImplausibleAgeInNotes(s, p) is { } n)
+            return new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.AgeImplausibleAtDocument,
+                $"{NotesHintPrefix}（{n.Location}）記載名單人物「{n.Act}」於 {n.On}，" + (n.MaxAge < 0 ? "當時客戶尚未出生" : $"當時客戶最多 {n.MaxAge} 歲") + "；未自動判定，請覆核");
+        if (events.Count == 0) return null;
         var youngest = events.Min(d => HardConflictGate.MaxAgeAt(dob, d));
         var note = $"最早事件時最多 {youngest} 歲";
         return youngest >= HardConflictGate.MinimumRoleAge

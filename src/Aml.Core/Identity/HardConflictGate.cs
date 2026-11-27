@@ -96,6 +96,28 @@ public static partial class HardConflictGate
         return null;
     }
 
+    /// <summary>The notes' event that grounds the hint: its date, the act word read, the customer's oldest age then (negative: not yet born) and the sentence's place.</summary>
+    public sealed record NotesAge(PartialDate On, string Act, int MaxAge, string Location);
+
+    /// <summary>
+    /// The same advisory hint from the Profile's own English notes: the customer, born on a known day, was under
+    /// <see cref="MinimumRoleAge"/> at most at the earliest event the notes date for the Profile person
+    /// (<see cref="NotesEvents"/>), or not yet born. An event dated to the year only suffices: the oldest age is taken over
+    /// every day it can stand for. Silent when the Profile has a DOB of its own, has no Latin name form, when the notes state
+    /// an age of the person (its reference date is not read), or a birth date within
+    /// <see cref="EvidenceBuilder.DobToleranceYears"/> years of the customer's.
+    /// </summary>
+    public static NotesAge? ImplausibleAgeInNotes(ScreenedSubject s, SourceProfile p)
+    {
+        if (s.DateOfBirth is not { Precision: DatePrecision.Day } dob || p.DatesOfBirth.Count > 0 || p.Notes is not { } notes) return null;
+        var latin = p.Names.Where(n => n.Any(char.IsAsciiLetter)).ToList();
+        if (latin.Count == 0 || NotesEvents.Read(notes, latin) is not { Events.Count: > 0 } r || r.StatesAge
+            || r.BirthDates.Any(b => !dob.IsMoreThanYearsApart(b, EvidenceBuilder.DobToleranceYears))) return null;
+        var first = r.Events.MinBy(e => MaxAgeAt(dob, e.On))!;
+        var age = MaxAgeAt(dob, first.On);
+        return age < MinimumRoleAge ? new(first.On, first.Act, age, first.Location) : null;
+    }
+
     /// <summary>
     /// The word a child cannot be called that stands directly before a whole full-name mention of the Profile person in
     /// <paramref name="text"/>: a suspect word or a company officer word, optionally after 前. Read from the mentions alone:

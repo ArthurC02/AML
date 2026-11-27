@@ -17,7 +17,8 @@ public static class PageUrl
     {
         if (string.IsNullOrWhiteSpace(text)) return (null, "no URL");
         if (text.Length > MaxLength) return (null, $"over {MaxLength} characters");
-        if (!Uri.TryCreate(text, UriKind.Absolute, out var url)) return (null, "not an absolute URL");
+        // On Unix a path such as "/a/b" parses as an absolute file URI; it is a path, on every platform.
+        if (text.StartsWith('/') || !Uri.TryCreate(text, UriKind.Absolute, out var url)) return (null, "not an absolute URL");
         return Broken(url) is { } broken ? (null, broken) : (Canonical(url), null);
     }
 

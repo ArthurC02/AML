@@ -1,6 +1,6 @@
 # Web Text
 
-`Infra/Web` fetches web pages and PDFs and keeps their readable text. It is used to gather training and evaluation text for the news models; no case analysis reads it yet.
+`Infra/Web` fetches web pages and PDFs and keeps their readable text. It is used to gather training and evaluation text for the news models; no case analysis reads it yet. The [external sources](external-sources.md) (a received URL, grounding search, judgments) will read pages through it; the table below limits training text, not what a Case may read.
 
 ## Fetching
 

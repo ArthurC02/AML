@@ -21,7 +21,7 @@ Article 22 covers message scanning (AML SWIFT/RTGS) and name screening of indivi
 |---|---|
 | Individual initial check: name, nationality, DOB | NAME, NATIONALITY, DATE_OF_BIRTH groups; all three are always compared |
 | Legal person / group initial check: name and responsible person's name | non-person Profile; REVIEW in Phase 1 ([system overview](system-overview.md#excluded-for-phase-1)); never compared with a natural person's nationality and DOB |
-| On list: every item the same | identity MATCH; automatic MATCH is disabled in Phase 1, so the pair stays REVIEW |
+| On list: every item the same | identity MATCH; no MATCH is emitted until the [scoring rule](scoring-rule.md) decides, so today the pair stays REVIEW |
 | On list: non-Taiwanese subject hits a foreign PEP and data is insufficient | rule ① below |
 | Not on list: every item different | identity NO_MATCH; automatic only for validated hard conflicts, otherwise REVIEW |
 | Not on list: adverse news unrelated to ML/TF/PF | rule ② below |
@@ -40,7 +40,7 @@ Article 22 covers message scanning (AML SWIFT/RTGS) and name screening of indivi
 - identity NO_MATCH → NOT_ON_LIST, reason code `ART22_IDENTITY_NO_MATCH`;
 - otherwise no automatic recommendation; the pair stays REVIEW.
 
-Automatic MATCH is disabled in Phase 1, so the two MATCH rows never apply in Phase 1: a PROBABLE_MATCH pair that ① and ② do not resolve gets no recommendation.
+No MATCH is emitted until the scoring rule decides (automatic MATCH is allowed from then on, Sanction / PEP aside until confirmed), so today the two MATCH rows never apply: a PROBABLE_MATCH pair that ① and ② do not resolve gets no recommendation.
 
 ### Article 22-1: foreign PEP presumption
 

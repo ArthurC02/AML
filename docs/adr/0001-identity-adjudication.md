@@ -1,28 +1,34 @@
 # ADR-0001: Evidence-driven identity adjudication
 
-- Status: Accepted
-- Date: 2026-11-02; updated 2026-11-09 (merged former ADR-0002, 0003, 0018, 0019), 2026-11-19 (values stated in attached news)
+- Status: Accepted. The scoring rule is decided (2026-11-26) and built as a trial calculation in measurement only (`Core/Scoring/ScoringRule.cs`); its weights are not approved, and until approval the stage 3 table decides and no MATCH is emitted.
+- Date: 2026-11-02; updated 2026-11-09 (merged former ADR-0002, 0003, 0018, 0019), 2026-11-19 (values stated in attached news), 2026-11-26 (a deterministic scoring rule decides the match; no model output is the decision or the score; the proposed weights are tried in measurement only; automatic MATCH allowed in the match band; decisiveness is a system goal and no blanket human review for Sanction, PEP or RCA under the rule)
 
 ## Context
 
-Name-screening systems often reduce identity to one similarity score. A score cannot explain why a pair matched, hides conflicting facts and mixes retrieval ranking with identity. Many weak agreements (same name, gender, nationality) can look convincing together even when one reliable fact proves two records are different people.
+Name-screening systems often reduce identity to one similarity score. Such a score cannot explain why a pair matched, hides conflicting facts and mixes retrieval ranking with identity. Many weak agreements (same name, gender, nationality) can look convincing together even when one reliable fact proves two records are different people. A score that is a sum of named rule items, each from one piece of evidence with its reason code, has none of these faults: every point can be traced, a conflict is a visible negative item, and a veto stays a veto.
 
 The bank's legacy rules (`Rule.md`) describe an earlier product: an LLM reads each case, writes an Excel report with a match/no-match recommendation and two probabilities, and humans score the report against a 100-point rubric. Many of its evidence rules are sound and are in the feature specs; its decision mechanism is not adopted.
 
 Fellegi-Sunter, which sums per-field weights log₂(m/u), pays off only once m and u are estimated and calibrated against labelled cases. No population distribution and no labelled set exist yet.
 
+On 2026-11-26 the user decided that everything is scored by a scoring rule and that the score decides whether a case matches (D2), made by a deterministic algorithm, never by a model's judgment (D4). The weights and thresholds are not yet approved.
+
 ## Decision
 
-- **Explicit records, no score.** Adjudication works on CandidateProfile, Evidence, Conflict and SystemDecision. Every decision lists its supporting evidence, conflicts, unknown fields, reason codes and policy version ([explainability](../feature/identity-adjudication.md#explainability)). Retrieval scores (BM25, displayed similarity) rank candidates only and are never identity probabilities.
-- **Three ordered stages:** Hard Conflict Gate, Evidence Strength Assessment, Decision Policy. A confirmed hard conflict cannot be offset by weak supporting attributes. Each hard-conflict rule names its evidence and policy version and carries its own validation status; only validated rules close a pair automatically, unvalidated ones surface as REVIEW ([hard conflict gate](../feature/identity-adjudication.md#hard-conflict-gate)).
-- **Strength table before Fellegi-Sunter.** Phase 1 uses a decision table over `strength` (`LOW | MEDIUM | HIGH | UNIQUE`) ([decision table](../feature/identity-adjudication.md#decision-policy)). Levels follow Fellegi-Sunter order (the less likely a chance agreement, the higher), so a later switch to weights keeps the ranking. Hit prerequisites (NAME, NATIONALITY, GENDER) have no strength. Fellegi-Sunter with term-frequency adjustment and calibration waits for Gate D: historical decisions with human gold answers, and public or list-side statistics for u.
-- **A value stated in attached news is weaker than a Profile field.** An age, birth date or gender written next to the Profile person's name is evidence ([ADR-0012](0012-sources-and-web-information.md)), but it is the person's only by standing next to the name. Agreement is at most `MEDIUM` and never a direct identifier; a difference is a soft conflict that keeps the pair in REVIEW, never a hard conflict ([spec](../feature/identity-adjudication.md#birth-date-and-gender-stated-in-a-source)).
-- **PROBABLE_MATCH is internal.** It ranks REVIEW first; consumers receive REVIEW ([combination matrix](../feature/data-contracts.md#combination-matrix)). There is no automatic MATCH.
+- **Explicit records, decided by a scoring rule** ([scoring rule](../feature/scoring-rule.md)). Adjudication works on CandidateProfile, Evidence, Conflict and SystemDecision. The identity decision is the band of an identity score: the sum of rule items, one per evidence group, each with its points, its source and a reason code in the code catalog; validated hard conflicts and caps stay outside the sum. Every decision lists its items, vetoes, unknown fields, reason codes and scoring-policy version ([explainability](../feature/identity-adjudication.md#explainability)). Retrieval scores (BM25, displayed similarity) rank candidates only and are never part of the identity score.
+- **Deterministic, never a model's verdict** (D4). The same inputs under the same rule version give the same score and the same decision. No model output is the decision, the score or one of its items as such. A model may appear only upstream, as an extractor of fields and facts from text (persons, attributes, events, legal stage); what it reads enters the rule as an input marked as model-read, with its provenance, and the rule fixes what it is worth. A missing model answer stays missing and scores nothing. The score is points, never a probability and never shown as a percentage.
+- **Three ordered stages** remain: Hard Conflict Gate (vetoes), Evidence Strength Assessment (rule items), Decision Policy (bands). A confirmed hard conflict cannot be offset by weak supporting attributes. Each hard-conflict rule names its evidence and policy version and carries its own validation status; only validated rules close a pair automatically, unvalidated ones contribute negative points but hold the pair at REVIEW ([hard conflict gate](../feature/identity-adjudication.md#hard-conflict-gate)).
+- **Points follow strength, strength follows Fellegi-Sunter order.** Points per group and level (`LOW | MEDIUM | HIGH | UNIQUE`) keep the order of the chance of an accidental agreement, so calibrated weights can later replace them as a new rule version. Hit prerequisites (NAME, NATIONALITY, GENDER) score no points (the bank's rule); they are preconditions of a band. Fellegi-Sunter with term-frequency adjustment and calibration waits for Gate D; until then `FellegiSunter` stays a calibration tool outside every result.
+- **The score decides once its weights are approved.** The proposed weights are used for trial calculation: the score is computed and compared with the [stage 3 table](../feature/identity-adjudication.md#stage-3-table) in measurement only, and the table decides, until the user approves the weights and the proposed switch gates pass ([validation](../feature/scoring-rule.md#validation)).
+- **A value stated in a source is weaker than a Profile field.** An age, birth date or gender written next to a person's name in a page is evidence ([ADR-0012](0012-sources-and-web-information.md)), but it is the person's only by standing next to the name. Agreement is at most `MEDIUM`, scaled by the source's reliability, and never a direct identifier; a difference is a soft conflict that never takes a pair below REVIEW ([spec](../feature/identity-adjudication.md#birth-date-and-gender-stated-in-a-source)).
+- **Automatic MATCH in the match band** (user, 2026-11-26). When the identity score reaches the MATCH band and no veto or cap applies, the algorithm concludes MATCH without a reviewer; with a HIT condition the pair result is HIT. It takes effect only when the score becomes the decision, after a measured automatic MATCH precision; today no MATCH is emitted. It applies to every list type: under the rule no release control holds Sanction, PEP or RCA candidates in human review (read from the user's statement of 2026-11-26; the user can restore the control); today's code keeps `RELEASE_CONTROL_HUMAN_REVIEW` while the stage 3 table decides. A MATCH is an identification, not a disposition ([ADR-0004](0004-identification-only.md)).
+- **Decisiveness is a goal** (user, 2026-11-26: a system that leaves everything to review is conservative but worthless). The rule exists to conclude MATCH or NO_MATCH wherever the evidence allows; REVIEW is the remainder, not the default. The decided rate is the primary identity measure, guarded by Auto-MATCH and Auto-NO_MATCH precision ([metrics](../plan/poc-delivery-plan.md#metrics)); a missing value still never counts against a pair.
+- **PROBABLE_MATCH is internal.** It ranks REVIEW first; consumers receive REVIEW ([combination matrix](../feature/data-contracts.md#combination-matrix)).
 - **Legacy rules not adopted:**
 
 | Legacy rule | Replacement |
 |---|---|
-| AI-assigned match/no-match probabilities | evidence, conflicts and reason codes |
+| AI-assigned match/no-match probabilities | rule items with points and reason codes; no probability |
 | 65% probability threshold | `NO_BILATERAL_DIRECT_IDENTIFIER`; the 2026-10-14 ruling is an [open question](../plan/open-questions.md#article-22) |
 | case probability not lower than any hit | [case-level precedence](../feature/case-management.md#case-level-result) |
 | LLM reads news, judges AML relevance | [ADR-0012](0012-sources-and-web-information.md) |
@@ -32,7 +38,8 @@ Fellegi-Sunter, which sums per-field weights log₂(m/u), pays off only once m a
 
 ## Consequences
 
-- More data is stored per decision; that is the price of traceability.
-- Every table row is testable with Golden Cases and readable by the business.
-- The PROBABLE_MATCH combination and the 65% ruling stay [open questions](../plan/open-questions.md#identity-policy) until GC-06/GC-07 and calibrated probabilities exist.
-- Probabilistic scoring comes only through a calibrated model, by updating this record; uncalibrated scores are never shown as percentages.
+- More data is stored per decision (one row per rule item); that is the price of traceability.
+- Every weight, threshold and veto is testable with Golden Cases and readable by the business; a changed weight is a new scoring-policy version recorded in lineage.
+- Every new rule-item, band and veto code goes into the code catalog with the build; a code without a catalog entry is a bug.
+- An automatic MATCH is only as safe as its band: Auto-MATCH precision on labelled pairs becomes a release measure, beside the decided rate it guards.
+- The PROBABLE_MATCH band, the NO_MATCH band and the 65% ruling stay [open questions](../plan/open-questions.md#identity-policy) until GC-06/GC-07 and labelled pairs exist.

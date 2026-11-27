@@ -18,6 +18,7 @@ public static class CodeCatalog
     private const string Watchlist = "docs/feature/watchlist-and-adverse-information.md";
     private const string Disposition = "docs/feature/review-and-disposition.md";
     private const string Api = "docs/feature/pipeline-api-and-batch.md";
+    private const string Scoring = "docs/feature/scoring-rule.md";
 
     /// <summary>Catalog key of an emitted value: SOFT_DIFFERENCE（Jaccard …） → SOFT_DIFFERENCE, ENCODING_FALLBACK:a.txt → ENCODING_FALLBACK.</summary>
     public static string Key(string value) => value.Split('（', ':')[0].Trim();
@@ -54,6 +55,24 @@ public static class CodeCatalog
         ("IDENTITY_REASON", "ENTITY_IDENTIFIER_AGREEMENT", "實體識別碼相符", "非自然人記錄：雙方登記號碼或 IMO 號碼相同。", "IdentityDecisionPolicy.EntityDecision", Identity + "#reason-code-registry"),
         ("IDENTITY_REASON", "ENTITY_IDENTIFIER_CONFLICT", "實體識別碼不符", "非自然人記錄：同一種識別碼號碼不同。", "IdentityDecisionPolicy.EntityDecision", Identity + "#reason-code-registry"),
         ("IDENTITY_REASON", "ENTITY_SENIOR_MANAGER_AGREEMENT", "高階管理人同名", "非自然人記錄：沒有可比對的實體識別碼，但雙方記載同名的高階管理人；部分佐證，REVIEW。", "IdentityDecisionPolicy.EntityDecision", Identity + "#reason-code-registry"),
+
+        ("SCORE", "SCORE_DOB_DAY", "出生日期到日相符", "評分規則（試算，未核准）：雙方完整出生日期相符（HIGH），+25。", "ScoringRule.Identity", Scoring + "#proposal-table"),
+        ("SCORE", "SCORE_DOB_MONTH", "出生日期到月相符", "評分規則（試算，未核准）：出生日期相符到月（MEDIUM），+15；新聞所載完整出生日期相符另以 NEWS_BIRTH_DATE_AGREES 計，乘來源可信度。", "ScoringRule.Identity", Scoring + "#proposal-table"),
+        ("SCORE", "SCORE_DOB_YEAR", "出生年相符", "評分規則（試算，未核准）：出生日期只相符到年（LOW），+8。", "ScoringRule.Identity", Scoring + "#proposal-table"),
+        ("SCORE", "SCORE_ADDRESS", "地址相符", "評分規則（試算，未核准）：同一期間的地址相符，到門牌 +15、到區 +5；目前證據沒有地址期間，不會出現。", "ScoringRule.Identity", Scoring + "#proposal-table"),
+        ("SCORE", "SCORE_ASSOCIATION", "任職或關係相符", "評分規則（試算，未核准）：任職、關聯公司或明確的關係人在雙方相符，每個證據群組 +15。", "ScoringRule.Identity", Scoring + "#proposal-table"),
+        ("SCORE", "SCORE_OTHER_IDENTIFIER", "其他識別碼相符", "評分規則（試算，未核准）：非證件的識別碼號碼相同，+5。", "ScoringRule.Identity", Scoring + "#proposal-table"),
+        ("SCORE", "SCORE_BAND_MATCH", "達自動 MATCH 門檻", "評分規則（試算，未核准）：身分分數 ≥ 60 且沒有否決或上限；評分成為決策前只是量測結果，系統不會輸出 MATCH。", "ScoringRule.Identity", Scoring + "#identity-score"),
+        ("SCORE", "SCORE_BAND_PROBABLE_MATCH", "達 PROBABLE_MATCH 門檻", "評分規則（試算，未核准）：身分分數 ≥ 30，或三項前提條件皆 EXACT 且證件、任職沒有未決差異時 ≥ 8。", "ScoringRule.Identity", Scoring + "#identity-score"),
+        ("SCORE", "SCORE_BAND_NO_MATCH", "達 NO_MATCH 門檻", "評分規則（試算，未核准）：身分分數 ≤ -25，且所有負分項目都來自已驗證規則。", "ScoringRule.Identity", Scoring + "#identity-score"),
+        ("SCORE", "SCORE_HELD_PENDING_VALIDATION", "規則待驗證，維持 REVIEW", "評分規則（試算，未核准）：待驗證的硬衝突、經來源品質降級的硬衝突，或只靠待驗證的負分項目達到 NO_MATCH 門檻時，維持 REVIEW。", "ScoringRule.Identity", Scoring + "#identity-score"),
+        ("SCORE", "SCORE_CAPPED_PROFILE_CONFLICT", "名單欄位衝突上限", "評分規則（試算，未核准）：名單本身的出生日期或證件與客戶衝突，最高 REVIEW（保留第三階段第 1 列）。", "ScoringRule.Identity", Scoring + "#identity-score"),
+        ("SCORE", "SCORE_CAPPED_GENDER_CONFLICT", "性別不符上限", "評分規則（試算，未核准）：名單或附加新聞所載性別與客戶不同，最高 REVIEW。", "ScoringRule.Identity", Scoring + "#identity-score"),
+        ("SCORE", "SCORE_CAPPED_ENTITY_RECORD", "非自然人記錄上限", "評分規則（試算，未核准）：非自然人記錄最高 PROBABLE_MATCH，沒有相符的實體識別碼時最高 REVIEW，直到有實體 Golden Case。", "ScoringRule.Identity", Scoring + "#identity-score"),
+        ("SCORE", "SCORE_CONDITION_BASIS", "名單條件依據分數", "評分規則（試算，未核准）：名單條件依旗標或類別對應為 HIT 時 100、NOT_HIT 時 0，乘來源可信度。", "ScoringRule.Condition", Scoring + "#condition-score"),
+        ("SCORE", "SCORE_CONDITION_STAGE", "來源人物法律階段分數", "評分規則（試算，未核准）：網頁或判決中人物的法律階段分數（CONVICTED 100、WANTED 90、INDICTED 80、ALLEGED 50、ACQUITTED 或 DISMISSED 10、非嫌疑人 0），乘來源可信度。", "ScoringRule.SourcePerson", Scoring + "#condition-score"),
+        ("SCORE", "SCORE_CONDITION_STAGE_UNKNOWN", "法律階段未知，條件 UNKNOWN", "評分規則（試算，未核准）：來源人物的法律階段為 UNKNOWN（讀取者不一致或模型回答缺值），條件依規則為 UNKNOWN，不計分、不會降為 NOT_HIT。", "ScoringRule.SourcePerson", Scoring + "#condition-score"),
+        ("SCORE", "SCORE_CONDITION_BAND", "達條件門檻", "評分規則（試算，未核准）：條件分數 ≥ 60 為 HIT，30 以上未滿 60 為 UNKNOWN。", "ScoringRule.Condition", Scoring + "#condition-score"),
 
         ("PAIR_REASON", "RELEASE_CONTROL_HUMAN_REVIEW", "放行控制：人工複核", "Sanction、PEP 或 RCA 條件為 HIT 或 UNKNOWN、原本為 NO_HIT 的組合，第一階段一律轉 REVIEW 交由人工。", "AssessmentPolicy.Assess", Disposition + "#two-results-read-separately"),
         ("PAIR_REASON", "SOURCE_CONDITION_UNKNOWN", "名單條件未知", "名單條件無法確定（UNKNOWN）；身分 NO_MATCH 時為 NO_HIT，Sanction、PEP、RCA 則由放行控制轉 REVIEW。", "AssessmentPolicy.Assess", Watchlist + "#reason-codes"),

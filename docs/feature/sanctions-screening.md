@@ -53,7 +53,7 @@ Sanction pairs use the canonical [combination matrix](data-contracts.md#combinat
 
 ## Phase 1 restriction
 
-Until GC-05 is validated, all apparent Sanction identity matches require high-priority human review. The architecture and contracts may be implemented, but production-grade automatic Sanction decisions are not claimed.
+GC-05 validates Sanction acceptance; production-grade automatic Sanction decisions are not claimed before it. Once the [scoring rule](scoring-rule.md) decides, its automatic MATCH and NO_MATCH apply to Sanction pairs as to any other (read from the user's statement of 2026-11-26; the user can restore the control).
 
-- A Sanction condition that is HIT or UNKNOWN keeps the pair in REVIEW (release control `RELEASE_CONTROL_HUMAN_REVIEW`) and gives it review priority High; a NOT_HIT Sanction condition does neither.
+- While the stage 3 table decides, a Sanction condition that is HIT or UNKNOWN keeps the pair in REVIEW (release control `RELEASE_CONTROL_HUMAN_REVIEW`) and gives it review priority High; a NOT_HIT Sanction condition does neither.
 - Under an approved risk policy, an UNKNOWN Sanction condition scores as a HIT and any scored Sanction condition makes the risk level High ([risk scoring](watchlist-and-adverse-information.md#risk-scoring)).

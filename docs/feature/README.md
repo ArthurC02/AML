@@ -10,6 +10,8 @@ What the system does, per module and cross-cutting concern.
 | [Data contracts](data-contracts.md) | identifiers, snapshots, evidence, comparisons, source conditions, combination matrix, field wrapper |
 | [Extraction and normalization](extraction-and-normalization.md) | sources, `.txt` and HTML reading, missing values, names, dates, stated ages, countries, documents, Taiwan addresses, quality findings |
 | [Web text](web-text.md) | polite fetching, main text of web pages, PDF text, sources whose text may be used |
+| [External sources](external-sources.md) | received URL, grounding search and judgments as source Profiles: common path, many persons per page, same event, redacted names, storage, the page and search APIs |
+| [Scoring rule](scoring-rule.md) | identity and condition scores, vetoes, source reliability, missing data, the proposed weights, explanation, validation |
 | [Identity adjudication](identity-adjudication.md) | retrieval modes, deduplication and merging, evidence groups, comparison measures, hard conflict gate, decision policy, reason codes |
 | [Sanctions screening](sanctions-screening.md) | sanction source model and policy |
 | [PEP and RCA screening](pep-rca-screening.md) | PEP categories and policy |

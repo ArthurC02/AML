@@ -455,7 +455,7 @@ A news item attached to a Profile counts as attached news; the Profile's own des
 
 ## Phase 1 constraint
 
-General free-news event understanding is out of scope. Structured Profile fields, bounded Notes sections and explicit citations are used; no LLM is involved, and no model takes part in any decision ([ADR-0001](../adr/0001-identity-adjudication.md)). The [news digest](#news-digest) reads people and events from the news by fixed rules, and the [news models](#news-models) beside it, for the reviewer only ([ADR-0012](../adr/0012-sources-and-web-information.md)).
+General free-news event understanding is out of scope. Structured Profile fields, bounded Notes sections and explicit citations are used. No model makes a decision ([ADR-0001](../adr/0001-identity-adjudication.md)): models only read text, and the one reading that reaches a result, the legal stage, does so through the fixed vote rule of the [three readers](#three-readers). The [news digest](#news-digest) reads people and events from the news by fixed rules, and the [news models](#news-models) beside it, for the reviewer only ([ADR-0012](../adr/0012-sources-and-web-information.md)).
 
 When news content is used:
 

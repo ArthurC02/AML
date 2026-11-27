@@ -29,7 +29,7 @@ public static class IdentityDecisionPolicy
         return new IdentityResult(e, null, row, decision, reasons);
     }
 
-    private static bool IsPersonRecord(SourceProfile p) => p.RecordType.Equals("Person", StringComparison.OrdinalIgnoreCase);
+    internal static bool IsPersonRecord(SourceProfile p) => p.RecordType.Equals("Person", StringComparison.OrdinalIgnoreCase);
 
     private static IdentityResult HardConflictDecision(IReadOnlyDictionary<EvidenceGroup, Evidence> e, SourceProfile p, string hard)
     {
@@ -153,7 +153,7 @@ public static class IdentityDecisionPolicy
             : (Stage3Rows.NoSupport, IdentityDecision.Review, ReasonCodes.NoNonPrerequisiteSupport);
     }
 
-    private static bool IsUnsettled(Evidence? v) =>
+    internal static bool IsUnsettled(Evidence? v) =>
         v?.Status is ComparisonStatus.Conflict or ComparisonStatus.Uncertain && v.Detail != EvidenceBuilder.NotComparable;
 
     private static bool NoBilateralDirectIdentifier(ScreenedSubject s, SourceProfile p) =>

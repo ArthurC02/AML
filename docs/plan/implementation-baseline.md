@@ -43,6 +43,7 @@ AML/
 │   │   │   ├── Countries.cs      # ISO 3166-1 codes and common English / Chinese names, Taiwan aliases
 │   │   │   └── Data/*.txt        # embedded reference tables (see Third-party data)
 │   │   ├── Identity/             # evidence groups, HardConflictGate, IdentityDecisionPolicy (with Contrast), Fellegi-Sunter calibration
+│   │   ├── Scoring/              # scoring rule, trial calculation in measurement only (ScoringRule, ScoringPolicy.Proposed)
 │   │   ├── Screening/            # source-condition policies, combination matrix, DispositionPolicy, risk scoring
 │   │   │   └── Stage/            # legal stage from attached news: glossary, patterns, form readers, types, rules, entry points, StageVote (rules + stage models; with both models only a unanimous vote gives the stage)
 │   │   ├── Retrieval/            # ProfileIndex (alias, BM25, n-gram, reading-key routes), ProfileMerge
@@ -81,6 +82,7 @@ AML/
     └── Aml.Tests/
         ├── Unit/                 # in process, no database: Cases, Extraction, Identity, Names, Retrieval, Screening
         ├── GoldenCases/          # Golden Cases through the analyzer, augmented cases, explanation, views, metrics (in process)
+        ├── Synthetic/            # generated Cases with truth, as exports, through the readers and the analyzer (in process)
         ├── Integration/          # services, repositories and the job table on SQLite
         ├── E2E/                  # critical API flows through WebApplicationFactory
         ├── TestSupport.cs        # TestDatabase, ApiHost, ManualTimeProvider, Wait
@@ -106,7 +108,7 @@ Implementation notes:
 - `GET /health` runs `System.Ping`. OpenTelemetry traces, metrics and logs are on (ASP.NET Core plus the `Aml` source and meter: `aml.analyses`, `aml.analysis.duration`, `aml.job.attempts`, `aml.workbooks`, `aml.workbook.duration`, `aml.workbook.size`); OTLP export starts only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set.
 - The list database (`list_profile`) and each revision's input files (`case_input`, decoded text) are stored for retrieval and re-analysis ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md)). A Profile version is hashed on its export text, so an HTML page and its `.txt` export are one version. `POST /api/profiles/import` stores a changed Profile as a new version and, in the same transaction, queues a `REANALYZE_CASE` job for every Case whose latest input holds a different version of it; the jobs run through `BatchService` and are tracked as one batch (`GET /api/batches/{batchId}`).
 - Authentication is not wired (identity provider pending).
-- Golden Case metrics are computed by `tests/Aml.Tests/GoldenCases/GoldenMetricsTests` ([results](poc-delivery-plan.md#golden-case-results)); its comparison-cell rates come from `AnalysisQuality.Of`, the function each revision's quality is stored with.
+- Golden Case metrics are computed by `tests/Aml.Tests/GoldenCases/GoldenMetricsTests` ([results](poc-delivery-plan.md#golden-case-results)); its comparison-cell rates come from `AnalysisQuality.Of`, the function each revision's quality is stored with. The synthetic end-to-end set (`tests/Aml.Tests/Synthetic`, [results](poc-delivery-plan.md#synthetic-end-to-end-set)) is generated at test time from a seed; its assumptions are one record, `SyntheticAssumptions`.
 
 ## Testing
 

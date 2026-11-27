@@ -1,14 +1,14 @@
 # AGENTS.md
 
-AML screening PoC: given a customer (or related party) and candidate list Profiles (Sanction, PEP/RCA, official lists, adverse news and court rulings), it decides whether they are the same person and whether the source condition holds, and explains every decision. Rules and algorithms decide; with both optional stage models configured, the legal stage of attached news is given only when the rules, a classifier and a large language model all read the same stage, else it is UNKNOWN for a reviewer; with one model or none configured the rules' stage stands; a configured model whose answer is missing gives UNKNOWN with `STAGE_READER_NO_ANSWER`, never the rules' stage, and a batch job retries it before writing (`Screening/Stage/StageVote.cs`, ADR-0012); a model enters a decision only on measured evidence. API only, no UI. C# / .NET 10, SQLite in the PoC.
+AML screening PoC: given a customer (or related party) and candidate list Profiles (Sanction, PEP/RCA, official lists, adverse news and court rulings), it decides whether they are the same person and whether the source condition holds, and explains every decision. Rules and algorithms decide; with both optional stage models configured, the legal stage of attached news is given only when the rules, a classifier and a large language model all read the same stage, else it is UNKNOWN for a reviewer; with one model or none configured the rules' stage stands; a configured model whose answer is missing gives UNKNOWN with `STAGE_READER_NO_ANSWER`, never the rules' stage, and a batch job retries it before writing (`Screening/Stage/StageVote.cs`, ADR-0012); a model enters a decision only on measured evidence, and only as a reader of text whose readings a fixed rule weighs; whether a pair matches is decided by a deterministic scoring rule once its weights are approved, never by a model (`docs/feature/scoring-rule.md`, ADR-0001; until approval the stage 3 table decides). API only, no UI. C# / .NET 10, SQLite in the PoC.
 
 ## Mental model in five facts
 
-1. **Two independent questions per candidate.** Identity (`NO_MATCH`, `REVIEW`, internal `PROBABLE_MATCH`; never an automatic MATCH) and source condition (`HIT`, `NOT_HIT`, `UNKNOWN`). They are decided separately and combined only by the combination matrix (`Screening/Assessment.cs`).
+1. **Two independent questions per candidate.** Identity (`NO_MATCH`, `REVIEW`, internal `PROBABLE_MATCH`; automatic `MATCH` only in the scoring rule's match band once that rule decides, so not emitted today; under that rule no blanket human review for Sanction/PEP/RCA, while today's stage 3 table keeps `RELEASE_CONTROL_HUMAN_REVIEW`; the rule's goal is to conclude MATCH or NO_MATCH wherever the evidence allows, measured by the decided rate) and source condition (`HIT`, `NOT_HIT`, `UNKNOWN`). They are decided separately and combined only by the combination matrix (`Screening/Assessment.cs`).
 2. **Evidence first.** Readers turn inputs into fields with raw value, normalized value, precision and location; comparisons become evidence groups; `HardConflictGate` can only say "different person" on validated rules; `IdentityDecisionPolicy` decides the rest. Missing or unparseable data becomes a finding (`MISSING`, `AMBIGUOUS` …), never an invented value.
 3. **Every emitted code is in `Codes/CodeCatalog.cs`** (served by `GET /api/codes`). A new reason code without a catalog entry is a bug.
 4. **Case state is append-only.** A re-analysis creates a new revision; `CaseService` is the only writer of Case state (through `ICaseStore`). Other modules return typed results.
-5. **The system identifies; humans decide.** No reviewer workflow, approvals or final disposition (ADR-0004). Article 22 output is advisory.
+5. **The system identifies; humans dispose.** An automatic MATCH is an identification; there is no reviewer workflow, approvals or final disposition (ADR-0004). Article 22 output is advisory.
 
 ## Projects and dependency rules
 
@@ -40,6 +40,8 @@ Api ──► Services ──► Core
 | REST, batch, job table | `Api/Endpoints/`, `Services/BatchService.cs`, `Infra/Jobs/JobStore.cs`; spec `docs/feature/pipeline-api-and-batch.md` |
 | Storage | `Infra/Persistence/`; spec `docs/feature/persistence.md` |
 | Web text (crawler, PDF) | `Infra/Web/`; spec `docs/feature/web-text.md` |
+| External sources (received URL, grounding search, judgments; not built) | `docs/feature/external-sources.md` |
+| Scoring rule (decided, built as measurement only; weights proposed) | `Core/Scoring/ScoringRule.cs` (policy record `ScoringPolicy.Proposed`); spec `docs/feature/scoring-rule.md`; comparison with stage 3 in `GoldenMetricsTests` |
 | Why something is the way it is | `docs/adr/README.md` (index with status) |
 | Terms (Profile, revision, evidence group …) | `docs/feature/glossary.md` |
 
@@ -69,5 +71,5 @@ CI (`.github/workflows/ci.yml`) restores with `--locked-mode`, so a package chan
 - **Contracts:** `E2E/Contracts` snapshots guard the OpenAPI document and JSON Schemas; every operation needs an `operationId`, tag and description.
 - **Docs describe the current state and build a mental model.** Organize them around responsibilities, data flow, invariants, decisions and evidence. Keep chronological construction/training logs in experiment artifacts; update conclusions rather than appending each work session. Update the feature/plan doc in the same change as the code. ADRs hold the decisions in force, one record per subject (9 records): a changed or new decision edits the record it belongs to, with its date line updated; add a record only for a subject none covers.
 - **Licences:** no commercially licensed packages; models and training text only under clean licences allowing commercial use (ADR-0015). Embedded third-party data needs an entry in `THIRD-PARTY-NOTICES.md` and `licenses/`.
-- **Personal data:** `samples/` is supplied material, read-only; do not open its files unless the task needs them, and never copy names, ids or quotes from it into code, docs, logs, commit messages or test names. Customer data stays in the Runtime Query half (`docs/feature/security-and-privacy.md`).
-- **Not in Phase 1:** an LLM's verdict as the identity decision, AI match probabilities, automatic MATCH, any UI, OCR, unapproved risk weights.
+- **Personal data:** `samples/` is supplied material, read-only; do not open its files unless the task needs them, and never copy names, ids or quotes from it into code, docs, logs, commit messages or test names. Customer data stays in the Runtime Query half, except the customer's name forms in a grounding-search query (`docs/feature/security-and-privacy.md`, ADR-0012).
+- **Not in Phase 1:** any model's verdict as the identity decision or score, AI match probabilities, automatic MATCH before the scoring rule decides (or for Sanction/PEP until confirmed), any UI, OCR, unapproved weights deciding a result (they are tried in measurement only).

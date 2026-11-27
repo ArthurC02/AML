@@ -81,5 +81,5 @@ Under an approved risk policy, an UNKNOWN PEP condition scores as a HIT ([risk s
 
 Until GC-04 is validated:
 
-- all PEP/RCA candidates remain REVIEW: a PEP or RCA condition that is HIT or UNKNOWN keeps the pair in REVIEW (`RELEASE_CONTROL_HUMAN_REVIEW`);
+- while the stage 3 table decides, a PEP or RCA condition that is HIT or UNKNOWN keeps the pair in REVIEW (`RELEASE_CONTROL_HUMAN_REVIEW`); once the [scoring rule](scoring-rule.md) decides, its automatic MATCH and NO_MATCH apply to PEP and RCA pairs as to any other (read from the user's statement of 2026-11-26; the user can restore the control);
 - former-PEP treatment has no fixed duration: it follows the 認定標準 Article 5 risk-based assessment, left to the reviewer through `FORMER_PEP_INFLUENCE`.

@@ -1,7 +1,7 @@
 # ADR-0004: Identification only: identity, source conditions and an advisory Article 22
 
 - Status: Accepted
-- Date: 2026-11-02; updated 2026-11-09 (merged former ADR-0017, 0020)
+- Date: 2026-11-02; updated 2026-11-09 (merged former ADR-0017, 0020), 2026-11-26 (identity and source condition each scored on its own)
 
 ## Context
 
@@ -17,7 +17,7 @@ The PoC must prove judgment, evidence and explanation; reviewer roles, approvals
 
 ## Decision
 
-- **Two independent questions.** Identity and source conditions are computed separately and combined only at pair level by one [combination matrix](../feature/data-contracts.md#combination-matrix), the same for Sanction, PEP/RCA and watchlists. A Profile can be HIT while identity is REVIEW, and NO_MATCH while its own condition stays HIT. The IdentityComparison is reused across classifications when customer, Profile and policy versions are identical.
+- **Two independent questions.** Identity and source conditions are computed separately and combined only at pair level by one [combination matrix](../feature/data-contracts.md#combination-matrix), the same for Sanction, PEP/RCA and watchlists. Under the [scoring rule](../feature/scoring-rule.md) each question has its own score and bands; no point of one is ever added to the other, and the matrix combines the two bands. A Profile can be HIT while identity is REVIEW, and NO_MATCH while its own condition stays HIT. The IdentityComparison is reused across classifications when customer, Profile and policy versions are identical.
 - **Article 22 is a separate policy.** `DispositionPolicy` gives a `DispositionRecommendation` per pair (`ON_LIST | NOT_ON_LIST`) with basis and reason codes; it reads identity and source conditions and never changes them. ② works per condition: only the unrelated `ADVERSE_MEDIA` condition is set aside. ③ gives no recommendation; the explanation lists pending checks ([disposition recommendation](../feature/review-and-disposition.md)).
 - **The system identifies; humans decide.** It produces identity evidence, the identity decision, source conditions, the pair result, the advisory recommendation and the explanation. It does not model reviewer or approver roles, HumanDecision, approvals, FinalDisposition, close/reopen or a user interface. Human outcomes in Golden Cases are labels for measurement, not behaviour.
 

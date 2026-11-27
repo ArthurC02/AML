@@ -17,7 +17,7 @@ The stored analysis result and explanation, each revision's lineage and quality,
 - `subjectRef`
 - `triggerEventId`
 - `revision` (`analysisRevision` on a batch item)
-- `profileKey = "DJ:" + profileId`; the Case and hit views carry both
+- `profileKey = "DJ:" + profileId`; the Case and hit views carry both. `DJ:` (the list vendor) is the only namespace built; the external sources add `WEB:` and `JY:` ([external sources](external-sources.md#common-path))
 - `listVersion` and `contentHash` of each Profile a revision used (lineage)
 - `batchId / jobId`
 
@@ -132,10 +132,10 @@ Canonical pair-level matrix ([ADR-0004](../adr/0004-identification-only.md)), ap
 | UNKNOWN | REVIEW / PROBABLE_MATCH | REVIEW |
 | UNKNOWN | NO_MATCH | NO_HIT |
 
-- Phase 1 has no identity MATCH, so the system never produces a pair HIT.
+- No identity MATCH is emitted today, so the system never produces a pair HIT. Once the [scoring rule](scoring-rule.md) decides, an automatic MATCH with a HIT condition gives a pair HIT (MATCH × UNKNOWN stays REVIEW).
 - A pair with an UNKNOWN condition carries `SOURCE_CONDITION_UNKNOWN`, whatever its result.
 - A pair with several conditions takes the highest result (NOT_APPLICABLE < NO_HIT < REVIEW < HIT); a pair with none is NOT_APPLICABLE.
-- Phase 1 release control: a pair with a HIT or UNKNOWN Sanction, PEP or RCA condition that would be NO_HIT is REVIEW with `RELEASE_CONTROL_HUMAN_REVIEW`.
+- Phase 1 release control, while the stage 3 table decides: a pair with a HIT or UNKNOWN Sanction, PEP or RCA condition that would be NO_HIT is REVIEW with `RELEASE_CONTROL_HUMAN_REVIEW`. It ends when the [scoring rule](scoring-rule.md) decides, whose automatic MATCH and NO_MATCH apply to every list type (read from the user's statement of 2026-11-26; the user can restore the control).
 - A candidate Profile without Profile data is not evaluated: it is listed in `notEvaluatedProfiles`, and the Case result is NOT_EVALUATED.
 
 PROBABLE_MATCH is never exposed; it surfaces as REVIEW with high priority. Case-level aggregation is in [case management](case-management.md#case-level-result).

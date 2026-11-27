@@ -13,7 +13,7 @@ Build a traceable identity adjudication flow for customer and related-party scre
 - structured HTML or controlled source documents (PoC input: the supplied `.txt` exports and HTML pages);
 - multilingual names, partial dates, nationality, document and address evidence;
 - candidate retrieval and Profile-level deduplication;
-- identity decisions NO_MATCH, REVIEW and internal PROBABLE_MATCH (no automatic MATCH);
+- identity decisions NO_MATCH, REVIEW and internal PROBABLE_MATCH; automatic MATCH in the [scoring rule](scoring-rule.md)'s MATCH band once the score decides (allowed 2026-11-26, not yet in effect);
 - source-condition HIT, NOT_HIT and UNKNOWN;
 - the explanation of every system decision: evidence, comparison table, reason codes and a summary restating recorded facts;
 - batch execution, retry, idempotency and analysis revision;
@@ -21,36 +21,37 @@ Build a traceable identity adjudication flow for customer and related-party scre
 
 ### Excluded for Phase 1
 
-- unrestricted web search;
+- unrestricted web search: the grounding search reads only allowlisted pages ([external sources](external-sources.md));
 - OCR where structured HTML is available;
 - universal news event extraction;
 - automatic identity decisions for organization, vessel and other non-person Profiles: they are retrieved, deduplicated and preserved with their source conditions; entity identifiers (registration number with jurisdiction, IMO number) and a senior manager both sides name can raise review priority, but the external result stays REVIEW until the entity rules are validated with an entity Golden Case;
-- an LLM's verdict as the identity decision, and AI-assigned match probabilities ([ADR-0001](../adr/0001-identity-adjudication.md));
+- any model's verdict as the identity decision or the score, and AI-assigned match probabilities ([ADR-0001](../adr/0001-identity-adjudication.md));
 - photo or face comparison;
-- unapproved AML scoring weights;
-- automatic confirmation for all PEP or Sanction cases;
+- scoring weights the user has not approved deciding a result: until approval they are tried in measurement only and the stage 3 table decides ([scoring rule](scoring-rule.md#validation));
+- automatic confirmation (automatic MATCH) for PEP or Sanction cases, until the user confirms whether it applies to them;
 - any UI;
 - the human workflow: reviewer and approver roles, human decisions, approvals, final disposition, close and reopen. The system does identification only ([ADR-0004](../adr/0004-identification-only.md)); Golden Case human results are labels for measurement.
 
 ## Capability exposure policy
 
 - Automatic NO_MATCH: enabled only for validated hard-conflict rules.
-- Automatic MATCH: none in Phase 1; a unique-identifier agreement is PROBABLE_MATCH.
+- Automatic MATCH: allowed in the scoring rule's MATCH band without a veto or cap, once the score is the decision; until then none, and a unique-identifier agreement is PROBABLE_MATCH.
 - PROBABLE_MATCH: high-priority review only.
-- PEP and Sanction candidates: human review until dedicated cases are validated.
+- PEP, Sanction and RCA candidates: no blanket human review once the scoring rule decides; automatic MATCH and NO_MATCH apply to every list type (read from the user's statement of 2026-11-26; the user can restore the control). While the stage 3 table decides, `RELEASE_CONTROL_HUMAN_REVIEW` keeps a raised condition of theirs in REVIEW.
+- Decisiveness: the system exists to conclude MATCH or NO_MATCH wherever the evidence allows; REVIEW is the remainder, and the decided rate is the primary measure ([scoring rule](scoring-rule.md#purpose)).
 - Article 22 recommendations: advisory only; the final selection happens outside the system.
 - Source updates: create a new analysis revision; do not overwrite history.
 
 ## Operating architecture
 
-Rules and algorithms decide; no large language model is used today (none is excluded: [ADR-0012](../adr/0012-sources-and-web-information.md)). It has two halves split by personal data.
+Rules and algorithms decide; the match is decided by a deterministic [scoring rule](scoring-rule.md) once its weights are approved, and never by a model ([ADR-0001](../adr/0001-identity-adjudication.md)). Models only read text upstream: the news models for the reviewer, and two optional stage models whose readings a fixed vote rule combines with the rules' on the legal stage ([three readers](watchlist-and-adverse-information.md#three-readers)). It has two halves split by personal data.
 
 - **Data Processing** handles lists and public data (official lists for Sanction/PEP/RCA, public news and court rulings, other public sources). It holds no customer personal data and refreshes on a schedule or on an event.
-- **Runtime Query** analyzes and adjudicates one Case. Customer personal data enters here and stays inside the bank ([security and privacy](security-and-privacy.md#personal-data-boundary)).
+- **Runtime Query** analyzes and adjudicates one Case. Customer personal data enters here and stays inside the bank, save the customer's name in a grounding-search query ([security and privacy](security-and-privacy.md#personal-data-boundary)).
 
 | Step | Half | Content | Module and spec | PoC status |
 |---|---|---|---|---|
-| 1 Acquisition and pre-processing | Data Processing | fetch files or data (PDF / HTML / API), clean and convert formats, parse structure (person, event, role, legal status) | Extraction and Data Quality ([extraction](extraction-and-normalization.md#sources-and-refresh)) | `.txt` export reader (strict UTF-8, else CP950 / Big5 with `ENCODING_FALLBACK`); HTML pages converted to the export layout (encoding from BOM or meta charset, form-control values, hidden elements skipped), with labels assumed until HTML samples arrive; no PDF or API adapter |
+| 1 Acquisition and pre-processing | Data Processing | fetch files or data (PDF / HTML / API), clean and convert formats, parse structure (person, event, role, legal status) | Extraction and Data Quality ([extraction](extraction-and-normalization.md#sources-and-refresh)) | `.txt` export reader (strict UTF-8, else CP950 / Big5 with `ENCODING_FALLBACK`); HTML pages converted to the export layout (encoding from BOM or meta charset, form-control values, hidden elements skipped), with labels assumed until HTML samples arrive; no PDF or API adapter for Cases. Web pages and PDFs: `Infra/Web` fetches and reads them, called by no Case yet ([external sources](external-sources.md): a received URL, grounding search, judgments) |
 | 2 Normalization | Data Processing | text (case, full/half width, Traditional/Simplified, romanization), date precision, fields (country, document, address) | Extraction and Data Quality ([extraction](extraction-and-normalization.md#name-normalization)) | built; Simplified to Traditional by the OpenCC one-to-one table plus a controlled variant list; romanization by the MOFA table (Hanyu Pinyin, Wade-Giles, Tongyong) plus controlled passport spellings, and Chinese characters by Unihan readings ([third-party data](../plan/implementation-baseline.md#third-party-data)); countries to ISO 3166-1; ROC years only with an explicit 民國 |
 | 3 List index and Profile | Data Processing | list database of structured Profiles, search index (BM25 / n-gram / alias), Profile deduplication (merge the same person) | Candidate and Identity Adjudication ([identity](identity-adjudication.md#retrieval-modes)) | built ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md)): `list_profile` versions with the SHA-256 of the export text (an HTML page and its `.txt` export are one version); exact-alias / BM25 / n-gram / reading-key index, the reading key (shared Pinyin) giving cross-script retrieval between Chinese characters and romanizations; merge on a shared comparable document or a recorded link, refused when DOBs or genders contradict; a changed Profile queues `REANALYZE_CASE` jobs for the Cases that used it |
 | 4 Case input | Runtime Query | customer data (name, DOB, document, address, occupation, related parties) and case settings (chosen sources, query conditions) | Case and Adjudication Management ([pipeline](pipeline-api-and-batch.md#rest-resources)) | `POST /api/cases` and `/api/batches`; no case settings: every source in the input is used |

@@ -44,9 +44,14 @@ public static class EvidenceBuilder
         var (nameStatus, nameDetail) = NameComparison.CompareNames(s.Names, p.Names);
         var gender = Compare(s.Gender is null, p.Gender is null, () => s.Gender == p.Gender);
         var nationality = Compare(s.Nationalities.Count == 0, p.Citizenship.Count == 0, () => s.Nationalities.Intersect(p.Citizenship).Any());
+        // The romanised names agree, the Chinese-character names differ: a signal beside the status, never a conflict status.
+        var native = NativeNames.Find(s.Names, p.Names, nameStatus, nameDetail);
         return
         [
-            Prerequisite(EvidenceGroup.Name, nameStatus, nameDetail),
+            native is var (c, n)
+                ? new(EvidenceGroup.Name, Direction.Prerequisite, nameStatus, Strength.None, nameDetail is null ? NativeNames.Conflict : $"{nameDetail}；{NativeNames.Conflict}",
+                    $"羅馬拼音姓名相同，但中文姓名不同：客戶姓名「{c}」、名單 {p.ProfileKey} 姓名「{n}」；同音不同字可能是另一人，未自動判定，請覆核")
+                : Prerequisite(EvidenceGroup.Name, nameStatus, nameDetail),
             Prerequisite(EvidenceGroup.Gender, gender, gender == ComparisonStatus.Conflict ? ReasonCodes.GenderConflict : null),
             Prerequisite(EvidenceGroup.Nationality, nationality),
         ];

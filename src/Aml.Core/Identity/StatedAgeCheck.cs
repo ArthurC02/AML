@@ -100,7 +100,7 @@ public static partial class StatedAgeCheck
 
     // 姓 marks an anonymised form only right after the surname (林姓男子, 歐陽姓主嫌, whatever noun follows); elsewhere it
     // is read as a given-name character, so it cannot swallow a real name by position alone.
-    private static bool NamesNobody(string name) =>
+    internal static bool NamesNobody(string name) =>
         CjkText.IsMasked(name) || NewsDigests.AnonymisedSurname(name) is not null
         || name.IndexOf('姓', StringComparison.Ordinal) == NewsDigests.Surname(name).Length;
 

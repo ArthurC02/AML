@@ -39,6 +39,7 @@ One combined number was rejected: it would let a strong source condition push id
 | a Profile DOB within two years, not equal (`DOB_AGREES_WITHIN_TOLERANCE`) | support item at the birth-year level |
 | stage 3 rows 2 to 6 | identity bands and review priority |
 | opposite genders (blocks rows 3 and 4) | cap: no PROBABLE_MATCH (`SCORE_CAPPED_GENDER_CONFLICT`) |
+| romanised names agree, Chinese-character names differ (`NATIVE_NAME_CONFLICT`, blocks rows 3 and 4) | negative item −15 from a pending signal and a cap at REVIEW (`SCORE_CAPPED_NATIVE_NAME_CONFLICT`), none with an agreeing document (row 2) |
 | stated age, birth date, gender in a source | items at most MEDIUM, times the source's reliability; a difference is a negative item that never takes the pair below REVIEW (every value more than two years off: the veto above); a page birth date within two years (`PAGE_BIRTH_DATE_WITHIN_TOLERANCE`) is neutral, no item |
 | entity records | items from `ENTITY_IDENTIFIER`; cap at REVIEW until an entity Golden Case |
 | `SourceConditions` (flags, category mapping) | condition items: the basis gives the points |
@@ -66,6 +67,7 @@ Caps (proposed), each outside the sum and listed with its code:
 
 - a CONFLICT in the Profile's own DOCUMENT (pending rule) caps the pair at REVIEW (`SCORE_CAPPED_PROFILE_CONFLICT`), so stage 3 row 1 is kept: without it a full DOB, two associations and more could outweigh the −40. A DOB conflict needs no cap: it is the validated veto, and with an agreeing document it is downgraded and held at REVIEW;
 - opposite genders, in the Profile or stated next to the name in the attached news, cap at REVIEW (`SCORE_CAPPED_GENDER_CONFLICT`);
+- romanised names that agree over complete Chinese-character names that differ ([native-script name conflict](identity-adjudication.md#native-script-name-conflict)) cap at REVIEW (`SCORE_CAPPED_NATIVE_NAME_CONFLICT`), so a full DOB and associations do not lift a homophone past REVIEW; with an agreeing document there is no cap, as stage 3 keeps such a pair on row 2 (the −15 item stays listed, and a document, a full DOB and an association, 65, still reach `T_match`); its −15 item is pending, so a sum that reaches `T_no_match` with it is held at REVIEW;
 - an entity record caps at PROBABLE_MATCH, and at REVIEW without an agreeing entity identifier (`SCORE_CAPPED_ENTITY_RECORD`);
 - a Profile from an external source caps at PROBABLE_MATCH and cannot reach NO_MATCH by the sum until its Golden Case ([external sources](external-sources.md)); not built: a received page's persons are candidates (`Core/Pages/PageCandidates`), but `ScoringRule` has no such cap.
 
@@ -73,7 +75,7 @@ A cap is listed only when it lowered the band; the threshold the sum crossed is 
 
 Review priority among REVIEW pairs (not built in the trial calculation): HIGH for a raised Sanction or the PROBABLE_MATCH band (NORMAL when the news disagrees with the Profile, as today), NORMAL for `I > 0`, LOW otherwise.
 
-NO_MATCH comes today from the validated vetoes: impossible age, the DOB conflict (more than two years) and its stated-value form (every age and birth date attached news or a received page states more than two years off). The NO_MATCH band of the sum cannot be reached: every negative item left (the document conflict, a stated difference) comes from a pending rule or is soft by design. It opens only when such a rule is validated and released as a negative item.
+NO_MATCH comes today from the validated vetoes: impossible age, the DOB conflict (more than two years) and its stated-value form (every age and birth date attached news or a received page states more than two years off). The NO_MATCH band of the sum cannot be reached: every negative item left (the document conflict, a stated difference, the native-script name conflict) comes from a pending rule or is soft by design. It opens only when such a rule is validated and released as a negative item.
 
 **Arithmetic.** Points and factors are exact decimals (no binary floating point); a product is not rounded; a sum equal to a threshold reaches it (`≥`, and `≤` for `T_no_match`). So 0.6 × 100 = 60 reaches `T_hit` 60.
 
@@ -115,6 +117,7 @@ NO_MATCH by the sum needs a negative item from a validated rule. The DOB conflic
 |---|---|---|---|
 | `DOCUMENT_IDENTITY_CONFLICT` (same type and country, different number) | −40 | yes | a Golden Case; a rule for documents that are reissued with a new number (a passport), which a national ID is not |
 | stated age or birth-date difference that does not conclude | −8 × reliability | no (at most −8) | stays a soft conflict by design; more than two years off, it is the `STATED_DOB_CONFLICT` veto |
+| `NATIVE_NAME_CONFLICT` (romanised names agree, Chinese-character names differ) | −15 | no | a measured wrong-signal rate on real Cases, with the variant pairs the fold table misses ([open question](../plan/open-questions.md#data-and-source)) |
 
 Each validated item is released as its own policy version; agreeing evidence in other groups still offsets it (a document conflict −40 and a full DOB +25 give −15, REVIEW). A missing value never scores, so a pair with only the prerequisites (GC-02, GC-12) can reach neither band: that is missing data, not the rule.
 
@@ -124,7 +127,7 @@ Each validated item is released as its own policy version; agreeing evidence in 
 
 - a list document agrees with the customer's in number, document type and issuing country, the country known on both sides (a Taiwan type implies TW);
 - the name prerequisite holds: EXACT after the product's folding, or the same reading across romanisations (`ROMANIZATION_VARIANT`);
-- nothing stands against it: no hard conflict, validated or pending, and no `SOURCE_QUALITY_DOWNGRADE`; no evidence group in conflict (birth date beyond two years, gender, nationality, stated age, birth date or gender, document); a Person record; no `MODEL_READ` person.
+- nothing stands against it: no hard conflict, validated or pending, and no `SOURCE_QUALITY_DOWNGRADE`; no evidence group in conflict (birth date beyond two years, gender, nationality, stated age, birth date or gender, document); no `NATIVE_NAME_CONFLICT`; a Person record; no `MODEL_READ` person.
 
 A birth date within two years (`DOB_AGREES_WITHIN_TOLERANCE`) does not stand against it. For comparison: B, the number agreeing whatever the type and country, with the same name prerequisite and nothing against it, and B′∅, B′ also accepting a document with no issuing country on either side.
 
@@ -176,7 +179,7 @@ One factor per kind of source, applied to stated identity values and to conditio
 
 ## Proposal table
 
-**PROPOSED — not approved by the user.** Policy version `score-proposal-0.2` (`ScoringPolicy.Version`; the DOB conflict is a veto, not an item). Points follow the strength order and roughly round log₂(m/u) of [support strength](identity-adjudication.md#support-strength), so calibration can replace them.
+**PROPOSED — not approved by the user.** Policy version `score-proposal-0.3` (`ScoringPolicy.Version`; the DOB conflict is a veto, not an item; 0.3 adds the native-script name conflict). Points follow the strength order and roughly round log₂(m/u) of [support strength](identity-adjudication.md#support-strength), so calibration can replace them.
 
 | Item | Code | Points / value |
 |---|---|---|
@@ -196,6 +199,7 @@ One factor per kind of source, applied to stated identity values and to conditio
 | a received page's stated birth date within two years, not equal | `PAGE_BIRTH_DATE_WITHIN_TOLERANCE` | 0 (neutral) |
 | DOCUMENT conflict (pending hard rule) | `DOCUMENT_IDENTITY_CONFLICT` | −40 |
 | stated age or birth date differs | `AGE_DIFFERENCE_AT_REPORT` / `NEWS_BIRTH_DATE_DIFFERENCE` | −8 × reliability |
+| NAME: romanised names agree, complete Chinese-character names differ (pending signal) | `NATIVE_NAME_CONFLICT` | −15 × the record's reliability, and the cap `SCORE_CAPPED_NATIVE_NAME_CONFLICT` at REVIEW unless a document agrees |
 | stated birth date agrees, the Profile's own DOB not agreeing | `NEWS_BIRTH_DATE_AGREES` | the DOB points at its level (full date MEDIUM +15, else LOW +8) × reliability |
 | ENTITY_IDENTIFIER conflict | — | 0 (the entity cap holds the pair at REVIEW) |
 | address, employer, location difference | — | 0 |
@@ -226,7 +230,7 @@ Not built: while the score is measurement only, no explanation, lineage or `hit_
 - the sum, the band, the threshold it crossed and the policy version with its approval state; the summary's conclusion says the band in words first and the codes after it, as today;
 - `wouldChangeIf` re-runs the sum with one assumed item, as the [contrastive explanation](identity-adjudication.md#contrastive-explanation) does with the table.
 
-The policy version is recorded in lineage; `hit_evidence` gains the points per item, so calibration and monitoring read the items, not the JSON. The `SCORE_*` codes (kind `SCORE`, among them `SCORE_HELD_PENDING_VALIDATION`, `SCORE_CAPPED_PROFILE_CONFLICT`, `SCORE_CAPPED_GENDER_CONFLICT`, `SCORE_CAPPED_ENTITY_RECORD`, `SCORE_CONDITION_STAGE_UNKNOWN`) are in the code catalog; each item otherwise reuses the evidence's own code (`UNIQUE_IDENTIFIER_AGREEMENT`, `FULL_DOB_CONFLICT` …).
+The policy version is recorded in lineage; `hit_evidence` gains the points per item, so calibration and monitoring read the items, not the JSON. The `SCORE_*` codes (kind `SCORE`, among them `SCORE_HELD_PENDING_VALIDATION`, `SCORE_CAPPED_PROFILE_CONFLICT`, `SCORE_CAPPED_GENDER_CONFLICT`, `SCORE_CAPPED_NATIVE_NAME_CONFLICT`, `SCORE_CAPPED_ENTITY_RECORD`, `SCORE_CONDITION_STAGE_UNKNOWN`) are in the code catalog; each item otherwise reuses the evidence's own code (`UNIQUE_IDENTIFIER_AGREEMENT`, `FULL_DOB_CONFLICT` …).
 
 ## Validation
 

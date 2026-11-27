@@ -38,6 +38,8 @@ public class ScoringRuleTests
         ["NewsGenderDiff"] = new(EvidenceGroup.StatedGender, Direction.Conflict, Conflict, Strength.None, ReasonCodes.NewsGenderDifference),
         ["GenderMissing"] = new(EvidenceGroup.Gender, Direction.Prerequisite, SubjectMissing),
         ["GenderConflict"] = new(EvidenceGroup.Gender, Direction.Prerequisite, Conflict, Strength.None, ReasonCodes.GenderConflict),
+        ["NameNative"] = new(EvidenceGroup.Name, Direction.Prerequisite, Exact, Strength.None, ReasonCodes.NativeNameConflict),
+        ["NameNativeOrder"] = new(EvidenceGroup.Name, Direction.Prerequisite, Exact, Strength.None, "NAME_ORDER_VARIANT；" + ReasonCodes.NativeNameConflict),
     };
 
     /// <summary>Name, gender and nationality EXACT (0 points), then the named evidence, a later one replacing its group.</summary>
@@ -90,12 +92,14 @@ public class ScoringRuleTests
     [InlineData("AddrSoft", null, "0")]                                   // a difference is never an item
     [InlineData("EmployerUnsettled", null, "0")]
     [InlineData("GenderMissing", null, "0")]                              // prerequisites score 0
+    [InlineData("NameNative", "NATIVE_NAME_CONFLICT", "-15")]             // romanised names agree, Chinese-character names differ
+    [InlineData("NameNativeOrder", "NATIVE_NAME_CONFLICT", "-15")]        // beside a relaxation finding
     public void Each_evidence_cell_gives_its_item(string evidence, string? code, string points)
     {
         var s = ScoringRule.Identity(Pair([evidence]), entityRecord: false);
         Assert.Equal(code is null ? [] : new[] { code }, s.Items.Select(i => i.Code));
         Assert.Equal(D(points), s.Total);
-        Assert.Equal("score-proposal-0.2", s.PolicyVersion);
+        Assert.Equal("score-proposal-0.3", s.PolicyVersion);
     }
 
     [Theory]
@@ -118,6 +122,12 @@ public class ScoringRuleTests
     [InlineData(new[] { "GenderMissing", "DobMonth", "AddrHouse" }, "30", ProbableMatch, "SCORE_BAND_PROBABLE_MATCH", new string[0])] // listed difference: two MEDIUM
     [InlineData(new[] { "AddrDistrict", "OtherId" }, "10", ProbableMatch, "SCORE_BAND_PROBABLE_MATCH", new string[0])]  // listed difference: two LOW
     [InlineData(new[] { "Employer" }, "15", ProbableMatch, "SCORE_BAND_PROBABLE_MATCH", new string[0])]                 // listed difference: one employer
+    [InlineData(new[] { "NameNative", "DobYear" }, "-7", Review, null, new string[0])]                                  // row 4's pair falls below T_probable_exact
+    [InlineData(new[] { "NameNative", "DobDay", "Employer" }, "25", Review, "SCORE_BAND_PROBABLE_MATCH", new[] { "SCORE_CAPPED_NATIVE_NAME_CONFLICT" })] // ≥ 8 with EXACT prerequisites
+    [InlineData(new[] { "NameNativeOrder", "DobDay", "Employer", "Relative", "AddrHouse" }, "55", Review, "SCORE_BAND_PROBABLE_MATCH", new[] { "SCORE_CAPPED_NATIVE_NAME_CONFLICT" })]
+    [InlineData(new[] { "NameNative", "DocAgree", "DobDay" }, "50", ProbableMatch, "SCORE_BAND_PROBABLE_MATCH", new string[0])] // an agreeing document: no cap, as row 2
+    [InlineData(new[] { "NameNativeOrder", "DocAgree", "DobDay", "Employer" }, "65", Match, "SCORE_BAND_MATCH", new string[0])]
+    [InlineData(new[] { "NameNative", "DocConflict" }, "-55", Review, null, new[] { "SCORE_HELD_PENDING_VALIDATION" })] // never NO_MATCH: not validated
     public void Bands_thresholds_and_caps(string[] evidence, string total, IdentityBand band, string? threshold, string[] applied)
     {
         var s = ScoringRule.Identity(Pair(evidence), entityRecord: false);

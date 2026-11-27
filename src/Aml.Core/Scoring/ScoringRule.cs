@@ -24,7 +24,7 @@ public sealed record ScoringPolicy
 {
     public static readonly ScoringPolicy Proposed = new();
 
-    public string Version { get; init; } = "score-proposal-0.2";
+    public string Version { get; init; } = "score-proposal-0.3";
     public decimal Document { get; init; } = 40;
     public decimal DobDay { get; init; } = 25;
     public decimal DobMonth { get; init; } = 15;
@@ -37,6 +37,7 @@ public sealed record ScoringPolicy
     public decimal EntityIdentifier { get; init; } = 40;
     public decimal DocumentConflict { get; init; } = -40;
     public decimal StatedDifference { get; init; } = -8;
+    public decimal NativeNameConflict { get; init; } = -15;
     public decimal Match { get; init; } = 60;
     public decimal Probable { get; init; } = 30;
     public decimal ProbableExact { get; init; } = 8;
@@ -84,6 +85,7 @@ public static class ScoringRule
     public const string HeldPendingValidation = "SCORE_HELD_PENDING_VALIDATION";
     public const string CappedProfileConflict = "SCORE_CAPPED_PROFILE_CONFLICT";
     public const string CappedGenderConflict = "SCORE_CAPPED_GENDER_CONFLICT";
+    public const string CappedNativeNameConflict = "SCORE_CAPPED_NATIVE_NAME_CONFLICT";
     public const string CappedEntityRecord = "SCORE_CAPPED_ENTITY_RECORD";
     public const string ConditionBasis = "SCORE_CONDITION_BASIS";
     public const string ConditionStage = "SCORE_CONDITION_STAGE";
@@ -132,6 +134,8 @@ public static class ScoringRule
         // A DOB conflict is the validated veto above; the document conflict is still pending.
         if (Is(Document, ComparisonStatus.Conflict)) caps.Add((IdentityBand.Review, CappedProfileConflict));
         if (Is(EvidenceGroup.Gender, ComparisonStatus.Conflict) || Is(StatedGender, ComparisonStatus.Conflict)) caps.Add((IdentityBand.Review, CappedGenderConflict));
+        // As stage 3: an agreeing document keeps its band (row 2), the conflict then only listed as its item.
+        if (NativeNames.In(e.GetValueOrDefault(Name)) && e.GetValueOrDefault(Document)?.IsSupport != true) caps.Add((IdentityBand.Review, CappedNativeNameConflict));
         var binding = caps.Where(c => c.Max < band).ToList();
         if (binding.Count > 0) band = binding.Min(c => c.Max);
         applied.AddRange(binding.Select(c => c.Code));
@@ -159,6 +163,8 @@ public static class ScoringRule
             (StatedBirthDate, Direction.Support, >= Strength.Medium) => (p.DobMonth, ReasonCodes.NewsBirthDateAgrees, news),
             (StatedBirthDate, Direction.Support, _) => (p.DobYear, ReasonCodes.NewsBirthDateAgrees, news),
             (StatedAge or StatedBirthDate, Direction.Conflict, _) => (p.StatedDifference, v.Detail!, news),
+            // Pending, never validated: the NO_MATCH band it could reach is held at REVIEW, and the cap holds it there anyway.
+            (Name, _, _) when NativeNames.In(v) => (p.NativeNameConflict, ReasonCodes.NativeNameConflict, field),
             _ => null,
         };
         return x is var (points, code, source) ? new(v.Group.ToString(), code, points * p.Reliability[source], source) : null;

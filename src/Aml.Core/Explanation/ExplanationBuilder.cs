@@ -143,6 +143,7 @@ public static class ExplanationBuilder
 
     private static string AgreementsAndDifferences(List<ComparisonRow> rows, List<string> unknown, IReadOnlyDictionary<EvidenceGroup, Evidence> e, bool newsDisagrees) =>
         (DocumentAgeHint(e) is { } hint ? $"{hint}。" : "")
+        + (e.GetValueOrDefault(EvidenceGroup.Name) is { Note: { } native } name && NativeNames.In(name) ? $"{native}（{ReasonCodes.NativeNameConflict}）。" : "")
         + $"相符：{OrMissing(Join(rows.Where(r => r.Status is ComparisonStatus.Exact or ComparisonStatus.Partial).Select(r => r.Field)), "無")}；"
         + $"衝突：{OrMissing(Join(DocumentAgeHintLabel(DocumentAgeHint(e)).Concat(rows.Where(r => r.Status == ComparisonStatus.Conflict).Select(r => r.Field))
             .Concat(NewsStated.Where(n => e.GetValueOrDefault(n.Group)?.Status == ComparisonStatus.Conflict).Select(n => n.Label))), "無")}；"

@@ -39,6 +39,7 @@ public static class IdentityDecisionPolicy
         var reasons = new List<string> { code };
         if (e[EvidenceGroup.Gender].Status == ComparisonStatus.Conflict) reasons.Add(ReasonCodes.GenderConflict);
         if (e.GetValueOrDefault(EvidenceGroup.StatedGender)?.Status == ComparisonStatus.Conflict) reasons.Add(ReasonCodes.NewsGenderDifference);
+        if (NativeNames.In(e[EvidenceGroup.Name])) reasons.Add(ReasonCodes.NativeNameConflict);
         if (row == Stage3Rows.UniqueIdentifier)
             reasons.AddRange(NewsGroupsWithConflictCode.Select(g => e.GetValueOrDefault(g)).Where(v => v?.Status == ComparisonStatus.Conflict).Select(v => v!.Detail!));
         if (NoBilateralDirectIdentifier(s, p)) reasons.Add(ReasonCodes.NoBilateralDirectIdentifier);
@@ -159,7 +160,9 @@ public static class IdentityDecisionPolicy
 
         // A gender attached news states for the Profile person that differs from the customer's counts as the Profile's own.
         var oppositeGenders = StatusOf(EvidenceGroup.Gender) == ComparisonStatus.Conflict || e.GetValueOrDefault(EvidenceGroup.StatedGender)?.Status == ComparisonStatus.Conflict;
-        if (!oppositeGenders && supports.Any(v => v.Strength == Strength.High) && supports.Length >= StrongSupportMinimumCount)
+        // Chinese-character names that differ under agreeing romanised names rule out rows 3 and 4 as opposite genders do.
+        var nativeNamesDiffer = NativeNames.In(e.GetValueOrDefault(EvidenceGroup.Name));
+        if (!oppositeGenders && !nativeNamesDiffer && supports.Any(v => v.Strength == Strength.High) && supports.Length >= StrongSupportMinimumCount)
             return (Stage3Rows.StrongSupport, IdentityDecision.ProbableMatch, ReasonCodes.StrongSupportCombination);
 
         var prerequisitesAgree = StatusOf(EvidenceGroup.Name) == ComparisonStatus.Exact
@@ -168,7 +171,7 @@ public static class IdentityDecisionPolicy
         var dobAgrees = e.GetValueOrDefault(EvidenceGroup.DateOfBirth)?.IsSupport == true;
         var docOrEmploymentUnsettled = new[] { EvidenceGroup.Document, EvidenceGroup.Employment }
             .Select(g => e.GetValueOrDefault(g)).Any(IsUnsettled);
-        if (prerequisitesAgree && !oppositeGenders && dobAgrees && !docOrEmploymentUnsettled)
+        if (prerequisitesAgree && !oppositeGenders && !nativeNamesDiffer && dobAgrees && !docOrEmploymentUnsettled)
             return (Stage3Rows.ConsistentAtPrecision, IdentityDecision.ProbableMatch, ReasonCodes.ConsistentAtAvailablePrecision);
 
         return supports.Length > 0

@@ -171,6 +171,31 @@ Otherwise the name is `PARTIAL`:
 
 A PARTIAL name is never support, a conflict or a hit, whatever the similarity.
 
+### Native-script name conflict
+
+The customer's names (local name, romanised name, alias) and the Profile's names (primary, native-script forms, spelling variants) are each one list, and the name is EXACT when any form agrees with any form. So a customer whose romanised name equals the Profile's while the Chinese characters differ would read as an agreeing name with nothing against it. The same romanisation with other characters (張文華 against 章文華, both Chang Wen-Hua) is evidence of another person: homophone names are common, the bank's record always holds the local name and the vendor lists native forms for Chinese, Japanese and Korean persons. `NativeNames.Find` (called by `EvidenceBuilder`) records it as `NATIVE_NAME_CONFLICT` when all of these hold:
+
+- the names agree by romanisation: NAME is EXACT, or PARTIAL with `ROMANIZATION_VARIANT`;
+- both sides have a Han form: a name holding a Chinese character ([which forms count](extraction-and-normalization.md#name-normalization));
+- every Han form on either side is complete: Han characters only (no kana, hangul or Latin in the same form), no masked form (`CjkText.IsMasked`), no unknown or private-use (造字) character, not an anonymised form (林姓男子, 歐陽男);
+- no customer Han form, the alias included, may be the same as a Profile Han form: same length and, at every position, characters that may be the same (below), in either name order, spaces and middle dots ignored;
+- no customer and Profile Han form are one character apart: the shorter is the longer with one character left out, compared the same way (張華 against 張文華, 歐文華 against 歐陽文華);
+- at least one customer and one Profile Han form have the same length.
+
+"May be the same character" (`NativeNames.MayBeSameCharacter`) is wider than name equality and serves only to silence: two characters fold equal under the name comparison's table, or they are joined, directly or through others, by `Data/possibly-same-characters.txt`, a list of 169 pairs this project curated by hand: Simplified ↔ Traditional mappings of one to many that the equality table drops on purpose (余/餘, 于/於, 云/雲, 里/裡/裏, 后/後, 谷/穀 …), Taiwan and Hong Kong variants (启/啟/啓, 为/為/爲, 裏/裡, 衞/衛, 着/著, 綫/線), old forms (眞/真, 敎/教, 髙/高, 邨/村) and Japanese shinjitai (沢/澤, 広/廣, 栄/榮, 斉/齊). The list is closed and known incomplete; the full OpenCC variant tables are not in the repository (only the one-to-one simplified → traditional entries are). A pair of forms that may be the same is silence, not agreement: name equality, the NAME status and every other comparison are unchanged, and no support is added.
+
+Otherwise the two native names are not comparable and nothing is recorded: one masked, partial or mixed-script form anywhere silences the pair, a Profile with kana or hangul forms only has no Han form, and forms of lengths two or more apart are left out. Each boundary errs to silence.
+
+The NAME evidence keeps its status and direction (EXACT or PARTIAL, PREREQUISITE): the romanised names do agree. Its detail lists `NATIVE_NAME_CONFLICT` after any relaxation finding, and its note shows the first contrasted pair, customer form first (羅馬拼音姓名相同，但中文姓名不同：客戶姓名「張文華」、名單 DJ:1 姓名「章文華」；同音不同字可能是另一人，未自動判定，請覆核). In [stage 3](#stage-3-table) it rules out rows 3 and 4 as opposite genders do: the pair falls to row 5 (REVIEW, priority NORMAL) or row 6 (LOW), with `NATIVE_NAME_CONFLICT` among the reason codes. Row 1 and row 2 keep their place; with an agreeing document the pair stays row 2 PROBABLE_MATCH and the code is recorded beside it. It is not a hard conflict and not a validated code, so it never gives NO_MATCH. The explanation opens the 相符／衝突 sentence with the note. Agreement in native script is never flagged and adds no support: it is already EXACT. The [score](scoring-rule.md#proposal-table) gives it a proposed −15 and a cap at REVIEW, the cap left out with an agreeing document, as row 2.
+
+Known ways the signal is wrong (each a same person left to REVIEW, not concluded):
+
+- a variant pair neither the fold table nor the possibly-same list holds (for example 喆/哲, 堃/坤, 珎/珍, 敍/敘);
+- a vendor native form of another reading or of an alias the bank does not hold, or a vendor that lists another person's characters under a shared romanisation;
+- a data-entry error in one character on either side.
+
+The other way round, the list silences a different person whose characters differ only by a listed pair (余 against 餘 are two surnames). On invented probes all ten different persons are signalled, and four of twenty-one same-person pairs, exactly the four variants in neither table above ([measurement](../plan/poc-delivery-plan.md#native-script-name-probes)). Whether the signal may conclude NO_MATCH is an [open question](../plan/open-questions.md#data-and-source).
+
 ## Attribution
 
 - A relative's age is not the subject's age; acts of family members, related companies or co-defendants are not attributed to the Profile person.
@@ -377,8 +402,8 @@ Applied only when no hard conflict fired. The first matching row wins. The table
 |---|---|---|---|
 | 1 | a `CONFLICT` in DOCUMENT; or, without UNIQUE support, the advisory `AGE_IMPLAUSIBLE_AT_DOCUMENT` (TEMPORAL_ROLE), `AGE_DIFFERENCE_AT_REPORT` or a `CONFLICT` in STATED_BIRTH_DATE (a DATE_OF_BIRTH conflict never reaches stage 3: it is the stage 1 rule) | REVIEW | the conflict's code, the first of `DOCUMENT_IDENTITY_CONFLICT`, `AGE_IMPLAUSIBLE_AT_DOCUMENT`, `AGE_DIFFERENCE_AT_REPORT`, `NEWS_BIRTH_DATE_DIFFERENCE` |
 | 2 | UNIQUE support | MATCH when the release policy allows; Phase 1: PROBABLE_MATCH | `UNIQUE_IDENTIFIER_AGREEMENT` |
-| 3 | HIGH support plus at least one other non-prerequisite support, and no `GENDER_CONFLICT` or STATED_GENDER conflict | PROBABLE_MATCH | `STRONG_SUPPORT_COMBINATION` |
-| 4 | every hit prerequisite is EXACT (name after normalization and disclosed relaxations, gender, nationality), DATE_OF_BIRTH is support at the finest precision both sides allow, and no DOCUMENT or EMPLOYMENT value is CONFLICT or UNCERTAIN other than `NOT_COMPARABLE` | PROBABLE_MATCH | `CONSISTENT_AT_AVAILABLE_PRECISION` |
+| 3 | HIGH support plus at least one other non-prerequisite support, and no `GENDER_CONFLICT`, STATED_GENDER conflict or `NATIVE_NAME_CONFLICT` | PROBABLE_MATCH | `STRONG_SUPPORT_COMBINATION` |
+| 4 | every hit prerequisite is EXACT (name after normalization and disclosed relaxations, without `NATIVE_NAME_CONFLICT`; gender, nationality), DATE_OF_BIRTH is support at the finest precision both sides allow, and no DOCUMENT or EMPLOYMENT value is CONFLICT or UNCERTAIN other than `NOT_COMPARABLE` | PROBABLE_MATCH | `CONSISTENT_AT_AVAILABLE_PRECISION` |
 | 5 | at least one non-prerequisite support | REVIEW | `PARTIAL_SUPPORT_ONLY` |
 | 6 | none | REVIEW | `NO_NON_PREREQUISITE_SUPPORT` |
 
@@ -388,6 +413,7 @@ Applied only when no hard conflict fired. The first matching row wins. The table
 - A DOB agreement recorded as `PROFILE_MULTIPLE_DOB` is not support, so it does not satisfy row 4.
 - Agreement within tolerance (`DOB_AGREES_WITHIN_TOLERANCE`, LOW) satisfies row 4 like a birth year agreeing, and is a support for row 5; it is never the HIGH support row 3 needs.
 - Opposite genders rule out rows 3 and 4; the pair falls to row 5 or 6 and `GENDER_CONFLICT` is recorded alongside. A gender in attached news that differs from the customer's does the same with `NEWS_GENDER_DIFFERENCE` ([birth date and gender stated in a source](#birth-date-and-gender-stated-in-a-source)).
+- Romanised names that agree over Chinese-character names that differ ([native-script name conflict](#native-script-name-conflict)) rule out rows 3 and 4 the same way, with `NATIVE_NAME_CONFLICT` recorded alongside; with UNIQUE support the pair stays row 2 and the code is recorded beside it.
 - A document number outranks what news states next to a name: with UNIQUE support, a stated-age or news birth date conflict does not make row 1; the pair is row 2 and the conflict's code is recorded alongside. A conflict in the Profile's own DOCUMENT still comes first.
 - `NO_BILATERAL_DIRECT_IDENTIFIER` is recorded alongside whenever it applies.
 - Review priority follows the row: 2, 3 and 4 first, then 5, then 1 and 6.
@@ -456,6 +482,7 @@ Comparison findings are evidence details, not decision reason codes; they explai
 | `VARIANT_CHARACTERS` | NAME, EXACT | names agree after controlled variant characters are folded |
 | `ROMANIZATION_VARIANT` | NAME, PARTIAL | romanized names read the same in different romanization systems |
 | `NOT_COMPARABLE_CROSS_SCRIPT` | NAME, PARTIAL | no subject and Profile name share a script |
+| `NATIVE_NAME_CONFLICT` | NAME, EXACT or PARTIAL `ROMANIZATION_VARIANT` | romanised names agree, complete Chinese-character names differ; also a reason code: it rules out rows 3 and 4 ([native-script name conflict](#native-script-name-conflict)) |
 | `PROFILE_MULTIPLE_DOB` | DATE_OF_BIRTH, neutral | the agreeing DOB is one of many or scattered Profile values; not support |
 | `NOT_COMPARABLE` | DOCUMENT or EMPLOYMENT | a value is present but cannot be compared (another document type or country; occupation category only); does not block row 4 |
 | `OVERSIZED_GROUP` | Profile merge group | more than ten Profiles merged; inspect the edges |

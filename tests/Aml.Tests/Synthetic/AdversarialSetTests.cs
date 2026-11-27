@@ -52,6 +52,7 @@ public static class DocumentMatch
     private static bool NothingAgainst(HitResult hit) =>
         hit.Identity.HardConflict is null && !hit.Identity.ReasonCodes.Contains(ReasonCodes.SourceQualityDowngrade)
         && IdentityDecisionPolicy.IsPersonRecord(hit.Profile) && !hit.Profile.Findings.Contains(PageCandidates.ModelRead)
+        && !NativeNames.In(hit.Identity.Evidence[EvidenceGroup.Name])
         && hit.Identity.Evidence.Values.All(v => v.Status != ComparisonStatus.Conflict && v.Direction != Direction.Conflict);
 }
 

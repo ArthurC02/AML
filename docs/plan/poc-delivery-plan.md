@@ -11,7 +11,8 @@ What the PoC must show, what is built, what is measured and on which set, what i
 - identity by `HardConflictGate` and the stage 3 table ([identity adjudication](../feature/identity-adjudication.md)). Automatic NO_MATCH only on the validated rules: an impossible age at an attributed role, a Profile DOB more than two years from the customer's (`DOB_CONFLICT`, `FULL_DOB_CONFLICT`), and, when the Profile has no DOB, every birth date and dated age the attached text or a received page states next to the name more than two years off (`STATED_DOB_CONFLICT`). An identity NO_MATCH gives NO_HIT for every list type;
 - the advisory [implausible age at a dated document](../feature/identity-adjudication.md#implausible-age-at-a-dated-document-advisory) (`AGE_IMPLAUSIBLE_AT_DOCUMENT`, REVIEW, never a conclusion), read from an attached item's header date or from the earliest event the Profile's English notes date;
 - a received URL: `POST /api/pages`, the `FETCH_PAGE` job, its persons as candidates of a Case naming it by `pageIds` ([external sources](../feature/external-sources.md#received-url-source-2));
-- the [scoring rule](../feature/scoring-rule.md) with the proposed table `score-proposal-0.2`, in measurement only;
+- the [native-script name conflict](../feature/identity-adjudication.md#native-script-name-conflict) (`NATIVE_NAME_CONFLICT`: romanised names agree, Chinese-character names differ; rules out stage 3 rows 3 and 4, never a conclusion);
+- the [scoring rule](../feature/scoring-rule.md) with the proposed table `score-proposal-0.3`, in measurement only;
 - explanation, append-only revisions, batch on the job table, persistence on SQLite.
 
 **Not built, and why:**
@@ -90,7 +91,7 @@ Every figure below is pinned by a test (`tests/Aml.Tests/GoldenCases`, `tests/Am
 
 ### Scoring rule beside the stage 3 table
 
-`GoldenMetricsTests.Score_bands_beside_the_stage_3_table` computes the [scoring rule](../feature/scoring-rule.md) with the proposed table (`score-proposal-0.2`) on the same six pairs, in measurement only (the table decides).
+`GoldenMetricsTests.Score_bands_beside_the_stage_3_table` computes the [scoring rule](../feature/scoring-rule.md) with the proposed table (`score-proposal-0.3`) on the same six pairs, in measurement only (the table decides).
 
 | Measure | Stage 3 table | Score bands |
 |---|---|---|
@@ -203,7 +204,7 @@ The court-release template writes no case number, which a real court release ope
 
 #### End results
 
-| Measure | Product (stage 3) | Score band (`score-proposal-0.2`) |
+| Measure | Product (stage 3) | Score band (`score-proposal-0.3`) |
 |---|---|---|
 | decided (no reviewer) | 32.9% (118/359) | 33.7% (121/359) |
 | automatic HIT (MATCH), precision | — | 3, 100% |
@@ -412,6 +413,17 @@ Twelve more Cases (`DatedRoleCases`) hold the advisory [implausible age at a dat
 Twelve more Cases (`NotesEventCases`) hold the same hint from the [Profile notes](../feature/extraction-and-normalization.md#profile-notes), truth by construction, one Case each, the Profile of the customer's very name: three strangers, a customer born 2000 to 2009 against a namesake charged when the customer was 3, acting between years before the customer's birth, or convicted when the customer was 10, all hinted (3/3); and nine same-person Cases whose notes hold a year a naive reader would take for the person's event (a father's conviction, a company's founding, the record's update date, the person's birth, a law named by year), or an event at 30 or at 15, or a relative's early event beside the person's later one, or no date: hinted 0/9. What-if, not enabled: a concluding "not yet born at the earliest event" would decide 1 pair NO_MATCH, rightly, and none wrongly; "under 14" 3 rightly, none wrongly. This checks the reader's logic on chosen forms, not a rate.
 
 It tests reading, not a rate: the forms and counts are chosen. The legal-stage combination across items is not measured on real data ([open questions](open-questions.md#data-and-source)).
+
+### Native-script name probes
+
+`NativeNameSetTests` runs 31 invented pairs through the identity policy for the [native-script name conflict](../feature/identity-adjudication.md#native-script-name-conflict). Every pair's romanised names agree and each is a row 4 shape (gender, nationality and the birth year agree), so the signal is what moves it; the baseline is the same pair with its Chinese-character forms removed. The probes are not the generated adversarial set (whose kinds, counts and digest are pinned), and they are chosen, not sampled.
+
+- Different persons, 10: another surname of the same reading (3, among them 徐/許, both Hsu), one given character (3), both given characters (2), Wade-Giles against Pinyin (2). Signalled 10/10.
+- The same person, 13 the comparison joins or cannot compare: traditional against simplified, the controlled 鍾/鐘, the table variants 峰/峯 and 恆/恒, one of several Profile native forms equal, a space, a middle dot, the name order reversed, a masked form on either side, a Profile form in kana only, the customer's alias equal to the Profile form, two against three characters. Signalled 0/13.
+- The same person, 4 that equality does not join but the possibly-same list does: 杰/傑, 启/啟 (启 folds to 啓), the Japanese shinjitai 沢/澤 and 広/廣. Signalled 0/4.
+- The same person, 4 variants in neither table: 喆/哲, 堃/坤, 珎/珍, 敍/敘. Signalled 4/4, the measured residual wrong signal.
+
+PROBABLE_MATCH lost (row 4 to row 5): rightly 8 (the 2 Wade-Giles / Pinyin pairs were PARTIAL, row 5, before), wrongly 4; none gains it, none is NO_MATCH. What-if the signal concluded NO_MATCH (not enabled): where a table covers the forms, 10 right and 0 wrong; where neither does, 0 right and 4 wrong. So the signal cannot conclude before the lists cover the variant pairs real data holds ([open question](open-questions.md#data-and-source)). No golden, augmented or generated synthetic pair changes its result with it.
 
 ## Requirement scorecard
 

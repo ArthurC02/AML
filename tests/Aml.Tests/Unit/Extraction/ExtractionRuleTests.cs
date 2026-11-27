@@ -22,29 +22,29 @@ public class ExtractionRuleTests
         Assert.Equal(expected, ChineseNumerals.Parse(text));
 
     [Theory]
-    [InlineData("陳志明今年四十五歲", 45)]
-    [InlineData("廿二歲的陳志明", 22)]
-    [InlineData("陳志明（45足歲）", 45)]
-    [InlineData("陳志明（男，45歲）", 45)]
-    [InlineData("陳志明（女、四十五歲）", 45)]
-    [InlineData("陳志明現年45周歲", 45)]
-    [InlineData("Chen Chih-Ming, aged 45, was indicted", 45)]
-    [InlineData("the 45-year-old Chen Chih-Ming", 45)]
-    [InlineData("Chen Chih-Ming (45) was indicted", 45)]
-    [InlineData("王大同、陳志明分別為44歲、45歲", 45)]
-    [InlineData("陳志明與王大同分別44、45歲", 44)]
+    [InlineData("張文華今年四十五歲", 45)]
+    [InlineData("廿二歲的張文華", 22)]
+    [InlineData("張文華（45足歲）", 45)]
+    [InlineData("張文華（男，45歲）", 45)]
+    [InlineData("張文華（女、四十五歲）", 45)]
+    [InlineData("張文華現年45周歲", 45)]
+    [InlineData("Chang Wen-Hua, aged 45, was indicted", 45)]
+    [InlineData("the 45-year-old Chang Wen-Hua", 45)]
+    [InlineData("Chang Wen-Hua (45) was indicted", 45)]
+    [InlineData("王大同、張文華分別為44歲、45歲", 45)]
+    [InlineData("張文華與王大同分別44、45歲", 44)]
     public void Stated_ages_in_every_counted_form(string text, int expected) =>
-        Assert.Equal(expected, StatedAgeCheck.FindStatedAge(text, ["陳志明", "Chen Chih-Ming"]));
+        Assert.Equal(expected, StatedAgeCheck.FindStatedAge(text, ["張文華", "Chang Wen-Hua"]));
 
     [Theory]
-    [InlineData("陳志明七八十歲")]           // approximation
-    [InlineData("陳志明20多歲")]             // range
-    [InlineData("未滿18歲的陳志明")]          // threshold
-    [InlineData("被害人平均年齡65歲，陳志明否認")] // statistic, not adjacent
+    [InlineData("張文華七八十歲")]           // approximation
+    [InlineData("張文華20多歲")]             // range
+    [InlineData("未滿18歲的張文華")]          // threshold
+    [InlineData("被害人平均年齡65歲，張文華否認")] // statistic, not adjacent
     [InlineData("王大同、李四分別為44歲、45歲")]  // the Profile person is not among them
-    [InlineData("李小四（男，45歲）與陳志明涉詐欺")] // another person's bracket
+    [InlineData("李小四（男，45歲）與張文華涉詐欺")] // another person's bracket
     public void Approximations_thresholds_and_other_people_are_not_stated_ages(string text) =>
-        Assert.Null(StatedAgeCheck.FindStatedAge(text, ["陳志明"]));
+        Assert.Null(StatedAgeCheck.FindStatedAge(text, ["張文華"]));
 
     [Theory]
     [InlineData("未提供")]

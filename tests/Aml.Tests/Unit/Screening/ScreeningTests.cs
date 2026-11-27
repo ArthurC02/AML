@@ -12,14 +12,14 @@ public class ScreeningTests
     private static readonly PartialDate Dob = new(1980, 5, 20);
 
     private static ScreenedSubject Subject() =>
-        new(SubjectRole.Customer, null, ["陳志明"], Gender.Male, Dob, ["TW"], null, null, null, null, [], []);
+        new(SubjectRole.Customer, null, ["張文華"], Gender.Male, Dob, ["TW"], null, null, null, null, [], []);
 
     private static SourceProfile Profile(string category, string? sub = null, OfficialListEntry? list = null,
         IReadOnlyList<PartialDate>? dobs = null, IReadOnlyList<ProfileRole>? roles = null) =>
-        new("DJ:1", Gender.Male, ["陳志明"], dobs ?? [], ["TW"], [], [new SourceCategory(category, sub)], [], roles ?? [], [], list, [], []);
+        new("DJ:1", Gender.Male, ["張文華"], dobs ?? [], ["TW"], [], [new SourceCategory(category, sub)], [], roles ?? [], [], list, [], []);
 
     private static HitResult Analyze(SourceProfile p, bool isRca = false) =>
-        CaseAnalyzer.Analyze(new CaseInput(Subject(), [new CandidateRow("陳志明", "1", null, isRca)],
+        CaseAnalyzer.Analyze(new CaseInput(Subject(), [new CandidateRow("張文華", "1", null, isRca)],
             new Dictionary<string, SourceProfile> { ["1"] = p }, new Dictionary<string, IReadOnlyList<NewsItem>>(), [])).Hits[0];
 
     [Theory]
@@ -131,7 +131,7 @@ public class ScreeningTests
     [Fact]
     public void Missing_profile_makes_the_revision_not_evaluated_and_partial()
     {
-        var input = new CaseInput(Subject(), [new CandidateRow("陳志明", "1", null, false), new CandidateRow("陳志明", "2", null, false)],
+        var input = new CaseInput(Subject(), [new CandidateRow("張文華", "1", null, false), new CandidateRow("張文華", "2", null, false)],
             new Dictionary<string, SourceProfile> { ["1"] = Profile("Special Interest Person (SIP)", "Fraud") }, new Dictionary<string, IReadOnlyList<NewsItem>>(), []);
         var a = CaseAnalyzer.Analyze(input);
 
@@ -147,12 +147,12 @@ public class ScreeningTests
         Assert.Equal(CaseStatus.Closed, CaseLifecycle.AfterAnalysis(new CaseAnalysis([], [], []), CaseStatus.Open)); // zero hits
 
         var pepNo = new ListFlags(FlagValue.No, FlagValue.Missing, FlagValue.Missing);
-        var notApplicable = CaseAnalyzer.Analyze(new CaseInput(Subject(), [new CandidateRow("陳志明", "1", null, false, pepNo)],
+        var notApplicable = CaseAnalyzer.Analyze(new CaseInput(Subject(), [new CandidateRow("張文華", "1", null, false, pepNo)],
             new Dictionary<string, SourceProfile> { ["1"] = Profile("Politically Exposed Person") }, new Dictionary<string, IReadOnlyList<NewsItem>>(), []));
         Assert.Equal(ScreeningAssessment.NotApplicable, CaseLifecycle.Aggregate(notApplicable));
         Assert.Equal(CaseStatus.Closed, CaseLifecycle.AfterAnalysis(notApplicable, CaseStatus.InReview));
 
-        var review = CaseAnalyzer.Analyze(new CaseInput(Subject(), [new CandidateRow("陳志明", "1", null, false)],
+        var review = CaseAnalyzer.Analyze(new CaseInput(Subject(), [new CandidateRow("張文華", "1", null, false)],
             new Dictionary<string, SourceProfile> { ["1"] = Profile("Special Interest Person (SIP)", "Fraud") }, new Dictionary<string, IReadOnlyList<NewsItem>>(), []));
         Assert.Equal(CaseStatus.InReview, CaseLifecycle.AfterAnalysis(review, CaseStatus.Open));
     }

@@ -42,7 +42,7 @@ public class IdentityRuleTests
     [Theory]
     [InlineData("CHUNG JEN-SHENG", "Zhong Ren Sheng")]   // Taiwanese passport vs Hanyu Pinyin
     [InlineData("JHONG JENN SHENG", "Ren Sheng Zhong")]  // Tongyong-style spelling, given-first order
-    [InlineData("Hsieh Chih-Ming", "XIE ZHI MING")]       // Wade-Giles
+    [InlineData("Hsieh Chih-Hung", "XIE ZHI HONG")]       // Wade-Giles
     public void Romanization_variants_are_partial_and_disclosed(string subject, string profile) =>
         Assert.Equal((Partial, Findings.RomanizationVariant), NameComparison.CompareNames([subject], [profile]));
 
@@ -57,7 +57,7 @@ public class IdentityRuleTests
     [Fact]
     public void Name_similarity_is_disclosed_on_partial_only()
     {
-        var (status, detail) = NameComparison.CompareNames(["陳志明"], ["陳志銘"]);
+        var (status, detail) = NameComparison.CompareNames(["張文華"], ["張文樺"]);
         Assert.Equal(Partial, status);
         Assert.Equal("NOT_IDENTICAL_AFTER_NORMALIZATION（Jaro-Winkler 0.82，Levenshtein 1，DISSIMILAR）", detail);
         Assert.Equal(3, Similarity.Levenshtein("KITTEN", "SITTING"));
@@ -76,15 +76,15 @@ public class IdentityRuleTests
     [Fact]
     public void A_dob_more_than_two_years_off_is_the_validated_hard_conflict_and_closer_is_agreement_within_tolerance()
     {
-        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DatesOfBirth = [new PartialDate(1982, 5, 21)] });
+        var r = IdentityDecisionPolicy.Decide(Subject("張文華"), Profile("張文華") with { DatesOfBirth = [new PartialDate(1982, 5, 21)] });
         Assert.Equal(ComparisonStatus.Conflict, r.Evidence[EvidenceGroup.DateOfBirth].Status);
         Assert.Equal((ReasonCodes.FullDobConflict, (int?)null, IdentityDecision.NoMatch), (r.HardConflict, r.Stage3Row, r.Decision));
         Assert.Equal([ReasonCodes.FullDobConflict], r.ReasonCodes);
 
-        var year = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DatesOfBirth = [new PartialDate(1977)] });
+        var year = IdentityDecisionPolicy.Decide(Subject("張文華"), Profile("張文華") with { DatesOfBirth = [new PartialDate(1977)] });
         Assert.Equal((ReasonCodes.DobConflict, IdentityDecision.NoMatch), (year.HardConflict, year.Decision));
 
-        var near = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DatesOfBirth = [new PartialDate(1981, 5, 20)] });
+        var near = IdentityDecisionPolicy.Decide(Subject("張文華"), Profile("張文華") with { DatesOfBirth = [new PartialDate(1981, 5, 20)] });
         Assert.Equal((Direction.Support, Partial, Strength.Low, ReasonCodes.DobAgreesWithinTolerance),
             (near.Evidence[EvidenceGroup.DateOfBirth].Direction, near.Evidence[EvidenceGroup.DateOfBirth].Status, near.Evidence[EvidenceGroup.DateOfBirth].Strength, near.Evidence[EvidenceGroup.DateOfBirth].Detail));
         Assert.Equal("客戶 1980-05-20、名單 1981-05-20，相差 365 天，未逾 2 年，依出生日期容許規則視為相符", near.Evidence[EvidenceGroup.DateOfBirth].Note);
@@ -94,8 +94,8 @@ public class IdentityRuleTests
     [Fact]
     public void One_agreeing_dob_among_several_is_support_not_conflict()
     {
-        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"),
-            Profile("陳志明") with { DatesOfBirth = [new PartialDate(1979, 1, 1), new PartialDate(1980, 5, 20)] }); // within 2 years
+        var r = IdentityDecisionPolicy.Decide(Subject("張文華"),
+            Profile("張文華") with { DatesOfBirth = [new PartialDate(1979, 1, 1), new PartialDate(1980, 5, 20)] }); // within 2 years
         Assert.Equal(Exact, r.Evidence[EvidenceGroup.DateOfBirth].Status);
         Assert.Equal(4, r.Stage3Row);
     }
@@ -103,7 +103,7 @@ public class IdentityRuleTests
     [Fact]
     public void Support_without_agreeing_prerequisites_is_row_5()
     {
-        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志銘") with { DatesOfBirth = [new PartialDate(1980)] });
+        var r = IdentityDecisionPolicy.Decide(Subject("張文華"), Profile("張文樺") with { DatesOfBirth = [new PartialDate(1980)] });
         Assert.Equal((5, IdentityDecision.Review), (r.Stage3Row, r.Decision));
         Assert.Equal(ReasonCodes.PartialSupportOnly, r.ReasonCodes[0]);
     }
@@ -113,8 +113,8 @@ public class IdentityRuleTests
     [Fact]
     public void Same_document_key_is_unique_support_row_2()
     {
-        var r = IdentityDecisionPolicy.Decide(Subject("陳志明") with { Document = NationalId },
-            Profile("陳志明") with { Documents = [new("TW_NATIONAL_ID", "a123456789", "TW")] });
+        var r = IdentityDecisionPolicy.Decide(Subject("張文華") with { Document = NationalId },
+            Profile("張文華") with { Documents = [new("TW_NATIONAL_ID", "a123456789", "TW")] });
         Assert.Equal(Strength.Unique, r.Evidence[EvidenceGroup.Document].Strength);
         Assert.Equal((2, IdentityDecision.ProbableMatch), (r.Stage3Row, r.Decision));
         Assert.Equal([ReasonCodes.UniqueIdentifierAgreement], r.ReasonCodes); // a bilateral document is a direct identifier
@@ -123,25 +123,25 @@ public class IdentityRuleTests
     [Fact]
     public void Different_number_for_the_same_key_is_a_conflict_and_other_documents_are_not_comparable()
     {
-        var conflict = IdentityDecisionPolicy.Decide(Subject("陳志明") with { Document = NationalId },
-            Profile("陳志明") with { Documents = [new("TW_NATIONAL_ID", "A223456788", "TW")] });
+        var conflict = IdentityDecisionPolicy.Decide(Subject("張文華") with { Document = NationalId },
+            Profile("張文華") with { Documents = [new("TW_NATIONAL_ID", "A223456788", "TW")] });
         Assert.Equal((1, IdentityDecision.Review), (conflict.Stage3Row, conflict.Decision));
         Assert.Equal(ReasonCodes.DocumentIdentityConflict, conflict.ReasonCodes[0]);
 
-        var passport = IdentityDecisionPolicy.Decide(Subject("陳志明") with { Document = NationalId },
-            Profile("陳志明") with { Documents = [new("PASSPORT", "A123456789", "TW")] });
+        var passport = IdentityDecisionPolicy.Decide(Subject("張文華") with { Document = NationalId },
+            Profile("張文華") with { Documents = [new("PASSPORT", "A123456789", "TW")] });
         Assert.Equal((Uncertain, "NOT_COMPARABLE"), (passport.Evidence[EvidenceGroup.Document].Status, passport.Evidence[EvidenceGroup.Document].Detail));
     }
 
     [Fact]
     public void A_dob_conflict_closes_the_pair_in_stage_1_before_a_document_conflict_reaches_row_1()
     {
-        var r = IdentityDecisionPolicy.Decide(Subject("陳志明") with { Document = NationalId }, Profile("陳志明") with
+        var r = IdentityDecisionPolicy.Decide(Subject("張文華") with { Document = NationalId }, Profile("張文華") with
         { DatesOfBirth = [new PartialDate(1982, 5, 21)], Documents = [new("TW_NATIONAL_ID", "A223456788", "TW")] });
         Assert.Equal(((int?)null, IdentityDecision.NoMatch, ReasonCodes.FullDobConflict), (r.Stage3Row, r.Decision, r.HardConflict));
 
         // An agreeing document is UNIQUE support: the same DOB conflict is kept in REVIEW (SOURCE_QUALITY_DOWNGRADE).
-        var agreeing = IdentityDecisionPolicy.Decide(Subject("陳志明") with { Document = NationalId }, Profile("陳志明") with
+        var agreeing = IdentityDecisionPolicy.Decide(Subject("張文華") with { Document = NationalId }, Profile("張文華") with
         { DatesOfBirth = [new PartialDate(1982, 5, 21)], Documents = [new("TW_NATIONAL_ID", "A123456789", "TW")] });
         Assert.Equal((IdentityDecision.Review, ReasonCodes.FullDobConflict), (agreeing.Decision, agreeing.HardConflict));
         Assert.Equal([ReasonCodes.FullDobConflict, ReasonCodes.SourceQualityDowngrade], agreeing.ReasonCodes);
@@ -153,26 +153,26 @@ public class IdentityRuleTests
     [InlineData(2021, "SAME_ORGANIZATION_NO_COMMON_PERIOD")]
     public void Employment_periods_sharing_one_year_overlap(int from, string detail)
     {
-        var profile = Profile("陳志明") with
+        var profile = Profile("張文華") with
         { Roles = [new ProfileRole("總經理", "宏遠投資股份有限公司", new PartialDate(2015), new PartialDate(2020))] };
-        var subject = Subject("陳志明") with { Employments = [new Employment("宏遠投資股份有限公司", null, new PartialDate(from), null)] };
+        var subject = Subject("張文華") with { Employments = [new Employment("宏遠投資股份有限公司", null, new PartialDate(from), null)] };
         Assert.Equal(detail, EvidenceBuilder.EmploymentEvidence(subject, profile).Detail);
     }
 
     [Fact]
     public void Same_employer_in_a_common_period_is_support_and_with_full_dob_reaches_row_3()
     {
-        var profile = Profile("陳志明") with
+        var profile = Profile("張文華") with
         {
             DatesOfBirth = [new PartialDate(1980, 5, 20)],
             Roles = [new ProfileRole("總經理", "宏遠投資股份有限公司", new PartialDate(2015), new PartialDate(2020))],
         };
-        var r = IdentityDecisionPolicy.Decide(Subject("陳志明") with
+        var r = IdentityDecisionPolicy.Decide(Subject("張文華") with
         { Employments = [new Employment("宏遠投資股份有限公司", "經理", new PartialDate(2018, 3), null)] }, profile);
         Assert.Equal((Exact, Strength.Medium), (r.Evidence[EvidenceGroup.Employment].Status, r.Evidence[EvidenceGroup.Employment].Strength));
         Assert.Equal((3, IdentityDecision.ProbableMatch), (r.Stage3Row, r.Decision));
 
-        var undated = IdentityDecisionPolicy.Decide(Subject("陳志明") with
+        var undated = IdentityDecisionPolicy.Decide(Subject("張文華") with
         { Employments = [new Employment("宏遠投資股份有限公司", null, null, null)] }, profile);
         Assert.Equal("SAME_ORGANIZATION_NO_COMMON_PERIOD", undated.Evidence[EvidenceGroup.Employment].Detail);
         Assert.False(undated.Evidence[EvidenceGroup.Employment].IsSupport);
@@ -188,26 +188,26 @@ public class IdentityRuleTests
     [InlineData("法人", true)]
     [InlineData("Company", true)]
     public void Party_type_decides_between_person_and_entity(string? partyType, bool entity) =>
-        Assert.Equal(entity, (Subject("陳志明") with { PartyType = partyType }).IsEntity);
+        Assert.Equal(entity, (Subject("張文華") with { PartyType = partyType }).IsEntity);
 
     [Fact]
     public void Relative_and_related_company_named_on_both_sides_are_support()
     {
-        var profile = Profile("陳志明") with
+        var profile = Profile("張文華") with
         {
             Relationships = [new ProfileRelationship("2", "許雅婷", "Wife"), new ProfileRelationship("3", "宏遠投資股份有限公司", "Shareholder", IsEntity: true)],
         };
-        var r = IdentityDecisionPolicy.Decide(Subject("陳志明") with
+        var r = IdentityDecisionPolicy.Decide(Subject("張文華") with
         { Relatives = [new Relative("許雅婷", "配偶"), new Relative("宏遠投資股份有限公司", "Shareholder", IsEntity: true)] }, profile);
         Assert.Equal(Strength.Medium, r.Evidence[EvidenceGroup.Relationship].Strength);
         Assert.Equal(Strength.Low, r.Evidence[EvidenceGroup.CompanyAssociation].Strength);
         Assert.Equal(5, r.Stage3Row); // no full DOB on the Profile: support without the strong combination
 
-        var otherRelation = IdentityDecisionPolicy.Decide(Subject("陳志明") with { Relatives = [new Relative("許雅婷", "母親")] }, profile);
+        var otherRelation = IdentityDecisionPolicy.Decide(Subject("張文華") with { Relatives = [new Relative("許雅婷", "母親")] }, profile);
         Assert.Equal(Uncertain, otherRelation.Evidence[EvidenceGroup.Relationship].Status);
 
         // The detail names the relative that matched, not the first one listed.
-        var second = IdentityDecisionPolicy.Decide(Subject("陳志明") with
+        var second = IdentityDecisionPolicy.Decide(Subject("張文華") with
         { Relatives = [new Relative("王大同", "父親"), new Relative("許雅婷", "配偶")] }, profile);
         Assert.Equal("SAME_NAMED_RELATIVE:SPOUSE", second.Evidence[EvidenceGroup.Relationship].Detail);
     }
@@ -223,19 +223,19 @@ public class IdentityRuleTests
     [Fact]
     public void Same_address_without_periods_is_never_support_and_a_different_one_is_a_soft_difference()
     {
-        var subject = Subject("陳志明") with { Addresses = [new Address("永久地址", "新北市新莊區中華路35巷8號3樓", null, "TW")] };
-        var same = IdentityDecisionPolicy.Decide(subject, Profile("陳志明") with
+        var subject = Subject("張文華") with { Addresses = [new Address("永久地址", "新北市新莊區中華路35巷8號3樓", null, "TW")] };
+        var same = IdentityDecisionPolicy.Decide(subject, Profile("張文華") with
         { AddressCountries = ["TW"], AddressLines = ["台北縣新莊市中華路３５巷８號３樓"] });
         Assert.Equal((Uncertain, "SAME_ADDRESS_NO_PERIOD"), (same.Evidence[EvidenceGroup.Address].Status, same.Evidence[EvidenceGroup.Address].Detail));
         Assert.Equal(6, same.Stage3Row);
 
-        var other = IdentityDecisionPolicy.Decide(subject, Profile("陳志明") with
+        var other = IdentityDecisionPolicy.Decide(subject, Profile("張文華") with
         { AddressCountries = ["TW"], AddressLines = ["臺北市大安區信義路四段1號"] });
         Assert.Equal((Uncertain, "SOFT_DIFFERENCE（Jaccard 0.04，DISSIMILAR）"),
             (other.Evidence[EvidenceGroup.Address].Status, other.Evidence[EvidenceGroup.Address].Detail));
 
         // Another house number on the same lane: a different structured key, but most of the text is shared.
-        var near = IdentityDecisionPolicy.Decide(subject, Profile("陳志明") with
+        var near = IdentityDecisionPolicy.Decide(subject, Profile("張文華") with
         { AddressCountries = ["TW"], AddressLines = ["新北市新莊區中華路35巷10號3樓"] });
         Assert.Equal((Uncertain, "SOFT_DIFFERENCE（Jaccard 0.72，SIMILAR）"),
             (near.Evidence[EvidenceGroup.Address].Status, near.Evidence[EvidenceGroup.Address].Detail));
@@ -245,14 +245,14 @@ public class IdentityRuleTests
     public void Pending_hard_conflicts_fire_but_keep_the_pair_in_review()
     {
         // Born 1980-05-20: 16 when named director in 1997 (adulthood was 20 then), so the role is impossible but the age is not.
-        var role = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with
+        var role = IdentityDecisionPolicy.Decide(Subject("張文華"), Profile("張文華") with
         { Roles = [new ProfileRole("董事", "宏遠投資股份有限公司", new PartialDate(1997, 1))] });
         Assert.Equal((ReasonCodes.ImpossibleRoleAtReportedEvent, IdentityDecision.Review), (role.HardConflict, role.Decision));
 
-        var death = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DateOfDeath = new PartialDate(1979) });
+        var death = IdentityDecisionPolicy.Decide(Subject("張文華"), Profile("張文華") with { DateOfDeath = new PartialDate(1979) });
         Assert.Equal((ReasonCodes.DeathBeforeCustomerBirth, IdentityDecision.Review), (death.HardConflict, death.Decision));
 
-        var sameYear = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DateOfDeath = new PartialDate(1980) });
+        var sameYear = IdentityDecisionPolicy.Decide(Subject("張文華"), Profile("張文華") with { DateOfDeath = new PartialDate(1980) });
         Assert.Null(sameYear.HardConflict); // precision too coarse to say death came first
         Assert.True(HardConflictGate.Before(new PartialDate(1980, 4), new PartialDate(1980, 5, 20)));
     }
@@ -260,30 +260,30 @@ public class IdentityRuleTests
     [Fact]
     public void Non_person_profile_stays_in_review()
     {
-        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { RecordType = "Entity" });
+        var r = IdentityDecisionPolicy.Decide(Subject("張文華"), Profile("張文華") with { RecordType = "Entity" });
         Assert.Equal((IdentityDecision.Review, (int?)null), (r.Decision, r.Stage3Row));
         Assert.Equal([ReasonCodes.NonPersonSubjectReview], r.ReasonCodes);
     }
 
     [Theory]
-    [InlineData("陳志明（45歲）涉嫌詐欺", 45)]
-    [InlineData("負責人陳志明今年46歲。", 46)]
-    [InlineData("47歲的陳志明遭起訴", 47)]
+    [InlineData("張文華（45歲）涉嫌詐欺", 45)]
+    [InlineData("負責人張文華今年46歲。", 46)]
+    [InlineData("47歲的張文華遭起訴", 47)]
     public void Stated_age_is_read_next_to_the_name(string text, int expected) =>
-        Assert.Equal(expected, StatedAgeCheck.FindStatedAge(text, ["陳志明"]));
+        Assert.Equal(expected, StatedAgeCheck.FindStatedAge(text, ["張文華"]));
 
     [Fact]
     public void Stated_age_of_someone_else_or_in_another_sentence_is_ignored()
     {
-        Assert.Null(StatedAgeCheck.FindStatedAge("王姓男子（52歲）與陳志明合作", ["陳志明"]));
-        Assert.Null(StatedAgeCheck.FindStatedAge("陳志明遭起訴。另一名被告45歲。", ["陳志明"]));
+        Assert.Null(StatedAgeCheck.FindStatedAge("王姓男子（52歲）與張文華合作", ["張文華"]));
+        Assert.Null(StatedAgeCheck.FindStatedAge("張文華遭起訴。另一名被告45歲。", ["張文華"]));
     }
 
     [Fact]
     public void Stated_age_within_two_years_is_compatible_and_never_support()
     {
         // Born 1980-05-20; on 2026-03-01 the subject is 45. Stated 47 → difference 2, compatible.
-        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明"), News("陳志明（47歲）涉嫌詐欺。"));
+        var r = IdentityDecisionPolicy.Decide(Subject("張文華"), Profile("張文華"), News("張文華（47歲）涉嫌詐欺。"));
         var age = r.Evidence[EvidenceGroup.StatedAge];
         Assert.Equal(ReasonCodes.AgeCompatibleAtReport, age.Detail);
         Assert.False(age.IsSupport);
@@ -297,7 +297,7 @@ public class IdentityRuleTests
     [InlineData(20, 46, ReasonCodes.AgeCompatibleAtReport)]
     public void Stated_age_counts_a_birthday_on_the_report_date(int day, int age, string detail)
     {
-        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明"), News("陳志明（48歲）涉嫌詐欺。", new PartialDate(2026, 5, day)));
+        var r = IdentityDecisionPolicy.Decide(Subject("張文華"), Profile("張文華"), News("張文華（48歲）涉嫌詐欺。", new PartialDate(2026, 5, day)));
         Assert.Equal(detail, r.Evidence[EvidenceGroup.StatedAge].Detail);
         Assert.Contains($"推算 {age} 歲", r.Evidence[EvidenceGroup.StatedAge].Note, StringComparison.Ordinal);
     }
@@ -310,8 +310,8 @@ public class IdentityRuleTests
     [InlineData(19810101, null, 1, IdentityDecision.Review)]
     public void Stated_age_beyond_two_years_concludes_no_match_unless_the_profile_has_a_dob_of_its_own(int profileDob, string? hard, int? row, IdentityDecision decision)
     {
-        var profile = profileDob == 0 ? Profile("陳志明") : Profile("陳志明") with { DatesOfBirth = [new PartialDate(profileDob / 10000, profileDob / 100 % 100, profileDob % 100)] };
-        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"), profile, News("陳志明（48歲）涉嫌詐欺。"));
+        var profile = profileDob == 0 ? Profile("張文華") : Profile("張文華") with { DatesOfBirth = [new PartialDate(profileDob / 10000, profileDob / 100 % 100, profileDob % 100)] };
+        var r = IdentityDecisionPolicy.Decide(Subject("張文華"), profile, News("張文華（48歲）涉嫌詐欺。"));
         Assert.Equal((ComparisonStatus.Conflict, ReasonCodes.AgeDifferenceAtReport), (r.Evidence[EvidenceGroup.StatedAge].Status, r.Evidence[EvidenceGroup.StatedAge].Detail));
         Assert.Equal((hard, row, decision), (r.HardConflict, r.Stage3Row, r.Decision));
     }
@@ -319,7 +319,7 @@ public class IdentityRuleTests
     [Fact]
     public void Stated_age_without_full_dob_is_not_comparable()
     {
-        var r = IdentityDecisionPolicy.Decide(Subject("陳志明", new PartialDate(1980)), Profile("陳志明"), News("陳志明（60歲）涉嫌詐欺。"));
+        var r = IdentityDecisionPolicy.Decide(Subject("張文華", new PartialDate(1980)), Profile("張文華"), News("張文華（60歲）涉嫌詐欺。"));
         Assert.Equal(Uncertain, r.Evidence[EvidenceGroup.StatedAge].Status);
         Assert.Equal(6, r.Stage3Row);
     }

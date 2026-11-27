@@ -81,8 +81,8 @@ public static class Romanization
     {
         var words = NameComparison.NameTokens(name).SelectMany(w => w.Split([',', '.'], StringSplitOptions.RemoveEmptyEntries)).ToArray();
         if (words.Length == 0) return null;
-        // ponytail: a hyphenated given name (Chih-Ming) marks Taiwanese passport style, so a syllable that is also a
-        // Wade-Giles/Tongyong/passport spelling reads only in those systems (Chi-Ming is ji/qi, not chi). Heuristic; a
+        // ponytail: a hyphenated given name (Chih-Hung) marks Taiwanese passport style, so a syllable that is also a
+        // Wade-Giles/Tongyong/passport spelling reads only in those systems (Chi-Hung is ji/qi, not chi). Heuristic; a
         // name-level system detector is the upgrade if reviewed cases show misses.
         var taiwanStyle = words.Any(w => w.Contains('-', StringComparison.Ordinal));
         var readingsPerWord = new List<SyllableReadings[]>();

@@ -36,13 +36,13 @@ public class LegalStageCostTests
     private const int TargetChars = 5_000;
 
     // 林美玲 is named only in the bodies, so no order speaks of her and every ruling reader is tried; 周無名 is never named.
-    private static readonly string[] Persons = ["陳志明", "李小四", "林美玲", "周無名"];
-    private static readonly string[] Named = ["陳志明", "李小四", "王大同"];
+    private static readonly string[] Persons = ["張文華", "李小四", "林美玲", "周無名"];
+    private static readonly string[] Named = ["張文華", "李小四", "王大同"];
 
     private static string N(int i) => Named[i % Named.Length];
 
     // A prosecutors' report about many suspects.
-    private const string ReportHead = "臺灣臺北地方檢察署新聞稿\n本署偵辦跨境詐欺集團案，偵查終結，起訴陳志明等12人。\n";
+    private const string ReportHead = "臺灣臺北地方檢察署新聞稿\n本署偵辦跨境詐欺集團案，偵查終結，起訴張文華等12人。\n";
 
     private static string ReportSentence(int i) => (i % 8) switch
     {
@@ -58,7 +58,7 @@ public class LegalStageCostTests
     };
 
     // A judgment with a party header, the order and reasons, anonymised with court codes in the order and the reasons.
-    private const string JudgmentHead = "臺灣臺北地方法院刑事判決\n公 訴 人 臺灣臺北地方檢察署檢察官\n被 告 陳志明\n      李小四\n      王大同\n"
+    private const string JudgmentHead = "臺灣臺北地方法院刑事判決\n公 訴 人 臺灣臺北地方檢察署檢察官\n被 告 張文華\n      李小四\n      王大同\n"
         + "上列被告因詐欺等案件，經檢察官提起公訴，本院判決如下：\n主 文\nA03犯三人以上共同詐欺取財罪，處有期徒刑一年。\nA07無罪。\nA12犯幫助洗錢罪，處有期徒刑六月。\n理 由\n";
 
     private static readonly string[] Codes = ["A03", "A07", "A12"];
@@ -74,16 +74,16 @@ public class LegalStageCostTests
     };
 
     // A court's press release with its order heading and a table-like block of defendants.
-    private const string ReleaseHead = "臺灣臺北地方法院新聞稿\n本院114年度訴字第1號被告陳志明等3人詐欺案件，於今日宣判。\n壹、判決主文：\n"
-        + "㈠陳志明犯三人以上共同詐欺取財罪，處有期徒刑2年。\n㈡李小四無罪。\n㈢王大同處如附表所示之刑。\n貳、理由摘要：\n";
+    private const string ReleaseHead = "臺灣臺北地方法院新聞稿\n本院114年度訴字第1號被告張文華等3人詐欺案件，於今日宣判。\n壹、判決主文：\n"
+        + "㈠張文華犯三人以上共同詐欺取財罪，處有期徒刑2年。\n㈡李小四無罪。\n㈢王大同處如附表所示之刑。\n貳、理由摘要：\n";
 
     private static string ReleaseSentence(int i) => (i % 6) switch
     {
-        0 => $"被告陳志明擔任詐欺集團首腦，指揮成員於113年{i % 12 + 1}月間向被害人{i % 30 + 2}人詐得新臺幣{i * 5 + 30}萬元。\n",
+        0 => $"被告張文華擔任詐欺集團首腦，指揮成員於113年{i % 12 + 1}月間向被害人{i % 30 + 2}人詐得新臺幣{i * 5 + 30}萬元。\n",
         1 => $"被告李小四雖提供帳戶，惟無證據證明其知情，應為無罪之諭知。\n",
         2 => $"{i % 40 + 1}\n王大同（車手）\n有期徒刑{i % 3 + 1}年{i % 11 + 1}月\n",
         3 => $"被告王大同（編號{i % 40 + 1}）負責提領款項，犯後坦承，量處有期徒刑{i % 4 + 1}年。\n",
-        4 => $"檢察官請求從重量刑，判處陳志明有期徒刑{i % 5 + 6}年，本院審酌後認不宜。\n",
+        4 => $"檢察官請求從重量刑，判處張文華有期徒刑{i % 5 + 6}年，本院審酌後認不宜。\n",
         _ => $"告訴人林美玲表示將請求檢察官上訴，本件尚未確定，得於判決送達後{i % 10 + 10}日內提起上訴。\n",
     };
 

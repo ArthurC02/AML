@@ -76,7 +76,7 @@ public sealed class PagesApiTests(ApiHost api) : IClassFixture<ApiHost>
         var ct = TestContext.Current.CancellationToken;
         var customer = SyntheticCaseGenerator.Generate()[0];
         var name = customer.Subject.Names[0];
-        var article = $"<html><body><article><p>〔本報記者／臺北報導〕被告{name}涉嫌詐欺，遭臺北地檢署提起公訴。</p><p>證人陳志明到庭。</p></article></body></html>";
+        var article = $"<html><body><article><p>〔本報記者／臺北報導〕被告{name}涉嫌詐欺，遭臺北地檢署提起公訴。</p><p>證人張文華到庭。</p></article></body></html>";
         using var gate = new ManualResetEventSlim();
         var stub = new WebStub(u =>
         {
@@ -102,7 +102,7 @@ public sealed class PagesApiTests(ApiHost api) : IClassFixture<ApiHost>
         var hit = detail["result"]!["hits"]!.AsArray().Single(h => ((string)h!["profile"]!["profileKey"]!).StartsWith("WEB:", StringComparison.Ordinal))!;
         Assert.Equal(($"WEB:{pageId}-1", "ADVERSE_MEDIA", "PAGE_READING", "INDICTED", "REVIEW"), ((string)hit["profile"]!["profileKey"]!, (string)hit["conditions"]![0]!["type"]!,
             (string)hit["conditions"]![0]!["basis"]!, (string)hit["conditions"]![0]!["legalStage"]!, (string)hit["pairResult"]!));
-        Assert.Equal([("SOURCE_PAGE", true, name), ("SOURCE_PAGE", false, "陳志明")],
+        Assert.Equal([("SOURCE_PAGE", true, name), ("SOURCE_PAGE", false, "張文華")],
             detail["result"]!["pages"]![0]!["persons"]!.AsArray().Select(p => ((string)p!["mode"]!, (bool)p["candidate"]!, (string)p["name"]!)));
         Assert.Equal(pageId, (string)detail["lineage"]!["pages"]![0]!["pageId"]!);
 

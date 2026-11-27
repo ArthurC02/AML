@@ -9,11 +9,11 @@ namespace Aml.Tests.Unit.Identity;
 public class IdentityBoundaryTests
 {
     private static ScreenedSubject Subject(PartialDate? dob = null) =>
-        new(SubjectRole.Customer, null, ["陳志明"], Gender.Male, dob ?? new PartialDate(1980, 5, 20), ["TW"],
+        new(SubjectRole.Customer, null, ["張文華"], Gender.Male, dob ?? new PartialDate(1980, 5, 20), ["TW"],
             null, null, null, null, [], []);
 
     private static SourceProfile Profile() =>
-        new("DJ:1", Gender.Male, ["陳志明"], [], ["TW"], [], [new SourceCategory("Special Interest Person (SIP)", "Fraud")],
+        new("DJ:1", Gender.Male, ["張文華"], [], ["TW"], [], [new SourceCategory("Special Interest Person (SIP)", "Fraud")],
             [], [], [], null, [], []);
 
     private static PartialDate D(int y, int? m = null, int? d = null) => new(y, m, d);
@@ -223,11 +223,11 @@ public class IdentityBoundaryTests
     [Fact]
     public void Stated_ages_pair_up_only_when_every_name_has_one()
     {
-        Assert.Null(StatedAgeCheck.FindStatedAge("陳志明、林美玲分別為45歲", ["陳志明"]));
-        Assert.Null(StatedAgeCheck.FindStatedAge("某人45歲", ["", "陳志明"])); // an empty name matches nothing
-        Assert.Null(StatedAgeCheck.FindStatedAge("陳志明、林美玲分別為45歲、三四歲", ["陳志明"])); // one age unreadable
+        Assert.Null(StatedAgeCheck.FindStatedAge("張文華、林美玲分別為45歲", ["張文華"]));
+        Assert.Null(StatedAgeCheck.FindStatedAge("某人45歲", ["", "張文華"])); // an empty name matches nothing
+        Assert.Null(StatedAgeCheck.FindStatedAge("張文華、林美玲分別為45歲、三四歲", ["張文華"])); // one age unreadable
 
-        var news = new NewsItem("1", "DOC1", "標題", "某報", D(2026, 3, 1), "陳志明、林美玲分別為45歲、40歲");
+        var news = new NewsItem("1", "DOC1", "標題", "某報", D(2026, 3, 1), "張文華、林美玲分別為45歲、40歲");
         var age = StatedAgeCheck.Check(Subject(), Profile(), news);
         Assert.Equal((ReasonCodes.AgeCompatibleAtReport, "報導年齡 45 歲；依報導日期 2026-03-01 推算 45 歲"), (age?.Detail, age?.Note));
 

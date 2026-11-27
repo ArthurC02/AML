@@ -11,7 +11,7 @@ namespace Aml.Tests.Unit.Screening;
 public class ScreeningBoundaryTests
 {
     private static SourceProfile Profile(params SourceCategory[] categories) =>
-        new("DJ:1", Gender.Male, ["陳志明"], [], ["VN"], [], categories, [], [], [], null, [], []);
+        new("DJ:1", Gender.Male, ["張文華"], [], ["VN"], [], categories, [], [], [], null, [], []);
 
     private static readonly SourceCategory Pep = new("Politically Exposed Person", "Minister");
     private static readonly SourceCategory Fraud = new("Special Interest Person (SIP)", "Fraud");
@@ -155,9 +155,9 @@ public class ScreeningBoundaryTests
             Determine(Profile(Pep, new SourceCategory("Relative or Close Associate (RCA)", "Cousin"))).Single(c => c.Type == ListType.Rca).ReasonCodes);
 
     [Theory]
-    [InlineData("陳志明酒駕。", "TW", AmlRelevance.Unrelated)]                                      // jurisdiction from the allegation country
-    [InlineData("陳志明酒駕。", null, AmlRelevance.Uncertain)]                                      // no jurisdiction stated
-    [InlineData("〔記者丙／台北報導〕陳志明否認犯行。陳志明酒駕被捕。", null, AmlRelevance.Unrelated)] // conduct in the second naming sentence
+    [InlineData("張文華酒駕。", "TW", AmlRelevance.Unrelated)]                                      // jurisdiction from the allegation country
+    [InlineData("張文華酒駕。", null, AmlRelevance.Uncertain)]                                      // no jurisdiction stated
+    [InlineData("〔記者丙／台北報導〕張文華否認犯行。張文華酒駕被捕。", null, AmlRelevance.Unrelated)] // conduct in the second naming sentence
     public void Relevance_needs_a_jurisdiction_and_the_conduct_in_any_sentence_naming_the_person(string news, string? country, AmlRelevance relevance) =>
         Assert.Equal(relevance, Assert.Single(Determine(Profile(new SourceCategory("Adverse Media", null)) with
         {
@@ -172,7 +172,7 @@ public class ScreeningBoundaryTests
     [Fact]
     public void The_later_stage_in_one_clause_wins() =>
         Assert.Equal(LegalStage.Convicted, Assert.Single(Determine(Profile(new SourceCategory("Adverse Media", null)),
-            news: "陳志明遭起訴後判處有期徒刑二年")).LegalStage);
+            news: "張文華遭起訴後判處有期徒刑二年")).LegalStage);
 
     // ---- Assessment --------------------------------------------------------------------------------------------
 
@@ -219,7 +219,7 @@ public class ScreeningBoundaryTests
 
     private static DispositionRecommendation Recommend(SourceProfile p, string[] nationality, params SourceCondition[] conditions) =>
         DispositionPolicy.Recommend(
-            new ScreenedSubject(SubjectRole.Customer, null, ["陳志明"], Gender.Male, new PartialDate(1980, 5, 20), nationality, null, null, null, null, [], []),
+            new ScreenedSubject(SubjectRole.Customer, null, ["張文華"], Gender.Male, new PartialDate(1980, 5, 20), nationality, null, null, null, null, [], []),
             p, conditions, Identity(), hasNews: false);
 
     private static readonly SourceCondition UnmappedUnknown = Condition(ListType.Unknown, Unknown, ConditionBasis.Unmapped, SourceConditions.UnmappedCategory);
@@ -240,7 +240,7 @@ public class ScreeningBoundaryTests
     [Fact]
     public void An_ambiguous_finding_on_the_other_field_leaves_nationality_classified() =>
         Assert.Equal(Recommendation.OnList, DispositionPolicy.Recommend(
-            new ScreenedSubject(SubjectRole.Customer, null, ["陳志明"], null, null, ["VN"], null, null, null, null, [], ["AMBIGUOUS:Citizenship"]),
+            new ScreenedSubject(SubjectRole.Customer, null, ["張文華"], null, null, ["VN"], null, null, null, null, [], ["AMBIGUOUS:Citizenship"]),
             Profile() with { Findings = ["AMBIGUOUS:國籍"] }, [Condition(ListType.Pep)], Identity(), hasNews: false).Recommendation);
 
     [Fact]

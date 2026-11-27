@@ -10,10 +10,10 @@ public class ContrastTests
     private static readonly PartialDate Born = new(1980, 5, 20);
 
     private static ScreenedSubject Subject(PartialDate? dob = null, Document? document = null, IReadOnlyList<Employment>? jobs = null) =>
-        new(SubjectRole.Customer, null, ["陳志明"], Gender.Male, dob ?? Born, ["TW"], document, null, null, null, [], [], jobs);
+        new(SubjectRole.Customer, null, ["張文華"], Gender.Male, dob ?? Born, ["TW"], document, null, null, null, [], [], jobs);
 
     private static SourceProfile Profile(PartialDate[]? dobs = null, Gender gender = Gender.Male) =>
-        new("DJ:1", gender, ["陳志明"], dobs ?? [], ["TW"], [], [new SourceCategory("Special Interest Person (SIP)", "Fraud")],
+        new("DJ:1", gender, ["張文華"], dobs ?? [], ["TW"], [], [new SourceCategory("Special Interest Person (SIP)", "Fraud")],
             [], [], [], null, [], []);
 
     private static void Check(int row, string[] expected, ScreenedSubject s, SourceProfile p)

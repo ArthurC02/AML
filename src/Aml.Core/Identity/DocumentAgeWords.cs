@@ -31,7 +31,7 @@ internal static class DocumentAgeWords
     /// <summary>
     /// After a whole name: particles that never start a name or an organisation (the digest's AfterName set without 於, 在, 向,
     /// 將, 為, 以, 經, 曾, 都, 一, 有, 無, 和, 是, 今, 昨, 日, 前, 後, 對, 到, 把, 從, 指, 仍, 再, 又, 表, which can), and the offence
-    /// and penalty words of a court text (被告陳志明詐欺案件, 判處陳志明有期徒刑).
+    /// and penalty words of a court text (被告張文華詐欺案件, 判處張文華有期徒刑).
     /// </summary>
     public static readonly string[] SafeFollowers =
     [
@@ -57,7 +57,7 @@ internal static class DocumentAgeWords
     /// <summary>In the sentence of a qualifying mention, that mention does not qualify: negation, mistaken identity, misuse of a name, the person harmed.</summary>
     public static readonly string[] SentenceCues = ["否認", "並非", "不是", "誤傳", "誤認", "誤植", "同名", "冒用", "冒名", "盜用", "人頭", "掛名", "名義", "被害", "受害", "遭詐", "受騙"];
 
-    /// <summary>Directly before the qualifying word, that mention does not qualify (非董事陳志明).</summary>
+    /// <summary>Directly before the qualifying word, that mention does not qualify (非董事張文華).</summary>
     public const char NegationBeforeRole = '非';
 
     /// <summary>A stated age under this anywhere in the item makes it silent (N 歲, 年僅 N), as does 未滿 N 歲.</summary>

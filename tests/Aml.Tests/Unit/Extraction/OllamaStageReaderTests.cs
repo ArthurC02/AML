@@ -28,19 +28,19 @@ public class OllamaStageReaderTests
     private static HttpResponseMessage Reply(string content, HttpStatusCode status = HttpStatusCode.OK) =>
         new(status) { Content = new StringContent(JsonSerializer.Serialize(new { model = "gemma4", message = new { role = "assistant", content }, done = true })) };
 
-    private static (StageAnswer? Answer, Server Server) Read(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> reply, string text = "檢方今日起訴陳志明。",
+    private static (StageAnswer? Answer, Server Server) Read(Func<HttpRequestMessage, CancellationToken, HttpResponseMessage> reply, string text = "檢方今日起訴張文華。",
         TimeSpan? timeout = null)
     {
         var server = new Server(reply);
         using var http = new HttpClient(server) { BaseAddress = new Uri("http://ollama.test:11434"), Timeout = timeout ?? TimeSpan.FromSeconds(120) };
-        return (new OllamaStageReader(http, "gemma4:12b-it-q4_K_M").Read(text, ["陳志明", "陳男"]), server);
+        return (new OllamaStageReader(http, "gemma4:12b-it-q4_K_M").Read(text, ["張文華", "張男"]), server);
     }
 
     [Fact]
     public void A_good_answer_gives_the_stage_and_quote_of_person_one()
     {
-        var (answer, _) = Read((_, _) => Reply("""{"persons":[{"id":"2","stage":"CONVICTED","quote":"x"},{"id":"1","stage":"INDICTED","quote":"起訴陳志明"}]}"""));
-        Assert.Equal(new StageAnswer(LegalStage.Indicted, "起訴陳志明"), answer);
+        var (answer, _) = Read((_, _) => Reply("""{"persons":[{"id":"2","stage":"CONVICTED","quote":"x"},{"id":"1","stage":"INDICTED","quote":"起訴張文華"}]}"""));
+        Assert.Equal(new StageAnswer(LegalStage.Indicted, "起訴張文華"), answer);
         Assert.Equal(new StageAnswer(LegalStage.Unknown), Read((_, _) => Reply("""{"persons":[{"id":"1","stage":"UNKNOWN","quote":""}]}""")).Answer);
     }
 
@@ -86,7 +86,7 @@ public class OllamaStageReaderTests
         var reader = new OllamaStageReader(http, "gemma4:12b-it-q4_K_M");
         try
         {
-            var held = Task.Run(() => reader.Read("檢方今日起訴陳志明。", ["陳志明"], TimeSpan.FromMilliseconds(50)), TestContext.Current.CancellationToken);
+            var held = Task.Run(() => reader.Read("檢方今日起訴張文華。", ["張文華"], TimeSpan.FromMilliseconds(50)), TestContext.Current.CancellationToken);
             Assert.True(((IAsyncResult)held).AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(30))); // safety bound only, not the TimeoutException below
             Assert.IsType<TimeoutException>(held.Exception?.InnerException);
         }
@@ -94,7 +94,7 @@ public class OllamaStageReaderTests
         {
             gate.Set();
         }
-        Assert.Equal(new StageAnswer(LegalStage.Indicted), reader.Read("檢方今日起訴陳志明。", ["陳志明"], TimeSpan.FromSeconds(120)));
+        Assert.Equal(new StageAnswer(LegalStage.Indicted), reader.Read("檢方今日起訴張文華。", ["張文華"], TimeSpan.FromSeconds(120)));
     }
 
     [Fact]
@@ -108,8 +108,8 @@ public class OllamaStageReaderTests
         Assert.Equal("""{"type":"object","required":["persons"],"properties":{"persons":{"type":"array","items":{"type":"object","required":["id","stage","quote"],"properties":{"id":{"type":"string"},"stage":{"type":"string","enum":["CONVICTED","ACQUITTED","DISMISSED","INDICTED","WANTED","ALLEGED","UNKNOWN"]},"quote":{"type":"string"}}}}}}""",
             body["format"]!.ToJsonString());
         var prompt = (string)body["messages"]![0]!["content"]!;
-        Assert.Contains("<<<人員清單開始>>>\n1：陳志明、陳男\n<<<人員清單結束>>>", prompt, StringComparison.Ordinal);
-        Assert.Contains("<<<文件開始>>>\n檢方今日起訴陳志明。\n<<<文件結束>>>", prompt, StringComparison.Ordinal);
+        Assert.Contains("<<<人員清單開始>>>\n1：張文華、張男\n<<<人員清單結束>>>", prompt, StringComparison.Ordinal);
+        Assert.Contains("<<<文件開始>>>\n檢方今日起訴張文華。\n<<<文件結束>>>", prompt, StringComparison.Ordinal);
         Assert.StartsWith("你是協助閱讀臺灣法律文件的助手。", prompt, StringComparison.Ordinal);
     }
 

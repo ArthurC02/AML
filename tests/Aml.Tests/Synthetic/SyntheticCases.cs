@@ -69,7 +69,7 @@ public sealed record SyntheticAssumptions
     // Text:
     public double MultiPersonText { get; init; } = 0.3;          // the text names a second person with another outcome
     public double OtherInSameSentence { get; init; } = 0.5;      // of those: the other's outcome in the person's sentence
-    public double MaskedNameInRelease { get; init; } = 0.3;      // a press release writes 陳姓男子
+    public double MaskedNameInRelease { get; init; } = 0.3;      // a press release writes 張姓男子
     public double StatedAgeOffByOne { get; init; } = 0.1;
     public double Html { get; init; } = 0.2;                     // customer and Profile files as HTML pages
 
@@ -197,7 +197,7 @@ public sealed partial class SyntheticCaseGenerator
     ];
 
     // Full names used in the repo's own tests and examples are never generated, so no synthetic person shares one.
-    private static readonly HashSet<string> Reserved = ["陳志明", "林美玲", "許雅婷", "王大明", "鐘仁聲", "陳建宏"];
+    private static readonly HashSet<string> Reserved = ["張文華", "林美玲", "許雅婷", "王大明", "鐘仁聲", "陳建宏"];
 
     private static readonly (string City, string Letter, string[] Districts)[] Places =
     [

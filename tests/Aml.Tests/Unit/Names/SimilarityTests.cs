@@ -83,7 +83,7 @@ public class SimilarityTests
     [InlineData("", "ABC", 3)]
     [InlineData("ABC", "", 3)]
     [InlineData("KITTEN", "SITTING", 3)]
-    [InlineData("陳志明", "陳智明", 1)]
+    [InlineData("張文華", "張聞華", 1)]
     public void Levenshtein_counts_edits_per_code_point(string x, string y, int distance) =>
         Assert.Equal(distance, Similarity.Levenshtein(x, y));
 

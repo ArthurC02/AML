@@ -114,10 +114,10 @@ public class ExplanationTests
     public void A_validated_hard_conflict_on_a_pep_excludes_the_identity_as_on_any_other_list_type()
     {
         // A role from age 9: the validated rule excludes the identity and the PEP pair closes (no blanket human review).
-        var subject = new ScreenedSubject(SubjectRole.Customer, null, ["陳志明"], Gender.Male, new PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
-        var profile = new SourceProfile("DJ:1", Gender.Male, ["陳志明"], [], ["TW"], [],
+        var subject = new ScreenedSubject(SubjectRole.Customer, null, ["張文華"], Gender.Male, new PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
+        var profile = new SourceProfile("DJ:1", Gender.Male, ["張文華"], [], ["TW"], [],
             [new SourceCategory("Politically Exposed Person (PEP)", null)], [], [new ProfileRole("部長", "某部", new PartialDate(1990, 1))], [], null, [], []);
-        var input = new CaseInput(subject, [new CandidateRow("陳志明", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
+        var input = new CaseInput(subject, [new CandidateRow("張文華", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
             new Dictionary<string, IReadOnlyList<NewsItem>>(), []);
         var h = Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input, asOf: new DateOnly(2026, 11, 4))).Hits);
 
@@ -130,10 +130,10 @@ public class ExplanationTests
     public void A_pending_hard_conflict_is_explained_as_not_closing_the_pair()
     {
         // A director at 17 under the pre-2023 adult age of 20: the role rule fires, but it is not validated, so the pair stays REVIEW.
-        var subject = new ScreenedSubject(SubjectRole.Customer, null, ["陳志明"], Gender.Male, new PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
-        var profile = new SourceProfile("DJ:1", Gender.Male, ["陳志明"], [], ["TW"], [],
+        var subject = new ScreenedSubject(SubjectRole.Customer, null, ["張文華"], Gender.Male, new PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
+        var profile = new SourceProfile("DJ:1", Gender.Male, ["張文華"], [], ["TW"], [],
             [new SourceCategory("Special Interest Person (SIP)", "Fraud")], [], [new ProfileRole("董事", "某公司", new PartialDate(1998, 1))], [], null, [], []);
-        var input = new CaseInput(subject, [new CandidateRow("陳志明", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
+        var input = new CaseInput(subject, [new CandidateRow("張文華", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
             new Dictionary<string, IReadOnlyList<NewsItem>>(), []);
         var h = Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input)).Hits);
 
@@ -189,11 +189,11 @@ public class ExplanationTests
     [Fact]
     public void A_stated_age_keeps_codes_in_difference_and_the_reckoning_in_note()
     {
-        var subject = new ScreenedSubject(SubjectRole.Customer, null, ["陳志明"], Gender.Male, new PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
-        var profile = new SourceProfile("DJ:1", Gender.Male, ["陳志明"], [new PartialDate(1980)], ["TW"], [],
+        var subject = new ScreenedSubject(SubjectRole.Customer, null, ["張文華"], Gender.Male, new PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
+        var profile = new SourceProfile("DJ:1", Gender.Male, ["張文華"], [new PartialDate(1980)], ["TW"], [],
             [new SourceCategory("Special Interest Person (SIP)", "Fraud")], [], [], [], null, [], []);
-        var input = new CaseInput(subject, [new CandidateRow("陳志明", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
-            new Dictionary<string, IReadOnlyList<NewsItem>> { ["1"] = [new("1", "DOC1", "標題", "某報", new PartialDate(2026, 3, 1), "陳志明（45歲）涉案。")] }, []);
+        var input = new CaseInput(subject, [new CandidateRow("張文華", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
+            new Dictionary<string, IReadOnlyList<NewsItem>> { ["1"] = [new("1", "DOC1", "標題", "某報", new PartialDate(2026, 3, 1), "張文華（45歲）涉案。")] }, []);
         var dob = Row(Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input)).Hits), "年齡（出生日期）");
 
         Assert.Equal($"{ReasonCodes.BirthYearMatchFullDateNotComparable}；{ReasonCodes.AgeCompatibleAtReport}", dob.Difference);
@@ -205,12 +205,12 @@ public class ExplanationTests
     [Fact]
     public void The_nine_fields_show_location_country_age_tax_number_and_related_people()
     {
-        var subject = new ScreenedSubject(SubjectRole.Customer, null, ["陳志明"], Gender.Male, new PartialDate(1980, 5, 20), ["TW"], null, null,
+        var subject = new ScreenedSubject(SubjectRole.Customer, null, ["張文華"], Gender.Male, new PartialDate(1980, 5, 20), ["TW"], null, null,
             new FieldValue("12345678", ValueState.Present), null, [new Address("戶籍", "臺北市某路1號", null, "TW")], [])
         { Relatives = [new Relative("許雅婷", "配偶")] };
-        var profile = new SourceProfile("DJ:1", Gender.Male, ["陳志明"], [new PartialDate(1980)], ["TW"], ["US"],
+        var profile = new SourceProfile("DJ:1", Gender.Male, ["張文華"], [new PartialDate(1980)], ["TW"], ["US"],
             [new SourceCategory("Special Interest Person (SIP)", "Fraud")], [], [], [new ProfileRelationship("2", "許雅婷", "Wife")], null, [], []);
-        var input = new CaseInput(subject, [new CandidateRow("陳志明", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
+        var input = new CaseInput(subject, [new CandidateRow("張文華", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
             new Dictionary<string, IReadOnlyList<NewsItem>>(), []);
         var h = Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input), asOf: new DateOnly(2026, 5, 19)).Hits);
 
@@ -230,9 +230,9 @@ public class ExplanationTests
     {
         var company = new ScreenedSubject(SubjectRole.Customer, null, ["宏遠投資股份有限公司"], null, null, ["TW"], null, null,
             new FieldValue("12345678", ValueState.Present), null, [], [], PartyType: "法人")
-        { Relatives = [new Relative("陳志明", "負責人")] };
+        { Relatives = [new Relative("張文華", "負責人")] };
         var record = new SourceProfile("DJ:1", null, ["宏遠投資股份有限公司"], [], [], [], [new SourceCategory("Special Interest Entity (SIE)", "Fraud")],
-            [], [], [new ProfileRelationship("2", "陳志明", "Director")], null, [], [], RecordType: "Entity");
+            [], [], [new ProfileRelationship("2", "張文華", "Director")], null, [], [], RecordType: "Entity");
         var input = new CaseInput(company, [new CandidateRow("宏遠投資股份有限公司", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = record },
             new Dictionary<string, IReadOnlyList<NewsItem>>(), []);
         var analysis = CaseAnalyzer.Analyze(input);
@@ -242,7 +242,7 @@ public class ExplanationTests
         Assert.Equal([ReasonCodes.EntitySeniorManagerAgreement], h.ReasonCodes);
         Assert.Empty(h.WouldChangeIf);
         var other = Row(h, "其他可識別身分資訊");
-        Assert.Equal(("負責人 陳志明", "Director 陳志明", Exact, "SAME_NAMED_SENIOR_MANAGER"), (other.SubjectValue, other.ProfileValue, other.Status, other.Difference));
+        Assert.Equal(("負責人 張文華", "Director 張文華", Exact, "SAME_NAMED_SENIOR_MANAGER"), (other.SubjectValue, other.ProfileValue, other.Status, other.Difference));
         // The company's tax number is its registration number; the record carries none to compare it with.
         Assert.Equal(("統編 123***78", ProfileMissing), (Row(h, "證件號碼／統編").SubjectValue, Row(h, "證件號碼／統編").Status));
     }

@@ -26,7 +26,7 @@ internal static partial class StagePatterns
     [GeneratedRegex("(?<!" + StageGlossary.NotIndictedBefore + ")起訴(?!" + StageGlossary.IndictmentNouns + ")|聲請簡易判決處刑")]
     internal static partial Regex Indictment();
 
-    // A report also words a sentence as 判 with the penalty itself: 判陳志明有期徒刑三年, 遭判無期徒刑, 重判十五年, 判1年6月.
+    // A report also words a sentence as 判 with the penalty itself: 判張文華有期徒刑三年, 遭判無期徒刑, 重判十五年, 判1年6月.
     // Between 判 and the penalty only 決 / 處 and a name (他, 她, or two to four characters) fit; 審判 (but 一審判他五年,
     // 原審判…), 裁判, 談判, 誤判, 判斷, 判決前, 宣判時間 … are other words, and 判賠 names no penalty.
     [GeneratedRegex(StageGlossary.ConvictionWords + @"|(?<!(?<![一二三更初原])審|[裁談批評誤研預])判(?>[決處]?)(?![前後時斷期])(?:[他她]|\p{IsCJKUnifiedIdeographs}{2,4}?)??(?:" + StageGlossary.Penalties + "|[0-9０-９一二三四五六七八九十兩]+(?:" + StageGlossary.TermUnits + "))")]
@@ -36,9 +36,9 @@ internal static partial class StagePatterns
     [GeneratedRegex("(?<!無罪)定讞(?!前)")]
     internal static partial Regex Final();
 
-    // 判決無罪, 獲判無罪, 判陳志明無罪, 二審逆轉無罪, 無罪定讞; 堅稱無罪 is a claim and 無罪推定 a presumption.
-    // After 判決, 改判, 宣判 or 獲判 anything short may stand before 無罪 (宣判陳志明等三人均無罪); after a bare 判 only a
-    // name (判陳志明無罪; never 判陳志明罰金、李四無罪, 難以判斷是否無罪 or 應判無罪).
+    // 判決無罪, 獲判無罪, 判張文華無罪, 二審逆轉無罪, 無罪定讞; 堅稱無罪 is a claim and 無罪推定 a presumption.
+    // After 判決, 改判, 宣判 or 獲判 anything short may stand before 無罪 (宣判張文華等三人均無罪); after a bare 判 only a
+    // name (判張文華無罪; never 判張文華罰金、李四無罪, 難以判斷是否無罪 or 應判無罪).
     [GeneratedRegex("(?:" + StageGlossary.AcquittalRulingVerbs + ")[^，,、]{0,10}?無罪(?!" + StageGlossary.NotAcquittalAfter + @")|(?<!(?<![一二三更初原])審|[裁談批評誤研預應])判(?![斷決])\p{IsCJKUnifiedIdeographs}{0,4}?無罪(?!" + StageGlossary.NotAcquittalAfter + ")|(?:[一二三]審|更[一二三]?審|逆轉)[^，,、判]{0,6}?無罪(?!" + StageGlossary.NotAcquittalAfter + ")|無罪(?:" + StageGlossary.Settled + ")")]
     internal static partial Regex Acquittal();
 
@@ -75,12 +75,12 @@ internal static partial class StagePatterns
     [GeneratedRegex(@"^(?:[壹貳參叁肆伍陸柒捌玖拾一二三四五六七八九十]+、|[（(][一二三四五六七八九十]+[）)])[^，,。；]{1,24}$")]
     internal static partial Regex ReleaseHeading();
 
-    // Not before a line that opens a new item (一、 ㈠ (一) 1.): 一、陳志明無罪 / 二、李小四處有期徒刑二年 stay two.
+    // Not before a line that opens a new item (一、 ㈠ (一) 1.): 一、張文華無罪 / 二、李小四處有期徒刑二年 stay two.
     // Nor after a bracketed note that follows a full stop: …處有期徒刑二年。（刑度與原審相同）.
     [GeneratedRegex(@"(?<![。；：:;！？\n]|。[（(][^（）()\n]{0,40}[）)])\n(?!\s*(?:[一二三四五六七八九十]+、|[㈠-㈩]|[（(][一二三四五六七八九十]+[）)]|[0-9]{1,2}[.．、]))")]
     internal static partial Regex WrappedLine();
 
-    // A table cell on its own line (被告, 陳志明, 宣告刑): at most six characters and no punctuation. It does not run on.
+    // A table cell on its own line (被告, 張文華, 宣告刑): at most six characters and no punctuation. It does not run on.
     [GeneratedRegex(@"^[\p{IsCJKUnifiedIdeographs}○A-Za-z0-9]{1,6}$")]
     internal static partial Regex TableCell();
 

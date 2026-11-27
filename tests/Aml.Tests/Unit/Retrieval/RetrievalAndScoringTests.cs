@@ -20,8 +20,8 @@ public class RetrievalAndScoringTests
     private static readonly ProfileIndex Index = new(
     [
         Profile("1", ["鐘仁聲", "Jong Jen-Sheng", "Zhong Ren-Sheng"]),
-        Profile("2", ["陳志明", "Chen Chih-Ming"]),
-        Profile("3", ["陳志成", "Chen Chih-Cheng"]),
+        Profile("2", ["張文華", "Chang Wen-Hua"]),
+        Profile("3", ["張文成", "Chang Wen-Cheng"]),
         Profile("4", ["Nguyễn Thị Hồng Nhung"]),
     ]);
 
@@ -37,16 +37,16 @@ public class RetrievalAndScoringTests
     public void Diacritic_free_and_reordered_names_find_the_profile()
     {
         Assert.Equal("DJ:4", Index.Search("NGUYEN THI HONG NHUNG")[0].ProfileKey);
-        Assert.Equal("DJ:2", Index.Search("Chih-Ming Chen")[0].ProfileKey);
+        Assert.Equal("DJ:2", Index.Search("Wen-Hua Chang")[0].ProfileKey);
     }
 
     [Fact]
     public void Bm25_and_ngram_rank_the_closer_name_first_and_top_n_caps_profiles()
     {
-        var hits = Index.Search("陳志明先生");
-        Assert.Equal(["DJ:2", "DJ:3"], hits.Take(2).Select(h => h.ProfileKey)); // 陳志明 shares more characters than 陳志成
-        Assert.Single(Index.Search("陳志明先生", top: 1));
-        Assert.Equal(Index.Search("陳志明先生", top: 100), Index.Search("陳志明先生", top: int.MaxValue)); // an unbounded top returns every match
+        var hits = Index.Search("張文華先生");
+        Assert.Equal(["DJ:2", "DJ:3"], hits.Take(2).Select(h => h.ProfileKey)); // 張文華 shares more characters than 張文成
+        Assert.Single(Index.Search("張文華先生", top: 1));
+        Assert.Equal(Index.Search("張文華先生", top: 100), Index.Search("張文華先生", top: int.MaxValue)); // an unbounded top returns every match
         Assert.All(hits, h => Assert.Equal(RetrievalMode.IndexSearch, h.Mode));
     }
 
@@ -277,9 +277,9 @@ public class RetrievalAndScoringTests
     [Fact]
     public void Recall_at_k_counts_the_queries_whose_profile_is_in_the_first_k()
     {
-        // 陳志明先生 ranks DJ:2 first and DJ:3 second.
-        Assert.Equal(0.5, Index.RecallAtK([("陳志明先生", "2"), ("陳志明先生", "3")], 1));
-        Assert.Equal(1.0, Index.RecallAtK([("陳志明先生", "2"), ("陳志明先生", "3")], 2));
+        // 張文華先生 ranks DJ:2 first and DJ:3 second.
+        Assert.Equal(0.5, Index.RecallAtK([("張文華先生", "2"), ("張文華先生", "3")], 1));
+        Assert.Equal(1.0, Index.RecallAtK([("張文華先生", "2"), ("張文華先生", "3")], 2));
         Assert.Equal(0, Index.RecallAtK([], 5));
         Assert.Throws<ArgumentOutOfRangeException>(() => Index.RecallAtK([], 0));
     }

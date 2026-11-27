@@ -175,8 +175,8 @@ public class NewsDigestTests
     [InlineData("被告約翰·史密斯遭起訴。", "約翰·史密斯")]
     [InlineData("小美（化名）遭起訴。", "小美")]
     [InlineData("少年A遭起訴。", "少年A")]
-    [InlineData("〔記者丙／台北報導〕陳志明涉嫌詐欺遭起訴。", "陳志明")] // a dateline's closing bracket opens the lead's clause
-    [InlineData("【記者丙／台北報導】陳志明涉嫌詐欺遭起訴。", "陳志明")]
+    [InlineData("〔記者丙／台北報導〕張文華涉嫌詐欺遭起訴。", "張文華")] // a dateline's closing bracket opens the lead's clause
+    [InlineData("【記者丙／台北報導】張文華涉嫌詐欺遭起訴。", "張文華")]
     public void Compound_dotted_pseudonymous_and_lettered_names_are_people(string news, string name)
     {
         var d = Digest(news);

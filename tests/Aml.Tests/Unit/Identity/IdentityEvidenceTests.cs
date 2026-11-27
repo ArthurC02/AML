@@ -11,11 +11,11 @@ namespace Aml.Tests.Unit.Identity;
 public class IdentityEvidenceTests
 {
     private static ScreenedSubject Subject(PartialDate? dob = null, Gender gender = Gender.Male) =>
-        new(SubjectRole.Customer, null, ["陳志明"], gender, dob ?? new PartialDate(1980, 5, 20), ["TW"],
+        new(SubjectRole.Customer, null, ["張文華"], gender, dob ?? new PartialDate(1980, 5, 20), ["TW"],
             null, null, null, null, [], []);
 
     private static SourceProfile Profile(params PartialDate[] dobs) =>
-        new("DJ:1", Gender.Male, ["陳志明"], dobs, ["TW"], [], [new SourceCategory("Special Interest Person (SIP)", "Fraud")],
+        new("DJ:1", Gender.Male, ["張文華"], dobs, ["TW"], [], [new SourceCategory("Special Interest Person (SIP)", "Fraud")],
             [], [], [], null, [], []);
 
     private static NewsItem News(string text) => new("1", "DOC1", "標題", "某報", new PartialDate(2026, 3, 1), text);
@@ -368,10 +368,10 @@ public class IdentityEvidenceTests
     [Fact]
     public void Age_at_the_event_is_not_compared_with_the_report_date()
     {
-        var r = IdentityDecisionPolicy.Decide(Subject(), Profile(), News("陳志明時年30歲時涉嫌詐欺。"));
+        var r = IdentityDecisionPolicy.Decide(Subject(), Profile(), News("張文華時年30歲時涉嫌詐欺。"));
         Assert.Equal((Uncertain, ReasonCodes.AgeNotComparable), (r.Evidence[EvidenceGroup.StatedAge].Status, r.Evidence[EvidenceGroup.StatedAge].Detail));
         Assert.DoesNotContain(ReasonCodes.AgeDifferenceAtReport, r.ReasonCodes);
-        Assert.Equal(30, StatedAgeCheck.FindStatedAge("陳志明時年30歲時涉嫌詐欺。", ["陳志明"]));
+        Assert.Equal(30, StatedAgeCheck.FindStatedAge("張文華時年30歲時涉嫌詐欺。", ["張文華"]));
     }
 
     [Fact]

@@ -296,6 +296,6 @@ public class StageReaderCaseTests : ServiceTestBase
         TestContext.Current.SendDiagnosticMessage($"same label {same} of {pairs.Count}");
         Assert.True(pairs.Count > 0 && same >= 0.99 * pairs.Count, $"same label {same} of {pairs.Count}");
         // From a whole text too: the evidence is built and read (what a one-line made-up text gives is not the point here).
-        Assert.NotNull(classifier.Read("臺北地檢署今日依詐欺罪嫌起訴陳志明。", ["陳志明"]));
+        Assert.NotNull(classifier.Read("臺北地檢署今日依詐欺罪嫌起訴張文華。", ["張文華"]));
     }
 }

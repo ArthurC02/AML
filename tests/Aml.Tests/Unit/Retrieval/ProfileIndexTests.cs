@@ -27,7 +27,7 @@ public class ProfileIndexTests
 
     [Fact]
     public void Search_rejects_a_negative_top() =>
-        Assert.Throws<ArgumentOutOfRangeException>(() => new ProfileIndex([]).Search("陳志明", -1));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ProfileIndex([]).Search("張文華", -1));
 
     // ---- merging ----
 
@@ -105,12 +105,12 @@ public class ProfileIndexTests
     [Fact]
     public void Exact_matches_are_never_cut_and_the_overflow_is_marked()
     {
-        var index = new ProfileIndex(Enumerable.Range(1, 12).Select(i => Profile($"{i:D2}", ["陳志明"])).Append(Profile("X", ["陳志成"])));
-        var hits = index.Search("陳志明", top: 10);
+        var index = new ProfileIndex(Enumerable.Range(1, 12).Select(i => Profile($"{i:D2}", ["張文華"])).Append(Profile("X", ["張文成"])));
+        var hits = index.Search("張文華", top: 10);
         Assert.Equal(12, hits.Count);
         Assert.All(hits, h => Assert.Equal((ProfileIndex.ExactAlias, true), (h.Route, h.Truncated)));
 
-        var few = index.Search("陳志成", top: 20);
+        var few = index.Search("張文成", top: 20);
         Assert.Equal("DJ:X", few[0].ProfileKey);
         Assert.All(few, h => Assert.False(h.Truncated));
     }
@@ -120,10 +120,10 @@ public class ProfileIndexTests
     [Fact]
     public void An_empty_query_key_returns_nothing_and_empty_aliases_are_not_indexed()
     {
-        var index = new ProfileIndex([Profile("1", ["-", "陳志明"]), Profile("2", ["—"])]);
+        var index = new ProfileIndex([Profile("1", ["-", "張文華"]), Profile("2", ["—"])]);
         Assert.Empty(index.Search("---"));
         Assert.Empty(index.Search("  "));
-        Assert.DoesNotContain(index.Search("陳志成"), h => h.MatchedName is "-" or "—");
+        Assert.DoesNotContain(index.Search("張文成"), h => h.MatchedName is "-" or "—");
     }
 
     // ---- n-grams ----
@@ -147,7 +147,7 @@ public class ProfileIndexTests
         var profiles = LabelledIndexProfiles();
         var forward = new ProfileIndex(profiles);
         var backward = new ProfileIndex(Enumerable.Reverse(profiles));
-        foreach (var query in new[] { "陳志明", "Chen Wei", "王偉", "Mohammed", "林" })
+        foreach (var query in new[] { "張文華", "Chen Wei", "王偉", "Mohammed", "林" })
             Assert.Equal(forward.Search(query), backward.Search(query));
 
         // Equal scores tie-break on alias text, not on row order.
@@ -171,9 +171,9 @@ public class ProfileIndexTests
     public void Exact_and_ngram_hits_rank_above_a_profile_reached_only_by_reading_key()
     {
         // The romanized alias reaches the query only through its reading key; the exact alias keeps its own tier on top.
-        var index = new ProfileIndex([Profile("E", ["陳志明"]), Profile("G", ["陳志民"]), Profile("R", ["Chen Chih-Ming"])]);
-        // 陳志民 is reached by BM25 and n-gram, each at rank 1, and fuses to 2 / (60 + 1); the reading key alone gives 1 / (60 + 1).
-        var hits = index.Search("陳志明");
+        var index = new ProfileIndex([Profile("E", ["張文華"]), Profile("G", ["張文民"]), Profile("R", ["Chang Wen-Hua"])]);
+        // 張文民 is reached by BM25 and n-gram, each at rank 1, and fuses to 2 / (60 + 1); the reading key alone gives 1 / (60 + 1).
+        var hits = index.Search("張文華");
         Assert.Equal(
             [("DJ:E", ProfileIndex.ExactAlias, 1.0), ("DJ:G", ProfileIndex.Bm25, 2.0 / 61), ("DJ:R", ProfileIndex.Reading, 1.0 / 61)],
             hits.Select(h => (h.ProfileKey, h.Route, h.Score)));
@@ -212,12 +212,12 @@ public class ProfileIndexTests
     [Fact]
     public void Top_k_returns_k_profiles_and_marks_truncation_only_beyond_k()
     {
-        var index = new ProfileIndex([Profile("1", ["陳志明"]), Profile("2", ["陳志成"]), Profile("3", ["王志成"])]);
-        var exactlyK = index.Search("陳志強", top: 3);
+        var index = new ProfileIndex([Profile("1", ["張文華"]), Profile("2", ["張文成"]), Profile("3", ["王文成"])]);
+        var exactlyK = index.Search("張文強", top: 3);
         Assert.Equal(["DJ:2", "DJ:1", "DJ:3"], exactlyK.Select(h => h.ProfileKey));
         Assert.All(exactlyK, h => Assert.False(h.Truncated));
 
-        var cut = index.Search("陳志強", top: 2);
+        var cut = index.Search("張文強", top: 2);
         Assert.Equal(["DJ:2", "DJ:1"], cut.Select(h => h.ProfileKey));
         Assert.All(cut, h => Assert.True(h.Truncated));
     }
@@ -228,7 +228,7 @@ public class ProfileIndexTests
     {
         var list = new List<SourceProfile>
         {
-            Profile("T01", ["陳志明", "Chen Chih-Ming"]),
+            Profile("T01", ["張文華", "Chang Wen-Hua"]),
             Profile("T02", ["歐陽娜娜", "Ou-Yang Na-Na"]),
             Profile("T03", ["王瑋", "Wang Wei"]),
             Profile("T04", ["黃𥕢明"]),
@@ -239,13 +239,13 @@ public class ProfileIndexTests
             Profile("T09", ["Chen Shui-bian"]),
         };
         // Distractors sharing surnames, given names and characters with the targets.
-        string[] surnames = ["陳", "王", "黃", "李", "林", "歐陽"];
-        string[] given = ["志成", "志強", "明德", "偉", "娜", "建宏", "美玲", "明"];
+        string[] surnames = ["張", "王", "黃", "李", "林", "歐陽"];
+        string[] given = ["文成", "文強", "明德", "偉", "娜", "建宏", "美玲", "明"];
         var n = 0;
         foreach (var s in surnames)
             foreach (var g in given)
                 if (!list.Any(p => p.Names.Contains(s + g))) list.Add(Profile($"D{n++:D3}", [s + g]));
-        foreach (var name in new[] { "Chen Wei-Ming", "Chen Chih-Cheng", "Wang Wei-Lin", "Lee Ming-Hsien", "Nguyen Van Hung",
+        foreach (var name in new[] { "Chang Wei-Hua", "Chang Wen-Cheng", "Wang Wei-Lin", "Lee Ming-Hsien", "Nguyen Van Hung",
                      "Nguyen Thi Lan", "Mohammed Hassan", "Mohammed Ali", "Mohammed Rashidi", "Chiang Wei-kuo" })
             list.Add(Profile($"D{n++:D3}", [name]));
         return list;
@@ -254,17 +254,17 @@ public class ProfileIndexTests
     // Kind, query, target and the lowest rank the target may take in the top 10.
     public static readonly TheoryData<string, string, string, int> Labelled = new()
     {
-        { "romanization", "Chen Zhiming", "DJ:T01", 1 },
-        { "romanization", "Chen Jhih-Ming", "DJ:T01", 1 }, // Tongyong
+        { "romanization", "Zhang Wenhua", "DJ:T01", 1 },
+        { "romanization", "Jhang Wun-Hua", "DJ:T01", 1 }, // Tongyong
         { "romanization", "Jiang Jingguo", "DJ:T07", 1 }, // Pinyin vs Wade-Giles: reading-key route
         { "cross-script", "陳水扁", "DJ:T09", 4 }, // Chinese query, Latin-only Profile: reading-key route
         { "romanization", "Li Minghui", "DJ:T08", 1 },
-        { "simplified", "陈志明", "DJ:T01", 1 },
+        { "simplified", "张文华", "DJ:T01", 1 },
         { "simplified", "蒋经国", "DJ:T07", 1 },
         { "typo", "歐陽那娜", "DJ:T02", 1 },
         { "typo", "王偉", "DJ:T03", 2 },
         { "typo", "Mohammed Al-Rashid", "DJ:T05", 4 },
-        { "reordered", "Chih-Ming Chen", "DJ:T01", 1 },
+        { "reordered", "Wen-Hua Chang", "DJ:T01", 1 },
         { "reordered", "Na-Na Ou-Yang", "DJ:T02", 1 },
         { "diacritics", "Nguyen Thi Hong Nhung", "DJ:T06", 1 },
         { "rare character", "黃明", "DJ:T04", 3 },

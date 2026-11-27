@@ -9,7 +9,7 @@ namespace Aml.Tests.Unit.Screening;
 /// <summary>The vote of the rules and the stage models (watchlist-and-adverse-information.md#three-readers).</summary>
 public class StageVoteTests
 {
-    private const string News = "王大同涉嫌詐欺，檢方今日起訴陳志明。";
+    private const string News = "王大同涉嫌詐欺，檢方今日起訴張文華。";
 
     private sealed class Reader(string name, StageAnswer? answer) : IStageReader
     {
@@ -20,7 +20,7 @@ public class StageVoteTests
     }
 
     private static readonly SourceProfile Person =
-        new("DJ:1", null, ["陳志明"], [], [], [], [new("Special Interest Person (SIP)", "Fraud")], [], [], [], null, [], []);
+        new("DJ:1", null, ["張文華"], [], [], [], [new("Special Interest Person (SIP)", "Fraud")], [], [], [], null, [], []);
 
     private static SourceCondition Adverse(string? news, params IStageReader[] readers) =>
         Assert.Single(SourceConditions.Determine(Person, false, news, stageReaders: readers), c => c.Type == ListType.AdverseMedia);
@@ -148,9 +148,9 @@ public class StageVoteTests
     public void Only_a_missing_answer_on_a_raised_condition_holds_a_batch_write_back(FlagValue adverseNews, ConditionStatus status, string[] codes, bool retry)
     {
         var reader = new Reader("llm", null);
-        var subject = new ScreenedSubject(SubjectRole.Customer, null, ["陳志明"], Core.Shared.Gender.Male, new Core.Shared.PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
+        var subject = new ScreenedSubject(SubjectRole.Customer, null, ["張文華"], Core.Shared.Gender.Male, new Core.Shared.PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
         var a = Core.Cases.CaseAnalyzer.Analyze(new CaseInput(subject,
-            [new CandidateRow("陳志明", "1", null, false, new ListFlags(FlagValue.Missing, FlagValue.Missing, adverseNews))],
+            [new CandidateRow("張文華", "1", null, false, new ListFlags(FlagValue.Missing, FlagValue.Missing, adverseNews))],
             new Dictionary<string, SourceProfile> { ["1"] = Person }, new Dictionary<string, IReadOnlyList<NewsItem>> { ["1"] = [new("1", null, "t", null, null, News)] }, []),
             stageReaders: [reader]);
 

@@ -56,7 +56,7 @@ internal static class StageGlossary
 
     /// <summary>
     /// Verbs of ruling that may stand up to ten characters before 無罪 for it to be an acquittal (pattern Acquittal: 判決無罪,
-    /// 宣判陳志明等三人均無罪). A verb of claiming (堅稱) added here would read a claim of innocence as ACQUITTED.
+    /// 宣判張文華等三人均無罪). A verb of claiming (堅稱) added here would read a claim of innocence as ACQUITTED.
     /// </summary>
     internal const string AcquittalRulingVerbs = "判決|改判|宣判|獲判";
 
@@ -69,13 +69,13 @@ internal static class StageGlossary
     /// <summary>The word of an acquittal, as the rules look for it in what an order says of the person.</summary>
     internal const string Acquitted = "無罪";
 
-    /// <summary>Words of taking proceeds of crime (a release's order: 陳志明犯罪所得…沒收): proceeds are taken from the person convicted.</summary>
+    /// <summary>Words of taking proceeds of crime (a release's order: 張文華犯罪所得…沒收): proceeds are taken from the person convicted.</summary>
     internal const string ConfiscationWords = "沒收|追徵";
 
     /// <inheritdoc cref="ConfiscationWords"/>
     internal static readonly string[] Confiscation = ConfiscationWords.Split('|');
 
-    /// <summary>What follows the person's name for the proceeds to be theirs (陳志明犯罪所得, 陳志明之犯罪所得).</summary>
+    /// <summary>What follows the person's name for the proceeds to be theirs (張文華犯罪所得, 張文華之犯罪所得).</summary>
     internal const string ProceedsAfterNameWords = "犯罪所得|之犯罪所得";
 
     /// <inheritdoc cref="ProceedsAfterNameWords"/>

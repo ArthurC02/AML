@@ -20,10 +20,10 @@ public class SeveralNewsItemsTests
     private static readonly PartialDate Reported = new(2026, 5, 20); // the customer is 46 that day
 
     private static readonly ScreenedSubject Customer =
-        new(SubjectRole.Customer, null, ["陳志明"], Gender.Male, new PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
+        new(SubjectRole.Customer, null, ["張文華"], Gender.Male, new PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
 
     private static readonly SourceProfile Profile =
-        new("DJ:1", Gender.Male, ["陳志明"], [], ["TW"], [], [new SourceCategory("Special Interest Person (SIP)", "Fraud")], [], [], [], null, [], []);
+        new("DJ:1", Gender.Male, ["張文華"], [], ["TW"], [], [new SourceCategory("Special Interest Person (SIP)", "Fraud")], [], [], [], null, [], []);
 
     private static NewsItem Item(string text, PartialDate? on = null, string? doc = null) => new("1", doc, "標題", "某報", on ?? Reported, text);
 
@@ -32,7 +32,7 @@ public class SeveralNewsItemsTests
     [Fact]
     public void A_compatible_age_in_one_item_keeps_a_far_age_in_another_from_concluding()
     {
-        var r = IdentityDecisionPolicy.Decide(Customer, Profile, [Item("陳志明（46歲）涉嫌詐欺。"), Item("陳志明（70歲）涉嫌詐欺。")]);
+        var r = IdentityDecisionPolicy.Decide(Customer, Profile, [Item("張文華（46歲）涉嫌詐欺。"), Item("張文華（70歲）涉嫌詐欺。")]);
 
         var age = r.Evidence[EvidenceGroup.StatedAge];
         Assert.Equal((Exact, ReasonCodes.AgeCompatibleAtReport), (age.Status, age.Detail));
@@ -44,7 +44,7 @@ public class SeveralNewsItemsTests
     [Fact]
     public void Far_ages_in_every_item_conclude_as_in_one()
     {
-        var r = IdentityDecisionPolicy.Decide(Customer, Profile, [Item("陳志明（70歲）涉嫌詐欺。"), Item("陳志明（20歲）涉嫌詐欺。")]);
+        var r = IdentityDecisionPolicy.Decide(Customer, Profile, [Item("張文華（70歲）涉嫌詐欺。"), Item("張文華（20歲）涉嫌詐欺。")]);
         Assert.Equal((ReasonCodes.StatedDobConflict, IdentityDecision.NoMatch), (r.HardConflict, r.Decision));
     }
 
@@ -52,15 +52,15 @@ public class SeveralNewsItemsTests
     public void An_item_whose_age_cannot_be_compared_neither_blocks_nor_concludes()
     {
         // The second item has no report date: its age is not comparable, so the far one stands alone, as in one item.
-        var undated = Item("陳志明（46歲）涉嫌詐欺。") with { PublishedOn = null };
-        var r = IdentityDecisionPolicy.Decide(Customer, Profile, [Item("陳志明（70歲）涉嫌詐欺。"), undated]);
+        var undated = Item("張文華（46歲）涉嫌詐欺。") with { PublishedOn = null };
+        var r = IdentityDecisionPolicy.Decide(Customer, Profile, [Item("張文華（70歲）涉嫌詐欺。"), undated]);
         Assert.Equal((Conflict, ReasonCodes.StatedDobConflict), (r.Evidence[EvidenceGroup.StatedAge].Status, r.HardConflict));
     }
 
     [Fact]
     public void A_near_birth_date_in_one_item_keeps_a_far_one_in_another_from_concluding()
     {
-        NewsItem near = Item("陳志明（男，民國70年1月1日生）涉嫌詐欺。"), far = Item("陳志明（男，民國50年1月1日生）涉嫌詐欺。");
+        NewsItem near = Item("張文華（男，民國70年1月1日生）涉嫌詐欺。"), far = Item("張文華（男，民國50年1月1日生）涉嫌詐欺。");
 
         var both = IdentityDecisionPolicy.Decide(Customer, Profile, [near, far]);
         var stated = both.Evidence[EvidenceGroup.StatedBirthDate];
@@ -74,23 +74,23 @@ public class SeveralNewsItemsTests
     [Fact]
     public void Genders_of_all_items_are_one_reading()
     {
-        Assert.Equal(ReasonCodes.NewsGenderAgrees, NewsStatedCheck.CheckGender(Customer, Profile, [Item("陳志明（男）涉嫌詐欺。"), Item("陳志明涉嫌詐欺。")])!.Detail);
+        Assert.Equal(ReasonCodes.NewsGenderAgrees, NewsStatedCheck.CheckGender(Customer, Profile, [Item("張文華（男）涉嫌詐欺。"), Item("張文華涉嫌詐欺。")])!.Detail);
         // 男 in one, 女 in the other: no reading, as both next to one written name in one item.
-        Assert.Null(NewsStatedCheck.CheckGender(Customer, Profile, [Item("陳志明（男）涉嫌詐欺。"), Item("陳志明（女）涉嫌詐欺。")]));
+        Assert.Null(NewsStatedCheck.CheckGender(Customer, Profile, [Item("張文華（男）涉嫌詐欺。"), Item("張文華（女）涉嫌詐欺。")]));
     }
 
     [Fact]
     public void Every_report_date_is_an_event_of_the_temporal_check()
     {
-        var e = EvidenceBuilder.TemporalEvidence(Customer, Profile, [Item("陳志明涉嫌詐欺。", new PartialDate(2026, 5, 20)), Item("陳志明涉嫌詐欺。", new PartialDate(1994, 1, 1))]);
+        var e = EvidenceBuilder.TemporalEvidence(Customer, Profile, [Item("張文華涉嫌詐欺。", new PartialDate(2026, 5, 20)), Item("張文華涉嫌詐欺。", new PartialDate(1994, 1, 1))]);
         Assert.Equal("最早事件時最多 13 歲", e!.Note);
     }
 
     // ---- The legal stage across items ----
 
-    private const string Indicts = "陳志明涉嫌詐欺，檢方今日起訴陳志明。";
-    private const string Convicts = "臺北地方法院今天依業務侵占罪判處陳志明有期徒刑一年。";
-    private const string NoStage = "陳志明出席公司活動。";
+    private const string Indicts = "張文華涉嫌詐欺，檢方今日起訴張文華。";
+    private const string Convicts = "臺北地方法院今天依業務侵占罪判處張文華有期徒刑一年。";
+    private const string NoStage = "張文華出席公司活動。";
 
     private static SourceCondition Adverse(string[] news, params IStageReader[] readers) =>
         Assert.Single(SourceConditions.DetermineWithNews(Profile, false, news, stageReaders: readers), c => c.Type == ListType.AdverseMedia);
@@ -144,7 +144,7 @@ public class SeveralNewsItemsTests
     [Fact]
     public void The_explanation_cites_every_item_and_digests_each()
     {
-        var input = new CaseInput(Customer, [new CandidateRow("陳志明", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = Profile },
+        var input = new CaseInput(Customer, [new CandidateRow("張文華", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = Profile },
             new Dictionary<string, IReadOnlyList<NewsItem>> { ["1"] = [Item(Indicts), Item(Convicts, new PartialDate(2026, 8, 1), doc: "DOC2")] }, []);
         var h = Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input, asOf: new DateOnly(2026, 11, 27))).Hits);
 

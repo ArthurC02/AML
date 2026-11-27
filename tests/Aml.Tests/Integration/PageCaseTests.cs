@@ -53,7 +53,7 @@ public sealed class PageCaseTests : ServiceTestBase
         var (queued, _) = await _pageService.SubmitAsync(Url, ct);
         Assert.Equal([queued.PageId], (await _pageService.PinAsync([queued.PageId], ct)).NotReady);
 
-        var first = $"〔本報記者／臺北報導〕被告{Customer}涉嫌詐欺，遭臺北地檢署提起公訴。證人陳志明到庭作證。";
+        var first = $"〔本報記者／臺北報導〕被告{Customer}涉嫌詐欺，遭臺北地檢署提起公訴。證人張文華到庭作證。";
         var page = await FetchAsync(first, ct);
         var pinned = await _pageService.PinAsync([page.PageId, page.PageId], ct);
         Assert.Equal((PageSnapshots.FileName(page.PageId), 0, 0), (Assert.Single(pinned.Files.Keys), pinned.Unusable.Count, pinned.NotReady.Count));
@@ -68,7 +68,7 @@ public sealed class PageCaseTests : ServiceTestBase
             return (hit.Profile.ProfileKey, CaseJson.Code(hit.Conditions[0].LegalStage), CaseJson.Code(hit.PairResult), Assert.Single(r.Lineage!.Pages!).TextHash);
         }
         Assert.Equal(($"WEB:{page.PageId}-1", "INDICTED", "REVIEW", PageSnapshots.TextHash(first)), PageHit(1));
-        Assert.Equal([(Customer, true), ("陳志明", false)], Assert.Single(Revision(1).Result.Pages!).Persons.Select(p => (p.Name, p.Candidate)));
+        Assert.Equal([(Customer, true), ("張文華", false)], Assert.Single(Revision(1).Result.Pages!).Persons.Select(p => (p.Name, p.Candidate)));
         Assert.Contains(Revision(1).Lineage!.InputFiles, f => f.Name == PageSnapshots.FileName(page.PageId));
 
         // Fetched again two days later with another text: a re-analysis of the stored input (as a changed list Profile queues) reads the first.
@@ -109,7 +109,7 @@ public sealed class PageCaseTests : ServiceTestBase
     public async Task A_batch_item_carrying_a_pinned_page_creates_its_case_with_the_page_person_as_a_hit()
     {
         var ct = TestContext.Current.CancellationToken;
-        var page = await FetchAsync($"〔本報記者／臺北報導〕被害人{Customer}報案後，警方約談詐欺集團成員陳志明，依詐欺罪嫌移送地檢署偵辦。", ct);
+        var page = await FetchAsync($"〔本報記者／臺北報導〕被害人{Customer}報案後，警方約談詐欺集團成員張文華，依詐欺罪嫌移送地檢署偵辦。", ct);
         var files = With(_case.Files, (await _pageService.PinAsync([page.PageId], ct)).Files);
         var batch = Batch();
         var submitted = await batch.SubmitAsync([new BatchItemRequest("s-batch", "e-batch", files, [page.PageId])], ct);

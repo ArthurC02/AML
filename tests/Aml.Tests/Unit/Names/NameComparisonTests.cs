@@ -18,7 +18,7 @@ public class NameComparisonTests
         var invariant = Enumerable.Range(0, 0x80).Concat(Enumerable.Range(0x4E00, 0x9FFF - 0x4E00 + 1)).Select(c => ((char)c).ToString()).ToList();
         Assert.All(invariant, s => Assert.Equal((s, s), (s.Normalize(System.Text.NormalizationForm.FormKC), s.Normalize(System.Text.NormalizationForm.FormD))));
         Assert.DoesNotContain(invariant, s => char.GetUnicodeCategory(s[0]) is System.Globalization.UnicodeCategory.NonSpacingMark or System.Globalization.UnicodeCategory.SpacingCombiningMark);
-        Assert.Equal("陳志明WANG", NameComparison.NameKey("陳志明 Wang"));
+        Assert.Equal("張文華WANG", NameComparison.NameKey("張文華 Wang"));
     }
 
     // Name words split on char.IsWhiteSpace, which replaced a regex \s split: the two must agree on every UTF-16 code unit.
@@ -77,7 +77,7 @@ public class NameComparisonTests
         Assert.Equal((Partial, NameComparison.NotComparableCrossScript), Compare("-", "·"));
 
     [Theory]                                // name order
-    [InlineData("CHIH-MING　CHEN", "CHEN CHIH-MING")]
+    [InlineData("WEN-HUA　CHANG", "CHANG WEN-HUA")]
     [InlineData("穆罕默德·阿里", "阿里·穆罕默德")]
     [InlineData("Ming Chen", "Chen Ming")]
     public void Match_only_after_reordering_is_disclosed(string subject, string profile) =>
@@ -87,11 +87,11 @@ public class NameComparisonTests
     public void Source_order_match_has_no_order_finding()
     {
         Assert.Equal((Exact, (string?)null), Compare("Chen Ming", "CHEN  MING"));
-        Assert.Equal((Exact, $"{Findings.VariantCharacters}；{NameComparison.NameOrderVariant}"), Compare("志明 陈", "陳 志明"));
+        Assert.Equal((Exact, $"{Findings.VariantCharacters}；{NameComparison.NameOrderVariant}"), Compare("文華 张", "張 文華"));
     }
 
     [Theory]                                // romanization
-    [InlineData("Chen Zhiming", "Chen Chih-Ming")]
+    [InlineData("Zhang Wenhua", "Chang Wen-Hua")]
     [InlineData("Ouyang Xiu", "Ou-Yang Hsiu")]
     [InlineData("Chiang Ching-kuo", "Jiang Jingguo")]
     [InlineData("Lee Ming-Hui", "Li Minghui")]
@@ -101,7 +101,7 @@ public class NameComparisonTests
 
     [Fact]
     public void Different_taiwanese_syllables_are_not_a_romanization_variant() =>
-        Assert.NotEqual(Findings.RomanizationVariant, Compare("Chen Chih-Ming", "Chen Chi-Ming").Detail);
+        Assert.NotEqual(Findings.RomanizationVariant, Compare("Chang Chih-Hung", "Chang Chi-Hung").Detail);
 
     [Fact]                                  // variant characters
     public void Opencc_one_to_one_characters_fold()
@@ -115,8 +115,8 @@ public class NameComparisonTests
     [Fact]                                  // similarity
     public void Cross_script_names_are_not_compared()
     {
-        Assert.Equal((Partial, NameComparison.NotComparableCrossScript), Compare("陳志明", "CHEN Chih-Ming"));
-        Assert.StartsWith("NOT_IDENTICAL_AFTER_NORMALIZATION", NameComparison.CompareNames(["陳志明", "CHEN Chih-Ming"], ["陳志銘"]).Detail, StringComparison.Ordinal);
+        Assert.Equal((Partial, NameComparison.NotComparableCrossScript), Compare("張文華", "CHANG Wen-Hua"));
+        Assert.StartsWith("NOT_IDENTICAL_AFTER_NORMALIZATION", NameComparison.CompareNames(["張文華", "CHANG Wen-Hua"], ["張文樺"]).Detail, StringComparison.Ordinal);
     }
 
     [Theory]                                // Winkler's published pairs; the window is half the longer string

@@ -18,7 +18,7 @@ internal static class RulingRules
     // opening and its reasons, in the order's own form. (One with no heading was read whole already.)
     internal static LegalStage? WholeRelease(RulingText t) => t.Release && t.HasHeading ? Outcome(t, t.All) : null;
 
-    // 陳志明犯罪所得新臺幣五萬元…沒收 under the heading: proceeds of crime are taken from the person convicted of it,
+    // 張文華犯罪所得新臺幣五萬元…沒收 under the heading: proceeds of crime are taken from the person convicted of it,
     // also where the release's order rules on nothing else of theirs (an appeal on the confiscation alone).
     internal static LegalStage? ProceedsConfiscated(RulingText t) =>
         t.Release && t.HasHeading && StageText.Sentences(t.OrderText)
@@ -53,13 +53,13 @@ internal static class RulingRules
         {
             if (StagePatterns.OrderSentence().IsMatch(said)) return LegalStage.Convicted;
             // 原判決關於X沒收部分、Y無罪部分均撤銷 names a part of the judgment below, not an outcome.
-            // 陳志明無罪部分，檢察官上訴駁回 upholds the acquittal and stays one.
+            // 張文華無罪部分，檢察官上訴駁回 upholds the acquittal and stays one.
             if (StagePatterns.RevokedAcquittal().Replace(said, "").Contains(StageGlossary.Acquitted, StringComparison.Ordinal)) read = LegalStage.Acquitted;
         }
         return read;
     }
 
-    // 陳志明犯罪所得, 陳志明之犯罪所得: the proceeds are the named person's.
+    // 張文華犯罪所得, 張文華之犯罪所得: the proceeds are the named person's.
     private static bool ProceedsOf(string sentence, string name)
     {
         foreach (var after in StageGlossary.ProceedsAfterName)

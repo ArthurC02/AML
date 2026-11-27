@@ -79,20 +79,20 @@ public static partial class StatedAgeCheck
     private const string NotThresholdOrApproximation = "(?<![\\d〇零一二兩三四五六七八九十廿卅百]|滿|約|逾|近|超過|未滿|年滿)";
     private const string Respectively = "分別";
 
-    // 陳志明（男，45歲）: a gender may stand before the age in the bracket after the name.
+    // 張文華（男，45歲）: a gender may stand before the age in the bracket after the name.
     private const string GenderFirst = "(?:[男女][，,、]\\s?)?";
 
     private const int MaxNames = 100;
 
     /// <summary>
-    /// "陳志明（45歲）", "陳志明今年四十五歲", "45歲的陳志明", "Chen Chih-Ming, aged 45", "45-year-old Chen Chih-Ming",
+    /// "張文華（45歲）", "張文華今年四十五歲", "45歲的張文華", "Chang Wen-Hua, aged 45", "45-year-old Chang Wen-Hua",
     /// "甲、乙分別為 44 歲、45 歲" (one age per person, in order); within one sentence and adjacent to the name.
     /// </summary>
     public static int? FindStatedAge(string text, IEnumerable<string> names) => Find(text, names)?.Age;
 
     /// <summary>
     /// A name form a stated value may conclude by: a CJK name of three characters or more (a shorter one may sit inside
-    /// another person's name, 志明 in 陳志明) that names somebody, or any other name, matched as a whole word. An anonymised
+    /// another person's name, 文華 in 張文華) that names somebody, or any other name, matched as a whole word. An anonymised
     /// form (林姓男子, 歐陽男) or a masked one (歐陽○明, 王某某) fits anyone of that surname and is never full.
     /// </summary>
     internal static bool IsFullForm(string name) =>

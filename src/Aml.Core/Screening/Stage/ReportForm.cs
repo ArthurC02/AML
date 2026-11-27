@@ -26,7 +26,7 @@ internal static class ReportForm
 
     /// <summary>
     /// The clauses of a sentence as they are read. A clause that ends with the court pronouncing its ruling is read with
-    /// the next one: 今日宣判，陳志明無罪 is one ruling. Read is what the rules read, Clause the clause as written (where
+    /// the next one: 今日宣判，張文華無罪 is one ruling. Read is what the rules read, Clause the clause as written (where
     /// it opens).
     /// </summary>
     internal static IEnumerable<(string Read, string Clause)> Clauses(string news, int start, int length)

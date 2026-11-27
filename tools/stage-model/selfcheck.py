@@ -6,9 +6,9 @@ import gold, textutil
 
 # textutil.normalise: NFKC per character, one to one (a character whose NFKC form is longer stays as it is)
 assert textutil.normalise("ＡＢ１２！？；") == "AB12!?;"
-assert textutil.normalise("㍿") == "㍿" and len(textutil.normalise("陳志明㍿")) == 4
+assert textutil.normalise("㍿") == "㍿" and len(textutil.normalise("張文華㍿")) == 4
 # textutil.occurrences: every start, overlaps included; an empty needle yields nothing
-assert list(textutil.occurrences("陳志明與陳志明", "陳志明")) == [(0, 3), (4, 7)]
+assert list(textutil.occurrences("張文華與張文華", "張文華")) == [(0, 3), (4, 7)]
 assert list(textutil.occurrences("aaa", "aa")) == [(0, 2), (1, 3)]
 assert list(textutil.occurrences("abc", "")) == [] and list(textutil.occurrences("abc", "x")) == []
 # textutil.event_label: type, with "-certainty" unless Stated
@@ -26,26 +26,26 @@ assert gold.stage(["Acquittal", "Conviction"]) == "CONVICTED"
 
 # gold.suspects / person_stage: rows by exact form; a row carrying "prior" is left out whole
 doc = {"people": [
-    {"id": "P1", "role": "PER-Suspect", "party": "Suspect", "mentions": ["陳志明", "陳某"]},
+    {"id": "P1", "role": "PER-Suspect", "party": "Suspect", "mentions": ["張文華", "張某"]},
     {"id": "P2", "role": "PER-Suspect", "party": "Suspect", "mentions": ["李小四"]},
     {"id": "P3", "role": "PER-Other", "party": "Witness", "mentions": ["王大同"]},
     {"id": "O1", "role": "ORG-Suspect", "party": "Suspect", "mentions": ["某公司"]}],
     "events": [
-    {"mention": "陳某", "labels": ["Indictment"]},
-    {"mention": "陳志明", "labels": ["Conviction", "prior"]},
+    {"mention": "張某", "labels": ["Indictment"]},
+    {"mention": "張文華", "labels": ["Conviction", "prior"]},
     {"mention": "李小四", "labels": ["Conviction-Negated", "Search"]},
     {"mention": "王大同", "labels": ["Conviction"]},
     {"mention": "某公司", "labels": ["Conviction"]}]}
 assert [p["id"] for p in gold.suspects(doc)] == ["P1", "P2"]
 assert {p["id"]: gold.person_stage(doc, p) for p in gold.suspects(doc)} == {"P1": "INDICTED", "P2": "ALLEGED"}
-assert gold.person_stage({"people": [], "events": []}, {"mentions": ["陳志明"]}) == "UNKNOWN"
+assert gold.person_stage({"people": [], "events": []}, {"mentions": ["張文華"]}) == "UNKNOWN"
 
 # prep_stage --nonsuspects: other named persons become UNKNOWN rows; a person sharing a form with a suspect, a Witness
 # with a labelled event row and a person without a form in the text are left out; the cap keeps Victim/Other first
 import prep_stage
 prep_stage.row = lambda d, p: {"person": p["id"], "stage": "INDICTED" if p["id"] == "P5" else "UNKNOWN", "no_form": p["id"] == "P6"}
 ns_doc = {"doc": "d", "people": doc["people"] + [
-    {"id": "P4", "role": "PER-Victim", "party": "Victim", "mentions": ["陳某"]},
+    {"id": "P4", "role": "PER-Victim", "party": "Victim", "mentions": ["張某"]},
     {"id": "P5", "role": "PER-Official", "party": "Official", "mentions": ["張檢察官"]},
     {"id": "P6", "role": "PER-Victim", "party": "Victim", "mentions": ["林一"]},
     {"id": "P7", "role": "PER-Other", "party": "Witness", "mentions": ["趙二"]}],

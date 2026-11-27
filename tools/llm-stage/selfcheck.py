@@ -11,13 +11,13 @@ import common, build_job
 assert common.cut("案" * 16000) == "案" * 16000
 long = "甲" * 10000 + "乙" * 1000 + "丙" * 6000
 assert common.cut(long) == "甲" * 10000 + "\n（中間省略）\n" + "丙" * 6000
-assert common.forms({"mentions": ["陳志明", "陳", "志明", "陳志明"]}) == ["陳志明", "志明"]
+assert common.forms({"mentions": ["張文華", "張", "文華", "張文華"]}) == ["張文華", "文華"]
 assert common.forms({"mentions": ["陳", "李"]}) == ["陳", "李"]
-doc = {"doc": "d1", "text": "陳志明涉嫌詐欺，李小四為證人。", "events": [{"mention": "陳志明", "labels": ["Indictment"]}],
-       "people": [{"id": "P1", "role": "PER-Suspect", "party": "Suspect", "mentions": ["陳志明"]},
+doc = {"doc": "d1", "text": "張文華涉嫌詐欺，李小四為證人。", "events": [{"mention": "張文華", "labels": ["Indictment"]}],
+       "people": [{"id": "P1", "role": "PER-Suspect", "party": "Suspect", "mentions": ["張文華"]},
                   {"id": "P2", "role": "PER-Witness", "party": "Other", "mentions": ["李小四"]}]}
 line = json.loads(common.data_line(doc))
-assert line == {"doc": "d1", "text": doc["text"], "persons": [{"id": "P1", "forms": ["陳志明"]}]}, line  # no stage, no event
+assert line == {"doc": "d1", "text": doc["text"], "persons": [{"id": "P1", "forms": ["張文華"]}]}, line  # no stage, no event
 assert common.data_line({**doc, "people": doc["people"][1:]}) == ""
 
 # job.env: values the shell would expand are refused
@@ -56,20 +56,20 @@ try:
     os.chdir(tmp); sys.path.insert(0, tmp)
     import infer
     assert infer.SETS == ["accept", "v11"] and infer.ALL == common.SETS
-    d = {"doc": "d1", "text": "陳志明經起訴。李小四到案。", "persons": [{"id": "P1", "forms": ["陳志明", "志明"]}, {"id": "P2", "forms": ["李小四"]}]}
-    answers += [json.dumps({"persons": [{"id": "P1", "stage": "INDICTED", "quote": "陳志明 經起訴"}, {"id": "P9", "stage": "CONVICTED", "quote": ""}]}),
+    d = {"doc": "d1", "text": "張文華經起訴。李小四到案。", "persons": [{"id": "P1", "forms": ["張文華", "文華"]}, {"id": "P2", "forms": ["李小四"]}]}
+    answers += [json.dumps({"persons": [{"id": "P1", "stage": "INDICTED", "quote": "張文華 經起訴"}, {"id": "P9", "stage": "CONVICTED", "quote": ""}]}),
                 json.dumps({"persons": [{"id": "P2", "stage": "GUILTY", "quote": ""}]})]
     r = infer.read_doc("m", d)
-    assert len(sent) == 2 and sent[0]["messages"][0]["content"] == common.user_turn(prompt, "P1", ["陳志明", "志明"], d["text"]) == "人：P1：陳志明、志明\n文：" + d["text"] + "\n"
+    assert len(sent) == 2 and sent[0]["messages"][0]["content"] == common.user_turn(prompt, "P1", ["張文華", "文華"], d["text"]) == "人：P1：張文華、文華\n文：" + d["text"] + "\n"
     assert sent[0]["think"] is False and sent[0]["options"]["temperature"] == 0 and sent[0]["format"]["required"] == ["persons"]
     assert r["error"] is None and not r["cut"]
-    assert r["persons"] == [{"id": "P1", "stage": "INDICTED", "quote": "陳志明 經起訴", "quote_ok": True},  # quote checked without whitespace
+    assert r["persons"] == [{"id": "P1", "stage": "INDICTED", "quote": "張文華 經起訴", "quote_ok": True},  # quote checked without whitespace
                             {"id": "P2", "stage": "MISSING", "quote": "", "quote_ok": False}]          # a stage outside the list is no answer
     assert infer.bad(r)
     sent.clear(); answers.append("not json")
-    r = infer.read_doc("m", {"doc": "d2", "text": long, "persons": [{"id": "1", "forms": ["陳志明"]}]})
+    r = infer.read_doc("m", {"doc": "d2", "text": long, "persons": [{"id": "1", "forms": ["張文華"]}]})
     assert r["cut"] and r["error"] == "JSONDecodeError" and r["persons"][0]["stage"] == "MISSING"  # the error names no text
-    assert sent[0]["messages"][0]["content"] == common.user_turn(prompt, "1", ["陳志明"], common.cut(long))  # = sft.py's user turn
+    assert sent[0]["messages"][0]["content"] == common.user_turn(prompt, "1", ["張文華"], common.cut(long))  # = sft.py's user turn
 finally:
     os.chdir(cwd); shutil.rmtree(tmp); del os.environ["SETS"]
 print("selfcheck OK")

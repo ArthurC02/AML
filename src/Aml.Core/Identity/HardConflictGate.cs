@@ -124,7 +124,7 @@ public static partial class HardConflictGate
     /// no event the digest attributes, no role of an alias folded into the person. Null when any mention of a full name is
     /// directly preceded by a victim, complainant, witness, child or official word, or when none is preceded by a
     /// qualifying word. A mention is whole when the name is followed by punctuation, whitespace, the end, or one of
-    /// <see cref="DocumentAgeWords.SafeFollowers"/> (陳志明宏, 陳志明國小 are other names). Silent for the whole item when it
+    /// <see cref="DocumentAgeWords.SafeFollowers"/> (張文華宏, 張文華國小 are other names). Silent for the whole item when it
     /// holds a minor or child cue or an age under 18 anywhere, or a nominal-officer or used-name cue; a mention whose
     /// sentence holds a negation, mistaken-identity, misuse or harm cue, or whose word follows 非, does not qualify.
     /// </summary>
@@ -163,9 +163,9 @@ public static partial class HardConflictGate
                 if (WordBefore(text, at, DocumentAgeWords.Disqualifying) is not null || WordBefore(text, at, DocumentAgeWords.Kinship) is not null) return null;
                 if (!IsWhole(text, at + name.Length) || WordBefore(text, at, DocumentAgeWords.Qualifying) is not { } word) continue;
                 var wordAt = at - word.Length;
-                if (WordBefore(text, wordAt, DocumentAgeWords.Kinship) is not null) return null; // 兒子董事陳志明
+                if (WordBefore(text, wordAt, DocumentAgeWords.Kinship) is not null) return null; // 兒子董事張文華
                 if (basis is not null) continue;
-                if (wordAt > 0 && text[wordAt - 1] == DocumentAgeWords.NegationBeforeRole) continue; // 非董事陳志明
+                if (wordAt > 0 && text[wordAt - 1] == DocumentAgeWords.NegationBeforeRole) continue; // 非董事張文華
                 if (WordBefore(text, wordAt, DocumentAgeWords.NotRolePrefixes) is not null) continue; // 原被告, 準被告: another word
                 if (SentenceHasCue(at)) continue;
                 basis = word;

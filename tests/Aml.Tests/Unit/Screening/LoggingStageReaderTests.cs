@@ -8,7 +8,7 @@ namespace Aml.Tests.Unit.Screening;
 /// <summary>A stage reader's missing answer is logged for operations, without the text or names it was given.</summary>
 public class LoggingStageReaderTests
 {
-    private const string News = "臺北地檢署今日依詐欺罪嫌起訴陳志明。";
+    private const string News = "臺北地檢署今日依詐欺罪嫌起訴張文華。";
 
     private sealed class Capturing : ILogger
     {
@@ -40,12 +40,12 @@ public class LoggingStageReaderTests
         var log = new Capturing();
         var reader = new LoggingStageReader(new Failing(clock, throws), log, clock);
 
-        if (throws) Assert.Contains("陳志明", Assert.Throws<InvalidOperationException>(() => reader.Read(News, ["陳志明"])).Message, StringComparison.Ordinal);
-        else Assert.Null(reader.Read(News, ["陳志明"]));
+        if (throws) Assert.Contains("張文華", Assert.Throws<InvalidOperationException>(() => reader.Read(News, ["張文華"])).Message, StringComparison.Ordinal);
+        else Assert.Null(reader.Read(News, ["張文華"]));
 
         var (level, message) = Assert.Single(log.Entries);
         Assert.Equal((LogLevel.Warning, $"Stage reader llm gave no answer ({failure}) after 1500 ms"), (level, message));
-        Assert.DoesNotContain("陳志明", message, StringComparison.Ordinal);
+        Assert.DoesNotContain("張文華", message, StringComparison.Ordinal);
         Assert.Equal("llm", reader.Name);
     }
 
@@ -60,7 +60,7 @@ public class LoggingStageReaderTests
         var budgeted = new BudgetedStageReader("llm", (_, _, _) => { asked++; return null; }, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(1));
         var reader = new LoggingStageReader(budgeted.ForAnalysis(clock), log, clock);
 
-        Assert.Throws<StageBudgetSpentException>(() => reader.Read(News, ["陳志明"]));
+        Assert.Throws<StageBudgetSpentException>(() => reader.Read(News, ["張文華"]));
 
         Assert.Equal(0, asked);
         Assert.Equal((LogLevel.Warning, "Stage reader llm gave no answer (StageBudgetSpentException) after 0 ms"), Assert.Single(log.Entries));

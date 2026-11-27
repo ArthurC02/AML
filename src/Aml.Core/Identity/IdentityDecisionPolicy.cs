@@ -17,7 +17,7 @@ public static class IdentityDecisionPolicy
         var e = EvidenceBuilder.Build(s, p, news);
         if (!IsPersonRecord(p))
             return EntityDecision(s, p, new Dictionary<EvidenceGroup, Evidence>(e));
-        if (HardConflictGate.Check(s, p) is { } hard)
+        if (HardConflictGate.Check(s, p, e, news) is { } hard)
             return HardConflictDecision(e, p, hard);
 
         var (row, decision, code) = Stage3(e);

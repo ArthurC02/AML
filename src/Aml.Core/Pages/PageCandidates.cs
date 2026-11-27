@@ -58,11 +58,17 @@ public static class PageCandidates
 
     /// <summary>
     /// The page as the person's attached text: its URL, title, host, the publication date the page states as the report date
-    /// (null when MISSING, never the fetch date) and the fetch date as the retrieval date.
+    /// (null when MISSING, never the fetch date) and the fetch date as the retrieval date. An update date standing in for a
+    /// publication date (UPDATE_DATE) is shown only: no report date, so a stated age on the page is not compared
+    /// (identity-adjudication.md#two-year-conflict-on-stated-values), since a site's update date can lie years from it.
     /// </summary>
-    public static NewsItem News(PageRecord page, PagePerson p) =>
-        new(ProfileKeys.IdOf(p.ProfileKey), page.PageId, page.Title ?? "", Uri.TryCreate(page.Url, UriKind.Absolute, out var u) ? u.Host : null, page.PublishedOn,
-            page.Text ?? "", page.Url, page.FetchedAt?.UtcDateTime.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture));
+    public static NewsItem News(PageRecord page, PagePerson p)
+    {
+        var update = page.PublishedOnSource == PublicationSource.UpdateDate;
+        return new(ProfileKeys.IdOf(p.ProfileKey), page.PageId, page.Title ?? "", Uri.TryCreate(page.Url, UriKind.Absolute, out var u) ? u.Host : null,
+            update ? null : page.PublishedOn, page.Text ?? "", page.Url,
+            page.FetchedAt?.UtcDateTime.ToString("yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture), update ? page.PublishedOn : null);
+    }
 
     /// <summary>The page and person behind a WEB: key of this input; null for any other key.</summary>
     public static (PageRecord Page, PagePerson Person)? Find(CaseInput input, string profileKey) =>

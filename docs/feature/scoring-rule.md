@@ -33,13 +33,13 @@ One combined number was rejected: it would let a strong source condition push id
 |---|---|
 | evidence groups and their `strength` | identity items: points by group and level |
 | hit prerequisites (NAME, GENDER, NATIONALITY) | 0 points (the bank's rule: they carry no weight); all three EXACT is a precondition of the lower PROBABLE_MATCH threshold, as in row 4 |
-| `HardConflictGate`, validated rule (impossible age; a Profile DOB more than two years off, `FULL_DOB_CONFLICT` / `DOB_CONFLICT`, released 2026-11-27) | veto: NO_MATCH, outside the sum (the DOB conflict adds no item) |
+| `HardConflictGate`, validated rule (impossible age; a Profile DOB more than two years off, `FULL_DOB_CONFLICT` / `DOB_CONFLICT`; every value attached news or a received page states next to the name more than two years off, no Profile DOB and no HIGH support, `STATED_DOB_CONFLICT`; released 2026-11-27) | veto: NO_MATCH, outside the sum (the DOB conflict adds no item; under the stated-value veto the stated differences stay listed as their items) |
 | `HardConflictGate`, pending rule; `SOURCE_QUALITY_DOWNGRADE` | the band is REVIEW whatever the sum, listed with the rule's code and `SCORE_HELD_PENDING_VALIDATION`; no points are proposed, so it adds no item (as stage 3, which stops there) |
 | stage 3 row 1 (document conflict) | negative item; held like a pending hard rule |
 | a Profile DOB within two years, not equal (`DOB_AGREES_WITHIN_TOLERANCE`) | support item at the birth-year level |
 | stage 3 rows 2 to 6 | identity bands and review priority |
 | opposite genders (blocks rows 3 and 4) | cap: no PROBABLE_MATCH (`SCORE_CAPPED_GENDER_CONFLICT`) |
-| stated age, birth date, gender in a source | items at most MEDIUM, times the source's reliability; a difference is a negative item that never takes the pair below REVIEW |
+| stated age, birth date, gender in a source | items at most MEDIUM, times the source's reliability; a difference is a negative item that never takes the pair below REVIEW (every value more than two years off: the veto above); a page birth date within two years (`PAGE_BIRTH_DATE_WITHIN_TOLERANCE`) is neutral, no item |
 | entity records | items from `ENTITY_IDENTIFIER`; cap at REVIEW until an entity Golden Case |
 | `SourceConditions` (flags, category mapping) | condition items: the basis gives the points |
 | three-reader stage vote | a rule over three readings, upstream of the score; its stage is a condition item ([three readers](watchlist-and-adverse-information.md#three-readers)) |
@@ -73,7 +73,7 @@ A cap is listed only when it lowered the band; the threshold the sum crossed is 
 
 Review priority among REVIEW pairs (not built in the trial calculation): HIGH for a raised Sanction or the PROBABLE_MATCH band (NORMAL when the news disagrees with the Profile, as today), NORMAL for `I > 0`, LOW otherwise.
 
-NO_MATCH comes today from the validated vetoes: impossible age and the DOB conflict (more than two years). The NO_MATCH band of the sum cannot be reached: every negative item left (the document conflict, a stated difference) comes from a pending rule or is soft by design. It opens only when such a rule is validated and released as a negative item.
+NO_MATCH comes today from the validated vetoes: impossible age, the DOB conflict (more than two years) and its stated-value form (every age and birth date attached news or a received page states more than two years off). The NO_MATCH band of the sum cannot be reached: every negative item left (the document conflict, a stated difference) comes from a pending rule or is soft by design. It opens only when such a rule is validated and released as a negative item.
 
 **Arithmetic.** Points and factors are exact decimals (no binary floating point); a product is not rounded; a sum equal to a threshold reaches it (`≥`, and `≤` for `T_no_match`). So 0.6 × 100 = 60 reaches `T_hit` 60.
 
@@ -92,7 +92,7 @@ Off the Golden Cases the rule differs from the stage 3 table where points add up
 - **two MEDIUM supports** (for example DOB to the month +15 and an address at house number +15 = 30) reach `T_probable` and give PROBABLE_MATCH; the table gives row 5, REVIEW;
 - **weak items with exact prerequisites**: two LOW items (an address at district +5 and an other identifier +5 = 10), or one agreeing employer (+15), reach `T_probable_exact` 8 without any DOB support and give PROBABLE_MATCH; the table's row 4 needs DOB support, so it gives row 5, REVIEW;
 - **opposite genders with an agreeing document**: the table's row 2 comes before the gender check and gives PROBABLE_MATCH; the gender cap holds the score at REVIEW (found by the build);
-- **a stated age or birth-date difference** in the attached news: the table puts the pair on row 1, REVIEW; the score subtracts 4.8 and the pair can still reach PROBABLE_MATCH (a full DOB +25 and an employer +15 give 35.2) (found by the build).
+- **a stated age or birth-date difference** in the attached news that does not conclude (the Profile has an agreeing DOB, or a birth date within two years): the table puts the pair on row 1, REVIEW; the score subtracts 4.8 and the pair can still reach PROBABLE_MATCH (a full DOB +25 and an employer +15 give 35.2) (found by the build).
 
 These differences are what the [validation](#validation) measures; none occurs on the Golden Cases.
 
@@ -114,9 +114,40 @@ NO_MATCH by the sum needs a negative item from a validated rule. The DOB conflic
 | Item | Points | Alone reaches `T_no_match` −25 | Needs before release |
 |---|---|---|---|
 | `DOCUMENT_IDENTITY_CONFLICT` (same type and country, different number) | −40 | yes | a Golden Case; a rule for documents that are reissued with a new number (a passport), which a national ID is not |
-| stated age or birth-date difference | −8 × reliability | no (at most −8) | stays a soft conflict by design |
+| stated age or birth-date difference that does not conclude | −8 × reliability | no (at most −8) | stays a soft conflict by design; more than two years off, it is the `STATED_DOB_CONFLICT` veto |
 
 Each validated item is released as its own policy version; agreeing evidence in other groups still offsets it (a document conflict −40 and a full DOB +25 give −15, REVIEW). A missing value never scores, so a pair with only the prerequisites (GC-02, GC-12) can reach neither band: that is missing data, not the rule.
+
+### Candidate MATCH condition B′
+
+**PROPOSED — under measurement, not approved; nothing emits it.** A wrong conclusion is very costly, so automatic MATCH is proposed only on direct evidence, and only once its wrong-MATCH risk is measured on data holding the failure modes. B′ is that direct-evidence condition, a predicate beside the sum (`DocumentMatch` in the test project; no production caller): MATCH only when
+
+- a list document agrees with the customer's in number, document type and issuing country, the country known on both sides (a Taiwan type implies TW);
+- the name prerequisite holds: EXACT after the product's folding, or the same reading across romanisations (`ROMANIZATION_VARIANT`);
+- nothing stands against it: no hard conflict, validated or pending, and no `SOURCE_QUALITY_DOWNGRADE`; no evidence group in conflict (birth date beyond two years, gender, nationality, stated age, birth date or gender, document); a Person record; no `MODEL_READ` person.
+
+A birth date within two years (`DOB_AGREES_WITHIN_TOLERANCE`) does not stand against it. For comparison: B, the number agreeing whatever the type and country, with the same name prerequisite and nothing against it, and B′∅, B′ also accepting a document with no issuing country on either side.
+
+**B″** adds a second direct field: B′ and a list birth date that agrees with the customer's. **B″-exact**: equal at the list's own precision with no tolerance (the full date, or a year-only value equal to the birth year); a list 1 January (a full date with month 1 and day 1, the likely placeholder) counts as its year only. **B″-tol**: the product's DOB support, two-year tolerance included.
+
+Measured ([adversarial set](../plan/poc-delivery-plan.md#adversarial-synthetic-set): a realistic group of 260 pairs, 115 of them the customer, and a theoretical-limit group of 75 strangers built to probe the rules, not expected in real data; [end-to-end set](../plan/poc-delivery-plan.md#synthetic-end-to-end-set), 359 pairs, 118 decided today). The counts are probes, not frequencies: no figure is a rate.
+
+| Rule | realistic: right / wrong MATCH | customers missed (REVIEW) | end-to-end: right / wrong, decided | cannot see (theoretical, MATCH on another person) |
+|---|---|---|---|---|
+| B | 69 / 10 (no issuing country) | 46 | 7 / 0, 125/359 | 50 (number under another type 15, another country 15, recycled 20) |
+| B′ | 59 / 0 | 56 | 7 / 0, 125/359 | 20 (recycled passport: bare record 10, customer's birth year only 10) |
+| B′∅ | 69 / 10 (no issuing country) | 46 | 7 / 0, 125/359 | 20 (recycled) |
+| B″-exact | 29 / 0 | 86 | 5 / 0, 123/359 | 10 (recycled, customer's birth year only) |
+| B″-tol | 44 / 0 | 71 | 5 / 0, 123/359 | 10 (the same) |
+
+No rule and not the product concludes a customer NO_MATCH. A missed customer stays in REVIEW, which is acceptable; a wrong MATCH or a wrong NO_MATCH is not.
+
+Open risks, to be decided by the user before B′ or B″ can be approved:
+
+- **Recycled or reissued numbers** (theoretical limit: reuse of a Taiwan passport number by another person is unverified, a national ID is issued once for life). A list record carrying only the name and the same document is the customer on every field it carries: B′ concludes MATCH on all 10 such strangers, B″ on none (it needs a list birth date). A holder of the same gender and birth year on a year-only record still beats B″ (10 of 10 wrong under both sub-variants). A holder with the same full birth date is not generated: the same failure, rarer (about one in 365 same-year holders if birth days are uniform), small but not zero, and invisible to any rule over these fields. Whether to require a full birth date (B″-exact at day precision), allow automatic MATCH only for document types that are never reissued (a national ID, not a passport), or accept the measured risk, is open.
+- **Missing issuing country.** Both sides without a country: B′ and B″ leave the pair to REVIEW; B′∅ (and B) MATCH the customer 10 and another holder of the same number 10, a realistic case, which is why a missing country must not count as agreement.
+- **Missed customers.** A mistyped (15) or renewed (15) list number, a list birth date more than two years off (15, the document wins today: the DOB conflict is downgraded to REVIEW) and a simplified name the variant list does not fold (1, 杰 for 傑) give no MATCH under any rule, no issuing country (10) none under B′ or B″; B″ also misses the customer with no list birth date (15), and B″-exact the one whose list date is within two years but not equal (15).
+- **Data.** The kinds and counts are built, not sampled: no rate here is a precision for release. Real labelled pairs, with recycled and reissued documents among them, are still absent.
 
 ## Condition score
 
@@ -160,6 +191,8 @@ One factor per kind of source, applied to stated identity values and to conditio
 | ENTITY_IDENTIFIER EXACT | `ENTITY_IDENTIFIER_AGREEMENT` | +40 |
 | NAME, GENDER, NATIONALITY agreement | — | 0 |
 | DATE_OF_BIRTH more than two years apart (validated hard rule, 2026-11-27) | `FULL_DOB_CONFLICT` / `DOB_CONFLICT` | veto NO_MATCH, no item |
+| stated birth dates and dated age (attached news or a received page) all more than two years apart, no Profile DOB (validated hard rule, 2026-11-27) | `STATED_DOB_CONFLICT` | veto NO_MATCH |
+| a received page's stated birth date within two years, not equal | `PAGE_BIRTH_DATE_WITHIN_TOLERANCE` | 0 (neutral) |
 | DOCUMENT conflict (pending hard rule) | `DOCUMENT_IDENTITY_CONFLICT` | −40 |
 | stated age or birth date differs | `AGE_DIFFERENCE_AT_REPORT` / `NEWS_BIRTH_DATE_DIFFERENCE` | −8 × reliability |
 | stated birth date agrees, the Profile's own DOB not agreeing | `NEWS_BIRTH_DATE_AGREES` | the DOB points at its level (full date MEDIUM +15, else LOW +8) × reliability |
@@ -197,7 +230,8 @@ The policy version is recorded in lineage; `hit_evidence` gains the points per i
 ## Validation
 
 - **Trial calculation now** (user, 2026-11-26). The proposal table is used to calculate: the score runs in measurement only, computed beside the stage 3 table and compared with it on the Golden Cases and labelled sets. It is not the decision and is not in a Case's result; the weights stay PROPOSED. Built: `ScoringRuleTests` holds every cell of the table, `GoldenMetricsTests` the Golden Case lines and the comparison ([results](../plan/poc-delivery-plan.md#scoring-rule-beside-the-stage-3-table): the band agrees with the table on all six pairs; decided rate 2/6 under both).
-- **Synthetic end-to-end set** (user, 2026-11-26). Generated Cases with known truth, written as the bank's export and run through the readers, `CaseAnalyzer` and this rule ([results](../plan/poc-delivery-plan.md#synthetic-end-to-end-set)): with the DOB conflict released (2026-11-27) the score concludes 87 of 359 pairs (84 NO_MATCH, 3 MATCH, no wrong identity) where the product concludes 84 (the same 84 NO_MATCHes; 79 pair cells right, 5 NO_HIT on a delisted sanction whose truth cell is NOT_APPLICABLE); 154 pairs carry nothing beyond the prerequisites, so missing data holds most of the rest; a birth year or a birth date within two years at `T_probable_exact` raises 6 same-name strangers to PROBABLE_MATCH. It finds logic holes and compares thresholds under stated assumptions; the strangers' chance agreements are assumptions, so its precisions are not evidence for release, and real labelled pairs are still needed.
+- **Synthetic end-to-end set** (user, 2026-11-26). Generated Cases with known truth, written as the bank's export and run through the readers, `CaseAnalyzer` and this rule ([results](../plan/poc-delivery-plan.md#synthetic-end-to-end-set)): with the DOB conflict and the stated-value conflict released (2026-11-27) the score concludes 121 of 359 pairs (118 NO_MATCH, 3 MATCH, no wrong identity) where the product concludes 118 (the same 118 NO_MATCHes; 113 pair cells right, 5 NO_HIT on a delisted sanction whose truth cell is NOT_APPLICABLE); 154 pairs carry nothing beyond the prerequisites, so missing data holds most of the rest; a birth year or a birth date within two years at `T_probable_exact` raises 6 same-name strangers to PROBABLE_MATCH. It finds logic holes and compares thresholds under stated assumptions; the strangers' chance agreements are assumptions, so its precisions are not evidence for release, and real labelled pairs are still needed.
+- **Adversarial synthetic set.** Built failure modes of an automatic MATCH on a document, with the customer in hard forms ([results](../plan/poc-delivery-plan.md#adversarial-synthetic-set)): on the realistic group the candidate condition [B′](#candidate-match-condition-b) concludes 59 customers and no stranger, B″ (B′ and an agreeing list birth date) 29 exact and 44 with tolerance, no stranger; the theoretical group shows what they cannot see (recycled passports: B′ 20, B″ 10). The product today concludes no customer NO_MATCH; the counts are probes, not rates. Measurement only; it decides nothing.
 - **Switch gates (proposed).** The score replaces the stage 3 table in the analysis only when the user has approved the table above, it reproduces every validated Golden Case, it is not worse than the table on the [scorecard](../plan/poc-delivery-plan.md#requirement-scorecard) on the labelled sets, and the precision of its automatic MATCH has been measured on labelled pairs and accepted by the user.
 - **Pair measures.** Decided rate (MATCH or NO_MATCH without a reviewer) first, guarded by the two precisions below; right person kept (true matches not at NO_MATCH, share at MATCH and PROBABLE_MATCH), automatic MATCH precision (different persons at MATCH), wrong person excluded (different persons at LOW priority or NO_MATCH, never a true match there), per source; NO_MATCH precision stays 100% on every labelled set before any NO_MATCH band opens.
 - **Data.** Golden Cases (GC-01 to GC-03, GC-11, GC-12; no Sanction or PEP case yet), labelled customer × Profile pairs (none yet beyond the Golden Cases), the annotated judgments, press releases and news for the extracted inputs ([news model training](../plan/news-model-training.md), [stage model training](../plan/stage-model-training.md)).

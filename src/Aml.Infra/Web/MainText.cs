@@ -36,9 +36,12 @@ public static partial class MainText
 
     private static PageText From(IHtmlDocument doc)
     {
-        var metadata = PublishedDates.Metadata(doc);
         if (doc.Body is not { } body) return new PageText(Clean(doc.Title), "");
         HtmlExport.CheckDepth(body);
+        // Dates the template states are read before boilerplate is removed; the publication date's first, the update date's
+        // stand in only when the page states no publication date (PublishedDates.Agreed).
+        var (metadata, labelled) = (PublishedDates.Metadata(doc), PublishedDates.Labelled(doc));
+        var (updatedMeta, updatedLabel) = (PublishedDates.Updated(doc), PublishedDates.Labelled(doc, update: true));
         var pageH1 = body.QuerySelectorAll("h1").FirstOrDefault(h => h.Closest("header,nav") is null);
 
         // Boilerplate is removed only while it is not most of the page: a wrapper named "no-sidebar" or a WebForms
@@ -58,9 +61,13 @@ public static partial class MainText
             if (counts.TryGetValue(e, out var c) && c.Links > 0 && LinkDensity(c) > 0.5) e.Remove();
         var title = Clean(main.QuerySelector("h1")?.TextContent) ?? Clean(pageH1?.TextContent) ?? Clean(doc.Title);
         var text = Lines(main);
-        var (on, source) = PublishedDates.Agreed(metadata, PublishedDates.FromText(text));
+        var (on, source) = PublishedDates.Agreed(metadata, Both(labelled, PublishedDates.FromText(text)),
+            Both(updatedMeta, Both(updatedLabel, PublishedDates.FromText(text, update: true))));
         return new PageText(title, text, on, source);
     }
+
+    // Either reader gave up (null): MISSING for both.
+    private static List<PartialDate>? Both(List<PartialDate>? a, List<PartialDate>? b) => a is null || b is null ? null : [.. a, .. b];
 
     // Visible characters, characters inside links and commas of every element, children before parents: document order
     // reversed visits every descendant before its ancestor.
@@ -91,7 +98,8 @@ public static partial class MainText
             if (e.ParentElement is { } parent)
             {
                 scores[parent] = scores.GetValueOrDefault(parent) + score;
-                if (parent.ParentElement is { } grand) scores[grand] = scores.GetValueOrDefault(grand) + score / 2.0;
+                // Not above the body: <html> has no counts (a paragraph right under <body> once failed the page here).
+                if (parent.ParentElement is { } grand && counts.ContainsKey(grand)) scores[grand] = scores.GetValueOrDefault(grand) + score / 2.0;
             }
         }
         return scores.Count == 0 ? null : scores.MaxBy(s => s.Value * (1 - LinkDensity(counts[s.Key]))).Key;
@@ -124,7 +132,7 @@ public static partial class MainText
     }
 
     // A class or id token naming boilerplate (nav, menu, footer, share …): whole tokens, so "shareholder" is not "share".
-    private static bool NamedBoilerplate(IElement e)
+    internal static bool NamedBoilerplate(IElement e)
     {
         foreach (var token in Tokens().Split($"{e.ClassName} {e.Id}"))
             if (BoilerplateTokens.Contains(token)) return true;

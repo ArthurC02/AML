@@ -302,15 +302,18 @@ public class IdentityRuleTests
         Assert.Contains($"推算 {age} 歲", r.Evidence[EvidenceGroup.StatedAge].Note, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void Stated_age_beyond_two_years_is_a_soft_conflict_row_1_never_no_match()
+    // Stated 48 on 2026-03-01 (the subject is 45): more than two years off. Without a Profile DOB it is the validated hard
+    // conflict STATED_DOB_CONFLICT (user, 2026-11-27); with a Profile DOB agreeing within two years the news may be about
+    // someone else, so it stays the conflict of row 1, REVIEW.
+    [Theory]
+    [InlineData(0, ReasonCodes.StatedDobConflict, null, IdentityDecision.NoMatch)]
+    [InlineData(19810101, null, 1, IdentityDecision.Review)]
+    public void Stated_age_beyond_two_years_concludes_no_match_unless_the_profile_has_a_dob_of_its_own(int profileDob, string? hard, int? row, IdentityDecision decision)
     {
-        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明"), News("陳志明（48歲）涉嫌詐欺。"));
-        Assert.Equal(ComparisonStatus.Conflict, r.Evidence[EvidenceGroup.StatedAge].Status);
-        Assert.Null(r.HardConflict);
-        Assert.Equal(1, r.Stage3Row);
-        Assert.Equal(IdentityDecision.Review, r.Decision);
-        Assert.Equal(ReasonCodes.AgeDifferenceAtReport, r.ReasonCodes[0]);
+        var profile = profileDob == 0 ? Profile("陳志明") : Profile("陳志明") with { DatesOfBirth = [new PartialDate(profileDob / 10000, profileDob / 100 % 100, profileDob % 100)] };
+        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"), profile, News("陳志明（48歲）涉嫌詐欺。"));
+        Assert.Equal((ComparisonStatus.Conflict, ReasonCodes.AgeDifferenceAtReport), (r.Evidence[EvidenceGroup.StatedAge].Status, r.Evidence[EvidenceGroup.StatedAge].Detail));
+        Assert.Equal((hard, row, decision), (r.HardConflict, r.Stage3Row, r.Decision));
     }
 
     [Fact]

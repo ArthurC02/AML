@@ -223,12 +223,14 @@ public static partial class SourceConditions
     /// <summary>
     /// The condition of a person read from a received page (external-sources.md#common-path): ADVERSE_MEDIA with the legal
     /// stage the page reading already gave that person (the rules, voted with the stage models when they were configured),
-    /// never read again here. A role word the rules read next to the name that is no suspect's (被害人, 證人, 檢察官 …) is
-    /// NOT_HIT; the news models' party is not used (a model's role is not measured). Otherwise a stage gives HIT and no stage UNKNOWN.
+    /// never read again here. A victim's or an official's role word the rules read next to the name (被害人, 告訴人, 檢察官 …) is
+    /// NOT_HIT; 證人 is not, since a co-defendant testifying is written 證人 (measured). The news models' party is not used (a
+    /// model's role is not measured). Otherwise a stage gives HIT and no stage UNKNOWN.
     /// </summary>
     public static IReadOnlyList<SourceCondition> FromPage(Pages.PagePerson person, SourceProfile profile, string text)
     {
-        var rulesReadNonSuspect = person.ReadBy == Pages.PersonReadBy.RuleRead && person.Party is { } party && party != Explanation.NewsParty.Suspect;
+        var rulesReadNonSuspect = person.ReadBy == Pages.PersonReadBy.RuleRead
+            && person.Party is Explanation.NewsParty.Victim or Explanation.NewsParty.Official;
         var status = rulesReadNonSuspect ? ConditionStatus.NotHit : person.Stage == LegalStage.Unknown ? ConditionStatus.Unknown : ConditionStatus.Hit;
         var codes = person.StageReasonCodes.Append(status switch
         {

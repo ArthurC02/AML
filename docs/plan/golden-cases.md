@@ -211,7 +211,7 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-02-01 | GC-02 | Profile DOB 1975/9 | month-precision DOB agreement | PARTIAL, MEDIUM support, row 4 PROBABLE_MATCH, still no direct identifier |
 | AUG-02-02 | GC-02 | Profile DOB 1980 | `DOB_CONFLICT` (more than two years off at year precision) | stage 1 NO_MATCH, not FULL_DOB_CONFLICT (was row 1 REVIEW before the birth-date tolerance, 2026-11-27) |
 | AUG-02-03 | GC-02 | news states 林美玲（49歲） | stated age compatible | `AGE_COMPATIBLE_AT_REPORT`, neutral, row 6 unchanged |
-| AUG-02-04 | GC-02 | news states 林美玲（30歲） | `AGE_DIFFERENCE_AT_REPORT` | soft conflict, row 1 REVIEW, never NO_MATCH |
+| AUG-02-04 | GC-02 | news states 林美玲（30歲） | `AGE_DIFFERENCE_AT_REPORT`, `STATED_DOB_CONFLICT` | stage 1 NO_MATCH: the only stated value is more than two years off and the Profile has no DOB (was row 1 REVIEW before the stated-value conflict, 2026-11-27) |
 | AUG-02-05 | GC-02 | news 分案偵辦 → 起訴 | legal stage | INDICTED; `amlRelevance` stays UNCERTAIN |
 | AUG-02-06 | GC-02 | keyword Money Laundering added | keyword risk category | `MONEY_LAUNDERING` added to risk categories |
 | AUG-02-07 | GC-02 | SIP subcategory Fraud → Gambling | `UNMAPPED_CATEGORY` | UNKNOWN, `SOURCE_CONDITION_UNKNOWN`, REVIEW; relevance checks stay open |
@@ -223,7 +223,7 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-02-13 | GC-02 | category Adverse Media, no keywords, news on drunk driving | Article 22 ② | UNRELATED, set aside, NOT_ON_LIST; identity unchanged |
 | AUG-02-14 | GC-02 | news adds 酒駕 to the fraud report | predicate offence | stays UNCERTAIN |
 | AUG-02-15 | GC-02 | news states 林美玲（女，民國64年9月2日生） | news birth date agrees | `NEWS_BIRTH_DATE_AGREES`, MEDIUM support, row 5 REVIEW (GC-02 is row 6); still no direct identifier |
-| AUG-02-16 | GC-02 | news states a birth date of 民國70年1月1日 | `NEWS_BIRTH_DATE_DIFFERENCE` | soft conflict, row 1 REVIEW, never NO_MATCH; the explanation summary names 新聞所載出生日期 under 衝突 |
+| AUG-02-16 | GC-02 | news states a birth date of 民國70年1月1日 | `NEWS_BIRTH_DATE_DIFFERENCE`, `STATED_DOB_CONFLICT` | stage 1 NO_MATCH, NO_HIT (1981-01-01 is more than two years from 1975-09-02, the Profile has no DOB; was row 1 REVIEW before the stated-value conflict, 2026-11-27); the explanation summary names 新聞所載出生日期 under 衝突 |
 | AUG-02-17 | GC-02 | Profile DOB 1975/9/2 and the news states the same date | one fact told twice | news NEUTRAL; row 4 PROBABLE_MATCH, not row 3 |
 | AUG-02-18 | GC-02 | Profile DOB 1975/9/2, the news states 民國70年1月1日 | two sources disagree | news NEUTRAL, UNCERTAIN; row 4 unchanged; `ATTACHED_NEWS_DISAGREES_WITH_PROFILE`, priority NORMAL, the summary says 來源不一致 |
 | AUG-02-19 | GC-02 | news states 林美玲（男）, the Profile's gender agrees | two sources disagree | `NEWS_GENDER_DIFFERENCE` shown, NEUTRAL; row 6 unchanged; `ATTACHED_NEWS_DISAGREES_WITH_PROFILE`, priority stays LOW |

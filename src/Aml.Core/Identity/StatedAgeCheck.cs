@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Aml.Core.Explanation;
 using Aml.Core.Normalization;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
@@ -7,15 +8,17 @@ namespace Aml.Core.Identity;
 
 /// <summary>
 /// Age explicitly stated for the Profile person in attached news (identity-adjudication.md, age stated in a source).
-/// Compared at the report date. Within ±2 years is compatible, never support; beyond is a soft conflict, never hard.
+/// Compared at the report date by the births the age allows. Within two years of the customer's DOB is compatible, never
+/// support; beyond is a conflict, which closes the pair as STATED_DOB_CONFLICT when no other stated value and no Profile DOB
+/// says otherwise (<see cref="HardConflictGate"/>).
 /// </summary>
 public static partial class StatedAgeCheck
 {
-    public const int ToleranceYears = 2;
-
-    public static Evidence? Check(ScreenedSubject s, SourceProfile p, NewsItem? news)
+    /// <param name="fullFormsOnly">Read only next to a <see cref="IsFullForm"/> name, a Latin one as a whole word: what a
+    /// stated value must be read next to before it may conclude (HardConflictGate).</param>
+    public static Evidence? Check(ScreenedSubject s, SourceProfile p, NewsItem? news, bool fullFormsOnly = false)
     {
-        if (news is null || Find(news.Text, p.Names) is not var (stated, statedAtEventTime))
+        if (news is null || Find(news.Text, p.Names, fullFormsOnly) is not var (stated, statedAtEventTime))
             return null;
         if (statedAtEventTime)
             return NotComparable($"報導年齡 {stated} 歲（時年，事件當時）；事件日期未知，不與報導日期比較");
@@ -26,9 +29,24 @@ public static partial class StatedAgeCheck
 
         var exactAge = HardConflictGate.MaxAgeAt(dob, at);
         var note = $"報導年齡 {stated} 歲；依報導日期 {at} 推算 {exactAge} 歲";
-        return Math.Abs(stated - exactAge) <= ToleranceYears
+        // The two-year rule of a birth date, on the births the age allows. Away from 29 February that is a ±2 age difference;
+        // at it the two differ by a day.
+        return !BirthsMoreThanYearsFrom(dob, stated, at, EvidenceBuilder.DobToleranceYears)
             ? new Evidence(EvidenceGroup.StatedAge, Direction.Neutral, ComparisonStatus.Exact, Strength.None, ReasonCodes.AgeCompatibleAtReport, note)
             : new Evidence(EvidenceGroup.StatedAge, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.AgeDifferenceAtReport, note);
+    }
+
+    /// <summary>
+    /// Every birth an age stated at a date allows (from the day after the date age + 1 years before to the date age years
+    /// before) more than <paramref name="years"/> calendar years from the DOB, as <see cref="PartialDate.IsMoreThanYearsApart"/>
+    /// counts years. An age reaching before year 1 is a misreading, never a conflict.
+    /// </summary>
+    private static bool BirthsMoreThanYearsFrom(PartialDate dob, int age, PartialDate at, int years)
+    {
+        var (on, born) = (at.LatestDay, dob.LatestDay);
+        if (age + 1 >= on.Year) return false;
+        var (earliest, latest) = (on.AddYears(-(age + 1)).AddDays(1), on.AddYears(-age));
+        return born > latest.AddYears(years) || earliest > born.AddYears(years);
     }
 
     private static Evidence NotComparable(string note) =>
@@ -59,12 +77,34 @@ public static partial class StatedAgeCheck
     /// </summary>
     public static int? FindStatedAge(string text, IEnumerable<string> names) => Find(text, names)?.Age;
 
-    private static (int Age, bool StatedAtEventTime)? Find(string text, IEnumerable<string> names)
+    /// <summary>
+    /// A name form a stated value may conclude by: a CJK name of three characters or more (a shorter one may sit inside
+    /// another person's name, 志明 in 陳志明) that names somebody, or any other name, matched as a whole word. An anonymised
+    /// form (林姓男子, 歐陽男) or a masked one (歐陽○明, 王某某) fits anyone of that surname and is never full.
+    /// </summary>
+    internal static bool IsFullForm(string name) =>
+        !IsCjkName(name) || (name.Count(CjkText.IsCjk) >= MinFullCjkForm && !NamesNobody(name));
+
+    // 姓 marks an anonymised form only right after the surname (林姓男子, 歐陽姓主嫌, whatever noun follows); elsewhere it
+    // is read as a given-name character, so it cannot swallow a real name by position alone.
+    private static bool NamesNobody(string name) =>
+        CjkText.IsMasked(name) || NewsDigests.AnonymisedSurname(name) is not null
+        || name.IndexOf('姓', StringComparison.Ordinal) == NewsDigests.Surname(name).Length;
+
+    /// <summary>A name written with any CJK character: matched where it appears, since CJK text has no word boundaries.</summary>
+    internal static bool IsCjkName(string name) => name.Any(CjkText.IsCjk);
+
+    private const int MinFullCjkForm = 3;
+
+    /// <summary>The name stands alone in a Latin text: no letter, digit, hyphen or apostrophe next to it on either side.</summary>
+    private const string WordBefore = @"(?<![\p{L}\p{M}\p{Nd}'’-])", WordAfter = @"(?![\p{L}\p{M}\p{Nd}'’-])";
+
+    private static (int Age, bool StatedAtEventTime)? Find(string text, IEnumerable<string> names, bool fullFormsOnly = false)
     {
         // ponytail: the first 100 names only. Each name is a regex tried on every sentence that might hold it; a Profile of
         // thousands of aliases against a long article took minutes. Raise the cap if a real Profile needs more.
-        var list = names.Where(n => n.Length > 0).Take(MaxNames).ToList();
-        var matchers = list.Select(n => (Name: n, Regex: new Lazy<Regex>(() => AgeNextToName(n), isThreadSafe: false))).ToArray();
+        var list = names.Where(n => n.Length > 0 && (!fullFormsOnly || IsFullForm(n))).Take(MaxNames).ToList();
+        var matchers = list.Select(n => (Name: n, Regex: new Lazy<Regex>(() => AgeNextToName(n, fullFormsOnly && !IsCjkName(n)), isThreadSafe: false))).ToArray();
         foreach (var sentence in CjkText.Sentences(text))
         {
             if (AgeFromRespectivelyList(sentence, list) is { } each) return (each, false);
@@ -88,16 +128,16 @@ public static partial class StatedAgeCheck
     private static bool HasNoCaseEquivalent(char c) =>
         CjkText.IsCjk(c) || (!char.IsLetter(c) && char.ToUpperInvariant(c) == c && char.ToLowerInvariant(c) == c);
 
-    private static Regex AgeNextToName(string name)
+    private static Regex AgeNextToName(string name, bool asWord)
     {
-        var n = Regex.Escape(name);
+        var n = asWord ? $"{WordBefore}{Regex.Escape(name)}{WordAfter}" : Regex.Escape(name);
         return new Regex(
-            $@"{n}\s?[（(，,]?\s?{GenderFirst}(?:今年|現年|(?<event>時年))?\s?{AgeNumber}{AgeUnit}|{NotThresholdOrApproximation}{AgeNumber}{AgeUnit}的?{n}"
+            $@"{n}\s?[（(，,]?\s?{GenderFirst}(?:今年|現年|(?<event>時年))?\s?{AgeNumber}{AgeUnit}|(?:(?<event>時年)\s?)?{NotThresholdOrApproximation}{AgeNumber}{AgeUnit}的?{n}"
             + $@"|{n},?\s+aged\s+(?<n>\d{{1,3}})\b|\b(?<n>\d{{1,3}})-year-old\s+{n}|{n}\s?\((?<n>\d{{1,3}})\)",
             RegexOptions.IgnoreCase);
     }
 
-    // 時年 states the age at the reported event, not at the report date.
+    // 時年 states the age at the reported event, not at the report date, after the name or before the age that precedes it.
     private static (int Age, bool StatedAtEventTime)? StatedAge(Match m) =>
         m.Success && ChineseNumerals.Parse(m.Groups["n"].Value) is { } age ? (age, m.Groups["event"].Success) : null;
 

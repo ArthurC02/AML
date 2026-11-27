@@ -316,14 +316,14 @@ public class AugmentedCaseTests
     }
 
     [Fact]
-    public void AUG_02_04_stated_age_far_from_the_customer_is_a_soft_conflict_row_1()
+    public void AUG_02_04_stated_age_far_from_the_customer_concludes_no_match()
     {
+        // The Profile has no DOB: the only stated value is more than two years off, the validated hard conflict (user, 2026-11-27).
         var (_, a) = Augment("GC-02", [(News21, "負責人林美玲涉嫌", "負責人林美玲（30歲）涉嫌")]);
         var id = Hit21(a).Identity;
-        Assert.Equal(ComparisonStatus.Conflict, id.Evidence[EvidenceGroup.StatedAge].Status);
-        Assert.Null(id.HardConflict); // soft, never NO_MATCH
-        Assert.Equal((1, IdentityDecision.Review), (id.Stage3Row, id.Decision));
-        Assert.Equal(ReasonCodes.AgeDifferenceAtReport, id.ReasonCodes[0]);
+        Assert.Equal((ComparisonStatus.Conflict, ReasonCodes.AgeDifferenceAtReport), (id.Evidence[EvidenceGroup.StatedAge].Status, id.Evidence[EvidenceGroup.StatedAge].Detail));
+        Assert.Equal((ReasonCodes.StatedDobConflict, (int?)null, IdentityDecision.NoMatch), (id.HardConflict, id.Stage3Row, id.Decision));
+        Assert.Equal([ReasonCodes.StatedDobConflict], id.ReasonCodes);
     }
 
     [Fact]
@@ -417,16 +417,16 @@ public class AugmentedCaseTests
     }
 
     [Fact]
-    public void AUG_02_16_a_birth_date_in_the_news_that_differs_is_a_soft_conflict_row_1()
+    public void AUG_02_16_a_birth_date_in_the_news_more_than_two_years_off_concludes_no_match()
     {
+        // 1981-01-01 against 1975-09-02, and the Profile has no DOB: the validated hard conflict (user, 2026-11-27).
         var (input, a) = Augment("GC-02", [Stated("女，民國70年1月1日生")]);
         var id = Hit21(a).Identity;
         var summary = Assert.Single(Core.Explanation.ExplanationBuilder.Build(input, a).Hits).Summary.AgreementsAndDifferences;
-        Assert.Contains("衝突：新聞所載出生日期；", summary, StringComparison.Ordinal); // the reviewer is told what made row 1
-        Assert.Null(id.HardConflict); // soft, never NO_MATCH
-        Assert.Equal((1, IdentityDecision.Review, ReasonCodes.NewsBirthDateDifference), (id.Stage3Row, id.Decision, id.ReasonCodes[0]));
-        Assert.Equal(Direction.Conflict, id.Evidence[EvidenceGroup.StatedBirthDate].Direction);
-        Assert.Equal(ScreeningAssessment.Review, Hit21(a).PairResult);
+        Assert.Contains("衝突：新聞所載出生日期；", summary, StringComparison.Ordinal); // the reviewer is told what concluded
+        Assert.Equal((ReasonCodes.StatedDobConflict, (int?)null, IdentityDecision.NoMatch), (id.HardConflict, id.Stage3Row, id.Decision));
+        Assert.Equal((Direction.Conflict, ReasonCodes.NewsBirthDateDifference), (id.Evidence[EvidenceGroup.StatedBirthDate].Direction, id.Evidence[EvidenceGroup.StatedBirthDate].Detail));
+        Assert.Equal(ScreeningAssessment.NoHit, Hit21(a).PairResult);
     }
 
     [Fact]

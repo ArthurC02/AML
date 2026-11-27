@@ -80,7 +80,9 @@ public class PageCandidateTests
     [InlineData(PersonReadBy.RuleRead, NewsParty.Suspect, LegalStage.Alleged, "", "HIT", "")]
     [InlineData(PersonReadBy.RuleRead, null, LegalStage.Indicted, "", "HIT", "")]
     [InlineData(PersonReadBy.RuleRead, NewsParty.Victim, LegalStage.Alleged, "", "NOT_HIT", "PAGE_PERSON_NOT_SUSPECT")]
-    [InlineData(PersonReadBy.RuleRead, NewsParty.Witness, LegalStage.Unknown, "", "NOT_HIT", "PAGE_PERSON_NOT_SUSPECT")]
+    // 證人 does not show the person is no suspect (a co-defendant testifying is written so): the stage decides.
+    [InlineData(PersonReadBy.RuleRead, NewsParty.Witness, LegalStage.Indicted, "", "HIT", "")]
+    [InlineData(PersonReadBy.RuleRead, NewsParty.Witness, LegalStage.Unknown, "", "UNKNOWN", "PAGE_STAGE_NOT_READ")]
     [InlineData(PersonReadBy.RuleRead, NewsParty.Official, LegalStage.Convicted, "", "NOT_HIT", "PAGE_PERSON_NOT_SUSPECT")]
     [InlineData(PersonReadBy.ModelRead, NewsParty.Victim, LegalStage.Alleged, "", "HIT", "")]
     [InlineData(PersonReadBy.ModelRead, NewsParty.Witness, LegalStage.Unknown, "", "UNKNOWN", "PAGE_STAGE_NOT_READ")]
@@ -99,14 +101,15 @@ public class PageCandidateTests
     }
 
     [Theory]
-    // The birth date written next to the name is a value stated in a source (ADR-0012): equal agrees (MEDIUM, row 5), any
-    // other date is the soft conflict of row 1, within two years or beyond; it never concludes NO_MATCH.
-    [InlineData("（男，民國69年5月20日生）", "REVIEW", 5, "PARTIAL_SUPPORT_ONLY", "NEWS_BIRTH_DATE_AGREES")]
-    [InlineData("（男，民國70年5月20日生）", "REVIEW", 1, "NEWS_BIRTH_DATE_DIFFERENCE", "NEWS_BIRTH_DATE_DIFFERENCE")]
-    [InlineData("（男，民國73年5月20日生）", "REVIEW", 1, "NEWS_BIRTH_DATE_DIFFERENCE", "NEWS_BIRTH_DATE_DIFFERENCE")]
-    [InlineData("（女）", "REVIEW", 6, "NO_NON_PREREQUISITE_SUPPORT", "NEWS_GENDER_DIFFERENCE")]
-    [InlineData("", "REVIEW", 6, "NO_NON_PREREQUISITE_SUPPORT", null)]
-    public void A_page_person_named_as_the_customer_is_compared_as_attached_news_is(string stated, string decision, int row, string reason, string? statedCode)
+    // The birth date written next to the name is a value stated in a source (ADR-0012): equal agrees (MEDIUM, row 5); a date
+    // within two years of the customer's (1980-05-20) is neutral (row 6); one more than two years off concludes NO_MATCH
+    // (STATED_DOB_CONFLICT, user 2026-11-27), NO_HIT on the raised condition.
+    [InlineData("（男，民國69年5月20日生）", "REVIEW", 5, "PARTIAL_SUPPORT_ONLY", "NEWS_BIRTH_DATE_AGREES", "REVIEW")]
+    [InlineData("（男，民國70年5月20日生）", "REVIEW", 6, "NO_NON_PREREQUISITE_SUPPORT", "PAGE_BIRTH_DATE_WITHIN_TOLERANCE", "REVIEW")]
+    [InlineData("（男，民國73年5月20日生）", "NO_MATCH", null, "STATED_DOB_CONFLICT", "NEWS_BIRTH_DATE_DIFFERENCE", "NO_HIT")]
+    [InlineData("（女）", "REVIEW", 6, "NO_NON_PREREQUISITE_SUPPORT", "NEWS_GENDER_DIFFERENCE", "REVIEW")]
+    [InlineData("", "REVIEW", 6, "NO_NON_PREREQUISITE_SUPPORT", null, "REVIEW")]
+    public void A_page_person_named_as_the_customer_is_compared_as_attached_news_is(string stated, string decision, int? row, string reason, string? statedCode, string result)
     {
         var page = Page($"〔本報記者／臺北報導〕被告王大明{stated}涉嫌詐欺，遭臺北地檢署提起公訴。\n證人李小華到庭。");
 
@@ -118,7 +121,7 @@ public class PageCandidateTests
             CaseJson.Code(hit.Identity.Evidence[EvidenceGroup.Gender].Status), CaseJson.Code(hit.Identity.Evidence[EvidenceGroup.Nationality].Status)));
         Assert.Equal(statedCode, hit.Identity.Evidence.Values.FirstOrDefault(e => e.Group is EvidenceGroup.StatedBirthDate or EvidenceGroup.StatedGender)?.Detail);
         var c = Assert.Single(hit.Conditions);
-        Assert.Equal((ListType.AdverseMedia, ConditionStatus.Hit, LegalStage.Indicted, "REVIEW"), (c.Type, c.Status, c.LegalStage, CaseJson.Code(hit.PairResult)));
+        Assert.Equal((ListType.AdverseMedia, ConditionStatus.Hit, LegalStage.Indicted, result), (c.Type, c.Status, c.LegalStage, CaseJson.Code(hit.PairResult)));
         // Every person of the page is recorded, the one whose name does not correspond too.
         Assert.Equal([("王大明", true), ("李小華", false)], Assert.Single(a.Pages!).Persons.Select(p => (p.Name, p.Candidate)));
         CodeCatalogTests.AssertKnown(Input(page), a);
@@ -126,14 +129,16 @@ public class PageCandidateTests
 
     [Theory]
     // The customer, born 1980-05-20, is 46 on 2026-11-20. With the page's publication date the stated age is compared as an
-    // attached news's at its report date (±2 years compatible, beyond a soft conflict, never NO_MATCH); without it, it is
-    // recorded and not compared.
-    [InlineData("46", "2026-11-20", "AGE_COMPATIBLE_AT_REPORT")]
-    [InlineData("44", "2026-11-20", "AGE_COMPATIBLE_AT_REPORT")]
-    [InlineData("43", "2026-11-20", "AGE_DIFFERENCE_AT_REPORT")]
-    [InlineData("60", "2026-11-20", "AGE_DIFFERENCE_AT_REPORT")]
-    [InlineData("60", null, "AGE_NOT_COMPARABLE")]
-    public void A_stated_age_on_a_page_is_compared_at_its_publication_date_exactly_as_attached_news_at_its_report_date(string age, string? publishedOn, string code)
+    // attached news's at its report date (±2 years compatible); beyond, the birth interval it gives is more than two years
+    // from the customer's, which concludes NO_MATCH (STATED_DOB_CONFLICT) on a page as in attached news of a list Profile
+    // without a DOB. Without the date it is recorded and not compared.
+    [InlineData("46", "2026-11-20", "AGE_COMPATIBLE_AT_REPORT", IdentityDecision.Review)]
+    [InlineData("44", "2026-11-20", "AGE_COMPATIBLE_AT_REPORT", IdentityDecision.Review)]
+    [InlineData("43", "2026-11-20", "AGE_DIFFERENCE_AT_REPORT", IdentityDecision.NoMatch)]
+    [InlineData("60", "2026-11-20", "AGE_DIFFERENCE_AT_REPORT", IdentityDecision.NoMatch)]
+    [InlineData("60", null, "AGE_NOT_COMPARABLE", IdentityDecision.Review)]
+    public void A_stated_age_on_a_page_is_compared_at_its_publication_date_exactly_as_attached_news_at_its_report_date(string age, string? publishedOn, string code,
+        IdentityDecision decision)
     {
         var text = $"〔本報記者／臺北報導〕被告王大明（{age}歲）涉嫌詐欺，遭臺北地檢署提起公訴。";
         var on = PartialDate.Parse(publishedOn);
@@ -144,12 +149,38 @@ public class PageCandidateTests
         Assert.Equal(int.Parse(age, System.Globalization.CultureInfo.InvariantCulture), page.Persons![0].StatedAge);
         var evidence = hit.Identity.Evidence[EvidenceGroup.StatedAge];
         Assert.Equal(code, evidence.Detail);
-        // The same evidence and decision as attached news of a list Profile with that report date.
+        // The same evidence and decision as attached news of a list Profile (no DOB) with that report date.
         var attached = new NewsItem("1", null, "詐欺案起訴", "news.example.test", on, text);
         Assert.Equal(StatedAgeCheck.Check(Subject(), hit.Profile, attached), evidence);
-        var asNews = IdentityDecisionPolicy.Decide(Subject(), hit.Profile, attached);
-        Assert.Equal((asNews.Decision, asNews.Stage3Row, asNews.ReasonCodes[0]), (hit.Identity.Decision, hit.Identity.Stage3Row, hit.Identity.ReasonCodes[0]));
-        Assert.Equal(IdentityDecision.Review, hit.Identity.Decision);
+        Assert.Equal(decision, hit.Identity.Decision);
+        Assert.Equal(decision == IdentityDecision.NoMatch ? ReasonCodes.StatedDobConflict : null, hit.Identity.HardConflict);
+        var asNews = IdentityDecisionPolicy.Decide(Subject(), hit.Profile with { ProfileKey = "DJ:1" }, attached);
+        Assert.Equal((decision, hit.Identity.HardConflict), (asNews.Decision, asNews.HardConflict));
+    }
+
+    [Theory]
+    // An update date standing in for the publication date (UPDATE_DATE) is shown, never the report date: a site's update date
+    // was measured years from the publication date, so even an age 14 years off is not compared and concludes nothing.
+    [InlineData("46")]
+    [InlineData("60")]
+    public void A_stated_age_on_a_page_dated_only_by_its_update_date_is_not_compared_and_the_date_is_shown_as_an_update(string age)
+    {
+        var page = Page($"〔本報記者／臺北報導〕被告王大明（{age}歲）涉嫌詐欺，遭臺北地檢署提起公訴。") with
+        {
+            PublishedOn = new PartialDate(2026, 11, 20),
+            PublishedOnSource = PublicationSource.UpdateDate,
+        };
+        var input = Input(page);
+        var analysis = CaseAnalyzer.Analyze(input, asOf: new DateOnly(2026, 11, 27));
+        var hit = Assert.Single(analysis.Hits);
+
+        Assert.Equal(("AGE_NOT_COMPARABLE", IdentityDecision.Review, (string?)null),
+            (hit.Identity.Evidence[EvidenceGroup.StatedAge].Detail, hit.Identity.Decision, hit.Identity.HardConflict));
+        var news = PageCandidates.News(page, page.Persons![0]);
+        Assert.Equal(((PartialDate?)null, (PartialDate?)new PartialDate(2026, 11, 20)), (news.PublishedOn, news.UpdatedOn));
+        var e = Assert.Single(ExplanationBuilder.Build(input, analysis).Hits);
+        Assert.Null(Assert.Single(e.Sources).PublishedOn);
+        Assert.Contains("網頁未載發布日期，只載更新日期 2026-11-20（UPDATE_DATE），不作報導日期，所載年齡不比對", e.Summary.ExternalData, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -165,6 +196,20 @@ public class PageCandidateTests
         Assert.Empty(a.Hits);
         Assert.Equal(ScreeningAssessment.NoHit, CaseLifecycle.Aggregate(a));
         Assert.Equal([("林小華", false)], Assert.Single(a.Pages!).Persons.Select(p => (p.Name, p.Candidate)));
+    }
+
+    // 證人 concludes nothing (a co-defendant testifying is written so): with no stage read for the witness the condition is
+    // UNKNOWN; a stage the rules read for the name (here the indictment in the witness's own sentence) gives HIT. Either way
+    // the pair waits on review, never NOT_APPLICABLE.
+    [Theory]
+    [InlineData("〔本報記者／臺北報導〕林小華涉嫌詐欺，遭臺北地檢署提起公訴。證人王大明出庭作證。", ConditionStatus.Unknown, LegalStage.Unknown, "PAGE_STAGE_NOT_READ")]
+    [InlineData("〔本報記者／臺北報導〕林小華涉嫌詐欺，遭臺北地檢署提起公訴，證人王大明出庭作證。", ConditionStatus.Hit, LegalStage.Indicted, "")]
+    public void The_customer_named_on_a_page_as_a_witness_is_not_concluded_no_suspect(string text, ConditionStatus status, LegalStage stage, string codes)
+    {
+        var hit = Assert.Single(CaseAnalyzer.Analyze(Input(Page(text)), asOf: new DateOnly(2026, 11, 27)).Hits);
+
+        var c = Assert.Single(hit.Conditions);
+        Assert.Equal((status, stage, codes, ScreeningAssessment.Review), (c.Status, c.LegalStage, string.Join(",", c.ReasonCodes), hit.PairResult));
     }
 
     [Fact]

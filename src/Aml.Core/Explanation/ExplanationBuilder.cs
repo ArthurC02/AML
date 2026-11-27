@@ -70,7 +70,7 @@ public static class ExplanationBuilder
             Sources: sources,
             Summary: new ExplanationSummary(
                 InternalData: InternalData(s, subject),
-                ExternalData: ExternalData(h, categories, sources, hasNews: news is not null),
+                ExternalData: ExternalData(h, categories, sources, news),
                 AgreementsAndDifferences: AgreementsAndDifferences(rows, unknown, h.Identity.Evidence, h.PairReasonCodes.Contains(AssessmentPolicy.AttachedNewsDisagreesWithProfile)),
                 KeyEvidenceOrGaps: KeyEvidence(h, support),
                 Conclusion: Conclusion(h)),
@@ -106,11 +106,13 @@ public static class ExplanationBuilder
     private static string InternalData(ScreenedSubject s, string subject) =>
         $"受檢對象為{subject}；出生日期 {OrMissing(s.DateOfBirth?.ToString())}；國籍 {OrMissing(Join(s.Nationalities))}；性別 {OrMissing(Gender(s.Gender))}；證件 {(s.Document is null ? "未提供" : "已提供")}。";
 
-    private static string ExternalData(HitResult h, List<string> categories, List<ExplanationSource> sources, bool hasNews)
+    private static string ExternalData(HitResult h, List<string> categories, List<ExplanationSource> sources, NewsItem? news)
     {
         var p = h.Profile;
+        var hasNews = news is not null;
         if (ProfileKeys.IsWeb(p.ProfileKey))
             return $"收到網頁的人物 {p.ProfileKey}{Cite(sources)}判定為 {Join(h.Conditions.Select(Condition))}；網頁除姓名旁所載者外沒有出生日期、國籍或性別欄位"
+                + (news?.UpdatedOn is { } updated ? $"；網頁未載發布日期，只載更新日期 {updated}（UPDATE_DATE），不作報導日期，所載年齡不比對" : "")
                 + (p.Findings.Contains(Pages.PageCandidates.ModelRead) ? "；此人由新聞模型讀出（MODEL_READ）" : "") + "。";
         return $"名單 {p.ProfileKey}（{Join(categories)}）{Cite(sources.Where(x => x.UsedFor == SourceUse.ProfileRecord))}判定為 {Join(h.Conditions.Select(Condition))}；"
             + $"出生日期 {OrMissing(Join(p.DatesOfBirth.Select(d => d.ToString())))}；國籍 {OrMissing(Join(p.Citizenship))}；性別 {OrMissing(Gender(p.Gender))}；"

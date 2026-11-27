@@ -108,8 +108,9 @@ public sealed record SourceReference(
 
 /// <param name="Url">A received page's URL; null for news attached in the export.</param>
 /// <param name="RetrievedOn">When a received page was fetched (ISO date); null for news attached in the export.</param>
+/// <param name="UpdatedOn">A received page's update date when it states no publication date: shown, never a report date (PublishedOn is then null).</param>
 public sealed record NewsItem(string ProfileId, string? DocumentId, string Title, string? Publisher, PartialDate? PublishedOn, string Text,
-    string? Url = null, string? RetrievedOn = null);
+    string? Url = null, string? RetrievedOn = null, PartialDate? UpdatedOn = null);
 
 /// <summary>A source flag exactly as read (extraction-and-normalization.md#source-flags). NO is a value, not unknown.</summary>
 public enum FlagValue { Missing, Yes, No, Unparseable }

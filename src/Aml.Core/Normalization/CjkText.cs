@@ -24,6 +24,16 @@ public static class CjkText
 
     private static bool IsMask(char c) => c is '○' or '〇' or '◯' or 'Ｏ' or 'O';
 
+    /// <summary>
+    /// A name that hides who it is: one holding 某 (王某某), or an ideograph name whose other characters are all masks,
+    /// those of <see cref="MaskedForm"/> or ＊, *, Ｘ, X (王○明, 王**, 王XX). A Latin name is never masked.
+    /// </summary>
+    public static bool IsMasked(string name) =>
+        name.Contains('某', StringComparison.Ordinal)
+        || (name.Any(IsCjk) && name.Any(IsNameMask) && name.All(c => IsCjk(c) || IsNameMask(c)));
+
+    private static bool IsNameMask(char c) => IsMask(c) || c is '＊' or '*' or 'Ｘ' or 'X';
+
     public static string HalfWidth(string s)
     {
         var sb = new StringBuilder(s.Length);

@@ -12,7 +12,7 @@ public sealed record CodeEntry(string Code, string Kind, string Name, string Des
 /// </summary>
 public static class CodeCatalog
 {
-    public const string Version = "codes-13";
+    public const string Version = "codes-14";
 
     private const string Sources = "docs/feature/external-sources.md";
     private const string Identity = "docs/feature/identity-adjudication.md";
@@ -36,6 +36,7 @@ public static class CodeCatalog
         ("IDENTITY_REASON", "DOCUMENT_IDENTITY_CONFLICT", "同類證件不符", "同類型、同發證國的證件號碼不同；第三階段第 1 列，REVIEW。", "EvidenceBuilder.DocumentEvidence", Identity + "#stage-3-table"),
         ("IDENTITY_REASON", "DEATH_BEFORE_CUSTOMER_BIRTH", "名單人物死於受檢對象出生前", "名單記載的死亡日期早於受檢對象出生；規則待驗證，維持 REVIEW。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
         ("IDENTITY_REASON", "DOB_CONFLICT", "出生日期相差逾兩年", "名單所有出生日期都與受檢對象相差超過 2 年（以較粗的精度比，可能不逾 2 年就不算），且雙方沒有共同的完整日期；使用者 2026-11-27 決定放行的硬衝突，排除身分（NO_MATCH），各名單類型皆同，除非來源品質降級。名單合併時另指沒有任何相符的出生日期，合併被拒絕。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
+        ("IDENTITY_REASON", "STATED_DOB_CONFLICT", "所載出生日期或年齡相差逾兩年", "附加新聞或收到網頁在此人姓名旁所載、可比對的出生日期與年齡（依報導或發布日期推算的出生區間）都與受檢對象的出生日期相差超過 2 年，且名單本身沒有出生日期；使用者 2026-11-27 決定放行的硬衝突，排除身分（NO_MATCH），除非來源品質降級。相差未逾 2 年、缺日期或無法比對的值，或名單本身的出生日期相符時，不會排除。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
         ("IDENTITY_REASON", "BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE", "出生年相符，完整日期無法比對", "出生年相同，但至少一方只有年份。", "EvidenceBuilder.Build", Identity + "#reason-code-registry"),
         ("IDENTITY_REASON", "DOB_AGREES_WITHIN_TOLERANCE", "出生日期在兩年容許內相符", "名單出生日期與受檢對象不同，但相差未逾 2 年；依出生日期容許規則（使用者 2026-11-27）視為相符，是最弱的出生日期佐證（LOW，與只相符到年同級），說明寫出相差多少。", "EvidenceBuilder.DateOfBirthEvidence", Identity + "#birth-date-tolerance"),
         ("IDENTITY_REASON", "GENDER_CONFLICT", "性別不符", "雙方性別不同；前提條件衝突，排除第三階段第 3、4 列。也用於拒絕性別矛盾的名單合併。", "EvidenceBuilder.Build", Identity + "#stage-3-table"),
@@ -48,11 +49,12 @@ public static class CodeCatalog
         ("IDENTITY_REASON", "PARTIAL_SUPPORT_ONLY", "僅部分佐證", "有佐證，但未達 PROBABLE_MATCH 的組合；第三階段第 5 列。", "IdentityDecisionPolicy.Stage3", Identity + "#stage-3-table"),
         ("IDENTITY_REASON", "NO_NON_PREREQUISITE_SUPPORT", "僅前提條件相符", "除姓名、國籍、性別等前提條件外沒有任何佐證；第三階段第 6 列。", "IdentityDecisionPolicy.Stage3", Identity + "#stage-3-table"),
         ("IDENTITY_REASON", "AGE_COMPATIBLE_AT_REPORT", "報導年齡相容", "新聞所述年齡與推算年齡相差在 2 歲內；不是佐證。", "StatedAgeCheck.Check", Identity + "#age-stated-in-a-source"),
-        ("IDENTITY_REASON", "AGE_DIFFERENCE_AT_REPORT", "報導年齡不符", "新聞所述年齡與推算年齡相差超過 2 歲；軟衝突，第三階段第 1 列。同類證件相符時為第 2 列，本代碼並列記錄。", "StatedAgeCheck.Check", Identity + "#age-stated-in-a-source"),
+        ("IDENTITY_REASON", "AGE_DIFFERENCE_AT_REPORT", "報導年齡不符", "新聞所述年齡依報導日期推得的出生區間都與受檢對象的出生日期相差超過 2 年（即年齡相差超過 2 歲；2 月 29 日附近可差一天）；第三階段第 1 列，同類證件相符時為第 2 列，本代碼並列記錄。沒有其他相容的所載值、名單本身也沒有出生日期時，另以 STATED_DOB_CONFLICT 排除。", "StatedAgeCheck.Check", Identity + "#age-stated-in-a-source"),
         ("IDENTITY_REASON", "AGE_NOT_COMPARABLE", "報導年齡無法比對", "新聞有年齡，但缺完整出生日期或報導日期，或年齡是事件當時（時年）。", "StatedAgeCheck.Check", Identity + "#age-stated-in-a-source"),
         ("IDENTITY_REASON", "NEWS_BIRTH_DATE_AGREES", "新聞所載出生日期相符", "新聞在名單人物姓名旁所載的出生日期與受檢對象相符；名單本身沒有相符的出生日期時是佐證（完整日期 MEDIUM，其餘 LOW），不是直接識別資料。", "NewsStatedCheck.CheckBirthDate", Identity + "#birth-date-and-gender-stated-in-a-source"),
-        ("IDENTITY_REASON", "NEWS_BIRTH_DATE_DIFFERENCE", "新聞所載出生日期不符", "新聞在名單人物姓名旁所載的出生日期都與受檢對象不符；軟衝突，第三階段第 1 列。同類證件相符時為第 2 列，本代碼並列記錄。名單本身的出生日期相符時只顯示，不是衝突。", "NewsStatedCheck.CheckBirthDate", Identity + "#birth-date-and-gender-stated-in-a-source"),
+        ("IDENTITY_REASON", "NEWS_BIRTH_DATE_DIFFERENCE", "新聞所載出生日期不符", "新聞在名單人物姓名旁所載的出生日期都與受檢對象不符；軟衝突，第三階段第 1 列。同類證件相符時為第 2 列，本代碼並列記錄。名單本身的出生日期相符時只顯示，不是衝突。都相差超過 2 年、名單本身沒有出生日期時，另以 STATED_DOB_CONFLICT 排除。", "NewsStatedCheck.CheckBirthDate", Identity + "#birth-date-and-gender-stated-in-a-source"),
         ("IDENTITY_REASON", "NEWS_BIRTH_DATE_AMBIGUOUS", "新聞所載出生日期分歧", "同一寫法的姓名旁有分散的出生日期，其中之一與受檢對象相符；不是佐證。", "NewsStatedCheck.CheckBirthDate", Identity + "#birth-date-and-gender-stated-in-a-source"),
+        ("IDENTITY_REASON", "PAGE_BIRTH_DATE_WITHIN_TOLERANCE", "網頁所載出生日期在兩年內", "收到網頁在此人姓名旁所載的出生日期與受檢對象不同，但有一個相差未逾 2 年；中性：不是佐證，也不是衝突（使用者 2026-11-27）。", "NewsStatedCheck.CheckBirthDate", Identity + "#birth-date-and-gender-stated-in-a-source"),
         ("IDENTITY_REASON", "NEWS_GENDER_AGREES", "新聞所載性別相符", "新聞在名單人物姓名旁所載的性別與受檢對象相同；只顯示，不是佐證。", "NewsStatedCheck.CheckGender", Identity + "#birth-date-and-gender-stated-in-a-source"),
         ("IDENTITY_REASON", "NEWS_GENDER_DIFFERENCE", "新聞所載性別不符", "新聞在名單人物姓名旁所載的性別與受檢對象不同；排除第三階段第 3、4 列。名單本身的性別相符時只顯示。", "NewsStatedCheck.CheckGender", Identity + "#birth-date-and-gender-stated-in-a-source"),
         ("IDENTITY_REASON", "ENTITY_IDENTIFIER_AGREEMENT", "實體識別碼相符", "非自然人記錄：雙方登記號碼或 IMO 號碼相同。", "IdentityDecisionPolicy.EntityDecision", Identity + "#reason-code-registry"),
@@ -96,8 +98,8 @@ public static class CodeCatalog
         ("CONDITION_REASON", "FLAG_CATEGORY_CONFLICT", "旗標與類別矛盾", "旗標與名單類別矛盾；以旗標為準並記錄。", "SourceConditions.Determine", Watchlist + "#reason-codes"),
         ("CONDITION_REASON", "BLACKLIST_TYPE_UNDECIDED", "黑名單類型未定", "黑名單＝YES，但來源欄位無法決定名單類型。", "SourceConditions.Determine", Watchlist + "#reason-codes"),
         ("CONDITION_REASON", "IS_RCA_FLAG", "RCA 旗標", "RCA 條件來自 Is RCA? = YES。", "SourceConditions.Determine", Watchlist + "#reason-codes"),
-        ("CONDITION_REASON", SourceConditions.PagePersonNotSuspect, "網頁人物不是嫌疑人", "規則在收到網頁中此人姓名前讀出非嫌疑人的身分詞（被害人、證人、檢察官等）；ADVERSE_MEDIA 條件為 NOT_HIT。新聞模型讀出的身分不採用（量測不可靠）。", "SourceConditions.FromPage", Sources + "#common-path"),
-        ("CONDITION_REASON", SourceConditions.PageStageNotRead, "網頁未讀出法律階段", "收到網頁沒有讀出此人的法律階段，也沒有讀出非嫌疑人的身分詞；ADVERSE_MEDIA 條件為 UNKNOWN，待複核閱讀網頁。", "SourceConditions.FromPage", Sources + "#common-path"),
+        ("CONDITION_REASON", SourceConditions.PagePersonNotSuspect, "網頁人物不是嫌疑人", "規則在收到網頁中此人姓名前讀出被害人或公務人員的身分詞（被害人、告訴人、檢察官、法官等），且沒有讀出嫌疑人的身分詞；ADVERSE_MEDIA 條件為 NOT_HIT。證人不算（共同被告作證時也寫作證人，量測所見），依讀出的法律階段決定。新聞模型讀出的身分不採用（量測不可靠）。", "SourceConditions.FromPage", Sources + "#common-path"),
+        ("CONDITION_REASON", SourceConditions.PageStageNotRead, "網頁未讀出法律階段", "收到網頁沒有讀出此人的法律階段，也沒有讀出被害人或公務人員的身分詞（證人亦同）；ADVERSE_MEDIA 條件為 UNKNOWN，待複核閱讀網頁。", "SourceConditions.FromPage", Sources + "#common-path"),
         ("CONDITION_REASON", "UNMAPPED_CATEGORY", "未對應的類別", "名單類別沒有對應的名單類型；UNKNOWN，待複核。", "SourceConditions.Determine", Watchlist + "#reason-codes"),
         ("CONDITION_REASON", "SANCTION_MEASURE_NOT_CONFIRMED", "制裁措施未確認", "制裁名單未確認現行措施；條件為 UNKNOWN。", "SourceConditions.Determine", "docs/feature/sanctions-screening.md#sanction-condition"),
         ("CONDITION_REASON", "RCA_OUTSIDE_STATUTORY_SCOPE", "RCA 超出法定範圍", "關係不在法定 RCA 範圍內。", "SourceConditions.Determine", "docs/feature/pep-rca-screening.md#rca-relationship-scope"),

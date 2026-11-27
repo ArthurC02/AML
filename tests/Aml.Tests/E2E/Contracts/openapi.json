@@ -4538,6 +4538,7 @@
           "METADATA",
           "TEXT",
           "MISSING",
+          "UPDATE_DATE",
           null
         ]
       },

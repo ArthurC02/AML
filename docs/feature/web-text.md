@@ -26,7 +26,7 @@
 1. Boilerplate is removed, but only while the element holds less than half the page's text. So a WebForms `<form>` or a wrapper named `no-sidebar` around the whole page stays. Two kinds of element are removed:
    - Elements that never hold content: script, style, nav, header, footer, aside, iframe, form controls and the like.
    - Elements with a class or id token naming boilerplate: nav, menu, footer, header, sidebar, breadcrumb, share, social, related, comment, pager, copyright, print … Whole tokens count, split at spaces, `-` and `_`, so `shareholder-info` is not `share`.
-2. Each paragraph-like element with at least 20 characters of its own text gives its parent a score: 1, plus its commas (，、。；,), plus its length in hundreds (at most 3). Its grandparent gets half that score. Text written in a `div` with `<br>` counts, not only `<p>`.
+2. Each paragraph-like element with at least 20 characters of its own text gives its parent a score: 1, plus its commas (，、。；,), plus its length in hundreds (at most 3). Its grandparent gets half that score, unless that is above the body (a paragraph right under `<body>`). Text written in a `div` with `<br>` counts, not only `<p>`.
 3. The main text is the container with the best score times one minus its share of link text. All links count, so a long link list scores as links.
 4. Inside it, any block whose text is more than half link text is dropped (上一則／下一則, 相關新聞).
 5. The text has one line per block element and per `<br>`, with spaces collapsed:
@@ -34,6 +34,8 @@
    - Inline elements (a, span, del, ruby …) stay in their line.
    - Table cells of a row are one line, separated by spaces.
 6. The title is the first `h1` of the main text. Failing that, it is the first `h1` outside a header or nav, then the page title.
+
+The publication date is read from the metadata and from a publication label in the page template (`發布日期：` with its date in one short element, not under a boilerplate-named container) after the depth check and before boilerplate is removed, and from the head of the main text after; the update date (`更新日期：`, `article:modified_time`) is read the same way and stands in, marked `UPDATE_DATE`, only when no publication date is stated (`PublishedDates`; the forms and the `MISSING` rules are in [external sources](external-sources.md#common-path)). A PDF's date is read from the head of its text only.
 
 The page is decoded by its meta charset (UTF-8, Big5); a charset given only in the HTTP header is not used. Parsing has the time budget of the HTML reader ([extraction](extraction-and-normalization.md)), and a page nesting deeper than 256 levels is refused. Every element's text, link and comma counts are summed once, bottom up, so the rest of the work is linear in the page.
 

@@ -23,7 +23,9 @@ public static partial class NewsIdentifiers
 {
     private const int MaxForms = 20, MaxPerForm = 200, MaxAfter = 200, MaxEngaged = 300, MaxBefore = 24, MaxFound = 20, MaxPeel = 6, MaxCommaItems = 6, MaxBracketItems = 12;
 
-    public static IReadOnlyList<NewsIdentifier> Read(string text, IEnumerable<string> forms)
+    /// <param name="wholeWords">A form without CJK characters is read only where it stands as a whole word (not 'Ming' in
+    /// 'Chih-Ming'); a CJK form is always read where it appears.</param>
+    public static IReadOnlyList<NewsIdentifier> Read(string text, IEnumerable<string> forms, bool wholeWords = false)
     {
         var found = new List<NewsIdentifier>();
         void Add(NewsIdentifierKind kind, string value)
@@ -39,8 +41,10 @@ public static partial class NewsIdentifiers
         {
             if (text.Contains(form, StringComparison.Ordinal) && AnonymisedGender().Match(form) is { Success: true } g) Add(NewsIdentifierKind.Gender, g.Groups["g"].Value);
             var at = 0;
+            var asWord = wholeWords && !form.Any(CjkText.IsCjk);
             for (var n = 0; n < MaxPerForm && found.Count < MaxFound && (at = text.IndexOf(form, at, StringComparison.Ordinal)) >= 0; n++, at += form.Length)
             {
+                if (asWord && (InWord(text, at - 1) || InWord(text, at + form.Length))) continue;
                 After(text, at + form.Length, Add);
                 PartyLines(text, at + form.Length, Add);
                 Before(text[Math.Max(0, at - MaxBefore)..at], Add);
@@ -49,6 +53,9 @@ public static partial class NewsIdentifiers
         }
         return found;
     }
+
+    private static bool InWord(string text, int i) =>
+        i >= 0 && i < text.Length && (char.IsLetterOrDigit(text[i]) || text[i] is '-' or '\'' or '’' || char.GetUnicodeCategory(text[i]) == System.Globalization.UnicodeCategory.NonSpacingMark);
 
     private static void After(string text, int end, Action<NewsIdentifierKind, string> add)
     {

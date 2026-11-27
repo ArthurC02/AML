@@ -151,7 +151,7 @@ public sealed record ReceivedPage(string CustomerCase, string Variant, string Ur
 /// characters, made-up numbers and places), written as the bank's .txt / .html export the readers parse. Nothing is read
 /// from samples/ or any real data. Same assumptions, same seed: the same files byte for byte.
 /// </summary>
-public sealed class SyntheticCaseGenerator
+public sealed partial class SyntheticCaseGenerator
 {
     private readonly SyntheticAssumptions a;
     private readonly Random r;

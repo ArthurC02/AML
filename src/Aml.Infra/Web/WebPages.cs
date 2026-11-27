@@ -17,7 +17,7 @@ public static class WebPages
             if (page.MediaType == "application/pdf")
             {
                 var pdf = PdfText.Unwrap(PdfText.FromPdf(page.Body));
-                var (on, source) = PublishedDates.Agreed([], PublishedDates.FromText(pdf));
+                var (on, source) = PublishedDates.Agreed([], PublishedDates.FromText(pdf), PublishedDates.FromText(pdf, update: true));
                 read = new PageText(null, pdf, on, source);
             }
             else read = MainText.FromHtml(page.Body);

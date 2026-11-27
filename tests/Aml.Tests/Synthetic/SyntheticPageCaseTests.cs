@@ -86,12 +86,10 @@ public class SyntheticPageCaseTests
                 var conditionRight = t.Suspect ? c.Status == ConditionStatus.Hit : c.Status == ConditionStatus.NotHit;
                 if (conditionRight) Count("condition right");
                 if (t.Suspect && c.Status == ConditionStatus.Hit) Count(c.LegalStage == t.Stage ? "stage right" : $"stage {CaseJson.Code(c.LegalStage)} for {CaseJson.Code(t.Stage)}");
-                // Measurement only: the stated birth date taken as the record's own field, under the two-year rule of a Profile DOB.
-                var whatIf = IdentityDecisionPolicy.Decide(input.Subject, hit.Profile with { DatesOfBirth = read.StatedBirthDates }, PageCandidates.News(record, read)).Decision;
-                if (whatIf != hit.Identity.Decision) Count($"what-if stated DOB as a field: {who} {CaseJson.Code(hit.Identity.Decision)} → {CaseJson.Code(whatIf)}");
                 if (hit.Identity.Evidence.TryGetValue(EvidenceGroup.StatedAge, out var age)) Count($"stated age: {who} {age.Detail}");
+                if (hit.Identity.Evidence.TryGetValue(EvidenceGroup.StatedBirthDate, out var birth)) Count($"stated birth date: {who} {birth.Detail}");
                 // Measurement only: the age taken as a birth-year field (either year it allows at the publication date), under the
-                // two-year rule of a Profile DOB.
+                // two-year rule of a Profile DOB, agreement within two years included (the alternative not taken).
                 if (read.StatedAge is { } stated && record.PublishedOn is { Precision: DatePrecision.Day } at)
                 {
                     var asField = hit.Profile with { DatesOfBirth = [new PartialDate(at.Year - stated - 1), new PartialDate(at.Year - stated)] };
@@ -129,14 +127,15 @@ public class SyntheticPageCaseTests
         // 64 pages read; 72 persons read, each recorded in its revision, 8 of them no candidate (their names do not correspond).
         // Right person found: 32/32 suspect customers and 8/8 customers named as victim or witness are candidates. Wrong person
         // excluded: the 27 other persons with another name never become a pair (19 after 同案的, which no rule reads; 8 by name);
-        // the 25 with the customer's very name are candidates. Conditions right 65/65 (the 8 non-suspects NOT_HIT by the role word
-        // the rules read), stage right 57/57. Publication date: of the 24 pages stating an age, 11 in the metadata and 8 on a
+        // the 25 with the customer's very name are candidates. Conditions right 61/65: the 4 victims NOT_HIT by the role word the
+        // rules read; the 4 witnesses HIT, since 證人 does not show a person is no suspect (a co-defendant testifying is
+        // written so) and the indictment in the witness's own sentence is read for the name. Stage right 57/57. Publication date: of the 24 pages stating an age, 11 in the metadata and 8 on a
         // date line, each read as written; the other 45 pages state none (MISSING), and the fetch time never stands in.
         Assert.Equal(Expected(screened: 72, modelRead: 0, notRead: 19), m.Counts);
-        // Decided: 8 of 65 pairs (the non-suspects), none wrong. Every other pair waits on identity: a page carries no field
-        // beside the name, so nothing beyond it is comparable (row 6), and a birth date or an age written next to the name is a
-        // stated value (ADR-0012): the customer's own agrees (row 5, or compatible and no support), a stranger's differs
-        // (row 1), and neither concludes. An age on a page without a publication date is recorded, not compared.
+        // Decided: 14 of 65 pairs, none wrong: the 4 victims, and the 10 strangers whose stated birth date or dated age is
+        // more than two years from the customer's (STATED_DOB_CONFLICT). Every other pair waits on identity: a page carries
+        // no field beside the name (row 6); the customer's own birth date agrees (row 5), an age within ±2 or a birth date
+        // within two years is neutral. An age on a page without a publication date is recorded, not compared.
         Assert.Equal(ExpectedLosses, m.Losses);
     }
 
@@ -160,26 +159,36 @@ public class SyntheticPageCaseTests
             ["another person: persons"] = 52,
             ["another person: excluded by name"] = 27 - notRead,
             ["another person: candidate"] = 25,
-            ["condition right"] = 65,
+            ["condition right"] = 61,
             ["stage right"] = 57,
-            ["pairs decided"] = 8,
-            ["decided right: NOT_APPLICABLE"] = 8,
+            // The 4 victims (NOT_APPLICABLE) and the 10 strangers whose every stated value is more than two years off
+            // (STATED_DOB_CONFLICT, NO_MATCH on a HIT condition: NO_HIT); no customer concluded NO_MATCH.
+            ["pairs decided"] = 14,
+            ["decided right: NOT_APPLICABLE"] = 4,
+            ["decided right: NO_HIT"] = 10,
             // The stated age (24 pages): compared at the publication date where the page states one (19), else recorded only.
             ["stated age: customer AGE_COMPATIBLE_AT_REPORT"] = 5,
             ["stated age: customer AGE_NOT_COMPARABLE"] = 3,
             ["stated age: another person AGE_COMPATIBLE_AT_REPORT"] = 8, // every near stranger (1 to 2 years): within ±2
             ["stated age: another person AGE_DIFFERENCE_AT_REPORT"] = 6,
             ["stated age: another person AGE_NOT_COMPARABLE"] = 2,
-            ["what-if stated DOB as a field: another person REVIEW → NO_MATCH"] = 4,
-            // Measurement only: the age as a birth-year field under the two-year rule. 6 far strangers would conclude NO_MATCH
-            // (right); the 8 near strangers and the 5 customers would agree (the strangers' agreement wrong); no customer NO_MATCH.
-            ["what-if stated age as a birth-year field: another person REVIEW → NO_MATCH, DOB CONFLICT"] = 6,
+            // The stated birth date (12 pages): the customer's own agrees; a stranger's 3 to 15 years off differs, one within a
+            // year is neutral.
+            ["stated birth date: customer NEWS_BIRTH_DATE_AGREES"] = 4,
+            ["stated birth date: another person NEWS_BIRTH_DATE_DIFFERENCE"] = 4,
+            ["stated birth date: another person PAGE_BIRTH_DATE_WITHIN_TOLERANCE"] = 4,
+            // Measurement only: the age as a birth-year field under the two-year rule of a Profile DOB, agreement included. The 6
+            // far strangers conclude NO_MATCH as they do now; the 8 near strangers and the 5 customers would agree (the
+            // strangers' agreement wrong), which is why a page value within two years stays neutral.
+            ["what-if stated age as a birth-year field: another person NO_MATCH → NO_MATCH, DOB CONFLICT"] = 6,
             ["what-if stated age as a birth-year field: another person REVIEW → REVIEW, DOB SUPPORT"] = 8,
             ["what-if stated age as a birth-year field: customer REVIEW → REVIEW, DOB SUPPORT"] = 5,
-            // The score band (measurement only, values at the news factor 0.6) decides none either: +9 at most, prerequisites not all EXACT.
+            // The score band (measurement only, values at the news factor 0.6): the page conflict is the veto (10 NO_MATCH);
+            // nothing else decides: +9 at most, prerequisites not all EXACT.
             ["score band: customer REVIEW"] = 32,
             ["score band: customer not a suspect REVIEW"] = 8,
-            ["score band: another person REVIEW"] = 25,
+            ["score band: another person NO_MATCH"] = 10,
+            ["score band: another person REVIEW"] = 15,
         };
         if (notRead > 0) expected["another person: excluded (not read)"] = notRead;
         return expected;
@@ -189,9 +198,11 @@ public class SyntheticPageCaseTests
     {
         ["customer: identity REVIEW, row 6: NO_NON_PREREQUISITE_SUPPORT"] = 28,
         ["customer: identity REVIEW, row 5: PARTIAL_SUPPORT_ONLY"] = 4,
-        ["another person: identity REVIEW, row 1: NEWS_BIRTH_DATE_DIFFERENCE"] = 8,
-        ["another person: identity REVIEW, row 1: AGE_DIFFERENCE_AT_REPORT"] = 6,
-        ["another person: identity REVIEW, row 6: NO_NON_PREREQUISITE_SUPPORT"] = 11,
+        // The 4 witnesses: 證人 concludes nothing, and the stage of the indictment in the witness's own sentence is read for
+        // the name (HIT, review).
+        ["customer not a suspect: condition HIT"] = 4,
+        // 8 near-age strangers (compatible), 4 near-birth-date strangers (neutral), 2 undated ages, 1 page naming the customer twice.
+        ["another person: identity REVIEW, row 6: NO_NON_PREREQUISITE_SUPPORT"] = 15,
     };
 
     /// <summary>The same with the trained news models (AML_NEWS_MODELS; skipped without it): the persons they find are matched too, marked MODEL_READ.</summary>

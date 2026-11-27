@@ -6,13 +6,14 @@ namespace Aml.Core.Identity;
 /// <summary>
 /// Stage 1 hard conflict gate. Only a validated rule closes a pair as NO_MATCH; a pending rule still fires and records its
 /// code, but the pair stays REVIEW. A Profile DOB more than <see cref="EvidenceBuilder.DobToleranceYears"/> years from the
-/// customer's (FULL_DOB_CONFLICT, DOB_CONFLICT) is validated by the user's decision of 2026-11-27; DOCUMENT_IDENTITY_CONFLICT
-/// is pending and reaches REVIEW through stage 3 row 1.
+/// customer's (FULL_DOB_CONFLICT, DOB_CONFLICT), and so is every birth date or age attached news or a received page states
+/// for the person (STATED_DOB_CONFLICT), is validated by the user's decisions of 2026-11-27; DOCUMENT_IDENTITY_CONFLICT is
+/// pending and reaches REVIEW through stage 3 row 1.
 /// </summary>
 public static class HardConflictGate
 {
     public static readonly IReadOnlySet<string> ValidatedReasonCodes = new HashSet<string>
-        { ReasonCodes.ImpossibleAgeAtReportedEvent, ReasonCodes.FullDobConflict, ReasonCodes.DobConflict };
+        { ReasonCodes.ImpossibleAgeAtReportedEvent, ReasonCodes.FullDobConflict, ReasonCodes.DobConflict, ReasonCodes.StatedDobConflict };
 
     // ponytail: minimum plausible age for an attributed adult role; pending business calibration (open question).
     public const int MinimumRoleAge = 14;
@@ -48,14 +49,46 @@ public static class HardConflictGate
         || from.Precision == DatePrecision.Year
         || p.DatesOfBirth.Any(d => MaxAgeAt(d, from) < MinimumRoleAge);
 
-    /// <summary>The first rule that fires: death before birth, impossible age, the DOB conflict, impossible role.</summary>
-    public static string? Check(ScreenedSubject s, SourceProfile p)
+    /// <summary>
+    /// The first rule that fires: death before birth, impossible age, the DOB conflict, impossible role, and the values the
+    /// text <paramref name="news"/> states next to the name, as compared in <paramref name="evidence"/> (<see cref="StatedConflict"/>).
+    /// </summary>
+    public static string? Check(ScreenedSubject s, SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence>? evidence = null, NewsItem? news = null)
     {
         if (s.DateOfBirth is not { } dob) return null;
         if (p.DateOfDeath is { } death && Before(death, dob)) return ReasonCodes.DeathBeforeCustomerBirth;
         var role = RoleConflict(dob, p);
         if (role == ReasonCodes.ImpossibleAgeAtReportedEvent) return role;
-        return EvidenceBuilder.DateOfBirthEvidence(s, p) is { Direction: Direction.Conflict, Detail: { } dobConflict } ? dobConflict : role;
+        return EvidenceBuilder.DateOfBirthEvidence(s, p) is { Direction: Direction.Conflict, Detail: { } dobConflict } ? dobConflict
+            : role ?? StatedConflict(s, dob, p, evidence, news);
+    }
+
+    /// <summary>
+    /// The birth dates and the age at the report date that attached news or a received page states next to the name (user,
+    /// 2026-11-27): when at least one was compared and every one compared is more than
+    /// <see cref="EvidenceBuilder.DobToleranceYears"/> years from the customer's DOB (an age by the births it allows,
+    /// <see cref="StatedAgeCheck"/>), STATED_DOB_CONFLICT. A value within two years, or one not comparable (no report date, an
+    /// age at the event, no full customer DOB for an age), never closes. Nor does it when the Profile has a DOB of its own
+    /// (reaching here, that DOB agrees with the customer's, and the news may be about someone else), or when HIGH or UNIQUE
+    /// support agrees (a document outranks the text). The far value must also be read next to a full name form
+    /// (<see cref="StatedAgeCheck.IsFullForm"/>): a short alias may stand inside another person's name; what such an alias
+    /// reads still blocks, but never concludes.
+    /// </summary>
+    private static string? StatedConflict(ScreenedSubject s, PartialDate dob, SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence>? evidence, NewsItem? news)
+    {
+        // An agreeing document (or any HIGH support) outranks what a text states next to a name, as in stage 3 row 2.
+        if (evidence is null || p.DatesOfBirth.Count > 0 || evidence.Values.Any(v => v.IsSupport && v.Strength >= Strength.High)) return null;
+        var compared = new[] { EvidenceGroup.StatedAge, EvidenceGroup.StatedBirthDate }.Select(evidence.GetValueOrDefault)
+            .OfType<Evidence>().Where(v => v.Status is not (ComparisonStatus.Uncertain or ComparisonStatus.SubjectMissing)).ToList();
+        bool FarDates(List<PartialDate> dates) => dates.Count > 0 && dates.TrueForAll(d => dob.IsMoreThanYearsApart(d, EvidenceBuilder.DobToleranceYears));
+        // A news birth date is a CONFLICT whenever none agrees; it closes only when every one is more than two years off.
+        bool Far(Evidence v) => v.Status == ComparisonStatus.Conflict && (v.Group != EvidenceGroup.StatedBirthDate || FarDates(NewsStatedCheck.StatedBirthDates(p, news)));
+        if (compared.Count == 0 || !compared.All(Far)) return null;
+
+        var age = StatedAgeCheck.Check(s, p, news, fullFormsOnly: true);
+        if (age?.Status == ComparisonStatus.Exact) return null; // compatible, read next to a full form
+        return age?.Status == ComparisonStatus.Conflict || FarDates(NewsStatedCheck.StatedBirthDates(p, news, fullFormsOnly: true))
+            ? ReasonCodes.StatedDobConflict : null;
     }
 
     /// <summary>Impossible age, else impossible role, at a dated role start; both need the customer's DOB to the day.</summary>

@@ -74,13 +74,13 @@ The list type RCA (a PEP's relative or close associate) is not the Case's relate
 
 ### Received page
 
-A person read from a page the Case names has no flags and no category: its one condition is ADVERSE_MEDIA with basis `PAGE_READING` and the stage the page reading voted for that person ([external sources](external-sources.md#matched-against-the-customer)). A role word the rules read next to the name that is no suspect's gives `NOT_HIT` with `PAGE_PERSON_NOT_SUSPECT`; otherwise a stage gives `HIT`, no stage `UNKNOWN`. AML relevance is read from the page's text as for attached news; risk categories are not read from a page.
+A person read from a page the Case names has no flags and no category: its one condition is ADVERSE_MEDIA with basis `PAGE_READING` and the stage the page reading voted for that person ([external sources](external-sources.md#matched-against-the-customer)). A victim's or an official's role word the rules read next to the name, with no suspect's, gives `NOT_HIT` with `PAGE_PERSON_NOT_SUSPECT`; 證人 does not (a co-defendant testifying is written so, [measured](external-sources.md#matched-against-the-customer)); otherwise a stage gives `HIT`, no stage `UNKNOWN`. AML relevance is read from the page's text as for attached news; risk categories are not read from a page.
 
 ### Reason codes
 
 | Code | Meaning |
 |---|---|
-| `PAGE_PERSON_NOT_SUSPECT` | a received page's person the rules read as a victim, witness or official; the condition is NOT_HIT |
+| `PAGE_PERSON_NOT_SUSPECT` | a received page's person the rules read as a victim or official (not a witness), with no suspect's word; the condition is NOT_HIT |
 | `PAGE_STAGE_NOT_READ` | a received page's suspect with no stage read and no stage code saying why; the condition is UNKNOWN |
 | `FLAG_UNPARSEABLE` | a flag value could not be read; the condition is UNKNOWN |
 | `FLAG_CATEGORY_CONFLICT` | a flag contradicts the category |
@@ -310,7 +310,7 @@ Each hit with attached news carries a `newsDigest` in its explanation ([ADR-0012
   - The model's entities carry the same reading over all their forms.
   - Measured against the descriptors of the annotated judgments and press releases (age, gender word, place, job or title, company and nationality, typed by rule), for the annotated people's own forms. For suspects, precision is 0.59 on the 58 dev documents and 0.77 on the 56 test documents, and recall 0.30 and 0.44 (stopping the 從事 / 擔任 reading at the clause's comma raised precision from 0.55 and 0.72 for 0.03 and 0.02 of recall). Many of the items counted wrong are occupations or genders the annotation left out. Residences are rare in this material: 65 place-like descriptors of suspects in the 1,716 training documents, of which the party lines and the home wording raised the number read from 11 to 21 (the rest are mostly places of an office held or of the conduct, or a home written away from the name); the 12 of the current dev documents were unchanged at 2. Published judgments are de-identified: no ID number and few birth dates are written in them, so those kinds are untested on real text.
   - Known limits: a place before a title is read as the person's (高雄市長 gives 高雄); an employer is read only inside a bracket or after 任職 and the like, not before the name; a name that is a prefix of a longer one (王明 in 王明華) is read at the longer one's places too.
-  - The role is the word written just before the name, and `party` follows from it: `SUSPECT` (被告, 嫌犯, 嫌疑人), `VICTIM` (被害人, 告訴人), `WITNESS` (證人) or `OFFICIAL` (檢察官, 法官, 律師, 員警). Without such a word the party is null: nobody is a suspect by default.
+  - The role is the word written just before the name, and `party` follows from it: `SUSPECT` (被告, 嫌犯, 嫌疑人), `VICTIM` (被害人, 告訴人), `WITNESS` (證人) or `OFFICIAL` (檢察官, 法官, 律師, 員警). Without such a word the party is null: nobody is a suspect by default. A page person's `WITNESS` concludes nothing on the condition (see above).
 - **Events.**
   - The event types (`/api/codes`, kind `NEWS_EVENT`) follow the ACE / Rich ERE Justice events, narrowed to Taiwanese procedure: investigation, search, questioning, arrest, referral (移送, 函送), detention, bail or release (交保, 停止羈押, 釋放), asset restraint (扣押, 凍結, 警示帳戶), indictment (起訴, 提起公訴, 聲請簡易判決處刑), non-indictment, conviction, acquittal, appeal or retrial (上訴, 抗告, 更一審), confiscation (沒收, 追徵), the court's fine (罰金, not 易科罰金), a regulator's penalty (罰鍰, 裁罰, 停止買賣), wanted notice, and extradition or repatriation (引渡, 遣返).
   - They are read clause by clause, outside quoted speech, with the legal stage's own keywords for indictment, dismissal, conviction and acquittal. 起訴書 is a document, not an indictment.

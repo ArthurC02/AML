@@ -32,10 +32,11 @@ public sealed record PageRecord(
     PublicationSource? PublishedOnSource = null);
 
 /// <summary>
-/// Where a page's publication date was read: its structured metadata (JSON-LD, meta, &lt;time&gt;), a date line or dateline at the
-/// head of its main text, or nowhere (MISSING: none stated, the sources disagree, or the date is after the fetch). Never the fetch time.
+/// Where a page's publication date was read: its structured metadata (JSON-LD, meta, &lt;time&gt;), a label, date line or dateline
+/// of its text, or nowhere (MISSING: none stated, the sources disagree, or the date is after the fetch). UPDATE_DATE: the page
+/// states no publication date, and this is the update date it states (更新日期, article:modified_time) in its place. Never the fetch time.
 /// </summary>
-public enum PublicationSource { Metadata, Text, Missing }
+public enum PublicationSource { Metadata, Text, Missing, UpdateDate }
 
 /// <summary>What a fetch gave: the main text and the publication date it states, or the problem that stopped it and whether asking again later may help.</summary>
 public sealed record PageFetch(string? FinalUrl, string? MediaType, string? ContentHash, string? Title, string? Text, string? Problem = null, bool Transient = false,

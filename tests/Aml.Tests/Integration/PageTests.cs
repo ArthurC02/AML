@@ -77,6 +77,8 @@ public sealed class PageTests : ServiceTestBase
     [InlineData("<meta property='article:published_time' content='2026-11-03T08:00:00+08:00'>", "2026-11-03", "METADATA")]
     [InlineData("<meta property='article:published_time' content='2026-11-09'>", null, "MISSING")]
     [InlineData("", null, "MISSING")]
+    // No publication date stated: the update date stands in and is stored and read back as UPDATE_DATE.
+    [InlineData("<meta property='article:modified_time' content='2026-11-02'>", "2026-11-02", "UPDATE_DATE")]
     public async Task A_page_s_publication_date_is_stored_with_its_source_and_one_after_the_fetch_is_missing(string head, string? on, string source)
     {
         var ct = TestContext.Current.CancellationToken;

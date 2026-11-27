@@ -42,6 +42,8 @@ public static class ReasonCodes
     public const string NewsBirthDateAgrees = "NEWS_BIRTH_DATE_AGREES";
     public const string NewsBirthDateDifference = "NEWS_BIRTH_DATE_DIFFERENCE";
     public const string NewsBirthDateAmbiguous = "NEWS_BIRTH_DATE_AMBIGUOUS";
+    public const string PageBirthDateWithinTolerance = "PAGE_BIRTH_DATE_WITHIN_TOLERANCE";
+    public const string StatedDobConflict = "STATED_DOB_CONFLICT";
     public const string NewsGenderAgrees = "NEWS_GENDER_AGREES";
     public const string NewsGenderDifference = "NEWS_GENDER_DIFFERENCE";
     public const string ImpossibleRoleAtReportedEvent = "IMPOSSIBLE_ROLE_AT_REPORTED_EVENT";

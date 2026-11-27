@@ -70,6 +70,7 @@ STATED_BIRTH_DATE
 STATED_GENDER
 TEMPORAL_ROLE
 OTHER_IDENTIFIER
+ENTITY_IDENTIFIER
 ```
 
 Jaro-Winkler, Levenshtein and exact comparison of the same name are correlated features inside one NAME group. Both measures compare at most the first 256 characters, far past any name: their cost is the product of the two lengths. Stated ages and the news legal stage look for the first 100 names of a Profile only, since each name is searched for in every sentence. Aliases, former names, maiden names and other transliterations are compared inside NAME, not as extra groups.
@@ -108,7 +109,7 @@ The customer's DOB against the Profile's own DOB field (list data), by `Evidence
 
 | Customer against the Profile's DOBs (best value first) | Evidence | Code | Decision |
 |---|---|---|---|
-| a value agrees at the precision both sides have | support at that level (HIGH day, MEDIUM month, LOW year) | none, or `BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE` | as before |
+| a value agrees at the precision both sides have | support at that level (HIGH day, MEDIUM month, LOW year) | none, or `BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE` | stage 3 by its level |
 | none agrees, a value is two years or less away | support, PARTIAL, LOW: the weakest DOB agreement, as a birth year agreeing | `DOB_AGREES_WITHIN_TOLERANCE`; the note says how far apart (相差 N 天 for two full dates, else 出生年相差 N 年) | stage 3 like a birth year: row 4 with every prerequisite EXACT and nothing unsettled in DOCUMENT or EMPLOYMENT, else row 5; never row 3 (not HIGH) |
 | every value is more than two years away | CONFLICT | `FULL_DOB_CONFLICT` (full dates on both sides) or `DOB_CONFLICT` | [hard conflict](#hard-conflict-gate), validated: NO_MATCH |
 | either side has no DOB | NEUTRAL, missing | none | no conflict, no support |
@@ -127,8 +128,8 @@ Where it applies, and where not:
 
 Its cost, stated plainly:
 
-- a different person with the same name born within two years of the customer is read as a birth-date agreement: with name, gender and nationality EXACT that is PROBABLE_MATCH (row 4), as a shared birth year already was; on the synthetic set 10 strangers' pairs carry it and 4 of them reach PROBABLE_MATCH ([measurement](../plan/poc-delivery-plan.md#synthetic-end-to-end-set));
-- a Profile DOB entered more than two years wrong concludes NO_MATCH for the right person, without a reviewer. A one-day or a one-year recording error is within tolerance and no longer a conflict;
+- a different person with the same name born within two years of the customer is read as a birth-date agreement: with name, gender and nationality EXACT that is PROBABLE_MATCH (row 4), as a shared birth year is; on the synthetic set 10 strangers' pairs carry it and 4 of them reach PROBABLE_MATCH ([measurement](../plan/poc-delivery-plan.md#synthetic-end-to-end-set));
+- a Profile DOB entered more than two years wrong concludes NO_MATCH for the right person, without a reviewer. A one-day or a one-year recording error is within tolerance, so it is not a conflict;
 - a placeholder day on the list (1 January for a year-only value) is compared as a full date; no placeholder check exists.
 
 ## Comparison measures
@@ -193,9 +194,9 @@ Applies only to an age explicitly stated for a named person in a bounded source 
 - |difference| ≤ 2 (inclusive) → `AGE_COMPATIBLE_AT_REPORT`, recorded like `TEMPORALLY_PLAUSIBLE`: compatible is not support.
 - |difference| > 2 → `AGE_DIFFERENCE_AT_REPORT`, a conflict: row 1 of [stage 3](#stage-3-table) (row 2 when a document agrees), and the hard conflict `STATED_DOB_CONFLICT` when nothing else stated and no Profile DOB says otherwise ([two-year conflict on stated values](#two-year-conflict-on-stated-values)).
 - The comparison is made on the births the age allows (below), so it is the ±2 test except by a day at 29 February.
-- Without a full subject DOB or a report date the result is `AGE_NOT_COMPARABLE`. The report date of attached news is its published date; of a received page, the publication date the page states (`publishedOn`, [external sources](external-sources.md#common-path)), so a page without one gives `AGE_NOT_COMPARABLE`, never a comparison at the fetch date. A page dated only by its update date (`publishedOnSource` `UPDATE_DATE`) has no report date either: `AGE_NOT_COMPARABLE`, so an update-dated age never concludes `STATED_DOB_CONFLICT`. Measured on the 22 development pages that state a publication date: `DC.Date` (not read) was the publication day on 9 and more than two years before it on 13; the labelled update date was the same day on 20, 1 to 30 days later on 1, 31 days to a year later on 1, never earlier. A later update date makes a stated age look too young for the report date, toward a wrong conflict; and the 103 pages dated only by an update date come from a template on which the gap cannot be measured. The date is shown in the explanation, marked as an update date.
-- An age stated with 時年 is the age when the reported event happened, whose date the text does not give; it is never compared with the report date and gives `AGE_NOT_COMPARABLE`. The marker counts in either order: after the name (陳志明時年45歲) or before the age that precedes the name (時年45歲的陳志明).
-- Phase 1 reads the age only when it is adjacent to the Profile person's name in the same sentence of attached news (e.g. 陳志明（45歲）, 陳志明（男，45歲）, 45歲的陳志明).
+- Without a full subject DOB or a report date the result is `AGE_NOT_COMPARABLE`. The report date of attached news is its published date; of a received page, the publication date the page states (`publishedOn`, [external sources](external-sources.md#common-path)), so a page without one gives `AGE_NOT_COMPARABLE`, never a comparison at the fetch date. A page dated only by its update date (`publishedOnSource` `UPDATE_DATE`) has no report date either: `AGE_NOT_COMPARABLE`, so an update-dated age never concludes `STATED_DOB_CONFLICT`: an update date can lie up to a year after the publication date, which makes a stated age look too young, toward a wrong conflict (measured in [external sources](external-sources.md#common-path)). The date is shown in the explanation, marked as an update date.
+- An age stated with 時年 is the age when the reported event happened, whose date the text does not give; it is never compared with the report date and gives `AGE_NOT_COMPARABLE`. The marker counts in either order: after the name (張文華時年45歲) or before the age that precedes the name (時年45歲的張文華).
+- Phase 1 reads the age only when it is adjacent to the Profile person's name in the same sentence of attached news (e.g. 張文華（45歲）, 張文華（男，45歲）, 45歲的張文華).
 - This ±2 tolerance is the stated age's own; the Profile's DOB field has its [two-year tolerance](#birth-date-tolerance), in calendar days, not in ages.
 
 ### Birth date and gender stated in a source
@@ -235,7 +236,7 @@ The comparison table has no row for news values: the birth date note and code si
 - the summary's 相符／衝突／無法比對 sentence ends with 來源不一致：新聞所載出生日期（、新聞所載性別）與名單記錄不同，附加新聞可能不是這位名單人物的。;
 - a PROBABLE_MATCH is reviewed at NORMAL priority instead of HIGH: what the news says of the person (and the legal stage read from it) is in doubt, the match with the Profile is not. A raised Sanction condition keeps HIGH.
 
-Measured on the annotated judgments (old development set, 35 suspects with an annotated birth date, 34 with a gender; the customer set to the annotated value, then to another person with the same name): for the same person no conflict was raised (birth date 27 support, 7 ambiguous, 1 not read; gender 30 agree, 4 not read); for the other person 33 of 35 birth dates and 30 of 34 genders gave the conflict. Judgments there give a birth year or year and month, so the support was `LOW`. The supplied cases' news carries no such value.
+Measured on a development set of annotated judgments (35 suspects with an annotated birth date, 34 with a gender; the customer set to the annotated value, then to another person with the same name): for the same person no conflict was raised (birth date 27 support, 7 ambiguous, 1 not read; gender 30 agree, 4 not read); for the other person 33 of 35 birth dates and 30 of 34 genders gave the conflict. Judgments there give a birth year or year and month, so the support was `LOW`. The supplied cases' news carries no such value.
 
 Nationality and residence written next to the name are shown in the news digest for the reviewer and are not compared: a residence has no period, and a nationality word in news is often a description, not a citizenship.
 
@@ -257,16 +258,16 @@ By the user's decisions of 2026-11-27, the two-year rule of the [birth-date tole
 | What the text states, against the customer's DOB | Evidence | Decision |
 |---|---|---|
 | every comparable value (each stated birth date; the age at the report date) more than two years off, the Profile with no DOB of its own and no HIGH or UNIQUE support | the value's own codes (`NEWS_BIRTH_DATE_DIFFERENCE`, `AGE_DIFFERENCE_AT_REPORT`) | [hard conflict](#hard-conflict-gate) `STATED_DOB_CONFLICT`: NO_MATCH |
-| the same, but the Profile has a DOB (reaching the check, it agrees with the customer's, exactly or within two years) | as before: the age a conflict, the birth date NEUTRAL, UNCERTAIN | stage 3 as before: the news may be about someone else |
-| the same, but a document agrees (UNIQUE) or other HIGH support | as before | stage 3 row 2, the difference recorded alongside |
+| the same, but the Profile has a DOB (reaching the check, it agrees with the customer's, exactly or within two years) | the value's own rules: the age a conflict, the birth date NEUTRAL, UNCERTAIN | stage 3: the news may be about someone else |
+| the same, but a document agrees (UNIQUE) or other HIGH support | the value's own rules | stage 3 row 2, the difference recorded alongside |
 | a birth date not equal but within two years | attached news: CONFLICT `NEWS_BIRTH_DATE_DIFFERENCE`, row 1; a page: NEUTRAL, PARTIAL, `PAGE_BIRTH_DATE_WITHIN_TOLERANCE`, no score | stage 3; blocks the conflict |
-| an age within ±2 (`AGE_COMPATIBLE_AT_REPORT`), or an equal birth date (`NEWS_BIRTH_DATE_AGREES`) | as before | stage 3; blocks the conflict |
+| an age within ±2 (`AGE_COMPATIBLE_AT_REPORT`), or an equal birth date (`NEWS_BIRTH_DATE_AGREES`) | the value's own rules | stage 3; blocks the conflict |
 | an age not comparable (no report date, 時年, no full customer DOB), or no customer DOB | not compared; stays explicitly `AGE_NOT_COMPARABLE` or `SUBJECT_MISSING` | nothing changes |
 
 - A birth date is compared as a Profile DOB is (`PartialDate.IsMoreThanYearsApart`, at its precision: 67年次 may be two years from 1980-05-20, 66年次 cannot). An age N at the report date stands for the births from the day after the date N + 1 years before up to the date N years before; `AGE_DIFFERENCE_AT_REPORT` means that interval is more than two calendar years from the customer's full DOB, counted as for birth dates (29 February plus two years is 28 February). Away from 29 February this is the ±2 age test; for a customer born on 29 February the two differ by a day (aged 23 on 2026-02-28 allows births from 2002-03-01, one day past two years from 2000-02-29: a conflict, where an age difference gives 25 and compatible). With either date coarser the age is not compared, so it never concludes.
 - Every comparable value must be off: a compatible age beside a far birth date keeps the conflict of row 1. A value not compared does not block.
 - Within two years, a page and attached news differ: a page's birth date within two years is neutral, since on the synthetic pages agreement would lift same-name strangers (12 of them: 4 birth dates within a year, 8 ages 1 to 2 years off), while the conflict side concludes 10 strangers and no customer ([measurement](../plan/poc-delivery-plan.md#received-url-matched-against-the-customer)); attached news keeps its difference (row 1).
-- On the synthetic list set the conflict concludes the 34 pairs that were on row 1 for a stated difference (an age 26, a birth date 8), none the same person ([measurement](../plan/poc-delivery-plan.md#synthetic-end-to-end-set)).
+- On the synthetic list set the conflict concludes 34 pairs with a stated difference (an age 26, a birth date 8), none the same person ([measurement](../plan/poc-delivery-plan.md#synthetic-end-to-end-set)).
 - Only a value read next to a full name form concludes: a CJK form of three characters or more that names somebody, or a form without CJK characters standing as a whole word (no letter, combining mark, digit, hyphen or apostrophe next to it). Anonymised and masked forms are never full forms: they fit anyone of that surname. Anonymised is a surname followed by 姓 and any noun (林姓男子, 張姓負責人, 歐陽姓主嫌) or by one of the short marks of the news digest (歐陽男, 歐陽嫌); 姓 counts only right after the surname, so a 姓 elsewhere stays a name character. Masked is a form holding 某 (陳某某), or one whose characters other than ideographs are all masks (○, 〇, ◯, Ｏ, O, ＊, *, Ｘ, X: 歐陽○明). The readers find a name where it appears, so a two-character alias (志明) is read inside another person's name (林志明（30歲）), and 'Ming' inside 'Chih-Ming'; such a reading stays evidence with its row (and a near value read by it still blocks), but it never concludes. A Profile whose only form has two CJK characters therefore never concludes by this rule. Residual cases of the guard: (a) a three-character name that is itself part of another person's four-character name (a two-character surname before it) still concludes; (b) rare characters outside the basic CJK range (written as surrogate pairs) are not counted as CJK, so a two-character alias made of them counts as a full form and the guard does not protect it.
 - The source-quality downgrade applies as to any validated rule (an unparseable Profile value gives REVIEW with `SOURCE_QUALITY_DOWNGRADE`); HIGH or UNIQUE support stops the check first, MEDIUM or LOW support (an employer over the same period, a birth year) does not.
 - A pending impossible-role conflict (`IMPOSSIBLE_ROLE_AT_REPORTED_EVENT`) comes first in the gate: such a pair stays REVIEW on the pending rule, not NO_MATCH on this one.
@@ -297,21 +298,21 @@ Each rule records its reason code as the pair's `hardConflict`. Source-quality c
 
 ### Implausible age at a dated document (advisory)
 
-The shape it reads is the vendor's attached news with a dated header, on a Profile without a birth date of its own: a customer far too young on the item's date to be the accused or the company officer the item names. It is a hint, not a hard conflict (user's decision 2026-11-27, [ADR-0001](../adr/0001-identity-adjudication.md)): `HardConflictGate.ImplausibleAgeAtDocument` gives the TEMPORAL_ROLE evidence a CONFLICT with the advisory code `AGE_IMPLAUSIBLE_AT_DOCUMENT` (not a validated code), and the pair goes to [stage 3](#stage-3-table) row 1, REVIEW, where a stated age difference sits; it is never NO_MATCH. With an agreeing document the pair is row 2 and the code is recorded alongside. A pair a hard conflict decides (for example `STATED_DOB_CONFLICT`) carries no hint: no code, no note, no explanation line. The hint is given when all of these hold:
+The shape it reads is the vendor's attached news with a dated header, on a Profile without a birth date of its own: a customer far too young on the item's date to be the accused or the company officer the item names. It is a hint, not a hard conflict (user's decision 2026-11-27, [ADR-0001](../adr/0001-identity-adjudication.md)): `HardConflictGate.ImplausibleAgeAtDocument` gives the TEMPORAL_ROLE evidence a CONFLICT with the advisory code `AGE_IMPLAUSIBLE_AT_DOCUMENT` (not a validated code), and the pair goes to [stage 3](#stage-3-table) row 1, REVIEW, where a stated age difference sits; it is never NO_MATCH. With an agreeing document the pair is row 2 and the code is recorded alongside. With a DOCUMENT conflict the pair is row 1 on `DOCUMENT_IDENTITY_CONFLICT` (that conflict comes first): the note and the explanation line still appear, but `AGE_IMPLAUSIBLE_AT_DOCUMENT` is not among the pair's reason codes (a known limit). A pair a hard conflict decides (for example `STATED_DOB_CONFLICT`) carries no hint: no code, no note, no explanation line. The hint is given when all of these hold:
 
 - the customer's birth date is known to the day, and the Profile has no birth date of its own (else the [birth-date rules](#birth-date-tolerance) decide);
 - an attached item of the Profile (a list Profile's news, or a received page by its publication date, [external sources](external-sources.md#matched-against-the-customer)) has a header date to the day: the media article's date line or a court release's 公告日 ([extraction](extraction-and-normalization.md#file-layouts)). Never a date in the body, a year-only or relative date, the Profile notes, the vendor's review date or a page's update date (`UPDATE_DATE`);
 - the customer's oldest possible age that day is under 14 (`MinimumRoleAge`, the age of criminal responsibility; the role-table rule uses the same constant). A customer born after the header date (a negative age) is hinted too;
 - the role is read locally, at the Profile person's own mentions in that item (`HardConflictGate.RoleAChildCannotHold`), under a [full name form](#two-year-conflict-on-stated-values) only:
-  - basis: a suspect word (被告, 共同被告, 嫌犯, 犯嫌, 嫌疑人) or a company officer word (董事長, 副董事長, 董事, 監察人, 總經理, 負責人, 執行長; 實際負責人 and 常務董事 end in one; a 前 prefix counts) standing directly before a whole full-name mention. Nothing else: no event the news digest attributes (its actor falls back to the last name earlier in the sentence, so 檢察官陳志明今天起訴一名詐欺嫌犯 would read as the person indicted), no role or party of an anonymised alias the digest folds into the person (陳嫌 beside 被害人陳志明), no model reading. So 判處陳志明有期徒刑, with no word before the name, does not count;
-  - whole mention: the name is followed by punctuation, whitespace, the end of the text, a particle that never starts a name or an organisation (涉, 遭, 被, 與, 及, 等, 因, 已, 則, 也, 亦, 稱, 說, 並, 坦, 供, 否, 辯, 均, 獲, 未, 不, 的) or an offence or penalty word of a court text (詐欺, 貪污, 違反, 侵占, 背信, 洗錢, 竊盜, 偽造, 有期徒刑, 無期徒刑, 拘役, 罰金, 死刑). 被告陳志明宏 and 陳志明國小 are other names. This boundedness applies to this rule only; the digest and the other readers do not use it;
-  - disqualifiers: any mention of a full name directly after a victim, complainant or witness word (被害人, 受害人, 被害者, 受害者, 告訴人, 告發人, 檢舉人, 證人), a child word (少年, 少女, 男童, 女童, 兒童, 學童, 幼童, 學生) or an official word (主任檢察官, 檢察官, 審判長, 法官, 律師, 辯護人, 警員, 員警, 警官) makes the item silent, whatever its other mentions say (法官陳志明 beside 被告陳志明 gives no hint);
+  - basis: a suspect word (被告, 共同被告, 嫌犯, 犯嫌, 嫌疑人) or a company officer word (董事長, 副董事長, 董事, 監察人, 總經理, 負責人, 執行長; 實際負責人 and 常務董事 end in one; a 前 prefix counts) standing directly before a whole full-name mention. Nothing else: no event the news digest attributes (its actor falls back to the last name earlier in the sentence, so 檢察官張文華今天起訴一名詐欺嫌犯 would read as the person indicted), no role or party of an anonymised alias the digest folds into the person (張嫌 beside 被害人張文華), no model reading. So 判處張文華有期徒刑, with no word before the name, does not count;
+  - whole mention: the name is followed by punctuation, whitespace, the end of the text, a particle that never starts a name or an organisation (涉, 遭, 被, 與, 及, 等, 因, 已, 則, 也, 亦, 稱, 說, 並, 坦, 供, 否, 辯, 均, 獲, 未, 不, 的) or an offence or penalty word of a court text (詐欺, 貪污, 違反, 侵占, 背信, 洗錢, 竊盜, 偽造, 有期徒刑, 無期徒刑, 拘役, 罰金, 死刑). 被告張文華宏 and 張文華國小 are other names. This boundedness applies to this rule only; the digest and the other readers do not use it;
+  - disqualifiers: any mention of a full name directly after a victim, complainant or witness word (被害人, 受害人, 被害者, 受害者, 告訴人, 告發人, 檢舉人, 證人), a child word (少年, 少女, 男童, 女童, 兒童, 學童, 幼童, 學生) or an official word (主任檢察官, 檢察官, 審判長, 法官, 律師, 辯護人, 警員, 員警, 警官) makes the item silent, whatever its other mentions say (法官張文華 beside 被告張文華 gives no hint);
   - a minor or child context anywhere in the item makes the whole item silent, on purpose for the whole item (cheap, and it errs to silence; a juvenile defendant may be the young customer): 少年, 少女, 未成年, 兒童, 男童, 女童, 幼童, 學童, 孩童, 國小, 國中, 小學, 中學生, 學生 (so also 少年法庭, 國中生, 小學生), 高中, 國一, 國二, 國三, 幼稚園, 幼兒園, 就讀, 年幼, 年紀尚幼, 幼兒, 嬰兒, 稚子, 小六生, 未滿 N 歲, or any age under 18 stated anywhere (N 歲, 年僅 N);
   - a guardian or limited capacity anywhere makes it silent (法定代理人, 監護人, 監護宣告, 受監護, 輔助宣告, 無行為能力, 限制行為能力, 代為出席, 由父母), and so does a civil or inheritance matter (民事, 原告, 繼承, 遺產, 損害賠償, 連帶給付): a minor can be a civil defendant or an heir holding shares;
   - a kinship word directly before a full name or its role word makes it silent (兒子, 女兒, 孫子, 孫女, 子女, 幼子, 幼女);
   - a role word inside another word does not qualify (原被告, 準被告, 代位被告); the officer compounds 實際負責人, 副董事長, 副總經理, 獨立董事, 常務董事 are listed and qualify, and a case number before 被告 (第1234號被告) is not such a word;
   - a nominal officer or a name used by someone else anywhere in the item makes it silent (人頭, 掛名, 冒名, 冒用, 盜用, 借名, 名義負責人, 登記負責人): a minor so registered or whose name was used is the same person;
-  - a mention does not qualify when its sentence holds a negation, mistaken-identity, misuse or harm cue (否認, 並非, 不是, 誤傳, 誤認, 誤植, 同名, 冒用, 冒名, 盜用, 人頭, 掛名, 名義, 被害, 受害, 遭詐, 受騙), or 非 stands directly before its word (非董事陳志明); a qualifying mention in another sentence without such a cue still counts;
+  - a mention does not qualify when its sentence holds a negation, mistaken-identity, misuse or harm cue (否認, 並非, 不是, 誤傳, 誤認, 誤植, 同名, 冒用, 冒名, 盜用, 人頭, 掛名, 名義, 被害, 受害, 遭詐, 受騙), or 非 stands directly before its word (非董事張文華); a qualifying mention in another sentence without such a cue still counts;
 - the item does not state an age compatible with the customer's at that date, or the customer's birth date.
 
 The word lists are in one place, `Identity/DocumentAgeWords.cs`. The rule reads natural-language text with these closed lists, which are known to be incomplete. The reading is linear in the item: sentence ends are found once and each sentence's cues checked once; over 1,000 mentions of the Profile's names in one item the item is silent. No hint: an official only, a person merely mentioned, a masked or anonymised form, a two-character alias, a role not read. One qualifying item is enough for the hint, whatever another item says.
@@ -329,7 +330,7 @@ Confirmed hard conflict
     → NO_MATCH
 
 Approved unique or sufficiently strong combination, no hard conflict
-    → MATCH or human confirmation, according to release policy
+    → MATCH once the scoring rule decides; today PROBABLE_MATCH / external REVIEW
 
 Multiple strong supports but no unique identifier
     → PROBABLE_MATCH / external REVIEW
@@ -392,13 +393,13 @@ Golden Case check:
 | GC-11 | name, gender, nationality agree; one of two Profile birth years agrees; Profile has no document, employment or address | 4 | PROBABLE_MATCH | PROBABLE_MATCH / REVIEW |
 | GC-12 | related party: name and nationality agree, gender missing; Profile has no DOB; nothing else comparable | 6 | REVIEW | REVIEW |
 
-No Golden Case result changes with the birth-date tolerance: GC-01 stays the impossible-age veto, GC-03 and GC-11 agree on the birth year, GC-02 and GC-12 have no Profile DOB. Two augmented cases change ([augmented cases](../plan/golden-cases.md#augmented-cases)): AUG-02-02 (a year more than two years off) is now stage 1 NO_MATCH `DOB_CONFLICT`, and AUG-11-05 (a full Profile DOB under two years from the customer's) is now row 4 `DOB_AGREES_WITHIN_TOLERANCE`.
+The birth-date tolerance decides no Golden Case: GC-01 is the impossible-age veto, GC-03 and GC-11 agree on the birth year, GC-02 and GC-12 have no Profile DOB. Two augmented cases sit on its boundary ([augmented cases](../plan/golden-cases.md#augmented-cases)): AUG-02-02 (a year more than two years off) is stage 1 NO_MATCH `DOB_CONFLICT`, and AUG-11-05 (a full Profile DOB under two years from the customer's) is row 4 `DOB_AGREES_WITHIN_TOLERANCE`.
 
 Row 4 makes common names with a shared birth year, or a birth date within two years, PROBABLE_MATCH. That only raises review priority; GC-07 (highly similar, final NO_MATCH) will show whether it needs narrowing.
 
 ### Calibration weight
 
-`FellegiSunter.Score` sums one weight per compared group: log₂(m/u) when it agrees, log₂((1−m)/(1−u)) when it disagrees, where m is the share of same persons that agree and u the share of different persons that agree by chance. It never decides, so the hit prerequisites weigh here although they never support: without them a pair's pattern holds only DATE_OF_BIRTH and DOCUMENT, and expectation-maximization over that does not converge on list data (three starts, three answers). With them it reaches one answer from every start.
+`FellegiSunter.Score` sums one weight per compared group: log₂(m/u) when it agrees, log₂((1−m)/(1−u)) when it disagrees, where m is the share of same persons that agree and u the share of different persons that agree by chance. It never decides, so the hit prerequisites weigh here although they never support: without them a pair's pattern holds only DATE_OF_BIRTH and DOCUMENT, and expectation-maximization over that does not converge on list data. With them it reaches one answer from every start.
 
 `Pattern` and `Score` read the evidence the same way, save a CONFLICT outside DATE_OF_BIRTH and DOCUMENT (a dated role, a stated age, birth date or gender, an entity identifier): `Pattern` marks it as disagreeing, `Score` gives it no weight, since no u is known for it.
 
@@ -435,49 +436,7 @@ Limits:
 
 ## Reason code registry
 
-Only registered codes may appear in decisions. New codes are added here with the policy that emits them.
-
-| Code | Emitted by | Meaning |
-|---|---|---|
-| `TEMPORALLY_PLAUSIBLE` | IdentityDecisionPolicy | customer age and role at the reported event are possible; not support for identity |
-| `IMPOSSIBLE_AGE_AT_REPORTED_EVENT` | IdentityDecisionPolicy | hard conflict; validated by GC-01 |
-| `AGE_IMPLAUSIBLE_AT_DOCUMENT` | EvidenceBuilder | advisory conflict, stage 3 row 1 REVIEW; never concludes ([implausible age at a dated document](#implausible-age-at-a-dated-document-advisory)) |
-| `IMPOSSIBLE_ROLE_AT_REPORTED_EVENT` | IdentityDecisionPolicy | hard conflict; pending validation |
-| `FULL_DOB_CONFLICT` | HardConflictGate | every Profile DOB more than two years off, full dates on both sides; hard conflict, validated by the user's decision of 2026-11-27 |
-| `DOCUMENT_IDENTITY_CONFLICT` | IdentityDecisionPolicy | hard conflict; pending validation |
-| `DEATH_BEFORE_CUSTOMER_BIRTH` | IdentityDecisionPolicy | hard conflict; pending validation |
-| `DOB_CONFLICT` | HardConflictGate | every Profile DOB more than two years off, without a full date on both sides; hard conflict, validated by the user's decision of 2026-11-27. In a Profile merge: no agreeing DOB, merge refused |
-| `BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE` | IdentityDecisionPolicy | years agree, but at least one side has YEAR precision only |
-| `DOB_AGREES_WITHIN_TOLERANCE` | EvidenceBuilder | no Profile DOB equal at its precision, one within two years; LOW support, as a birth year |
-| `GENDER_CONFLICT` | IdentityDecisionPolicy | subject and Profile genders differ; prerequisite conflict that rules out rows 3 and 4 |
-| `SOURCE_QUALITY_DOWNGRADE` | IdentityDecisionPolicy | a validated hard conflict kept in REVIEW because of a source-quality concern |
-| `NON_PERSON_SUBJECT_REVIEW` | IdentityDecisionPolicy | organization, vessel or other Profile with no comparable entity identifier, or compared with a natural-person subject; REVIEW |
-| `NO_BILATERAL_DIRECT_IDENTIFIER` | IdentityDecisionPolicy | neither full DOB nor document key is present on both sides |
-| `UNIQUE_IDENTIFIER_AGREEMENT` | IdentityDecisionPolicy | comparable document key agrees |
-| `STRONG_SUPPORT_COMBINATION` | IdentityDecisionPolicy | full DOB agrees plus another non-prerequisite support |
-| `CONSISTENT_AT_AVAILABLE_PRECISION` | IdentityDecisionPolicy | prerequisites agree and DOB agrees as precisely as the data allows, with nothing conflicting or uncertain in DOCUMENT or EMPLOYMENT other than `NOT_COMPARABLE`; GC-03 |
-| `PARTIAL_SUPPORT_ONLY` | IdentityDecisionPolicy | support exists but below the PROBABLE_MATCH combinations |
-| `NO_NON_PREREQUISITE_SUPPORT` | IdentityDecisionPolicy | only hit prerequisites agree |
-| `AGE_COMPATIBLE_AT_REPORT` | IdentityDecisionPolicy | stated age within ±2 years at the same time point; not support |
-| `AGE_DIFFERENCE_AT_REPORT` | IdentityDecisionPolicy | the births the stated age allows are more than two years from the customer's DOB (an age difference over 2, but for a day at 29 February); row 1, or recorded alongside row 2 when a document agrees; with no other stated value compatible and no Profile DOB, `STATED_DOB_CONFLICT` |
-| `AGE_NOT_COMPARABLE` | IdentityDecisionPolicy | stated age found but not comparable: no full subject DOB, no report date, or an age stated with 時年 |
-| `NEWS_BIRTH_DATE_AGREES` | NewsStatedCheck | a birth date next to the Profile person's name in attached news agrees with the customer's; support (`MEDIUM` or `LOW`) only when the Profile's own DOB is not |
-| `NEWS_BIRTH_DATE_DIFFERENCE` | NewsStatedCheck | no such birth date agrees; conflict (row 1) unless the Profile's own DOB agrees, or a document agrees (row 2, code recorded alongside); every one more than two years off and no Profile DOB: `STATED_DOB_CONFLICT` |
-| `NEWS_BIRTH_DATE_AMBIGUOUS` | NewsStatedCheck | scattered birth dates next to one written name, one of them agreeing; not support |
-| `PAGE_BIRTH_DATE_WITHIN_TOLERANCE` | NewsStatedCheck | a received page's person: no stated birth date agrees, one is within two years; neutral, neither support nor conflict |
-| `STATED_DOB_CONFLICT` | HardConflictGate | every comparable birth date and dated age stated in attached news or on a received page more than two years from the customer's DOB, no Profile DOB and no HIGH support; hard conflict, validated by the user's decisions of 2026-11-27 |
-| `NEWS_GENDER_AGREES` | NewsStatedCheck | the gender next to the name in attached news is the customer's; shown, not support |
-| `NEWS_GENDER_DIFFERENCE` | NewsStatedCheck | it differs; rules out rows 3 and 4 unless the Profile's own gender agrees |
-| `ENTITY_IDENTIFIER_AGREEMENT` | IdentityDecisionPolicy | entity record: the same registration or IMO number on both sides |
-| `ENTITY_IDENTIFIER_CONFLICT` | IdentityDecisionPolicy | entity record: a different number under the same key |
-| `ENTITY_SENIOR_MANAGER_AGREEMENT` | IdentityDecisionPolicy | entity record with no comparable identifier: a senior manager of the same name on both sides; partial support, REVIEW |
-| `ART22_RULING_20261014_MAY_APPLY` | DispositionPolicy | the 2026-10-14 ruling may apply; flagged, not applied |
-| `ART22_FOREIGN_PEP_PRESUMPTION` | DispositionPolicy | Article 22 ① presumption; identity unchanged |
-| `ART22_ADVERSE_UNRELATED` | DispositionPolicy | Article 22 ②; an ADVERSE_MEDIA condition set aside |
-| `ART22_IDENTITY_NO_MATCH` | DispositionPolicy | default; identity NO_MATCH, NOT_ON_LIST |
-| `ART22_NOT_DETERMINED` | DispositionPolicy | Article 22 ③; no recommendation, pending checks listed |
-
-Article 22 codes are defined in [disposition recommendation](review-and-disposition.md).
+Only codes in the code catalog may appear in decisions. The catalog (`Core/Codes/CodeCatalog.cs`, served by `GET /api/codes`) is the one registry: each code's name, meaning, emitter and the section of this or another spec that defines it. A new code is added there with the rule that emits it; this document defines the rules, not a copy of the list.
 
 Comparison findings are evidence details, not decision reason codes; they explain an evidence status and never change a row on their own:
 

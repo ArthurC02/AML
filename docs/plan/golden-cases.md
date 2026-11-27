@@ -103,9 +103,9 @@ Real case, anonymized. Inputs and expected results: [samples/golden/GC-11](../..
 
 ### Conditions
 
-- customer: Taiwanese man, local name 鐘仁聲, English name JONG JENN SHENG, full DOB, national ID, occupation wholesale and retail, address written with the pre-2010 county name and full-width digits;
-- two candidate rows (鐘仁聲 and 钟仁声), both pointing to the same Profile;
-- Profile: Taiwanese man, original-script names with 鍾/鐘 and 仁/任 variants, romanizations without "Jenn", two birth years (1973 and 1972), no document, no address, category SIP / Financial Crime;
+- customer: Taiwanese man, a three-character local name and its English romanization, full DOB, national ID, occupation wholesale and retail, address written with the pre-2010 county name and full-width digits;
+- two candidate rows (the name in traditional and in simplified script), both pointing to the same Profile;
+- Profile: Taiwanese man, original-script names with one-character variants of the surname and of a given name, romanizations spelled otherwise than the customer's English name, two birth years (1973 and 1972), no document, no address, category SIP / Financial Crime;
 - attached news: a bank branch manager colluding with a fraud ring; the snippet does not state indictment or judgment;
 - the case already carries legacy manual results (符合, 確認後符合).
 
@@ -136,8 +136,8 @@ Real case, anonymized; business label 無法判斷. Inputs and expected results:
 
 ### Conditions
 
-- screened subject: the account holder's legal representative (related party), name 陳志明 (a very common name), full DOB, Taiwanese, no gender field, no document, an ID-shaped reference number, two addresses plus a postal-code-only line;
-- Profile: Taiwanese man 陳志明, no DOB, no document, residence country only; related Profiles for an employer company and a wife; categories SIP / Financial Crime and Tax Crime; notes say he ran a nursing home and was indicted with six others;
+- screened subject: the account holder's legal representative (related party), a very common three-character name, full DOB, Taiwanese, no gender field, no document, an ID-shaped reference number, two addresses plus a postal-code-only line;
+- Profile: Taiwanese man of the same name, no DOB, no document, residence country only; related Profiles for an employer company and a wife; categories SIP / Financial Crime and Tax Crime; notes say he ran a nursing home and was indicted with six others;
 - attached news: indictment of seven people; the headline's 18-year sentencing request is for another couple; the subject is named among the others;
 - business outcome: 無法判斷, a grey area where identity cannot be decided; the legacy 理由 text 確認後不符合 is imported only and is not the identity outcome.
 
@@ -172,7 +172,7 @@ GC-04 to GC-10 ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md))
 
 - GC-04 PEP/RCA
 - GC-05 Sanction
-- GC-06 full DOB conflict (the rule is already released by the user's decision of 2026-11-27, more than two years apart; GC-06 checks it, and a different person born within two years shows its cost)
+- GC-06 full DOB conflict (the rule concludes NO_MATCH more than two years apart; GC-06 checks it, and a different person born within two years shows its cost)
 - GC-07 highly similar final NO_MATCH
 - GC-08 source update result reversal
 - GC-09 Article 22 ① foreign PEP presumption
@@ -209,9 +209,9 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-01-03 | GC-01 | customer DOB 1985 → 1960 | plausible age | no hard conflict, row 6 REVIEW on both Profiles |
 | AUG-01-04 | GC-01 | chairman from 1990 (year only) | `SOURCE_QUALITY_DOWNGRADE` | REVIEW; the other Profile stays NO_MATCH |
 | AUG-02-01 | GC-02 | Profile DOB 1975/9 | month-precision DOB agreement | PARTIAL, MEDIUM support, row 4 PROBABLE_MATCH, still no direct identifier |
-| AUG-02-02 | GC-02 | Profile DOB 1980 | `DOB_CONFLICT` (more than two years off at year precision) | stage 1 NO_MATCH, not FULL_DOB_CONFLICT (was row 1 REVIEW before the birth-date tolerance, 2026-11-27) |
+| AUG-02-02 | GC-02 | Profile DOB 1980 | `DOB_CONFLICT` (more than two years off at year precision) | stage 1 NO_MATCH, not FULL_DOB_CONFLICT |
 | AUG-02-03 | GC-02 | news states 林美玲（49歲） | stated age compatible | `AGE_COMPATIBLE_AT_REPORT`, neutral, row 6 unchanged |
-| AUG-02-04 | GC-02 | news states 林美玲（30歲） | `AGE_DIFFERENCE_AT_REPORT`, `STATED_DOB_CONFLICT` | stage 1 NO_MATCH: the only stated value is more than two years off and the Profile has no DOB (was row 1 REVIEW before the stated-value conflict, 2026-11-27) |
+| AUG-02-04 | GC-02 | news states 林美玲（30歲） | `AGE_DIFFERENCE_AT_REPORT`, `STATED_DOB_CONFLICT` | stage 1 NO_MATCH: the only stated value is more than two years off and the Profile has no DOB |
 | AUG-02-05 | GC-02 | news 分案偵辦 → 起訴 | legal stage | INDICTED; `amlRelevance` stays UNCERTAIN |
 | AUG-02-06 | GC-02 | keyword Money Laundering added | keyword risk category | `MONEY_LAUNDERING` added to risk categories |
 | AUG-02-07 | GC-02 | SIP subcategory Fraud → Gambling | `UNMAPPED_CATEGORY` | UNKNOWN, `SOURCE_CONDITION_UNKNOWN`, REVIEW; relevance checks stay open |
@@ -223,7 +223,7 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-02-13 | GC-02 | category Adverse Media, no keywords, news on drunk driving | Article 22 ② | UNRELATED, set aside, NOT_ON_LIST; identity unchanged |
 | AUG-02-14 | GC-02 | news adds 酒駕 to the fraud report | predicate offence | stays UNCERTAIN |
 | AUG-02-15 | GC-02 | news states 林美玲（女，民國64年9月2日生） | news birth date agrees | `NEWS_BIRTH_DATE_AGREES`, MEDIUM support, row 5 REVIEW (GC-02 is row 6); still no direct identifier |
-| AUG-02-16 | GC-02 | news states a birth date of 民國70年1月1日 | `NEWS_BIRTH_DATE_DIFFERENCE`, `STATED_DOB_CONFLICT` | stage 1 NO_MATCH, NO_HIT (1981-01-01 is more than two years from 1975-09-02, the Profile has no DOB; was row 1 REVIEW before the stated-value conflict, 2026-11-27); the explanation summary names 新聞所載出生日期 under 衝突 |
+| AUG-02-16 | GC-02 | news states a birth date of 民國70年1月1日 | `NEWS_BIRTH_DATE_DIFFERENCE`, `STATED_DOB_CONFLICT` | stage 1 NO_MATCH, NO_HIT (1981-01-01 is more than two years from 1975-09-02, the Profile has no DOB); the explanation summary names 新聞所載出生日期 under 衝突 |
 | AUG-02-17 | GC-02 | Profile DOB 1975/9/2 and the news states the same date | one fact told twice | news NEUTRAL; row 4 PROBABLE_MATCH, not row 3 |
 | AUG-02-18 | GC-02 | Profile DOB 1975/9/2, the news states 民國70年1月1日 | two sources disagree | news NEUTRAL, UNCERTAIN; row 4 unchanged; `ATTACHED_NEWS_DISAGREES_WITH_PROFILE`, priority NORMAL, the summary says 來源不一致 |
 | AUG-02-19 | GC-02 | news states 林美玲（男）, the Profile's gender agrees | two sources disagree | `NEWS_GENDER_DIFFERENCE` shown, NEUTRAL; row 6 unchanged; `ATTACHED_NEWS_DISAGREES_WITH_PROFILE`, priority stays LOW |
@@ -250,7 +250,7 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-11-02 | GC-11 | Profile national ID with another number | `DOCUMENT_IDENTITY_CONFLICT` | row 1 REVIEW |
 | AUG-11-03 | GC-11 | Profile passport only | document not comparable | UNCERTAIN `NOT_COMPARABLE`; row 4 PROBABLE_MATCH unchanged (a document of another type or country does not block row 4) |
 | AUG-11-04 | GC-11 | Profile DOB 1973 → 1973/6/12 | full DOB agreement | HIGH support, row 4, direct identifier present |
-| AUG-11-05 | GC-11 | Profile DOB 1973 → 1973/8/1 | `DOB_AGREES_WITHIN_TOLERANCE` (a different full date under two years from the customer's) | LOW support, row 4 PROBABLE_MATCH (was `FULL_DOB_CONFLICT` row 1 REVIEW, the GC-06 stand-in, before the birth-date tolerance, 2026-11-27) |
+| AUG-11-05 | GC-11 | Profile DOB 1973 → 1973/8/1 | `DOB_AGREES_WITHIN_TOLERANCE` (a different full date under two years from the customer's) | LOW support, row 4 PROBABLE_MATCH |
 | AUG-11-06 | GC-11 | Profile deceased, died 1970 | `DEATH_BEFORE_CUSTOMER_BIRTH` | fires, REVIEW, Case IN_REVIEW |
 | AUG-11-07 | GC-11 | Profile address = customer address in current form | structured address | `SAME_ADDRESS_NO_PERIOD`, never support, row 4 unchanged |
 | AUG-11-08 | GC-11 | full DOB plus the same company with overlapping periods | employment support | row 3 PROBABLE_MATCH |

@@ -8,7 +8,7 @@
 |---|---|
 | Process | `Aml.Api` (ASP.NET Core); hosts the REST API and `JobWorker` |
 | Database | SQLite file from `Database:ConnectionString`, in write-ahead-log mode: `<file>-wal` and `<file>-shm` sit next to it while it is in use and belong to it. **Pending:** target database (SQL Server or Oracle) |
-| Schema | The DbUp scripts (`0001_schema.sql`, then the add-only `0002_web_page.sql`) run at startup, each once; a failed upgrade or an invalid SQL catalog stops the process |
+| Schema | The DbUp scripts (`0001_schema.sql`, then the add-only `0002_web_page.sql` and `0003_web_page_published.sql`) run at startup, each once; a failed upgrade, a database of another format or an invalid SQL catalog stops the process |
 | Outbound web | A received URL is fetched from the API process (`FETCH_PAGE`): system DNS, no proxy, ports 80 and 443 to public addresses only (URL guard). The host needs that egress; a deployment behind a proxy needs the guard extended first |
 | Health | `GET /health` returns `Healthy` when the database answers `System.Ping` |
 | Telemetry | OpenTelemetry; set `OTEL_EXPORTER_OTLP_ENDPOINT` to export traces, metrics and logs |
@@ -54,7 +54,7 @@
 
 ## Rebuilding the PoC database
 
-The PoC database is disposable: a release that changes the schema or the stored JSON format (`CaseJson.SchemaVersion`) does not read an older database: the schema script records the format (`PRAGMA user_version`, equal to `CaseJson.SchemaVersion`; a schema change raises both), and startup refuses a database of another format with a message to delete it. Stop the service, delete the database file with its `-wal` and `-shm` files, and start; the schema is created from `0001_schema.sql`. Re-import the Profiles and re-submit the Cases that are still needed.
+When startup refuses the database as another format, delete it as [persistence](../feature/persistence.md#structure) says and start again; then re-import the Profiles and re-submit the Cases that are still needed.
 
 ## Backup and disaster recovery
 

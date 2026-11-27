@@ -15,7 +15,7 @@ internal sealed record Ev(string Mention, List<string> Labels);
 
 internal static class ReferenceStage
 {
-    /// <summary>aml-eval-r4 <c>stage</c> mode (gold.py stage()): highest step of the person's non-prior labels, '-' labels ignored.</summary>
+    /// <summary>Aml.NewsEval <c>stage</c> mode (gold.py stage()): highest step of the person's non-prior labels, '-' labels ignored.</summary>
     public static string Of(IEnumerable<string> labels)
     {
         var l = labels.Where(x => !x.Contains('-', StringComparison.Ordinal) && x != "prior").ToHashSet();

@@ -27,6 +27,22 @@ doc/text/persons/id/forms only; for a fine-tune, `train.jsonl` byte-identical to
 the current prompt, no train text (cut) equal to an evaluation text and no train source document in an evaluation set;
 `run.sh` LF-only and passing `bash -n`; sha256 of every file.
 
+## Prerequisites
+
+- Host: Python 3; `build_job.py`, `common.py` and `selfcheck.py` use the standard library and `tools/stage-model`
+  (`gold`, `paths`), `sft.py` also `prep_stage.py`'s row builder, so `transformers` and the tokenizer in
+  `AML_TRAIN/models/bert-base-chinese` as [tools/stage-model](../stage-model/README.md) needs them. The host packages
+come from `tools/stage-model/requirements.txt` (it pins `transformers` and `tokenizers`; nothing else here is imported
+on the host). `requests`, which `infer.py` imports, is needed on the VM only, where `run.sh` installs it if it is missing. Jobs run through
+  [tools/colab](../colab/README.md) (its prerequisites: the `colab` container signed in with your own account), on an L4.
+- The VM side needs internet: `run.sh` downloads Ollama's install script from ollama.com and pulls the model tag. The
+  deployed tag is `gemma4:12b-it-q4_K_M` (the default of `build_job.py infer`; `--size e4b` uses `gemma4:e4b-it-q4_K_M`);
+  a fine-tune downloads `unsloth/gemma-4-12b-it` or `unsloth/gemma-4-E4B-it`.
+- Local runs, without Colab: an Ollama server with `ollama pull gemma4:12b-it-q4_K_M`; the product reads it with
+  `StageModels:LlmUrl` (the server's root) and `StageModels:LlmModel` (the tag), the synthetic-set test with
+  `AML_STAGE_LLM_URL` / `AML_STAGE_LLM_MODEL` beside `AML_STAGE_MODEL`. The reader speaks Ollama's `/api/chat`, so a
+  measurement goes through Ollama.
+
 ## Environment
 
 | Variable | Default | Holds |

@@ -3,7 +3,7 @@ paths on the machine the scripts were written on. Directory values end in '/' (t
 
   AML_DATA        labelled material (labels/, court/raw/)                  default C:/tmp/aml-data
   AML_TRAIN       training workspace (data-r12/, measurements/, models/)    default C:/tmp/aml-train
-  AML_EVAL        outside .NET evaluator aml-eval-r4's folder: its sg-<set>-r17.tsv rows (score.py, score_gemma.py)
+  AML_EVAL        tools/Aml.NewsEval's working folder outside the repo: its sg-<set>-r17.tsv rows (score.py, score_gemma.py)
                   default C:/tmp/aml-eval-r4
   AML_STAGE_EVAL_OUT  tools/Aml.StageEval's out= folder, <set>.tsv per development set (gold.py verify)
                   default C:/tmp/eval-sys/out (the evaluator's own default)

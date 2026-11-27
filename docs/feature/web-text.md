@@ -14,7 +14,7 @@
   - A failing one (5xx, 429, unreachable, timed out) means the site is not crawled for now. The failure is not remembered, so the next request asks again.
 - **Delay**: it waits between requests to one site, the configured delay (1 s in the API) or the site's `Crawl-delay` (at most a minute) if longer. The `Crawl-delay` holds from the `robots.txt` request on. Times come from the injected `TimeProvider`.
 - **Redirects**: it follows them itself, at most 5. Each hop is a new request, checked against its own site's `robots.txt` and delay.
-- **URL guard**: every request, `robots.txt` and each redirect hop included, first passes `UrlGuard` (http or https, no credentials, port 80 or 443, every resolved address public; [external sources](external-sources.md#common-path)). Host names resolve through a function the caller gives (the system DNS in the API, a table in tests), so no test touches the network.
+- **URL guard**: every request, `robots.txt` and each redirect hop included, first passes `UrlGuard` (its rules: [security and privacy](security-and-privacy.md#external-lookups)). Host names resolve through a function the caller gives (the system DNS in the API, a table in tests), so no test touches the network.
 - It sends one request at a time, with a generic agent name and no contact details.
 - It takes only HTML and PDF replies (media type case-insensitive; `application/x-pdf` counts as PDF). It stops reading past 10 MB.
 - It never returns a bare failure: the result is the page or the problem code that stopped it (`ROBOTS_DISALLOWED`, `ROBOTS_UNAVAILABLE`, `URL_NOT_ALLOWED`, `UNSUPPORTED_MEDIA_TYPE`, `TOO_LARGE`, `TOO_MANY_REDIRECTS`, `HTTP_STATUS:<n>`, `UNREACHABLE`), marked transient when asking again later may help.
@@ -37,7 +37,7 @@
 
 The publication date is read from the metadata and from a publication label in the page template (`發布日期：` with its date in one short element, not under a boilerplate-named container) after the depth check and before boilerplate is removed, and from the head of the main text after; the update date (`更新日期：`, `article:modified_time`) is read the same way and stands in, marked `UPDATE_DATE`, only when no publication date is stated (`PublishedDates`; the forms and the `MISSING` rules are in [external sources](external-sources.md#common-path)). A PDF's date is read from the head of its text only.
 
-The page is decoded by its meta charset (UTF-8, Big5); a charset given only in the HTTP header is not used. Parsing has the time budget of the HTML reader ([extraction](extraction-and-normalization.md)), and a page nesting deeper than 256 levels is refused. Every element's text, link and comma counts are summed once, bottom up, so the rest of the work is linear in the page.
+A fetched page's bytes are decoded by AngleSharp: a byte order mark, else its meta charset (UTF-8, Big5); a charset given only in the HTTP header is not used. A page uploaded as a Case file is decoded otherwise, without its meta charset ([encoding](extraction-and-normalization.md#encoding)); a page pinned into a Case is its stored text and is not decoded again. Parsing has the time budget of the HTML reader ([extraction](extraction-and-normalization.md)), and a page nesting deeper than 256 levels is refused. Every element's text, link and comma counts are summed once, bottom up, so the rest of the work is linear in the page.
 
 ## PDF text
 

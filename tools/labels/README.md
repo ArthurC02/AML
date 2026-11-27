@@ -10,8 +10,8 @@ The labels hold real names. They stay outside the repo (`AML_DATA`, `AML_TRAIN` 
 
 | File | Does |
 |---|---|
-| `stage-brief.md` | the brief every blind labelling pass got (rounds v13 to v17, word for word, save that the text folder is now `<RAW>` from the assignment) |
-| `recheck-brief.md` | the brief of a recheck pass; written down afterwards from the working log (v14r's passes got the stage brief and their person list in the assignment) |
+| `stage-brief.md` | the brief every blind labelling pass gets (rounds v13 to v17 got it word for word; the text folder `<RAW>` comes from the assignment) |
+| `recheck-brief.md` | the brief of a recheck pass (v14r's passes got the stage brief and their person list in the assignment) |
 | `choose.py <round> <n> <seed> [candidates.txt] [batches=4]` | seeded sample of gathered releases no round, recheck or measured set holds yet; writes `labels/<round>/batches.json` |
 | `merge.py check <round>/<pass>` | format of a pass: doc id, `kind`, `forms` a non-empty list of strings found in the text, `defendant`, `stage` |
 | `merge.py <round> <out.jsonl> [--fin] [--force]` | the evaluator's documents for the persons both passes give the same stage (`--fin`: an adjudicated folder taken whole); refuses a round with format errors (counts of bad persons and files per pass) and an existing output unless `--force` |
@@ -50,11 +50,6 @@ Each script has `--selfcheck` (made-up input, no data).
 
 | Round | Made | Rebuilt here |
 |---|---|---|
-| v13 -> accept, v14 -> accept3, v15 -> accept4, v16 -> accept5 | two blind passes, `merge.py` (then `measurements/court/accept*.py`) | `merge.py` output byte-identical to the four set files (v13 before merge refused format errors; see Known) |
+| v13 -> accept, v14 -> accept3, v15 -> accept4, v16 -> accept5 | two blind passes, `merge.py` (then `measurements/court/accept*.py`) | `merge.py` output byte-identical to the four set files |
 | v17 (train) | two blind passes, `add17.py` | `add17.py` and `add17.py --verdicts` byte-identical to `data17/` and `data17v/`; `merge.py v17` agrees on 250 persons, 249 after `add17.py` drops one overlapping document |
 | v14r (recheck of accept3) | 27 persons, two blind passes | `compare`: 26 confirmed, 1 split, as recorded; `pick` on today's rows finds 24 of the 27 (the other 3 were chosen because two language models both missed them, which the evaluator's rows do not hold) and 1 more |
-
-Fixed 2026-11-23: v13 pass `a` had 21 persons with `forms` as one string instead of a list, so the merge matched none
-of them and accept held 93 persons. Each string was one form; written as one-element lists, both passes agree on all
-114 and accept was rebuilt (the earlier files are kept beside them as `*.bak-20261123`). `merge.py` now refuses a pass
-with such format errors.

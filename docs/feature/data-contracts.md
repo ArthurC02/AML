@@ -35,7 +35,7 @@ The record is `SourceProfile`, at `profile` of each hit: profile key, record typ
 One row of the candidate table in 案件資訊, read by header label ([candidate table](extraction-and-normalization.md#candidate-table)):
 
 ```yaml
-matchedName: 陳志明       # 姓名/名稱
+matchedName: 張文華       # 姓名/名稱
 profileId: "14001741"     # 名單資料編號
 legacyReason: null        # 理由; ImportedDecision only, never evidence
 isRca: false              # true when Is RCA? reads YES
@@ -139,7 +139,7 @@ Canonical pair-level matrix ([ADR-0004](../adr/0004-identification-only.md)), ap
 - The matrix is the same for every list type: an identity NO_MATCH on a HIT or UNKNOWN Sanction, PEP or RCA condition gives NO_HIT, as on adverse media (no blanket human review; the user's decision of 2026-11-27). The [scoring rule](scoring-rule.md)'s automatic MATCH, once it decides, is not held for these list types either. What still keeps such a pair in REVIEW is the identity itself: REVIEW or PROBABLE_MATCH, a validated hard conflict downgraded inside the gate (source quality, strong support with a conflict), or a pending rule ([identity adjudication](identity-adjudication.md#hard-conflict-gate)).
 - A candidate Profile without Profile data is not evaluated: it is listed in `notEvaluatedProfiles`, and the Case result is NOT_EVALUATED.
 
-PROBABLE_MATCH is never exposed; it surfaces as REVIEW with high priority. Case-level aggregation is in [case management](case-management.md#case-level-result).
+PROBABLE_MATCH is never exposed as the pair or Case result: the stored identity decision holds it, and the pair surfaces as REVIEW with high priority (normal when the attached news disagrees with the Profile). Case-level aggregation is in [case management](case-management.md#case-level-result).
 
 ## DispositionRecommendation
 

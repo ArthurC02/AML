@@ -24,6 +24,10 @@ Locations differ per host; no machine paths are written here. Find them on this 
 (`AML_COLAB_HOME`, `AML_LLM_WORK`, `AML_TRAIN`, `AML_DATA`, `AML_STAGE_WORK`), the paths the tools print, and
 `tools/llm-stage/README.md`. If a location is missing or does not hold what is described, stop and ask the user.
 
+Prerequisites (`tools/llm-stage/README.md`, "Prerequisites"): the `colab` container signed in with the user's own
+account; host Python packages from `tools/stage-model/requirements.txt` (only `sft.py` needs them; `requests` is installed on the
+VM by `run.sh`); the deployed Ollama tag is `gemma4:12b-it-q4_K_M` (pulled on the VM by `run.sh`; locally `ollama pull`).
+
 ## Steps
 
 1. `python -I -X utf8 tools/llm-stage/selfcheck.py` (after any change to `tools/llm-stage`).

@@ -4,7 +4,8 @@ paths on the machine the scripts were written on. Directory values end in '/' (t
   AML_DATA        labelled material (labels/, judgments/, press/, news/)            default C:/tmp/aml-data
   AML_TRAIN       training workspace (data-r*/, data-dev2/, data-synth/, models/,
                   downloads/, measurements/)                                         default C:/tmp/aml-train
-  AML_EVAL        the .NET evaluator aml-eval-r4 (outside the repo, e2e.sh)         default C:/tmp/aml-eval-r4
+  AML_EVAL        tools/Aml.NewsEval's working folder outside the repo: its documents
+                  in, dumps out (e2e.sh)                                             default C:/tmp/aml-eval-r4
   AML_COLAB_HOME  where build_job.py writes job<name>/ (tools/colab reads it there) default C:/tmp/colab/home
 """
 import os

@@ -40,7 +40,7 @@ Article 22 covers message scanning (AML SWIFT/RTGS) and name screening of indivi
 - identity NO_MATCH → NOT_ON_LIST, reason code `ART22_IDENTITY_NO_MATCH`;
 - otherwise no automatic recommendation; the pair stays REVIEW.
 
-No MATCH is emitted until the scoring rule decides (automatic MATCH is allowed from then on, Sanction / PEP aside until confirmed), so today the two MATCH rows never apply: a PROBABLE_MATCH pair that ① and ② do not resolve gets no recommendation.
+No MATCH is emitted until the scoring rule decides (automatic MATCH is allowed from then on, for every list type), so today the two MATCH rows never apply: a PROBABLE_MATCH pair that ① and ② do not resolve gets no recommendation.
 
 ### Article 22-1: foreign PEP presumption
 

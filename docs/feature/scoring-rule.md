@@ -57,7 +57,7 @@ One combined number was rejected: it would let a strong source condition push id
 Bands, applied in order:
 
 1. a validated hard conflict → NO_MATCH (veto);
-2. `I ≥ T_match` with no veto or cap → MATCH, concluded without a reviewer (automatic MATCH, allowed by the user 2026-11-26). It takes effect only once the score is the decision ([validation](#validation)); until then it is a measured outcome only, and today's code never emits MATCH. It applies to every list type: nothing holds a Sanction, PEP or RCA pair back from it ([answered](../plan/open-questions.md#answered)). An automatic MATCH is an identification, not a disposition: the Article 22 recommendation stays advisory ([ADR-0004](../adr/0004-identification-only.md));
+2. `I ≥ T_match` with no veto or cap → MATCH, concluded without a reviewer (automatic MATCH, allowed by the user 2026-11-26). It takes effect only once the score is the decision ([validation](#validation)); until then it is a measured outcome only, and today's code never emits MATCH. It applies to every list type: nothing holds a Sanction, PEP or RCA pair back from it ([ADR-0001](../adr/0001-identity-adjudication.md)). An automatic MATCH is an identification, not a disposition: the Article 22 recommendation stays advisory ([ADR-0004](../adr/0004-identification-only.md));
 3. `I ≥ T_probable`, or `I ≥ T_probable_exact` with all three prerequisites EXACT and no DOCUMENT or EMPLOYMENT value CONFLICT or UNCERTAIN (other than `NOT_COMPARABLE`) → PROBABLE_MATCH, unless capped;
 4. `I ≤ T_no_match`, reached only through items whose rules are validated → NO_MATCH; reached otherwise → REVIEW with `SCORE_HELD_PENDING_VALIDATION`;
 5. otherwise REVIEW.
@@ -67,7 +67,7 @@ Caps (proposed), each outside the sum and listed with its code:
 - a CONFLICT in the Profile's own DOCUMENT (pending rule) caps the pair at REVIEW (`SCORE_CAPPED_PROFILE_CONFLICT`), so stage 3 row 1 is kept: without it a full DOB, two associations and more could outweigh the −40. A DOB conflict needs no cap: it is the validated veto, and with an agreeing document it is downgraded and held at REVIEW;
 - opposite genders, in the Profile or stated next to the name in the attached news, cap at REVIEW (`SCORE_CAPPED_GENDER_CONFLICT`);
 - an entity record caps at PROBABLE_MATCH, and at REVIEW without an agreeing entity identifier (`SCORE_CAPPED_ENTITY_RECORD`);
-- a Profile from an external source caps at PROBABLE_MATCH and cannot reach NO_MATCH by the sum until its Golden Case ([external sources](external-sources.md)); not built, as no external-source Profile exists in the code yet.
+- a Profile from an external source caps at PROBABLE_MATCH and cannot reach NO_MATCH by the sum until its Golden Case ([external sources](external-sources.md)); not built: a received page's persons are candidates (`Core/Pages/PageCandidates`), but `ScoringRule` has no such cap.
 
 A cap is listed only when it lowered the band; the threshold the sum crossed is kept beside it.
 
@@ -91,8 +91,8 @@ Off the Golden Cases the rule differs from the stage 3 table where points add up
 
 - **two MEDIUM supports** (for example DOB to the month +15 and an address at house number +15 = 30) reach `T_probable` and give PROBABLE_MATCH; the table gives row 5, REVIEW;
 - **weak items with exact prerequisites**: two LOW items (an address at district +5 and an other identifier +5 = 10), or one agreeing employer (+15), reach `T_probable_exact` 8 without any DOB support and give PROBABLE_MATCH; the table's row 4 needs DOB support, so it gives row 5, REVIEW;
-- **opposite genders with an agreeing document**: the table's row 2 comes before the gender check and gives PROBABLE_MATCH; the gender cap holds the score at REVIEW (found by the build);
-- **a stated age or birth-date difference** in the attached news that does not conclude (the Profile has an agreeing DOB, or a birth date within two years): the table puts the pair on row 1, REVIEW; the score subtracts 4.8 and the pair can still reach PROBABLE_MATCH (a full DOB +25 and an employer +15 give 35.2) (found by the build).
+- **opposite genders with an agreeing document**: the table's row 2 comes before the gender check and gives PROBABLE_MATCH; the gender cap holds the score at REVIEW;
+- **a stated age or birth-date difference** in the attached news that does not conclude (the Profile has an agreeing DOB, or a birth date within two years): the table puts the pair on row 1, REVIEW; the score subtracts 4.8 and the pair can still reach PROBABLE_MATCH (a full DOB +25 and an employer +15 give 35.2).
 
 These differences are what the [validation](#validation) measures; none occurs on the Golden Cases.
 
@@ -109,7 +109,7 @@ MATCH (`T_match` 60) is reached by these combinations of the table's items, amon
 
 On today's data these combinations are rare: an address is never support (no validity periods on either side), and the bank supplies no customer employer or relatives, so in practice MATCH needs a Profile document or full DOB.
 
-NO_MATCH by the sum needs a negative item from a validated rule. The DOB conflict was released differently (user, 2026-11-27): a Profile DOB more than two years off is a veto, not an item, a difference of two years or less is agreement within tolerance, and no DOB item is negative any more ([birth-date tolerance](identity-adjudication.md#birth-date-tolerance); scattered or UNPARSEABLE Profile values downgrade it to REVIEW; a placeholder day is not checked). The candidates left, with what each needs:
+NO_MATCH by the sum needs a negative item from a validated rule. The DOB conflict is not such an item (user, 2026-11-27): a Profile DOB more than two years off is a veto, a difference of two years or less is agreement within tolerance, and no DOB item is negative ([birth-date tolerance](identity-adjudication.md#birth-date-tolerance); scattered or UNPARSEABLE Profile values downgrade it to REVIEW; a placeholder day is not checked). The candidates left, with what each needs:
 
 | Item | Points | Alone reaches `T_no_match` −25 | Needs before release |
 |---|---|---|---|
@@ -176,7 +176,7 @@ One factor per kind of source, applied to stated identity values and to conditio
 
 ## Proposal table
 
-**PROPOSED — not approved by the user.** Policy version `score-proposal-0.2` (0.1 had the DOB conflict as a −25 item; it is a veto since 2026-11-27, and agreement within tolerance is new). Points follow the strength order and roughly round log₂(m/u) of [support strength](identity-adjudication.md#support-strength), so calibration can replace them.
+**PROPOSED — not approved by the user.** Policy version `score-proposal-0.2` (`ScoringPolicy.Version`; the DOB conflict is a veto, not an item). Points follow the strength order and roughly round log₂(m/u) of [support strength](identity-adjudication.md#support-strength), so calibration can replace them.
 
 | Item | Code | Points / value |
 |---|---|---|
@@ -230,9 +230,8 @@ The policy version is recorded in lineage; `hit_evidence` gains the points per i
 
 ## Validation
 
-- **Trial calculation now** (user, 2026-11-26). The proposal table is used to calculate: the score runs in measurement only, computed beside the stage 3 table and compared with it on the Golden Cases and labelled sets. It is not the decision and is not in a Case's result; the weights stay PROPOSED. Built: `ScoringRuleTests` holds every cell of the table, `GoldenMetricsTests` the Golden Case lines and the comparison ([results](../plan/poc-delivery-plan.md#scoring-rule-beside-the-stage-3-table): the band agrees with the table on all six pairs; decided rate 2/6 under both).
-- **Synthetic end-to-end set** (user, 2026-11-26). Generated Cases with known truth, written as the bank's export and run through the readers, `CaseAnalyzer` and this rule ([results](../plan/poc-delivery-plan.md#synthetic-end-to-end-set)): with the DOB conflict and the stated-value conflict released (2026-11-27) the score concludes 121 of 359 pairs (118 NO_MATCH, 3 MATCH, no wrong identity) where the product concludes 118 (the same 118 NO_MATCHes; 113 pair cells right, 5 NO_HIT on a delisted sanction whose truth cell is NOT_APPLICABLE); 154 pairs carry nothing beyond the prerequisites, so missing data holds most of the rest; a birth year or a birth date within two years at `T_probable_exact` raises 6 same-name strangers to PROBABLE_MATCH. It finds logic holes and compares thresholds under stated assumptions; the strangers' chance agreements are assumptions, so its precisions are not evidence for release, and real labelled pairs are still needed.
-- **Adversarial synthetic set.** Built failure modes of an automatic MATCH on a document, with the customer in hard forms ([results](../plan/poc-delivery-plan.md#adversarial-synthetic-set)): on the realistic group the candidate condition [B′](#candidate-match-condition-b) concludes 59 customers and no stranger, B″ (B′ and an agreeing list birth date) 29 exact and 44 with tolerance, no stranger; the theoretical group shows what they cannot see (recycled passports: B′ 20, B″ 10). The product today concludes no customer NO_MATCH; the counts are probes, not rates. Measurement only; it decides nothing.
+- **Trial calculation** (user, 2026-11-26). The score runs in measurement only, computed beside the stage 3 table and compared with it on the Golden Cases and labelled sets; it is not the decision, is not in a Case's result, and the weights stay PROPOSED. `ScoringRuleTests` holds every cell of the table, `GoldenMetricsTests` the Golden Case lines and the comparison.
+- **Synthetic sets** (user, 2026-11-26). The end-to-end, adversarial and real-shape synthetic sets run generated Cases with known truth through the readers, `CaseAnalyzer` and this rule; they find logic holes and compare thresholds under stated assumptions, so their counts are not evidence for release and real labelled pairs are still needed. Figures: [current evidence](../plan/poc-delivery-plan.md#current-evidence).
 - **Switch gates (proposed).** The score replaces the stage 3 table in the analysis only when the user has approved the table above, it reproduces every validated Golden Case, it is not worse than the table on the [scorecard](../plan/poc-delivery-plan.md#requirement-scorecard) on the labelled sets, and the precision of its automatic MATCH has been measured on labelled pairs and accepted by the user.
 - **Pair measures.** Decided rate (MATCH or NO_MATCH without a reviewer) first, guarded by the two precisions below; right person kept (true matches not at NO_MATCH, share at MATCH and PROBABLE_MATCH), automatic MATCH precision (different persons at MATCH), wrong person excluded (different persons at LOW priority or NO_MATCH, never a true match there), per source; NO_MATCH precision stays 100% on every labelled set before any NO_MATCH band opens.
 - **Data.** Golden Cases (GC-01 to GC-03, GC-11, GC-12; no Sanction or PEP case yet), labelled customer × Profile pairs (none yet beyond the Golden Cases), the annotated judgments, press releases and news for the extracted inputs ([news model training](../plan/news-model-training.md), [stage model training](../plan/stage-model-training.md)).

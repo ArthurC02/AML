@@ -28,5 +28,5 @@ Api ──► Services ──► Core
 ## Consequences
 
 - Golden Case tests run against Core without database or HTML.
-- Case state mutators are `internal` with `InternalsVisibleTo("Aml.Services")`; within Services, `CaseService` stays the only writer by review.
+- `CaseService` is the only writer of Case state (through `ICaseStore`), kept so by review: the compiler does not enforce it (Core and Infra expose their internals to `Aml.Tests` only).
 - The stack is subordinate to the bank's supply-chain and production standards; packages, build settings and layout are in the [implementation baseline](../plan/implementation-baseline.md#solution-structure).

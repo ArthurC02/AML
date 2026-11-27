@@ -1,12 +1,13 @@
 """Asserts on bundle.py and pseudonymise.py with a made-up tiny bundle (made-up names, no real data); prints selfcheck OK.
-Covers build -> manifest -> verify (and a tampered file failing it), pseudonymise (offsets kept, masked forms consistent
-with the full name, the map only inside the original), remove (a document gone from files, rows, index rows and the map,
-BOM and line ends kept) and a stray top-level directory failing verify."""
+Covers build -> manifest -> verify (and a tampered file failing it; models, guideline and evaluator inputs taken, caches
+and dumps not), pseudonymise (offsets kept, masked forms consistent with the full name, the map only inside the original,
+models unchanged, the guideline left out), remove (a document gone from files, rows, index rows, evaluator inputs and the
+map, BOM and line ends kept) and a stray top-level directory failing verify."""
 import json, os, pathlib, shutil, subprocess, sys, tempfile
 
 HERE = pathlib.Path(__file__).resolve().parent
 T = pathlib.Path(tempfile.mkdtemp(prefix="aml-bundle-selfcheck-"))
-os.environ["AML_DATA"], os.environ["AML_TRAIN"] = str(T / "src-data"), str(T / "src-train")
+os.environ["AML_DATA"], os.environ["AML_TRAIN"], os.environ["AML_EVAL"] = str(T / "src-data"), str(T / "src-train"), str(T / "src-eval")
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(HERE))
 import bundle  # noqa: E402
@@ -44,6 +45,13 @@ w(R / "data-r12/split.json", json.dumps({"train": ["jd-0001", "jd-0002"], "dev":
 w(R / "measurements/report/dev-stage.jsonl", jl([{"doc": "jd-0002", "text": T2, "people": [{"id": "P1", "role": "PER-Suspect", "party": "Suspect", "mentions": [OTHER]}], "events": []}]))
 w(R / "gemma-ft/data/train.jsonl", jl([{"messages": [{"role": "user", "content": "x " + T1}, {"role": "assistant", "content": "{}"}]}]))
 w(R / "models/bert-base-chinese/model.safetensors", "weights, never bundled")
+w(R / "downloads/aml47/onnx/model.onnx", "classifier"); w(R / "downloads/aml47/onnx/vocab.txt", OTHER)  # models: unchanged in every copy
+w(R / "measurements/aml43-pair/ner/model.onnx", "ner"); w(R / "measurements/aml43-pair/cache/tags-dev.jsonl", jl([{"doc": "jd-0001"}]))
+w(D / "labels/tools/guideline.md", "quotes " + OTHER); w(D / "labels/tools/check.py", "#"); w(D / "labels/tools/crawl-src/Program.cs", "//")
+E = T / "src-eval"
+w(E / "dev.jsonl", jl([{"doc": "jd-0001", "text": T1, "people": [{"id": "P1", "role": "PER-Suspect", "mentions": [FULL]}]}, {"doc": "jd-0002", "text": T2, "people": []}]))
+w(E / "sg-dev-r17.tsv", "jd-0001\tP1\tindicted\tunknown\njd-0002\tP1\tindicted\tunknown\n"); w(R / "measurements/aml43-pair/ev/sub/x.onnx", "ev")
+w(E / "sg-dev2-r17.tsv", "x\tjd-0001#P1\n"); w(E / "evids-dev.jsonl", jl([{"key": "jd-0001:P1"}]))  # the id outside the matched column / key w(E / "e2e-dev1-x.tsv", "a result dump, not bundled")
 
 # build, manifest, verify
 O, P = T / "bundle/original", T / "bundle/pseudonymised"
@@ -51,11 +59,17 @@ bundle.build(O)
 m = json.load(open(O / "MANIFEST.json", encoding="utf-8"))
 paths_ = {f["path"] for f in m["files"]}
 assert "aml-data/judgments/jd-0001.html" not in paths_ and not any("safetensors" in p for p in paths_), "closure took a file it must not"
+assert {"aml-train/downloads/aml47/onnx/model.onnx", "aml-train/measurements/aml43-pair/ner/model.onnx", "aml-data/labels/tools/guideline.md",
+        "aml-data/labels/tools/check.py", "aml-eval/dev.jsonl", "aml-eval/sg-dev-r17.tsv", "aml-train/measurements/aml43-pair/ev/sub/x.onnx"} <= paths_, "models, guideline, evaluator inputs"
+assert not any("cache/" in p or "crawl-src" in p or "e2e-dev1" in p for p in paths_), "caches, crawler, result dumps stay out"
+assert {f["role"] for f in m["files"] if f["path"].startswith("aml-train/downloads/aml47/")} == {"model"}
 assert {f["role"] for f in m["files"]} >= {"labels", "raw", "train", "dev", "split"}, "roles"
 assert m["sets"]["dev report:dev-stage"]["suspects"] == 1
 assert bundle.verify(O)
 f = O / "aml-data/judgments/jd-0002.main.txt"; keep = f.read_bytes(); f.write_bytes(keep + b"x")
 assert not bundle.verify(O); f.write_bytes(keep); assert bundle.verify(O)
+f = O / "aml-train/measurements/aml43-pair/ner/model.onnx"; keep = f.read_bytes(); f.write_bytes(b"x" + keep[1:])
+assert not bundle.verify(O), "an altered model file"; f.write_bytes(keep); assert bundle.verify(O)
 
 # pseudonymise
 r = py(HERE / "pseudonymise.py", O, P, "--map", O / "PSEUDONYM-MAP.json", "--seed", "00" * 32)
@@ -73,7 +87,9 @@ assert lab["persons"][0]["mentions"] == [ps, ps[1:], ps[0] + "○○"], "an esca
 ev, raw1 = lab["events"][0], (P / "aml-data/judgments/jd-0001.main.txt").read_text(encoding="utf-8")
 assert ev["sentence"] in raw1 and ev["trigger"] in ev["sentence"] and ev["also"][0] in raw1 and FULL not in ev["sentence"], "event strings stay substrings"
 for q in P.rglob("*"):
-    if q.is_file(): assert FULL not in q.read_text(encoding="utf-8") and "大明" not in q.read_text(encoding="utf-8"), q.name
+    if q.is_file() and not bundle.is_model(q.relative_to(P).as_posix()): assert FULL not in q.read_text(encoding="utf-8") and "大明" not in q.read_text(encoding="utf-8") and OTHER not in q.read_text(encoding="utf-8"), q.name
+assert (P / "aml-train/downloads/aml47/onnx/vocab.txt").read_bytes() == (O / "aml-train/downloads/aml47/onnx/vocab.txt").read_bytes(), "models copied unchanged"
+assert not (P / "aml-data/labels/tools").exists(), "the guideline, checker and prompts stay in the original only"
 assert bundle.verify(P)
 r2 = py(HERE / "pseudonymise.py", O, O / "inside", "--map", O / "PSEUDONYM-MAP.json")
 assert r2.returncode != 0, "dest inside the original must be refused"
@@ -83,10 +99,12 @@ assert r3.returncode != 0 and not (T / "map.json").exists(), "a map outside the 
 # remove
 sp = O / "aml-train/data-r12/split.json"; sp.write_bytes(b"\xef\xbb\xbf" + sp.read_bytes().replace(b"\n", b"\r\n") + b"\r\n")  # BOM, CRLF
 crlf_manifest = b"\r\n" in (O / "MANIFEST.json").read_bytes()
-bundle.remove("jd-0001", O)
+rc = bundle.remove("jd-0001", O)
+assert rc["files still naming the id (not edited)"] == 2, "the id left outside the matched column / key is reported"
 assert not (O / "aml-data/judgments/jd-0001.main.txt").exists() and not (O / "aml-data/labels/v6/ver/jd-0001.json").exists()
 assert "jd-0001" not in (O / "aml-train/data-r12/ner-train.jsonl").read_text(encoding="utf-8")
 assert "jd-0001" not in (O / "aml-data/court/raw/index.jsonl").read_text(encoding="utf-8"), "an index row keyed by id"
+assert all("jd-0001" not in (O / "aml-eval" / n).read_text(encoding="utf-8") for n in ("dev.jsonl", "sg-dev-r17.tsv")), "evaluator inputs"
 assert json.load(open(sp, encoding="utf-8-sig"))["train"] == ["jd-0002"]
 b = sp.read_bytes(); assert b.startswith(b"\xef\xbb\xbf") and b.endswith(b"\r\n") and b.count(b"\n") == b.count(b"\r\n"), "BOM and CRLF kept"
 assert (b"\r\n" in (O / "MANIFEST.json").read_bytes()) == crlf_manifest, "manifest line ends kept"

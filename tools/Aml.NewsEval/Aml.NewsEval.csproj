@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- News-model end-to-end measurement (docs/plan/news-model-training.md): runs OnnxNewsModel and NewsModelReading over
+       the annotated dev documents. Working tool, not shipped; documents, caches and dumps stay in AML_EVAL (or out=). -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Working-tool code kept as measured: culture-default StartsWith (CA1310), unsealed records (CA1852) and string
+         StartsWith of one character (CA1866) are left as they are so the reproduced figures stay the same. -->
+    <NoWarn>$(NoWarn);CA1310;CA1852;CA1866</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Aml.Core\Aml.Core.csproj" />
+    <ProjectReference Include="..\..\src\Aml.Infra\Aml.Infra.csproj" />
+  </ItemGroup>
+</Project>

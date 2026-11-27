@@ -24,9 +24,8 @@ The data holds real names. It stays outside the repo; the scripts print counts o
 document, a Witness with a labelled event, a person with no form in the text. The rows are capped at the suspect row
 count (Victim and Other first, Witness and Official drawn with a fixed seed); `--officials N` replaces that cap with
 every Victim, Other and Witness plus a seeded sample of N Officials. The development and court files are unchanged, and
-without the options the output is byte-identical to the rows aml47 was trained on. Outcome: job58 (`--nonsuspects`) and
-job59 (`--officials 1500`) were trained and measured; both lower unanimous precision on suspects, so neither is adopted
-([non-suspects](../../docs/plan/stage-model-training.md#persons-who-are-not-suspects)).
+without the options the output is byte-identical to the rows aml47 was trained on. Both options were measured and are
+not adopted ([non-suspects](../../docs/plan/stage-model-training.md#persons-who-are-not-suspects)).
 
 `paths.py` holds every location (also imported by `tools/labels` and `tools/judgments`), `textutil.py` the three helpers vendored from the label-to-training-data step.
 
@@ -36,21 +35,34 @@ job59 (`--officials 1500`) were trained and measured; both lower unanimous preci
 |---|---|---|
 | `AML_DATA` | `C:/tmp/aml-data` | `labels/`, `court/raw/` |
 | `AML_TRAIN` | `C:/tmp/aml-train` | `data-r12/`, `measurements/{report,court}/`, `models/bert-base-chinese`, `downloads/` |
-| `AML_EVAL` | `C:/tmp/aml-eval-r4` | the outside evaluator's `sg-<set>-r17.tsv` rows (`score.py`, `score_gemma.py`) |
+| `AML_EVAL` | `C:/tmp/aml-eval-r4` | `tools/Aml.NewsEval`'s working folder: its `sg-<set>-r17.tsv` rows (`stage stageout=`; `score.py`, `score_gemma.py`) |
 | `AML_STAGE_EVAL_OUT` | `C:/tmp/eval-sys/out` | `tools/Aml.StageEval`'s `out=` folder (`gold.py verify` without `out=`) |
 | `AML_JUDGMENTS` | `C:/tmp/jud` | `tools/judgments`: `jids.jsonl` and the fetched `docs/` |
 | `AML_STAGE_WORK` | `AML_TRAIN/stage-clf` | output root when `--out` is not given |
 
-Packages: `requirements.txt` (pinned; Colab keeps its own torch).
+Packages: `requirements.txt` (pinned; Colab keeps its own torch). `prep_stage.py` needs `transformers` for the
+tokenizer in `AML_TRAIN/models/bert-base-chinese` (the data bundle holds its tokenizer files, not its weights: id and
+revision in [tools/data](../data/README.md#base-model); the baseline classifier aml47's ONNX folder is in the bundle);
+`gold.py`, `score*.py`, `add17.py` and `selfcheck.py` need the standard library only.
 
-## Rebuild the data and the model
+## Rebuild the data
 
 ```bash
 python -I -X utf8 tools/stage-model/selfcheck.py
-python -I -X utf8 tools/stage-model/prep_stage.py --out C:/tmp/stage-work      # data/
-python -I -X utf8 tools/stage-model/add17.py --verdicts --out C:/tmp/stage-work # data17v/ (add17.py without the flag: data17/)
+python -I -X utf8 tools/stage-model/prep_stage.py --out <work>      # data/ (byte-identical to aml47's rows without options)
+python -I -X utf8 tools/stage-model/add17.py --verdicts --out <work> # data17v/ (add17.py without the flag: data17/)
 ```
 
-Train and export on Colab with `tools/colab` (a job folder holding `train_stage.py`, `export_onnx.py`, `data/` and a
-`run.sh` that runs `train_stage.py --save hf`, then `export_onnx.py hf onnx data dev` and writes `done.txt` after
-`ONNX_OK`); package it with `--extra onnx` so the ONNX folder is downloaded.
+## Train and export on Colab
+
+The arguments the baseline classifier (aml47) was trained with are not recorded in the repository, and there is no
+classifier job template. Reproducing aml47 therefore needs the previous owner's job folder. A new run uses
+`train_stage.py`'s defaults unless you choose otherwise: `--epochs 4 --lr 3e-5 --batch 16 --accum 1 --max-len 512
+--seed 1 --model bert-base-chinese --sets dev,dev2,v9`, no class weights. Make a job folder holding `train_stage.py`, `export_onnx.py` (it
+imports only `train_stage`) and `data/`, with a `run.sh` that follows the
+[tools/colab contract](../colab/README.md#1-make-a-job-folder), installs `onnx` and `onnxruntime` at the versions of
+`requirements.txt` beside Colab's torch, runs `train_stage.py --save hf` (the VM downloads `bert-base-chinese`, so it
+needs internet), then `export_onnx.py hf onnx data dev`, and writes `done.txt` after
+`ONNX_OK`. Package with `--extra onnx --alive train_stage.py` so the ONNX folder
+is downloaded, run on a T4, then measure the downloaded `onnx/` with `tools/Aml.StageEval onnx=<dir>` (skill
+`measure-stage`).

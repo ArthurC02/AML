@@ -31,10 +31,7 @@ Units:
 | `Subjectless` (a sentence not naming the person tells their dismissal or indictment) | `ReportForm.Scope` makes only sentences naming them attributable |
 
 The last three are exact texts in `EXTRA`; when the code changes, a unit whose text no longer occurs once is reported as
-not applying, and `EXTRA` is brought up to date. They and the list entries correspond to the earlier switches
-`C_INVESTIGATION`, `BYSTANDER`, `SUBJECTLESS`, `R_ORDER`, `R_RELEASE_WHOLE`, `R_PROCEEDS`, `R_ROW_NUMBER`, `KEYWORD`
-and `T_WANTED` of the 42-unit switch-off copy the deletion was decided with (outside the repository, environment switch
-`AML_OFF`); the other 34 units are deleted from the code.
+not applying, and `EXTRA` is brought up to date.
 
 A unit off by a patch needs a build per unit. A switch inside the product (the evaluator naming rule codes to leave out
 of the two decision lists) would measure every unit in one build, but it is a hook in `src/` for measurement only, so

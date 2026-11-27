@@ -70,8 +70,9 @@ AML/
 │       ├── Program.cs            # DI, OpenAPI, OpenTelemetry, health check, endpoint registration
 │       ├── Endpoints/            # minimal API endpoints per resource (cases, batches, profiles, pages, codes), upload reading, problems
 │       └── Workers/JobWorker.cs  # BackgroundService
-├── tools/                        # working tools for the models, outside the product (plan/stage-model-training.md, plan/news-model-training.md)
+├── tools/                        # working tools for the models, outside the product (plan/model-training.md); solution folder /training/
 │   ├── Aml.StageEval/            # system-level stage measurement through SourceConditions.Determine (built by CI)
+│   ├── Aml.NewsEval/             # news-model end-to-end measurement through OnnxNewsModel and NewsModelReading (built by CI)
 │   ├── stage-model/              # person-stage classifier: rows, training, ONNX export, scoring (Python)
 │   ├── llm-stage/                # language model stage reader: inference and fine-tune jobs
 │   ├── stage-rules/              # rule pruning: one rule off at a time, measured with Aml.StageEval
@@ -79,7 +80,7 @@ AML/
 │   ├── judgments/                # Judicial Yuan judgment lookup (measured, not adopted)
 │   ├── news-model/               # NER and event models: rows, jobs, trainers, export, scoring
 │   ├── data/                     # data bundle for another machine: manifest, verify, pseudonymised copy, remove
-│   └── colab/                    # generic Colab job packager and runner
+│   └── colab/                    # generic Colab job packager and runner, the colab container's Dockerfile
 └── tests/
     └── Aml.Tests/
         ├── Unit/                 # in process, no database: Cases, Extraction, Identity, Names, Retrieval, Screening
@@ -100,12 +101,12 @@ Rules:
 
 Implementation notes:
 
-- Api uses minimal APIs, one module per resource in `Endpoints/` (`MapCases`, `MapBatches`, `MapProfiles`, `MapCodes`) with the shared upload reading in `Uploads` and the RFC 9457 responses in `Problems`, registered from `Program.cs`; errors are problems ([errors](../feature/pipeline-api-and-batch.md#errors)); the endpoints are listed in [REST resources](../feature/pipeline-api-and-batch.md#rest-resources), plus `GET /health`. Uploads are `.txt`, `.html` or `.htm` files, as multipart (read as raw bytes) or, for Cases and batches, as JSON text. Multipart files: an export is strict UTF-8, else CP950 (Big5) with an `ENCODING_FALLBACK` finding; an HTML page's encoding is decided by AngleSharp (BOM, then meta charset). A Case keeps the SHA-256 of each uploaded file's bytes, or of the UTF-8 encoding of JSON text, as its source hash.
+- Api uses minimal APIs, one module per resource in `Endpoints/` (`MapCases`, `MapBatches`, `MapProfiles`, `MapPages`, `MapCodes`) with the shared upload reading in `Uploads` and the RFC 9457 responses in `Problems`, registered from `Program.cs`; errors are problems ([errors](../feature/pipeline-api-and-batch.md#errors)); the endpoints are listed in [REST resources](../feature/pipeline-api-and-batch.md#rest-resources), plus `GET /health`. Uploads are `.txt`, `.html` or `.htm` files, as multipart (read as raw bytes) or, for Cases and batches, as JSON text. Every uploaded file, an HTML page included, is decoded by `CaseExport.Decode` ([encoding](../feature/extraction-and-normalization.md#encoding)): UTF-16 by its byte order mark, else strict UTF-8, else CP950 (Big5) with an `ENCODING_FALLBACK` finding; a page's meta charset is not followed. A page fetched for a received URL is decoded by AngleSharp instead ([web text](../feature/web-text.md#main-text-of-a-web-page)). A Case keeps the SHA-256 of each uploaded file's bytes, or of the UTF-8 encoding of JSON text, as its source hash.
 - The explanation is built in Core (`Explanation/ExplanationBuilder`) with each revision and stored beside the result; document and reference numbers are masked (first 3 and last 2 characters). The five-part summary is in Traditional Chinese for reviewers. Each hit lists its sources: Profile citations (`PROFILE_RECORD`, with publication and retrieval dates and URL) and attached news (`LEGAL_STAGE` when it set the legal stage of an ADVERSE_MEDIA condition).
 - No human workflow in the PoC ([ADR-0004](../adr/0004-identification-only.md)).
 - `POST /api/cases` analyzes synchronously; `POST /api/batches` queues items in the job table and `Workers/JobWorker` runs them through `BatchService` ([durable batch execution](../feature/pipeline-api-and-batch.md#durable-batch-execution)). The job store is `Infra/Jobs/JobStore` behind `Core/Ports/IJobStore` (named "Store" because CA1711 rejects a "Queue" suffix).
 - Each revision records source condition status and basis, pair result, review priority, pair reason codes and the changes from the previous revision; a missing Profile makes the revision PARTIAL and keeps the previous effective result.
-- Persistence is SQLite-only (`SqliteDatabase`, `SqlCatalog`, `CaseStore`) with the schema script `0001_schema.sql` and add-only scripts for new tables (`0002_web_page.sql`); the PoC database is rebuilt when an existing table or the stored format changes ([ADR-0023](../adr/0023-business-api-data-and-workbook.md)). `IDbConnectionFactory` and `ISqlDialect` are extracted when a second provider is chosen.
+- Persistence is SQLite-only (`SqliteDatabase`, `SqlCatalog`, `CaseStore`) with the schema script `0001_schema.sql` and add-only scripts, each a new table or a nullable column (`0002_web_page.sql`, `0003_web_page_published.sql`); when an existing column or the stored format changes the PoC database is rebuilt ([persistence](../feature/persistence.md#structure)). `IDbConnectionFactory` and `ISqlDialect` are extracted when a second provider is chosen.
 - Stored results are Core records, serialized with `CaseJson.Options` and read back into their types; `CaseJson.Schema` generates their JSON Schemas (`GET /api/schemas/{name}`) with field descriptions and `x-sensitivity`. Each revision also stores its lineage, data quality and hit facts ([lineage and quality](../feature/pipeline-api-and-batch.md#lineage-and-quality)).
 - `GET /health` runs `System.Ping`. OpenTelemetry traces, metrics and logs are on (ASP.NET Core plus the `Aml` source and meter: `aml.analyses`, `aml.analysis.duration`, `aml.job.attempts`, `aml.workbooks`, `aml.workbook.duration`, `aml.workbook.size`); OTLP export starts only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set.
 - The list database (`list_profile`) and each revision's input files (`case_input`, decoded text) are stored for retrieval and re-analysis ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md)). A Profile version is hashed on its export text, so an HTML page and its `.txt` export are one version. `POST /api/profiles/import` stores a changed Profile as a new version and, in the same transaction, queues a `REANALYZE_CASE` job for every Case whose latest input holds a different version of it; the jobs run through `BatchService` and are tracked as one batch (`GET /api/batches/{batchId}`).
@@ -128,7 +129,7 @@ Test cases are derived with the ISTQB techniques that fit each rule, and the exp
 |---|---|
 | Decision table | stage-3 identity rows and the hard-conflict gate with its source-quality downgrade; source conditions (list flags × category × official list); the Article 22 disposition rules; the multi-row flag merge |
 | Boundary values | thresholds tested on, just below and just above: minimum role age at a birthday, scattered DOBs, stated-age tolerance, risk levels, n-gram floors and Top N, the analysis date that ends a PEP role |
-| Equivalence partitions | encodings (UTF-8, BOM, CP950 fallback), placeholders and dash variants, full-width digits, party types, flag spellings |
+| Equivalence partitions | encodings (UTF-8, UTF-8 and UTF-16 BOM, CP950 fallback), placeholders and dash variants, full-width digits, party types, flag spellings |
 | State transitions | Case revisions (create, concurrent create, accepted, late, failed, re-analysis) and jobs (pending, running, succeeded, retry with backoff, dead letter, lease lost or expired, re-run) |
 | Error guessing | duplicate files in one upload, a corrupt byte, two workers claiming one job, a duplicated Profile key |
 
@@ -195,7 +196,7 @@ Versions are pinned in `Directory.Packages.props`; this table lists them for rev
 | Infra | dbup-sqlite | 6.0.4 | schema scripts |
 | Infra | AngleSharp | 1.9.0 | HTML parsing (`Infra/Html/HtmlExport`, `Infra/Web/MainText`) |
 | Infra | PdfPig | 0.1.16 | PDF text (`Infra/Web/PdfText`); Apache-2.0 |
-| Infra | Microsoft.ML.OnnxRuntime | 1.31.1 | runs the news models (`Infra/Models/OnnxNewsModel`); MIT. Microsoft.ML.Tokenizers was tried and left out: it drops characters the training tokenizer keeps (○ in 王○○, ⑴), so `BertWordPiece` reproduces it |
+| Infra | Microsoft.ML.OnnxRuntime | 1.31.1 | runs the news models (`Infra/Models/OnnxNewsModel`); MIT. Not Microsoft.ML.Tokenizers: it drops characters the training tokenizer keeps (○ in 王○○, ⑴), so `BertWordPiece` reproduces that tokenizer |
 | Api | Microsoft.AspNetCore.OpenApi | 10.0.14 | OpenAPI document |
 | Api | Swashbuckle.AspNetCore.SwaggerUI | 10.3.1 | Swagger UI only |
 | Api | OpenTelemetry.Extensions.Hosting | 1.20.1 | telemetry host |

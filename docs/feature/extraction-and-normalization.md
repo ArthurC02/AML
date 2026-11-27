@@ -4,7 +4,7 @@
 
 ## Extraction principle
 
-Extractors report what the source states. They do not decide identity or screening outcomes.
+Extractors report what the source states. They do not decide identity or screening outcomes. Which facts are worth extracting, and the fields a real Case carries on each side: [what evidence is worth reading](system-overview.md#what-evidence-is-worth-reading).
 
 Source acquisition sits behind replaceable adapters ([ADR-0012](../adr/0012-sources-and-web-information.md)). The PoC reads the bank's `.txt` exports and HTML pages of the same files with `Infra/Txt/TxtCaseReader` and `Infra/Html/HtmlExport` (AngleSharp); normalization rules live in Core (`Aml.Core.Normalization`: `NameComparison`, `Romanization`, `SourceValues`, `TaiwanAddresses`, `ChineseNumerals`).
 
@@ -84,6 +84,16 @@ The vendor's free text on a Profile, `Watchlist ProfileNotes: …` on one line o
 - Bounded: over 32,767 characters (a workbook cell's limit) the text is cut there with `FIELD_TRUNCATED:ProfileNotes`.
 - Stored in the Case input and cited in the explanation's source list as `<Profile key>#notes` (Watchlist ProfileNotes, a Profile record).
 - Not interpreted: no field, evidence, stage or condition is read from the notes.
+
+## Known reader limits
+
+Readings of the export layout that can be wrong, kept because the layout gives no better signal (`TxtCaseReader`):
+
+- a notes line that is a key with an empty value followed by a tab-separated row ends the notes, as a table section would;
+- a notes line starting with one of the Profile's known keys ends the notes, even when it was meant as notes text;
+- a second notes block in one Profile file replaces the first;
+- in a CJK media article, a short Latin last body line (60 characters or fewer) standing directly before the document line, with the version line after it, is taken as the provider line and left out of the text;
+- a blank line between the provider line and the document line leaves the provider in the text.
 
 ## Candidate table
 
@@ -188,7 +198,7 @@ Multi-valued and time-varying fields (several birth years, past offices, old and
 
 An age is extracted only when stated explicitly for a named person:
 
-- counted: Arabic or Chinese numerals (四十四歲、廿二歲, `ChineseNumerals.Parse`), bracketed numbers (陳志明（44歲）, `(44)`), also after a gender in the bracket (陳志明（男，44歲）), English forms next to a romanized name (Chen Chih-Ming, 44; aged 44; 44-year-old); 足歲、周歲、週歲 mean 歲;
+- counted: Arabic or Chinese numerals (四十四歲、廿二歲, `ChineseNumerals.Parse`), bracketed numbers (張文華（44歲）, `(44)`), also after a gender in the bracket (張文華（男，44歲）), English forms next to a romanized name (Chang Wen-Hua, 44; aged 44; 44-year-old); 足歲、周歲、週歲 mean 歲;
 - not counted: approximations or ranges (七八十歲、20 多歲), age thresholds (未滿 18 歲), statistics (被害人平均年齡 65 歲);
 - the age belongs to the person the sentence grammatically refers to, never by default to the Profile subject; 「甲、乙分別為 44 歲、45 歲」 yields one age per person in order, and nothing when the numbers of names and ages differ;
 - the stated age is preserved unchanged; names keep their source spelling.

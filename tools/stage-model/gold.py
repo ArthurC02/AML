@@ -1,4 +1,4 @@
-"""Reference legal stage of an annotated suspect: a port of the aml-eval-r4 Program.cs `stage` mode (Gold + `mine`).
+"""Reference legal stage of an annotated suspect: a port of the tools/Aml.NewsEval Program.cs `stage` mode (Gold + `mine`).
 
 A suspect is a people entry with role PER-* and party Suspect. Its events are the document's event rows whose
 `mention` is one of its forms (exact string; persons sharing a form share rows). Rows carrying "prior" are left

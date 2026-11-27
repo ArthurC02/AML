@@ -3,9 +3,25 @@
 One generic runner for Colab jobs (training and inference). A job is a folder with a `run.sh`; `colabjob.py` packages
 it, `run_job.sh` uploads, starts, watches, downloads and stops it. Data and results stay outside the repo.
 
-Prerequisite: the `colab` docker container (Google's `google-colab-cli`) is running, already signed in, with
-`AML_COLAB_HOME` (default `C:/tmp/colab/home`) mounted at `/home/colab`. The credentials live only in the container's
-keyring: never print, copy or move them, and never put them in a job folder.
+Prerequisites:
+
+- Host: `bash` (Git Bash on Windows), `docker`, `timeout`, `tar`, `split`, `md5sum`, `sha256sum`, Python 3 (standard
+  library only for `colabjob.py`).
+- A running Docker container named exactly `colab` with Google's Colab command-line tool (`google-colab-cli`) on its
+  path as `colab`, and `AML_COLAB_HOME` (default `C:/tmp/colab/home`) mounted at `/home/colab`; the runner calls
+  `docker exec -w /home/colab colab sh -c "colab ..."`. The image is `tools/colab/Dockerfile` (Python slim,
+  `google-colab-cli`, a file keyring under `HOME=/home/colab`); build it and keep the container running with:
+
+  ```bash
+  docker build -t colab tools/colab
+  docker run -d --name colab -v <AML_COLAB_HOME>:/home/colab -v <AML_TRAIN>:/train --entrypoint sleep colab infinity
+  ```
+
+  `<AML_COLAB_HOME>` and `<AML_TRAIN>` are the host folders of those variables. The keyring file lands in the mounted
+  `<AML_COLAB_HOME>`, so that folder holds the login token: never copy, bundle or commit it.
+- Signed in inside the container **with your own Google account** (the Colab login and its compute units belong to the
+  person running the jobs). The credentials live only in the container's keyring: never print, copy, move or commit
+  them, and never put them in a job folder.
 
 ## 1. Make a job folder
 
@@ -51,9 +67,9 @@ GPU: small models (BERT-size classifiers) on **T4**; Gemma 4 on **L4**.
 
 ```bash
 bash tools/colab/run_job.sh <name> <T4|L4> <download dir> [stall seconds] [max seconds] [--reuse]   # defaults 2700, 43200
-bash tools/colab/run_job.sh <name> L4 C:/tmp/x --dry-run   # prints every docker command, simulated answers, no Colab
-AML_DRY_SIM=existing bash tools/colab/run_job.sh <name> L4 C:/tmp/x --dry-run   # session already open: exit 5
-AML_DRY_SIM=nolist bash tools/colab/run_job.sh <name> L4 C:/tmp/x --dry-run     # stop not confirmed: exit 7
+bash tools/colab/run_job.sh <name> L4 <scratch dir> --dry-run   # prints every docker command, simulated answers, no Colab
+AML_DRY_SIM=existing bash tools/colab/run_job.sh <name> L4 <scratch dir> --dry-run   # session already open: exit 5
+AML_DRY_SIM=nolist bash tools/colab/run_job.sh <name> L4 <scratch dir> --dry-run     # stop not confirmed: exit 7
 ```
 
 Session `aml<name>` is opened; if it is already open the runner refuses (exit 5) and leaves it alone, since an old
@@ -73,6 +89,10 @@ trap, so nothing stops the session: stop it by hand (`colab stop -s aml<name>` i
 sessions`.
 
 ## 4. Confirm
+
+After the start, confirm that the job really runs on the VM, not only that the start printed `STARTED`: the next
+peeks show `PEEK ... alive=True`, a `LAST` line count that grows, and the job's GPU line (a `run.sh` that runs
+`nvidia-smi` into its log). A job that is not alive and not done is stopped by the runner with the log tails printed.
 
 After every run, read the final `colab sessions` lines yourself: it must list no `aml` session. If one is listed, stop
 it (`colab stop -s aml<name>` in the container) and check again.

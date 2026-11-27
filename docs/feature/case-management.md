@@ -51,7 +51,7 @@ NOT_EVALUATED > HIT > REVIEW > NO_HIT > NOT_APPLICABLE
 
 - Any NOT_EVALUATED pair, or execution status PARTIAL or FAILED, makes the revision incomplete: it is persisted but not published as the effective result.
 - HIT and REVIEW pairs are listed individually; aggregation never hides a pair.
-- A Case with zero CandidateProfiles after a COMPLETED retrieval is NO_HIT, with retrieval scope recorded as a limitation.
+- A Case with zero CandidateProfiles after a COMPLETED retrieval is NO_HIT; the retrieval scope is not recorded ([explainability](identity-adjudication.md#explainability)).
 
 ## Decision records
 

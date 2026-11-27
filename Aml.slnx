@@ -8,7 +8,21 @@
   <Folder Name="/tests/">
     <Project Path="tests/Aml.Tests/Aml.Tests.csproj" />
   </Folder>
-  <Folder Name="/tools/">
+  <Folder Name="/training/">
+    <File Path="docs/plan/model-training-work-items.md" />
+    <File Path="docs/plan/model-training.md" />
+    <File Path="docs/plan/news-model-training.md" />
+    <File Path="docs/plan/stage-model-training.md" />
+    <File Path="tools/colab/Dockerfile" />
+    <File Path="tools/colab/README.md" />
+    <File Path="tools/data/README.md" />
+    <File Path="tools/judgments/README.md" />
+    <File Path="tools/labels/README.md" />
+    <File Path="tools/llm-stage/README.md" />
+    <File Path="tools/news-model/README.md" />
+    <File Path="tools/stage-model/README.md" />
+    <File Path="tools/stage-rules/README.md" />
+    <Project Path="tools/Aml.NewsEval/Aml.NewsEval.csproj" />
     <Project Path="tools/Aml.StageEval/Aml.StageEval.csproj" />
   </Folder>
 </Solution>

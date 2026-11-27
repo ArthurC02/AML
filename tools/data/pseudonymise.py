@@ -28,7 +28,8 @@ are then cut from its document's pseudonymised text where the original stood, so
 Limit: names are mapped whole, so a form that occurs only inside ANOTHER person's longer name (陳文 inside 陳文雄)
 no longer occurs there; a character-level cipher would keep that but lets one known name decode others.
 The map (seed, surname / given / form tables) goes ONLY to --map, which must lie inside the original root; it is
-never written into the destination.
+never written into the destination. The labelling guideline, checker and prompts (bundle.ORIGINAL_ONLY) are left out of
+the copy; the model folders (bundle.MODELS) are copied byte for byte (a model trained on real text stays sensitive).
 Checks: occurrences of inventory forms left unreplaced in the destination as a reader sees it, JSON escapes decoded
 (must be 0; a real form string that is pseudonym text, such as a pseudonym surname + ○○ equal to another person's
 masked form, or a coincidence beside a pseudonym, is counted apart); person candidates in the destination's raw
@@ -446,8 +447,9 @@ def main():
     rep = Replacer(tables, check=True); changed = 0; fixed = collections.Counter()
     raw = raw_index(root, m)
     for f in m["files"]:
+        if bundle.ORIGINAL_ONLY.fullmatch(f["path"]): continue  # the labelling guideline, checker, prompts: original only
         p = root / f["path"]; out = dest / f["path"]; out.parent.mkdir(parents=True, exist_ok=True)
-        if p.suffix not in TEXT_SUFFIXES: out.write_bytes(p.read_bytes()); continue
+        if p.suffix not in TEXT_SUFFIXES or bundle.is_model(f["path"]): out.write_bytes(p.read_bytes()); continue  # models as they are
         t = p.read_bytes().decode("utf-8"); js = p.suffix in (".json", ".jsonl")
         r = rep.text(t, js)
         assert len(r) == len(t) or js, "length changed"
@@ -474,7 +476,9 @@ length), but the texts are public reports: case numbers, dates, places, courts, 
 the people, and people the labels do not list keep their names. An NER sample of 120 texts still found person spans in
 24 (an upper bound: NER also flags non-names), so this copy is not name-free. Treat this copy as personal data too: keep it
 encrypted at rest, record every copy, and delete a removed judgment from it as well (bundle.py remove). The map back to
-the real names exists only inside the encrypted original (PSEUDONYM-MAP.json) and must never be copied here."""
+the real names exists only inside the encrypted original (PSEUDONYM-MAP.json) and must never be copied here. The models
+are copied unchanged: they were trained on the real texts. The labelling guideline, checker and prompts
+(aml-data/labels/tools) are in the original only."""
 
 
 if __name__ == "__main__":

@@ -29,7 +29,9 @@ No machine paths are written here. Every location comes from environment variabl
 - `AML_TRAIN`: training workspace (`data-r*/` rounds, `data-dev2/`, `data-synth/`, `models/bert-base-chinese/`,
   `downloads/`, `measurements/`, the Python venv).
 - `AML_COLAB_HOME`: the folder mounted at `/home/colab` in the colab container (job folders, packages).
-- `AML_EVAL`: the .NET evaluator `aml-eval-r4` (outside the repo).
+- `AML_EVAL`: the working folder of the .NET evaluator `tools/Aml.NewsEval` (which `e2e.sh` builds from the repo):
+  its documents `dev.jsonl` / `train.jsonl` in, dumps out; outside the repo and not in the data bundle (without them `e2e.sh`
+  cannot run: stop and ask the user).
 - Arguments: `--out <dir>` (rows), `--rows <round dir>`, `--start <native model dir>`, `--parent <job dir>`, the
   download dir of `run_job.sh`, the pair folder of `e2e.sh`.
 

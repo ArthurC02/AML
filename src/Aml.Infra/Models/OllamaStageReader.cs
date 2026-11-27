@@ -10,9 +10,11 @@ namespace Aml.Infra.Models;
 /// one call per document with the fixed prompt (Models/stage-prompt.txt, as measured), the Profile person as person 1 with
 /// the Profile's names, and a JSON schema the answer must follow. Only the news text and the Profile's names are sent
 /// (security-and-privacy.md). A well-formed answer without a known stage for person 1 (an empty persons list included) is the
-/// model's answer UNKNOWN. Any failure (HTTP error, timeout through the client's Timeout or the call's own limit, unreadable
-/// answer) is null, a missing answer: the vote then gives UNKNOWN with STAGE_READER_NO_ANSWER. Infra has no logger: the host
-/// logs the missing answer (Aml.Api.LoggingStageReader), without the failure's own detail.
+/// model's answer UNKNOWN. A failure throws, one exception type per kind: <see cref="TimeoutException"/> (the client's Timeout
+/// or the call's own limit), <see cref="HttpRequestException"/> (an HTTP error status or a transport error),
+/// <see cref="InvalidDataException"/> (a reply that cannot be read). The vote takes a throwing reader as a missing answer:
+/// UNKNOWN with STAGE_READER_NO_ANSWER (<c>StageVote</c>). Infra has no logger: the host logs the missing answer with the
+/// exception's type name (Aml.Api.LoggingStageReader), never its message.
 /// </summary>
 /// <param name="http">A client whose BaseAddress is the Ollama endpoint and whose Timeout is the reader's timeout.</param>
 public sealed class OllamaStageReader(HttpClient http, string model) : IStageReader
@@ -34,6 +36,7 @@ public sealed class OllamaStageReader(HttpClient http, string model) : IStageRea
     /// language-model budget (BudgetedStageReader).</summary>
     public StageAnswer? Read(string text, IReadOnlyList<string> names, TimeSpan timeout)
     {
+        string reply;
         try
         {
             using var limit = new CancellationTokenSource(timeout);
@@ -42,13 +45,22 @@ public sealed class OllamaStageReader(HttpClient http, string model) : IStageRea
                 Content = new StringContent(Body(text, names).ToJsonString(), System.Text.Encoding.UTF8, "application/json"),
             };
             using var response = http.Send(request, limit.Token);
-            if (!response.IsSuccessStatusCode) return null;
+            response.EnsureSuccessStatusCode(); // HttpRequestException, as a transport error
             using var reader = new StreamReader(response.Content.ReadAsStream(limit.Token));
-            return Answer(reader.ReadToEnd());
+            reply = reader.ReadToEnd();
         }
-        catch (Exception e) when (e is not OutOfMemoryException)
+        catch (OperationCanceledException)
         {
-            return null; // a missing answer: the vote gives UNKNOWN with STAGE_READER_NO_ANSWER; it never blocks the analysis
+            // No caller token reaches here: a cancellation is the client's Timeout or the call's own limit.
+            throw new TimeoutException("The language model did not answer in time");
+        }
+        try
+        {
+            return Answer(reply);
+        }
+        catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            throw new InvalidDataException("The language model's reply cannot be read"); // no inner exception: it may quote the reply
         }
     }
 
@@ -96,8 +108,8 @@ public sealed class OllamaStageReader(HttpClient http, string model) : IStageRea
     // Ollama's reply holds the model's JSON as text in message.content; the first entry for person 1 with a known stage counts.
     // A reply that follows the schema but holds no entry for person 1 (an empty list included) is the model's answer that it
     // read no stage: UNKNOWN. A reply that does not parse, lacks persons, or gives person 1 only a stage outside the schema
-    // cannot be read, and so is missing.
-    private static StageAnswer? Answer(string reply)
+    // cannot be read (InvalidDataException), and so is missing.
+    private static StageAnswer Answer(string reply)
     {
         using var outer = JsonDocument.Parse(reply);
         var content = outer.RootElement.GetProperty("message").GetProperty("content").GetString() ?? "";
@@ -112,7 +124,7 @@ public sealed class OllamaStageReader(HttpClient http, string model) : IStageRea
             var quote = person.TryGetProperty("quote", out var q) ? q.ToString() : "";
             return new(Enum.Parse<LegalStage>(stage, ignoreCase: true), quote.Length > 0 ? quote : null);
         }
-        return unreadable ? null : new(LegalStage.Unknown);
+        return unreadable ? throw new InvalidOperationException("No known stage for person 1") : new(LegalStage.Unknown);
     }
 
     private static string LoadPrompt()

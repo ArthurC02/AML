@@ -173,8 +173,15 @@ public static partial class NewsDigests
 
     // A compound surname (張簡, 歐陽 …) takes two characters, any other one; ponytail: the compound list is the ones seen
     // in Taiwan (內政部 statistics) plus the classical ones.
-    private static string Surname(string name) =>
+    internal static string Surname(string name) =>
         name.Length >= 3 && CompoundSurnames.Contains(name[..2]) ? name[..2] : name[..1];
+
+    // The surname of a name, already known to be a person's, written as an anonymised form (王男, 王嫌, 王姓被告, 歐陽姓男子)
+    // or as the surname alone (王姓), else null. Any character may be the surname here: the common-surname check above keeps
+    // words out of the text's names, which the caller has already done.
+    internal static string? AnonymisedSurname(string name) =>
+        Anonymised().Match(name) is { Success: true, Index: 0 } m && m.Length == name.Length ? m.Groups["surname"].Value
+        : name.Length >= 2 && name[^1] == '姓' && (name.Length == 2 || CompoundSurnames.Contains(name[..^1])) ? name[..^1] : null;
 
     private static readonly HashSet<string> CompoundSurnames = new(
         ["張簡", "歐陽", "范姜", "周黃", "江謝", "張廖", "司馬", "諸葛", "上官", "司徒", "東方", "夏侯", "皇甫", "公孫", "令狐", "慕容"], StringComparer.Ordinal);
@@ -224,7 +231,7 @@ public static partial class NewsDigests
     ];
 
     // ponytail: a real name ending in one of these (林志和, 陳建一) is cut a character short; tune on reporting.
-    private const string AfterName = "涉遭被於在與和及等因已則也亦向將稱表說為以今昨日前後是並經對到把從坦供否辯指曾仍再又均都一的獲未不有無";
+    internal const string AfterName = "涉遭被於在與和及等因已則也亦向將稱表說為以今昨日前後是並經對到把從坦供否辯指曾仍再又均都一的獲未不有無";
     private const string NotGivenName = "多姓男女嫌翁婦某家氏方達等們層務官司局會署院校部處所隊組系廠業界商";
     private const string Organisation = "局會司署院校部處所隊組廠行社團";
 

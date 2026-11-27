@@ -14,6 +14,16 @@ public static class CjkText
     private const char CjkExtensionAStart = '㐀';
     private const char CjkUnifiedIdeographsEnd = '鿿';
 
+    /// <summary>
+    /// A masked name (王○○, 王Ｏ明) with every masking character written ○: sources write the mask as ○, 〇, ◯, Ｏ or O.
+    /// A name is masked when it holds an ideograph and every other character is one of those; any other name is returned as is.
+    /// </summary>
+    public static string MaskedForm(string name) =>
+        name.Any(IsCjk) && name.Any(IsMask) && name.All(c => IsCjk(c) || IsMask(c))
+            ? string.Concat(name.Select(c => IsMask(c) ? '○' : c)) : name;
+
+    private static bool IsMask(char c) => c is '○' or '〇' or '◯' or 'Ｏ' or 'O';
+
     public static string HalfWidth(string s)
     {
         var sb = new StringBuilder(s.Length);

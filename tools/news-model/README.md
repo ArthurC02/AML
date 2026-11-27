@@ -19,7 +19,7 @@ The data holds real names. It stays outside the repo; the scripts print counts a
 | `export_one.py <model dir> <out> [aml_input]` | ONNX opset 17 (+ `document-roles.onnx` for NER), config, vocab; checks ORT against torch | native checkpoint | `<out>/` |
 | `measure_dev.py ner\|ev <model dir> <out> [--split test --dev-metrics F]` | primary NER / event gate on native weights; test only behind a passing dev record | `data/`, `models/bert-base-chinese` of the cwd | `<out>/<model>-<split>-metrics.json` |
 | `score_rows.py <model dir> <rows.jsonl> [thr]` | row-level F1 of an event model on a rows file (made-up or held-out rows) | | stdout |
-| `e2e.sh <tag> [pair]` | the working end-to-end measure on both dev sets at 0.30 (builds and runs the .NET evaluator) | `AML_EVAL`, the pair | dumps in `AML_EVAL`, stdout |
+| `e2e.sh <tag> [pair]` | the working end-to-end measure on both dev sets at 0.40 (builds and runs the .NET evaluator) | `AML_EVAL`, the pair | dumps in `AML_EVAL`, stdout |
 | `gold_merge.py dev\|dev2 <dump> [thr] [fixdir]` | scores an evaluator dump against every labelled event (strict, fragment, written-name measure) | labels, split | stdout |
 | `selfcheck.py` | asserts on `prep`, `build_job`, `paths` helpers with made-up inputs; no data, no GPU | | `selfcheck OK` |
 

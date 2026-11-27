@@ -46,6 +46,37 @@ public sealed class JobTests : ServiceTestBase
         Assert.Equal(0, await conn.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM case_analysis"));
     }
 
+    private sealed class Slow(ManualTimeProvider clock, TimeSpan takes) : IStageReader
+    {
+        public string Name => "llm";
+
+        public StageAnswer? Read(string text, IReadOnlyList<string> names)
+        {
+            clock.Advance(takes);
+            return new(LegalStage.Unknown);
+        }
+    }
+
+    /// <summary>The deadline (Batch:Timeout, 2 min by default) runs on the injected clock: an analysis that takes 3 min by it is
+    /// TIMEOUT and not written, one that takes 1 min is written.</summary>
+    [Theory]
+    [InlineData(1, JobStatus.Succeeded, null, 1)]
+    [InlineData(3, JobStatus.Pending, BatchService.Timeout, 0)]
+    public async Task The_deadline_runs_on_the_injected_clock(int minutes, JobStatus status, string? error, long analyses)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var clock = new ManualTimeProvider(T0);
+        var service = new CaseService(_cases, clock, stageReaders: [new Slow(clock, TimeSpan.FromMinutes(minutes))]);
+        var batch = new BatchService(_jobs, service, TxtCaseReader.ReadFiles, new BatchOptions(), clock);
+        var b = await batch.SubmitAsync([new BatchItemRequest("subject-15", "event-15", CaseFiles())], ct);
+        await batch.RunOnceAsync(ct);
+
+        var item = Assert.Single((await batch.GetAsync(b.BatchId, ct))!.Items);
+        Assert.Equal((status, error), (item.Status, item.ErrorCode));
+        await using var conn = await _db.OpenAsync(ct);
+        Assert.Equal(analyses, await conn.ExecuteScalarAsync<long>("SELECT COUNT(*) FROM case_analysis"));
+    }
+
     [Fact]
     public async Task A_batch_items_Case_takes_its_jobs_id_so_a_replay_stores_the_same_Case()
     {

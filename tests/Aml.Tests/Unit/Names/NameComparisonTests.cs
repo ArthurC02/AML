@@ -167,6 +167,19 @@ public class NameComparisonTests
         Assert.Equal(1, Similarity.Levenshtein(new string('x', 200) + "a", new string('x', 200) + "b")); // a name is compared whole
     }
 
+    [Theory]
+    [InlineData("王○○", "王○○")]
+    [InlineData("王ＯＯ", "王○○")]
+    [InlineData("王OO", "王○○")]
+    [InlineData("王〇明", "王○明")]
+    [InlineData("王◯明", "王○明")]
+    [InlineData("王大明", "王大明")]
+    [InlineData("JOHN O", "JOHN O")]
+    [InlineData("○○", "○○")]
+    [InlineData("王O明A", "王O明A")]
+    public void A_masked_name_writes_every_masking_character_as_one(string name, string expected) =>
+        Assert.Equal(expected, CjkText.MaskedForm(name));
+
     [Fact]
     public void Many_aliases_or_a_long_article_cost_linear_time()
     {

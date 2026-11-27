@@ -10,7 +10,7 @@ namespace Aml.Core.Explanation;
 public sealed record NewsModelEvent(
     [property: Description("事件類型，見 /api/codes")] NewsEventType Type,
     [property: Description("STATED、NEGATED 或 REQUESTED（模型不讀 HEDGED）")] NewsCertainty Certainty,
-    [property: Description("至少一句說了此事件的模型機率（各句合併：1 − Π(1 − p)，取兩位小數）；列出的事件都至少 0.3")] double Probability,
+    [property: Description("至少一句說了此事件的模型機率（各句合併：1 − Π(1 − p)，取兩位小數）；列出的事件都至少 0.4")] double Probability,
     [property: Description("單句機率最高的句子原文，最多 200 字")][property: Sensitivity(Sensitivity.Personal)] string Quote);
 
 public sealed record NewsModelEntity(
@@ -36,7 +36,11 @@ public sealed record NewsModelReadout(
 /// </summary>
 public static class NewsModelReading
 {
-    public const double EventThreshold = 0.3;
+    // A label is listed, and a suspect counts as having an event of their own for the whole-case sentences, at this
+    // probability or more. Chosen on the dev documents end to end with the rules below in place (0.30: 0.881, 0.40: 0.884;
+    // 0.35 to 0.50 all 0.883 to 0.884) and checked on the second dev set (0.888 to 0.894) and on the 40 court releases
+    // (two errors fewer: five wrong events removed, three right ones lost).
+    public const double EventThreshold = 0.4;
     private const int MaxEntities = 50, MaxClassifications = 1200, MaxQuote = 200;
     private static readonly char[] SentenceEnds = ['。', '！', '？', '；', '!', '?', ';', '\n'];
 
@@ -63,7 +67,8 @@ public static class NewsModelReading
             .Select(e => (e, Profile: e.Forms.Any(f => profileNames.Contains(f, StringComparer.OrdinalIgnoreCase))))
             .OrderByDescending(x => x.Profile).ThenByDescending(x => x.e.Mentions).Take(MaxEntities).ToList();
         var sentences = Sentences(text);
-        var asked = Asked(sentences, entities.Select(x => x.e).ToList()).Take(MaxClassifications).ToList();
+        var release = RulingReading.IsCourtRelease(string.Join('\n', sentences.Take(40)));
+        var asked = Asked(sentences, entities.Select(x => x.e).ToList(), release).Take(MaxClassifications).ToList();
         var answers = asked.Count == 0 ? [] : model.Events(text, [.. asked.Select(q => (q.Form!, q.Sentence))]);
         // Over an entity's sentences a label's probability is that at least one says it (noisy-or: 1 − Π(1 − p)); the
         // quote is the sentence most likely to. Measured on the held-out documents: higher F1 than the highest sentence alone.
@@ -82,7 +87,8 @@ public static class NewsModelReading
                 foreach (var (label, p) in labels)
                     if (Label(label) is { } key && (!IsOrganisation(entities[q.Entity].e.Role) || OrganisationSteps.Contains(key.Item1))
                         && (!whole || !many || WholeCaseSteps.Contains(key.Item1))
-                        && (!q.CaseOnly || WholeCaseSteps.Contains(key.Item1)))
+                        && (!q.CaseOnly || WholeCaseSteps.Contains(key.Item1))
+                        && !(release && key.Item1 == NewsEventType.PriorRecord && RulingBelow.IsMatch(q.Sentence)))
                     {
                         var (none, top, quote) = found[q.Entity].TryGetValue(key, out var f) ? f : (1.0, -1.0, "");
                         found[q.Entity][key] = (none * (1 - p), Math.Max(top, p), p > top ? Quote(q.Sentence) : quote);
@@ -95,9 +101,11 @@ public static class NewsModelReading
         // how it ended, so the model answers both. The filed appeal is dropped when the dismissal is at least 0.95 and no
         // less likely than it. Measured end to end (the feature doc): 12 wrong events removed on 40 court press
         // releases, three on the dev documents for one right one lost; dropping it whenever a dismissal is found lost six.
+        // A court's release rules on the appeal itself, so there a sure dismissal wins however sure the filing: one more
+        // wrong event removed on the 40 releases (the set it was designed on), the dev sets unchanged.
         foreach (var b in best)
             if (b.TryGetValue((NewsEventType.Appeal, NewsCertainty.Negated), out var dismissed) && b.TryGetValue((NewsEventType.Appeal, NewsCertainty.Stated), out var filed)
-                && dismissed.P >= 0.95 && dismissed.P >= filed.P) b.Remove((NewsEventType.Appeal, NewsCertainty.Stated));
+                && dismissed.P >= 0.95 && (release || dismissed.P >= filed.P)) b.Remove((NewsEventType.Appeal, NewsCertainty.Stated));
         foreach (var (i, steps) in Order(sentences, entities.Select(x => x.e).ToList(), defendants)
             .Where(x => x.Value.Contains(NewsEventType.Conviction) || x.Value.Contains(NewsEventType.Acquittal)))
             foreach (var step in new[] { NewsEventType.Fine, NewsEventType.Confiscation }.Where(s => !steps.Contains(s)))
@@ -141,6 +149,18 @@ public static class NewsModelReading
     // 0.849 → 0.851 F1 on the dev documents (four more events found, three wrong ones added), 0.877 → 0.881 on the
     // second dev set (four found, one wrong); it asks 8 % and 23 % more questions on the two sets.
     private static readonly System.Text.RegularExpressions.Regex Group = new("(?<![平同相對])等共?[0-9０-９一二兩三四五六七八九十百餘多數]*(?:人|名|位|嫌|被告)");
+
+    // A court's release of an appeal ruling opens with the ruling below of the same case (被告王○○…案件，前經某地方法院…判決):
+    // that sentence is this case's earlier instance, not a prior record, so its prior answer is not counted. Measured end
+    // to end: three wrong prior records removed on the 40 court releases (the set it was designed on), dev sets unchanged.
+    private static readonly System.Text.RegularExpressions.Regex RulingBelow = new("前經[^，。；,;]{0,12}法院");
+
+    // A judgment closes its reasons with the statutes it applied (據上論斷，依刑事訴訟法第299條第1項前段，判決如主文。): that
+    // sentence states no step, but the model reads the statutes as one (a conviction, a fine, bail, an appeal), and as a
+    // whole-case sentence it would give them to every defendant. Such a sentence is not classified; the order itself is
+    // read under 主文. Measured end to end at 0.30: eight wrong events removed on the dev documents, none lost; the second
+    // dev set and the 40 court releases unchanged.
+    private static readonly System.Text.RegularExpressions.Regex ClosingFormula = new("(?:判決|裁定)如主文[。．.]?$");
 
     // A judgment lists its defendants before 主文; the case's steps are theirs, not those of the other suspects it names
     // (accomplices tried elsewhere). A text without such a list (a press release) has no one to tell apart this way.
@@ -203,19 +223,21 @@ public static class NewsModelReading
 
     // The classifications to run, in this order (the limit cuts the last): each sentence holding a form of an entity, with
     // the form written there, and each of the next CarryOver sentences naming nobody, for the person named last (a judgment
-    // goes on about 被告 without the name); then each sentence, for every suspect it does not name, by name: for all its
-    // steps when it names no suspect or names one for a group, and after all of those, otherwise (CaseOnly) for the
-    // whole-case steps alone.
-    private static IEnumerable<(int Entity, string Form, string Sentence, bool Whole, bool CaseOnly)> Asked(List<string> sentences, List<Entity> entities)
+    // goes on about 被告 without the name; in a court's release, for every suspect named, by name); then each sentence, for
+    // every suspect it does not name, by name: for all its steps when it names no suspect or names one for a group, and
+    // after all of those, otherwise (CaseOnly) for the whole-case steps alone.
+    private static IEnumerable<(int Entity, string Form, string Sentence, bool Whole, bool CaseOnly)> Asked(List<string> sentences, List<Entity> entities, bool release)
     {
         (int Entity, string Form)? last = null;
         var since = 0;
+        List<int> group = [];
+        var open = false;
         var suspects = Enumerable.Range(0, entities.Count).Where(i => entities[i].Role == "PER-Suspect").ToList();
         var unnamed = new List<(int Entity, string Form, string Sentence, bool Whole, bool CaseOnly)>();
         if (Defendants(sentences, entities) is { Count: > 0 } defendants) suspects = defendants;
         foreach (var s in sentences)
         {
-            int? carried = null;
+            if (ClosingFormula.IsMatch(s)) continue;
             var named = entities.Select((e, i) => (i, Form: e.Forms.FirstOrDefault(f => s.Contains(f, StringComparison.Ordinal)), e.Role))
                 .Where(x => x.Form is not null).ToList();
             // 林美玲的丈夫王大明遭起訴 is asked for 王大明 alone: the sentence names 林美玲 only to say whose husband he is.
@@ -225,11 +247,32 @@ public static class NewsModelReading
                 .SelectMany(x => entities[x.i].Forms.Where(f => s.Contains(f, StringComparison.Ordinal))
                     .Select(f => (x.i, Form: f, At: s.LastIndexOf(f, StringComparison.Ordinal) + f.Length)))
                 .OrderByDescending(x => x.At).ThenByDescending(x => x.Form.Length).FirstOrDefault();
-            // Only a suspect is carried over: after a lawyer, an official or a victim the next sentence is not about them.
-            if (person.Form is not null) { last = entities[person.i].Role == "PER-Suspect" ? (person.i, person.Form) : null; since = 0; }
-            else if (last is { } l && since++ < CarryOver) { carried = l.Entity; yield return (l.Entity, l.Form, s, false, false); }
+            List<int> carried = [];
+            if (person.Form is not null)
+            {
+                // Only a suspect is carried over: after a lawyer, an official or a victim the next sentence is not about them.
+                last = entities[person.i].Role == "PER-Suspect" ? (person.i, person.Form) : null;
+                since = 0;
+                // A court's release lists its defendants and then says what each or all of them got (各處…, 均沒收) without
+                // a name, or flattens a table to one cell a line (a name, then its offence and sentence): the next sentence
+                // is carried over for every suspect the sentence names, and a list that runs on over a line break without
+                // sentence punctuation (a wrapped line, a table's names) keeps gathering names up to a sentence naming
+                // nobody. A sentence naming no suspect ends the list.
+                var listed = named.Where(x => x.Role == "PER-Suspect").Select(x => x.i).ToList();
+                group = listed.Count == 0 ? [] : open ? [.. group.Union(listed)] : listed;
+                open = !SentenceEnds.Contains(s[^1]);
+            }
+            else
+            {
+                open = false;
+                if (since++ < CarryOver)
+                {
+                    carried = last is not { } l ? [] : release ? group : [l.Entity];
+                    foreach (var i in carried) yield return (i, release ? entities[i].Name : last!.Value.Form, s, false, false);
+                }
+            }
             var caseOnly = named.Exists(x => x.Role == "PER-Suspect") && !Group.IsMatch(s);
-            unnamed.AddRange(suspects.Where(i => i != carried && !named.Exists(x => x.i == i)).Select(i => (i, entities[i].Name, s, true, caseOnly)));
+            unnamed.AddRange(suspects.Where(i => !carried.Contains(i) && !named.Exists(x => x.i == i)).Select(i => (i, entities[i].Name, s, true, caseOnly)));
         }
         foreach (var q in unnamed.OrderBy(q => q.CaseOnly)) yield return q; // stable: the limit cuts the case-only questions first
     }
@@ -250,8 +293,10 @@ public static class NewsModelReading
         var canonical = new Dictionary<string, string?>(StringComparer.Ordinal);
         foreach (var n in wellFormed)
         {
-            // A two-character name inside a three-character one is usually a different reading (王明 in 王明華), not the name.
-            var inside = wellFormed.Where(o => o.Length is >= 3 && o.Length < n.Length && n.Contains(o, StringComparison.Ordinal)).ToList();
+            // A two-character name inside a three-character one is usually a different reading (王明 in 王明華), not the name,
+            // unless the third character is one the rule digest cuts after a name (王明涉) or 犯 (王明犯).
+            var inside = wellFormed.Where(o => o.Length < n.Length && n.Contains(o, StringComparison.Ordinal)
+                && (o.Length >= 3 || (n.Length == 3 && n.StartsWith(o, StringComparison.Ordinal) && (n[2] == '犯' || NewsDigests.AfterName.Contains(n[2], StringComparison.Ordinal))))).ToList();
             canonical[n] = inside.Count == 1 ? inside[0] : n;
         }
         foreach (var n in people.Except(wellFormed))
@@ -270,6 +315,18 @@ public static class NewsModelReading
             var longer = people.Where(o => o.Length > n.Length && !wellFormed.Contains(o) && canonical[o] == o && o.Contains(n, StringComparison.Ordinal)).ToList();
             if (longer.Count == 1) canonical[n] = longer[0];
         }
+        // A masked name is one name however its mask is written (王○○, 王ＯＯ, 王OO).
+        foreach (var g in people.Where(n => canonical[n] == n).GroupBy(CjkText.MaskedForm, StringComparer.Ordinal))
+            foreach (var n in g.Skip(1)) canonical[n] = g.First();
+        // 王男, 王嫌, 王姓被告 are the person of that surname and role written by name (王大明, 王○○) when exactly one is, as
+        // the rule digest links them; with two or more, or none, the anonymised form stays a person of its own.
+        string Role(string n) => found.Where(s => s.Name == n).GroupBy(s => s.Role, StringComparer.Ordinal).OrderByDescending(r => r.Count()).First().Key;
+        foreach (var n in people.Where(n => canonical[n] == n && NewsDigests.AnonymisedSurname(n) is not null).ToList())
+        {
+            var full = people.Where(o => canonical[o] == o && NewsDigests.AnonymisedSurname(o) is null && !BareRoles.ContainsKey(o)
+                && CjkText.IsCjk(o[0]) && NewsDigests.Surname(o) == NewsDigests.AnonymisedSurname(n) && Role(o) == Role(n)).ToList();
+            if (full.Count == 1) canonical[n] = full[0];
+        }
         foreach (var n in names.Where(n => kind[n])) canonical[n] = Organisation(n, names.Where(o => kind[o]).ToList());
         // A bare role word the tagger took for a name (被告, 告訴人) is no one by itself: it is the one person of that party
         // when the text has exactly one, else dropped. Measured end to end: dev 0.579 → 0.601, test 0.604 → 0.621 (dropping
@@ -277,16 +334,18 @@ public static class NewsModelReading
         foreach (var n in people.Where(n => BareRoles.TryGetValue(n, out _)))
         {
             var party = BareRoles[n];
-            var only = people.Where(o => canonical[o] == o && !BareRoles.ContainsKey(o)
-                    && found.Where(s => s.Name == o).GroupBy(s => s.Role).OrderByDescending(r => r.Count()).First().Key == party)
-                .ToList();
+            var only = people.Where(o => canonical[o] == o && !BareRoles.ContainsKey(o) && Role(o) == party).ToList();
             canonical[n] = only.Count == 1 ? only[0] : null;
         }
+        // A name mapped to one that was itself mapped since goes where that one went.
+        foreach (var n in names)
+            while (canonical[n] is { } c && c != n && canonical[c] != c) canonical[n] = canonical[c];
 
-        // The role is the majority over all mentions of all forms.
+        // The role is the majority over all mentions of all forms; masked forms merged are named by their ○ form.
+        string Named(string key, IEnumerable<string> forms) => forms.Distinct(StringComparer.Ordinal).Count(f => CjkText.MaskedForm(f) == CjkText.MaskedForm(key)) > 1 ? CjkText.MaskedForm(key) : key;
         return found.Where(s => canonical[s.Name] is not null)
             .GroupBy(s => canonical[s.Name]!, StringComparer.Ordinal)
-            .Select(g => new Entity(g.Key, g.Select(s => s.Name).Distinct(StringComparer.Ordinal).ToList(),
+            .Select(g => new Entity(Named(g.Key, g.Select(s => s.Name)), g.Select(s => s.Name).Distinct(StringComparer.Ordinal).ToList(),
                 g.GroupBy(s => s.Role, StringComparer.Ordinal).OrderByDescending(r => r.Count()).First().Key, g.Count()))
             .ToList();
     }

@@ -21,6 +21,8 @@ A change to a reader or to the vote is adopted only if, on each of the six devel
 
 Train data never shares a document id or a text with any of the eight (each builder asserts it). Reference stages come from the annotated events (`gold.py`, the evaluator's derivation); court sets from two blind labelling passes, keeping the persons both give the same stage. A recheck of accept3's hardest 27 persons by two further blind passes confirmed 26 and split on 1, so the remaining misses there are the readers', not the labels'.
 
+The rules alone, as each court batch was first measured: on the 40 releases first labelled they gave the stage of 88 of the 90 suspects against 12 before, and on batches of 40 releases the rules were not written against when measured, 108 of 172 persons (accept3), 185 of 257 (accept4) and 140 of 148 (accept5, 0.946). accept3 and accept4 then became development sets for the next round; the rules alone now give 145 and 248 on them.
+
 ## Where things live
 
 Tools are in the repository; data, models and results are outside it.
@@ -73,6 +75,21 @@ The measured sets hold suspects only. On the three report development sets the l
 - rules and classifier give the same stage to 182; asked for those, the language model answers UNKNOWN for 160;
 - all three agree on a wrong stage for 20 (dev 1, dev2 17, v9 2).
 
-All 20 are ALLEGED, none INDICTED or later; by role Official 18, Other 2, Victim 0 of 175, Witness 0 of 20. Two blind label rechecks confirmed all 20 as non-suspects, mostly officials handling the case. So without models about 4 in 10 non-suspects get a stage; with the unanimous vote about 2 in 100, ALLEGED only. The court release sets carry no labels for persons other than defendants and are not measured. The classifier's training option for these persons (`tools/stage-model`, `--nonsuspects`) is prepared, not trained or adopted.
+All 20 are ALLEGED, none INDICTED or later; by role Official 18, Other 2, Victim 0 of 175, Witness 0 of 20. Two blind label rechecks confirmed all 20 as non-suspects, mostly officials handling the case. So without models about 4 in 10 non-suspects get a stage; with the unanimous vote about 2 in 100, ALLEGED only. The court release sets carry no labels for persons other than defendants and are not measured.
+
+Training the classifier on these persons was measured and not adopted; the classifier stays aml47. job58 (`--nonsuspects`, one non-suspect row per suspect row, 5,172 train rows) and job59 (`--nonsuspects --officials 1500`, 6,717 rows) were trained on a T4 and measured through `tools/Aml.StageEval` with the same replayed Gemma 4 12B answers as the baselines (held-back sets not run). Unanimous right/decided:
+
+| Set | aml47 | aml58 | aml59 |
+|---|---|---|---|
+| dev | 142/142 | 146/146 | 146/146 |
+| dev2 | 98/100 | 101/103 | 99/101 |
+| v9 | 255/259 | 243/247 | 231/235 |
+| accept | 85/85 | 84/84 | 82/82 |
+| accept3 | 87/90 | 88/94 | 78/84 |
+| accept4 | 193/193 | 193/194 | 193/194 |
+| non-suspects (924): classifier gives a stage | 670 | 114 | 17 |
+| non-suspects: unanimous wrong stage | 20 | 15 (lower bound: one agreement had no replayed answer) | 1 |
+
+The rows remove the classifier's stages for non-suspects, but unanimous precision falls on v9, accept3 (wrong 3 → 6) and accept4 (0 → 1) for both, and aml59 also decides fewer persons (v9 −24, accept3 −6). A wrong ALLEGED for a non-suspect changes no condition status, matrix result or review priority (an adverse-media condition is HIT whatever its stage, [feature doc](../feature/watchlist-and-adverse-information.md#stage-from-attached-news)), while a wrong suspect stage is the output a reviewer reads, so the trade is not worth it and the same recipe is not to be retried. It would be worth measuring again only if a non-suspect's stage came to change a Case output, such as a stage weight in an approved `RiskPolicy`.
 
 To repeat: a measurement root in the set format (`report/<set>-stage.jsonl`) holding the non-suspect persons with gold no stage (UNKNOWN), the language model's answers for them, then `tools/Aml.StageEval` with `sets=<that root>` (a set without a file is skipped). A wrong automatic stage is DECIDED − RIGHT.

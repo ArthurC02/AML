@@ -1,5 +1,6 @@
 using Aml.Api;
 using Aml.Core.Ports;
+using Aml.Services;
 using Microsoft.Extensions.Logging;
 
 namespace Aml.Tests.Unit.Screening;
@@ -46,5 +47,22 @@ public class LoggingStageReaderTests
         Assert.Equal((LogLevel.Warning, $"Stage reader llm gave no answer ({failure}) after 1500 ms"), (level, message));
         Assert.DoesNotContain("陳志明", message, StringComparison.Ordinal);
         Assert.Equal("llm", reader.Name);
+    }
+
+    /// <summary>A spent budget is told apart from the model's own failures (TimeoutException, HttpRequestException,
+    /// InvalidDataException from OllamaStageReader): the model is not asked and the warning names the budget.</summary>
+    [Fact]
+    public void A_spent_budget_is_logged_as_such_and_the_model_is_not_asked()
+    {
+        var clock = new ManualTimeProvider(DateTimeOffset.UnixEpoch);
+        var log = new Capturing();
+        var asked = 0;
+        var budgeted = new BudgetedStageReader("llm", (_, _, _) => { asked++; return null; }, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(1));
+        var reader = new LoggingStageReader(budgeted.ForAnalysis(clock), log, clock);
+
+        Assert.Throws<StageBudgetSpentException>(() => reader.Read(News, ["陳志明"]));
+
+        Assert.Equal(0, asked);
+        Assert.Equal((LogLevel.Warning, "Stage reader llm gave no answer (StageBudgetSpentException) after 0 ms"), Assert.Single(log.Entries));
     }
 }

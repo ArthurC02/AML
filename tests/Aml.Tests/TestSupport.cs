@@ -67,15 +67,65 @@ public sealed class ApiHost : WebApplicationFactory<Program>
     }
 }
 
-/// <summary>A clock that moves only when the test says so.</summary>
+/// <summary>A clock that moves only when the test says so. Its timers (a deadline's CancellationTokenSource) fire in Advance.</summary>
 public sealed class ManualTimeProvider(DateTimeOffset start) : TimeProvider
 {
+    private readonly Lock _gate = new();
+    private readonly List<ManualTimer> _timers = [];
     private DateTimeOffset _now = start;
-    public override DateTimeOffset GetUtcNow() => _now;
+
+    public override DateTimeOffset GetUtcNow() { lock (_gate) return _now; }
     // The monotonic clock moves with Advance too (GetElapsedTime).
-    public override long GetTimestamp() => _now.UtcTicks;
+    public override long GetTimestamp() => GetUtcNow().UtcTicks;
     public override long TimestampFrequency => TimeSpan.TicksPerSecond;
-    public void Advance(TimeSpan by) => _now += by;
+
+    public void Advance(TimeSpan by)
+    {
+        List<ManualTimer> due;
+        lock (_gate)
+        {
+            _now += by;
+            due = [.. _timers.Where(t => t.Due <= _now)];
+            _timers.RemoveAll(due.Contains);
+        }
+        foreach (var t in due) t.Fire();
+    }
+
+    public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+    {
+        var timer = new ManualTimer(this, callback, state);
+        timer.Change(dueTime, period);
+        return timer;
+    }
+
+    // ponytail: one-shot only (all CancellationTokenSource(delay, clock) needs); a period is ignored.
+    private sealed class ManualTimer(ManualTimeProvider clock, TimerCallback callback, object? state) : ITimer
+    {
+        public DateTimeOffset Due { get; private set; }
+
+        public void Fire() => callback(state);
+
+        public bool Change(TimeSpan dueTime, TimeSpan period)
+        {
+            lock (clock._gate)
+            {
+                clock._timers.Remove(this);
+                if (dueTime == Timeout.InfiniteTimeSpan) return true;
+                Due = clock._now + dueTime;
+                clock._timers.Add(this);
+            }
+            if (dueTime <= TimeSpan.Zero) clock.Advance(TimeSpan.Zero);
+            return true;
+        }
+
+        public void Dispose() => Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+
+        public ValueTask DisposeAsync()
+        {
+            Dispose();
+            return ValueTask.CompletedTask;
+        }
+    }
 }
 
 public static class GoldenCaseFiles

@@ -51,25 +51,29 @@ public class OllamaStageReaderTests
     public void A_well_formed_answer_without_person_one_is_unknown(string content) =>
         Assert.Equal(new StageAnswer(LegalStage.Unknown), Read((_, _) => Reply(content)).Answer);
 
-    // An answer that cannot be read is missing (null).
+    // An answer that cannot be read is missing: one exception type for every way it fails, with no inner exception (it may quote the reply).
     [Theory]
     [InlineData("not json")]
     [InlineData("""{"persons":[{"id":"1","stage":"ARRESTED","quote":""}]}""")]
     [InlineData("""{"people":[]}""")]
-    public void An_unreadable_answer_is_none(string content) => Assert.Null(Read((_, _) => Reply(content)).Answer);
+    [InlineData("""{"persons":{}}""")]
+    [InlineData("""{"persons":5}""")]
+    public void An_unreadable_answer_throws_invalid_data(string content) =>
+        Assert.Null(Assert.Throws<InvalidDataException>(() => Read((_, _) => Reply(content))).InnerException);
 
+    // Each failure throws its own exception type, which the host logs (LoggingStageReader); the vote takes any as missing.
     [Fact]
-    public void A_server_error_or_a_timeout_is_none()
+    public void A_server_error_a_transport_error_and_a_timeout_each_throw_their_own_type()
     {
-        Assert.Null(Read((_, _) => Reply("", HttpStatusCode.InternalServerError)).Answer);
-        Assert.Null(Read((_, _) => throw new HttpRequestException("refused")).Answer);
-        Assert.Null(Read((_, ct) => { ct.WaitHandle.WaitOne(TimeSpan.FromSeconds(30)); ct.ThrowIfCancellationRequested(); return Reply("{}"); },
-            timeout: TimeSpan.FromMilliseconds(50)).Answer);
+        Assert.Throws<HttpRequestException>(() => Read((_, _) => Reply("", HttpStatusCode.InternalServerError)));
+        Assert.Throws<HttpRequestException>(() => Read((_, _) => throw new HttpRequestException("refused")));
+        Assert.Throws<TimeoutException>(() => Read((_, ct) => { ct.WaitHandle.WaitOne(TimeSpan.FromSeconds(30)); ct.ThrowIfCancellationRequested(); return Reply("{}"); },
+            timeout: TimeSpan.FromMilliseconds(50)));
     }
 
     /// <summary>A call's own limit (what is left of a Case's budget) cuts off a held answer; an answer within it counts.</summary>
     [Fact]
-    public async Task A_call_past_its_own_limit_is_none_and_one_within_it_gives_the_stage()
+    public void A_call_past_its_own_limit_times_out_and_one_within_it_gives_the_stage()
     {
         using var gate = new ManualResetEventSlim();
         var server = new Server((_, ct) =>
@@ -83,7 +87,8 @@ public class OllamaStageReaderTests
         try
         {
             var held = Task.Run(() => reader.Read("檢方今日起訴陳志明。", ["陳志明"], TimeSpan.FromMilliseconds(50)), TestContext.Current.CancellationToken);
-            Assert.Null(await held.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken)); // safety bound only
+            Assert.True(((IAsyncResult)held).AsyncWaitHandle.WaitOne(TimeSpan.FromSeconds(30))); // safety bound only, not the TimeoutException below
+            Assert.IsType<TimeoutException>(held.Exception?.InnerException);
         }
         finally
         {
@@ -112,9 +117,9 @@ public class OllamaStageReaderTests
     public void A_long_document_keeps_its_first_10000_and_last_6000_characters()
     {
         var text = new string('甲', 10000) + new string('乙', 1) + new string('丙', 6000);
-        var prompt = (string)Read((_, _) => Reply("{}"), text).Server.Body!["messages"]![0]!["content"]!;
+        var prompt = (string)Read((_, _) => Reply("""{"persons":[]}"""), text).Server.Body!["messages"]![0]!["content"]!;
         Assert.Contains("<<<文件開始>>>\n" + new string('甲', 10000) + "\n（中間省略）\n" + new string('丙', 6000) + "\n<<<文件結束>>>", prompt, StringComparison.Ordinal);
         var exactly = new string('甲', 16000); // not over the limit: sent whole
-        Assert.Contains("\n" + exactly + "\n", (string)Read((_, _) => Reply("{}"), exactly).Server.Body!["messages"]![0]!["content"]!, StringComparison.Ordinal);
+        Assert.Contains("\n" + exactly + "\n", (string)Read((_, _) => Reply("""{"persons":[]}"""), exactly).Server.Body!["messages"]![0]!["content"]!, StringComparison.Ordinal);
     }
 }

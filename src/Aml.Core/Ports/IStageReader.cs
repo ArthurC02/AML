@@ -16,8 +16,8 @@ public interface IStageReader
     string Name { get; }
 
     /// <summary>The stage the text tells of the person with <paramref name="names"/>; <see cref="LegalStage.Unknown"/> when the
-    /// reader answered and read no stage for the person. Null only when the answer is missing: the reader failed (model
-    /// unavailable, error, timeout, time spent, an answer that cannot be read). A missing answer is never imputed: the vote
-    /// then gives UNKNOWN with STAGE_READER_NO_ANSWER (<c>StageVote</c>).</summary>
+    /// reader answered and read no stage for the person. When the answer is missing (model unavailable, error, timeout, time
+    /// spent, an answer that cannot be read) the reader throws, an exception type per kind of failure, or returns null. A
+    /// missing answer is never imputed: the vote then gives UNKNOWN with STAGE_READER_NO_ANSWER (<c>StageVote</c>).</summary>
     StageAnswer? Read(string text, IReadOnlyList<string> names);
 }

@@ -191,7 +191,8 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         if (item is not null && input is null) return;
 
         // CaseService checks the deadline before writing. The constructor, unlike CancelAfter, cancels at once for a zero timeout.
-        using var deadline = new CancellationTokenSource(options.Timeout);
+        // The deadline runs on the injected clock, as every other time of a job does.
+        using var deadline = new CancellationTokenSource(options.Timeout, clock);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, deadline.Token);
         try
         {

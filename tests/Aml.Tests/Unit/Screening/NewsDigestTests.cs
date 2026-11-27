@@ -142,6 +142,7 @@ public class NewsDigestTests
     [InlineData("高層被約談。")]
     [InlineData("林務局被調查。")]
     [InlineData("許多人被搜索。")]
+    [InlineData("連嫌犯也被約談。")]
     public void Common_words_and_organisations_are_not_people(string news) =>
         Assert.Null(Assert.Single(Digest(news).Events).Actor);
 

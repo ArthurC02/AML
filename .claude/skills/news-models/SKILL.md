@@ -13,7 +13,7 @@ Pipeline: `tools/news-model/README.md`. What is learned, the gates and the curre
 - Data first: fix confirmed label errors before training; stop a run as soon as an input or label error is found.
 - Training needs the user's yes for each run. No GPU here: train only on Colab, small models on T4.
 - After every run, confirm yourself that `colab sessions` lists no `aml` session; stop any that remains and check again.
-- The measure is end-to-end F1 on Case outputs (`e2e.sh`, the written-name measure, both dev sets at 0.30). A row-level
+- The measure is end-to-end F1 on Case outputs (`e2e.sh`, the written-name measure, both dev sets at 0.40). A row-level
   or native score alone never decides. All three gates must pass for the same pair (`2TP > 9(FP+FN)`).
 - Held-back sets (test split, `data-synth/heldout.jsonl`, `data-court/heldout.jsonl`) only at the end, once fixed.
 - Privacy: the data holds real names. Nothing in the repo, logs, reports or commit messages may hold names, quotes,

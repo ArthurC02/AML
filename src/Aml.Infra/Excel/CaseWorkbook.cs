@@ -140,7 +140,7 @@ public static class CaseWorkbook
         new("名稱", "newsDigest.model.entities[].name", "事件當事人，對應模型人物", Identifying: true),
         new("事件", "newsDigest.model.entities[].events[].type", "事件類型"),
         new("確定程度", "newsDigest.model.entities[].events[].certainty", "STATED、NEGATED 或 REQUESTED"),
-        new("機率", "newsDigest.model.entities[].events[].probability", "模型機率，至少 0.3"),
+        new("機率", "newsDigest.model.entities[].events[].probability", "模型機率，至少 0.4"),
         new("原文", "newsDigest.model.entities[].events[].quote", "機率最高的句子原文", Identifying: true),
     ], hits.SelectMany(h => (h.NewsDigest?.Model?.Entities ?? []).SelectMany(e => e.Events.Select(v => (IReadOnlyList<object?>)
         [h.HitNumber, e.Name, Code(v.Type), Code(v.Certainty), v.Probability, v.Quote]))));

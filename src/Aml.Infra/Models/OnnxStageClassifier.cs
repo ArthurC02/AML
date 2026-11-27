@@ -38,22 +38,17 @@ public sealed partial class OnnxStageClassifier : IStageReader, IDisposable
 
     public string Name => "classifier";
 
+    /// <summary>Every run gives a label; only a failure is missing, and it throws (OnnxRuntimeException, InvalidDataException):
+    /// the vote takes it as a missing answer, UNKNOWN with STAGE_READER_NO_ANSWER, and the host logs its type name.</summary>
     public StageAnswer? Read(string text, IReadOnlyList<string> names)
     {
-        try
-        {
-            // The training text was NFKC-normalised per character (prep.normalise), as OnnxNewsModel does.
-            var normalized = OnnxNewsModel.Normalize(text);
-            var forms = names.Select(n => OnnxNewsModel.Normalize(n)).Where(f => f.EnumerateRunes().Count() >= MinFormChars).Distinct(StringComparer.Ordinal).ToList();
-            var name = forms.Count > 0 ? forms[0] : names.Count > 0 ? OnnxNewsModel.Normalize(names[0]) : "";
-            var budget = maxLength - 3 - Math.Min(MaxNameTokens, Encode(name).Count);
-            var evidence = Evidence(normalized, forms, budget, s => Encode(s).Count, s => NamesAPerson(s, forms));
-            return new(Classify(name, evidence));
-        }
-        catch (Exception e) when (e is not OutOfMemoryException)
-        {
-            return null; // only a failure is missing (every run gives a label): the vote gives UNKNOWN with STAGE_READER_NO_ANSWER
-        }
+        // The training text was NFKC-normalised per character (prep.normalise), as OnnxNewsModel does.
+        var normalized = OnnxNewsModel.Normalize(text);
+        var forms = names.Select(n => OnnxNewsModel.Normalize(n)).Where(f => f.EnumerateRunes().Count() >= MinFormChars).Distinct(StringComparer.Ordinal).ToList();
+        var name = forms.Count > 0 ? forms[0] : names.Count > 0 ? OnnxNewsModel.Normalize(names[0]) : "";
+        var budget = maxLength - 3 - Math.Min(MaxNameTokens, Encode(name).Count);
+        var evidence = Evidence(normalized, forms, budget, s => Encode(s).Count, s => NamesAPerson(s, forms));
+        return new(Classify(name, evidence));
     }
 
     /// <summary>The label with the highest logit for this name and evidence text (as a training row holds them).</summary>

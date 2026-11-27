@@ -24,8 +24,9 @@ The data holds real names. It stays outside the repo; the scripts print counts o
 document, a Witness with a labelled event, a person with no form in the text. The rows are capped at the suspect row
 count (Victim and Other first, Witness and Official drawn with a fixed seed); `--officials N` replaces that cap with
 every Victim, Other and Witness plus a seeded sample of N Officials. The development and court files are unchanged, and
-without the options the output is byte-identical to the rows aml47 was trained on. Status: prepared only; no classifier
-has been trained on these rows, and none is adopted.
+without the options the output is byte-identical to the rows aml47 was trained on. Outcome: job58 (`--nonsuspects`) and
+job59 (`--officials 1500`) were trained and measured; both lower unanimous precision on suspects, so neither is adopted
+([non-suspects](../../docs/plan/stage-model-training.md#persons-who-are-not-suspects)).
 
 `paths.py` holds every location (also imported by `tools/labels` and `tools/judgments`), `textutil.py` the three helpers vendored from the label-to-training-data step.
 

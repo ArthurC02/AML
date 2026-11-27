@@ -97,6 +97,63 @@ public class NewsModelReadingTests
     }
 
     [Fact]
+    public void A_masked_name_is_one_name_however_its_mask_is_written()
+    {
+        var r = Read("王○○遭起訴，王ＯＯ交保，王OO否認。", new() { ["王○○"] = "PER-Suspect", ["王ＯＯ"] = "PER-Suspect", ["王OO"] = "PER-Suspect" }, profile: []);
+
+        var e = Assert.Single(r.Entities);
+        Assert.Equal(("王○○", 3), (e.Name, e.Mentions));
+        Assert.Equal(["王OO", "王ＯＯ"], e.OtherForms.Order(StringComparer.Ordinal));
+
+        var halfWidthFirst = Assert.Single(Read("王OO遭起訴，王○○交保。", new() { ["王OO"] = "PER-Suspect", ["王○○"] = "PER-Suspect" }, profile: []).Entities);
+        Assert.Equal(("王○○", 2), (halfWidthFirst.Name, halfWidthFirst.Mentions));
+        Assert.Equal(["王OO"], halfWidthFirst.OtherForms);
+    }
+
+    [Fact]
+    public void A_fragment_of_one_mask_spelling_an_other_spelling_and_an_anonymised_form_are_one_person()
+    {
+        // 王○ goes to 王○○, which goes to 王ＯＯ only afterwards: the fragment follows it there.
+        var r = Read("王ＯＯ遭起訴，王○○交保，王○否認，王嫌坦承。",
+            new() { ["王ＯＯ"] = "PER-Suspect", ["王○○"] = "PER-Suspect", ["王○"] = "PER-Suspect", ["王嫌"] = "PER-Suspect" }, profile: []);
+
+        var e = Assert.Single(r.Entities);
+        Assert.Equal(("王○○", 4), (e.Name, e.Mentions));
+        Assert.Equal(["王ＯＯ", "王○", "王嫌"], e.OtherForms);
+    }
+
+    [Fact]
+    public void An_anonymised_form_is_the_one_person_of_its_surname_and_role_written_by_name()
+    {
+        var one = Read("王○○遭逮捕，王嫌坦承犯行。", new() { ["王○○"] = "PER-Suspect", ["王嫌"] = "PER-Suspect" }, profile: []);
+        var two = Read("王大明、王小華遭逮捕，王嫌坦承犯行。", new() { ["王大明"] = "PER-Suspect", ["王小華"] = "PER-Suspect", ["王嫌"] = "PER-Suspect" }, profile: []);
+        var otherRole = Read("法官王大明審理，王姓被告否認。", new() { ["王大明"] = "PER-Official", ["王姓被告"] = "PER-Suspect" }, profile: []);
+        var rareSurname = Read("仇○○遭逮捕，仇某坦承犯行。", new() { ["仇○○"] = "PER-Suspect", ["仇某"] = "PER-Suspect" }, profile: []);
+        var surnameOnly = Read("王姓男子遭逮捕，王姓女子交保，王姓否認。", new() { ["王姓男子"] = "PER-Suspect", ["王姓女子"] = "PER-Suspect", ["王姓"] = "PER-Suspect" }, profile: []);
+
+        var e = Assert.Single(one.Entities);
+        Assert.Equal(("王○○", 2), (e.Name, e.Mentions));
+        Assert.Equal(["王嫌"], e.OtherForms);
+        Assert.Equal(["王大明", "王嫌", "王小華"], two.Entities.Select(x => x.Name).Order(StringComparer.Ordinal));
+        Assert.Equal(["王大明", "王姓被告"], otherRole.Entities.Select(x => x.Name).Order(StringComparer.Ordinal));
+        Assert.Equal("仇○○", Assert.Single(rareSurname.Entities).Name);
+        Assert.Equal(["仇某"], rareSurname.Entities[0].OtherForms);
+        Assert.Equal(["王姓", "王姓女子", "王姓男子"], surnameOnly.Entities.Select(x => x.Name).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void A_two_character_name_with_a_character_that_follows_a_name_is_that_name_and_one_with_any_other_is_not()
+    {
+        var after = Read("王明犯詐欺罪，王明遭起訴。", new() { ["王明犯"] = "PER-Suspect", ["王明"] = "PER-Suspect" }, profile: []);
+        var longer = Read("王明華遭起訴，王明否認。", new() { ["王明華"] = "PER-Suspect", ["王明"] = "PER-Other" }, profile: []);
+
+        var e = Assert.Single(after.Entities);
+        Assert.Equal(("王明", 2), (e.Name, e.Mentions));
+        Assert.Equal(["王明犯"], e.OtherForms);
+        Assert.Equal(["王明", "王明華"], longer.Entities.Select(x => x.Name).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
     public void A_fragment_inside_one_longer_name_of_another_shape_is_that_name()
     {
         var r = Read("阿莫伊斯達遭起訴，莫伊否認。", new() { ["阿莫伊斯達"] = "PER-Suspect", ["莫伊"] = "PER-Other" });
@@ -134,10 +191,10 @@ public class NewsModelReadingTests
             ("王大明", "聲押", "Detention-Requested", 0.62f),
             ("王大明", "無羈押", "Detention-Negated", 0.914f),
             ("王大明", "無羈押", "Detention-Requested", 0.40f),
-            ("王大明", "聲押", "Bail", 0.2f),
-            ("王大明", "前科", "Bail", 0.2f),
-            ("王大明", "前科", "prior", 0.3f),
-            ("王大明", "前科", "Conviction", 0.29f),
+            ("王大明", "聲押", "Bail", 0.25f),
+            ("王大明", "前科", "Bail", 0.25f),
+            ("王大明", "前科", "prior", 0.41f),
+            ("王大明", "前科", "Conviction", 0.39f),
             ("王大明", "前科", "NotALabel", 0.9f));
 
         var e = Assert.Single(r.Entities);
@@ -145,9 +202,23 @@ public class NewsModelReadingTests
         [
             (NewsEventType.Detention, NewsCertainty.Negated, 0.91, "法院裁定王大明無羈押必要！"),
             (NewsEventType.Detention, NewsCertainty.Requested, 0.77, "王大明遭聲押。"), // 1 − 0.38 × 0.60
-            (NewsEventType.Bail, NewsCertainty.Stated, 0.36, "王大明遭聲押。"),          // 1 − 0.8 × 0.8: two weak sentences
-            (NewsEventType.PriorRecord, NewsCertainty.Stated, 0.3, "王大明有詐欺前科"),
+            (NewsEventType.Bail, NewsCertainty.Stated, 0.44, "王大明遭聲押。"),          // 1 − 0.75 × 0.75: two weak sentences
+            (NewsEventType.PriorRecord, NewsCertainty.Stated, 0.41, "王大明有詐欺前科"), // just over the 0.4 bar; 0.39 is not listed
         ], e.Events.Select(v => (v.Type, v.Certainty, v.Probability, v.Quote)));
+    }
+
+    [Fact]
+    public void A_judgments_closing_formula_is_not_classified()
+    {
+        // The closing sentence names nobody, so without the rule it would be carried over and read as a whole-case sentence.
+        var model = new FakeNewsModel(new Dictionary<string, string> { ["王大明"] = "PER-Suspect" },
+            ("王大明", "處有期徒刑", "Conviction", 0.9f), ("王大明", "判決如主文", "Fine", 0.9f), ("王大明", "裁定如主文", "Bail", 0.9f));
+
+        var r = NewsModelReading.Read("被告王大明處有期徒刑1年。據上論斷，依刑事訴訟法第299條第1項前段，判決如主文。依刑事訴訟法第121條，裁定如主文",
+            ["王大明"], model);
+
+        Assert.Equal(1, model.Classifications);
+        Assert.Equal([NewsEventType.Conviction], Assert.Single(r.Entities).Events.Select(v => v.Type));
     }
 
     [Fact]
@@ -289,6 +360,84 @@ public class NewsModelReadingTests
 
         var appeals = Assert.Single(r.Entities).Events.Where(v => v.Type == NewsEventType.Appeal).Select(v => v.Certainty).Order().ToList();
         Assert.Equal(keepsFiled ? [NewsCertainty.Stated, NewsCertainty.Negated] : [NewsCertainty.Negated], appeals);
+    }
+
+    [Theory]
+    [InlineData("本院113年度上訴字第4號詐欺案件於今日宣判。", false)] // a court's release of its appeal ruling: the appeal is this one, dismissed
+    [InlineData("〔記者丙／台北報導〕", true)] // a news report: the filing may be an appeal to the next instance
+    public void In_a_court_release_a_sure_dismissal_is_the_appeal_however_sure_the_filing(string head, bool keepsFiled)
+    {
+        var r = Read(head + "王大明不服提起上訴。本院駁回之。", new() { ["王大明"] = "PER-Suspect" }, null,
+            ("王大明", "提起上訴", "Appeal", 0.99f), ("王大明", "駁回", "Appeal-Negated", 0.96f));
+
+        var appeals = Assert.Single(r.Entities).Events.Where(v => v.Type == NewsEventType.Appeal).Select(v => v.Certainty).Order().ToList();
+        Assert.Equal(keepsFiled ? [NewsCertainty.Stated, NewsCertainty.Negated] : [NewsCertainty.Negated], appeals);
+    }
+
+    [Theory]
+    [InlineData("本院113年度上訴字第4號詐欺案件於今日宣判。", false)] // a court's release: the ruling below of this case
+    [InlineData("〔記者丙／台北報導〕", true)] // a news report: not read this way
+    public void In_a_court_release_the_ruling_below_is_no_prior_record(string head, bool prior)
+    {
+        var r = Read(head + "被告王大明詐欺案件，前經地方法院判處有期徒刑一年。王大明不服上訴，本院駁回。", new() { ["王大明"] = "PER-Suspect" }, null,
+            ("王大明", "前經", "prior", 0.9f), ("王大明", "前經", "Conviction", 0.99f));
+
+        var e = Assert.Single(r.Entities);
+        Assert.Equal(prior, e.Events.Any(v => v.Type == NewsEventType.PriorRecord));
+        Assert.Contains(e.Events, v => v.Type == NewsEventType.Conviction && v.Probability == 0.99);
+    }
+
+    [Fact]
+    public void In_a_court_release_a_prior_record_stated_elsewhere_stays()
+    {
+        var r = Read("本院113年度上訴字第4號詐欺案件於今日宣判。被告王大明詐欺案件，前經地方法院判處有期徒刑一年。王大明前因竊盜案件經判刑確定。",
+            new() { ["王大明"] = "PER-Suspect" }, null, ("王大明", "前經", "prior", 0.9f), ("王大明", "前因", "prior", 0.8f));
+
+        Assert.Equal([(NewsEventType.PriorRecord, 0.8, "王大明前因竊盜案件經判刑確定。")],
+            Assert.Single(r.Entities).Events.Select(v => (v.Type, v.Probability, v.Quote)));
+    }
+
+    private static readonly string[] SixDefendants = ["王大明", "陳小華", "林志明", "張家豪", "李建國", "黃俊傑"];
+
+    [Theory]
+    [InlineData("本院113年度訴字第4號詐欺案件於今日宣判。", 6)] // a court's release: the sentence after the list is every listed defendant's
+    [InlineData("〔記者丙／台北報導〕", 1)] // a news report: carried over for the person named last alone
+    public void In_a_court_release_the_sentence_after_a_list_of_defendants_is_carried_over_for_all_of_them(string head, int convicted)
+    {
+        // The list runs on over a line break without sentence punctuation; the second sentence naming nobody is not carried
+        // over, and with six suspects (more than ManySuspects) a whole-case question keeps only investigation and referral.
+        var r = Read(head + "\n被告王大明、被告陳小華、被告林志明\n被告張家豪、被告李建國、被告黃俊傑共同犯詐欺罪。\n各處有期徒刑如附表所示。\n均沒收犯罪所得。",
+            SixDefendants.ToDictionary(n => n, _ => "PER-Suspect"), null,
+            [.. SixDefendants.SelectMany(n => new[] { (n, "各處", "Conviction", 0.9f), (n, "均沒收", "Confiscation", 0.9f) })]);
+
+        Assert.Equal(convicted, r.Entities.Count(e => e.Events.Any(v => v.Type == NewsEventType.Conviction)));
+        Assert.DoesNotContain(r.Entities, e => e.Events.Any(v => v.Type == NewsEventType.Confiscation));
+    }
+
+    [Theory]
+    [InlineData("律師李四為王大明辯護。", true)] // named last: the suspect, carried over
+    [InlineData("王大明委任律師李四。", false)] // named last: the lawyer, nothing carried over
+    public void In_a_court_release_the_next_sentence_is_carried_over_only_when_a_suspect_is_named_last(string before, bool convicted)
+    {
+        // 王大明 is not written as 被告, so no whole-case question reaches him; only the carried one can.
+        var r = Read("本院113年度訴字第4號詐欺案件於今日宣判。\n被告陳小華否認。\n" + before + "\n有期徒刑十年。",
+            new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Suspect", ["李四"] = "PER-Other" }, null,
+            ("王大明", "十年", "Conviction", 0.9f));
+
+        Assert.Equal(convicted, r.Entities.Single(e => e.Name == "王大明").Events.Any(v => v.Type == NewsEventType.Conviction));
+    }
+
+    [Fact]
+    public void In_a_court_release_a_flattened_table_row_belongs_to_the_names_written_before_it()
+    {
+        // One cell a line: 王大明 and his sentence, then 陳小華 and 林志明 sharing one cell of the sentence column. Only
+        // 王大明 is written as 被告, so no whole-case question reaches the other two.
+        var r = Read("本院113年度訴字第4號詐欺案件於今日宣判。\n被告\n刑度\n王大明\n有期徒刑十年\n陳小華\n林志明\n有期徒刑五年\n被告王大明上訴。",
+            new() { ["王大明"] = "PER-Suspect", ["陳小華"] = "PER-Suspect", ["林志明"] = "PER-Suspect" }, null,
+            ("王大明", "十年", "Conviction", 0.9f), ("陳小華", "五年", "Conviction", 0.9f), ("林志明", "五年", "Conviction", 0.9f));
+
+        Assert.Equal([("林志明", 0.9, "有期徒刑五年"), ("王大明", 0.9, "有期徒刑十年"), ("陳小華", 0.9, "有期徒刑五年")],
+            r.Entities.SelectMany(e => e.Events.Where(v => v.Type == NewsEventType.Conviction).Select(v => (e.Name, v.Probability, v.Quote))).OrderBy(x => x.Name, StringComparer.Ordinal));
     }
 
     [Fact]

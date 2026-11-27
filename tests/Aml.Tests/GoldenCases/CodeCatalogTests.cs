@@ -26,7 +26,7 @@ public class CodeCatalogTests
             .. Enum.GetValues<ConditionBasis>().Cast<Enum>(), .. Enum.GetValues<LegalStage>().Cast<Enum>(),
             .. Enum.GetValues<Aml.Core.Explanation.NewsEventType>().Cast<Enum>(), .. Enum.GetValues<Aml.Core.Explanation.NewsCertainty>().Cast<Enum>(),
             .. Enum.GetValues<Aml.Core.Explanation.NewsMatch>().Cast<Enum>(), .. Enum.GetValues<Aml.Core.Explanation.NewsSource>().Cast<Enum>(),
-            .. Enum.GetValues<Aml.Core.Explanation.NewsParty>().Cast<Enum>()];
+            .. Enum.GetValues<Aml.Core.Explanation.NewsParty>().Cast<Enum>(), .. Enum.GetValues<Aml.Core.Pages.PersonReadBy>().Cast<Enum>()];
         Assert.All(values, v => Assert.NotNull(CodeCatalog.Find(System.Text.Json.JsonSerializer.Serialize(v, v.GetType(), CaseJson.Options).Trim('"'))));
     }
 

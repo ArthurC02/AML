@@ -26,7 +26,7 @@ public class ContrastTests
     private const string DocAgree = $"Document:Agree→2:{ReasonCodes.UniqueIdentifierAgreement}";
     private const string DocConflict = $"Document:Conflict→1:{ReasonCodes.DocumentIdentityConflict}";
     private const string DobAgreeRow4 = $"DateOfBirth:Agree→4:{ReasonCodes.ConsistentAtAvailablePrecision}";
-    private const string DobConflict = $"DateOfBirth:Conflict→1:{ReasonCodes.FullDobConflict}";
+    private const string DobConflict = $"DateOfBirth:Conflict→:{ReasonCodes.FullDobConflict}"; // stage 1, no row
 
     [Fact]
     public void Row_6_lists_all_four_assumptions()
@@ -37,7 +37,7 @@ public class ContrastTests
                 $"若同類證件相符：身分判斷移至第三階段第 2 列 {ReasonCodes.UniqueIdentifierAgreement}",
                 $"若同類證件不符：身分判斷移至第三階段第 1 列 {ReasonCodes.DocumentIdentityConflict}",
                 $"若完整出生日期相符：身分判斷移至第三階段第 4 列 {ReasonCodes.ConsistentAtAvailablePrecision}",
-                $"若完整出生日期不符：身分判斷移至第三階段第 1 列 {ReasonCodes.FullDobConflict}",
+                $"若完整出生日期相差逾 2 年：身分判斷為第一階段硬衝突 {ReasonCodes.FullDobConflict}",
             ],
             IdentityDecisionPolicy.Contrast(IdentityDecisionPolicy.Decide(Subject(), Profile())).Select(c => c.Text));
     }

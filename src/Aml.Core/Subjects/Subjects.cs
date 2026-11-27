@@ -106,7 +106,10 @@ public sealed record SourceReference(
     [property: Description("發布日期（ISO，依來源精度）")] string? PublishedOn,
     [property: Description("取得日期（ISO）")] string? RetrievedOn);
 
-public sealed record NewsItem(string ProfileId, string? DocumentId, string Title, string? Publisher, PartialDate? PublishedOn, string Text);
+/// <param name="Url">A received page's URL; null for news attached in the export.</param>
+/// <param name="RetrievedOn">When a received page was fetched (ISO date); null for news attached in the export.</param>
+public sealed record NewsItem(string ProfileId, string? DocumentId, string Title, string? Publisher, PartialDate? PublishedOn, string Text,
+    string? Url = null, string? RetrievedOn = null);
 
 /// <summary>A source flag exactly as read (extraction-and-normalization.md#source-flags). NO is a value, not unknown.</summary>
 public enum FlagValue { Missing, Yes, No, Unparseable }
@@ -143,4 +146,5 @@ public sealed record CaseInput(
     IReadOnlyDictionary<string, SourceProfile> Profiles,
     IReadOnlyDictionary<string, NewsItem> NewsByProfileId,
     IReadOnlyList<ImportedDecision> ImportedDecisions,
-    IReadOnlyDictionary<string, string>? SourceHashes = null);
+    IReadOnlyDictionary<string, string>? SourceHashes = null,
+    IReadOnlyList<Aml.Core.Pages.PageRecord>? Pages = null);

@@ -163,11 +163,70 @@ public class IdentityEvidenceTests
     // Coarser Profile DOBs.
 
     [Fact]
-    public void Coarser_profile_dob_covered_by_a_precise_one_cannot_mask_a_full_dob_conflict()
+    public void Coarser_profile_dob_covered_by_a_precise_one_cannot_mask_the_full_date_comparison()
     {
+        // 1970 alone would agree on the year; the full 1970-05-01 decides: a month apart, agreement within tolerance.
         var r = IdentityDecisionPolicy.Decide(Subject(new PartialDate(1970, 6, 1)), Profile(new PartialDate(1970, 5, 1), new PartialDate(1970)));
-        Assert.Equal((1, IdentityDecision.Review), (r.Stage3Row, r.Decision));
-        Assert.Equal(ReasonCodes.FullDobConflict, r.ReasonCodes[0]);
+        Assert.Equal(ReasonCodes.DobAgreesWithinTolerance, r.Evidence[EvidenceGroup.DateOfBirth].Detail);
+        Assert.Equal((4, IdentityDecision.ProbableMatch), (r.Stage3Row, r.Decision));
+
+        var far = IdentityDecisionPolicy.Decide(Subject(new PartialDate(1973, 6, 1)), Profile(new PartialDate(1970, 5, 1), new PartialDate(1970)));
+        Assert.Equal((ReasonCodes.FullDobConflict, IdentityDecision.NoMatch), (far.HardConflict, far.Decision));
+    }
+
+    // Birth-date tolerance (identity-adjudication.md#birth-date-tolerance): customer DOB, Profile DOB (null = missing) →
+    // DATE_OF_BIRTH evidence and the identity decision. Name, gender and nationality agree, nothing else is compared.
+    [Theory]
+    [InlineData("1980/5/20", "1980/5/20", Direction.Support, Exact, null, IdentityDecision.ProbableMatch)]                         // 0 days
+    [InlineData("1980/5/20", "1980/5/21", Direction.Support, Partial, "DOB_AGREES_WITHIN_TOLERANCE", IdentityDecision.ProbableMatch)] // 1 day
+    [InlineData("1980/5/20", "1982/5/20", Direction.Support, Partial, "DOB_AGREES_WITHIN_TOLERANCE", IdentityDecision.ProbableMatch)] // exactly 2 years
+    [InlineData("1980/5/20", "1982/5/21", Direction.Conflict, Conflict, "FULL_DOB_CONFLICT", IdentityDecision.NoMatch)]            // 2 years + 1 day
+    [InlineData("1982/5/21", "1980/5/20", Direction.Conflict, Conflict, "FULL_DOB_CONFLICT", IdentityDecision.NoMatch)]            // either order
+    [InlineData("1980", "1982", Direction.Support, Partial, "DOB_AGREES_WITHIN_TOLERANCE", IdentityDecision.ProbableMatch)]          // years differ by 2
+    [InlineData("1980", "1983", Direction.Conflict, Conflict, "DOB_CONFLICT", IdentityDecision.NoMatch)]                          // years differ by 3
+    [InlineData("1980/5", "1980", Direction.Support, Partial, "BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE", IdentityDecision.ProbableMatch)]
+    [InlineData("1980/5", "1982/5", Direction.Support, Partial, "DOB_AGREES_WITHIN_TOLERANCE", IdentityDecision.ProbableMatch)]
+    [InlineData("1980/5", "1982/6", Direction.Conflict, Conflict, "DOB_CONFLICT", IdentityDecision.NoMatch)]                      // 1980-05-31 to 1982-06-01
+    [InlineData("1980/5/20", "1982/5", Direction.Support, Partial, "DOB_AGREES_WITHIN_TOLERANCE", IdentityDecision.ProbableMatch)]  // 1982-05-01 may be within
+    [InlineData("1980/5/20", "1982/6", Direction.Conflict, Conflict, "DOB_CONFLICT", IdentityDecision.NoMatch)]
+    [InlineData("1980/5/20", "1982", Direction.Support, Partial, "DOB_AGREES_WITHIN_TOLERANCE", IdentityDecision.ProbableMatch)]
+    [InlineData("1980/12", "1983", Direction.Conflict, Conflict, "DOB_CONFLICT", IdentityDecision.NoMatch)]                       // 1980-12-31 to 1983-01-01
+    [InlineData("2000/2/29", "2002/2/28", Direction.Support, Partial, "DOB_AGREES_WITHIN_TOLERANCE", IdentityDecision.ProbableMatch)] // 29 Feb + 2 years = 28 Feb
+    [InlineData("2000/2/29", "2002/3/1", Direction.Conflict, Conflict, "FULL_DOB_CONFLICT", IdentityDecision.NoMatch)]
+    [InlineData("1998/3/1", "2000/2/29", Direction.Support, Partial, "DOB_AGREES_WITHIN_TOLERANCE", IdentityDecision.ProbableMatch)]
+    [InlineData("1998/2/28", "2000/2/29", Direction.Conflict, Conflict, "FULL_DOB_CONFLICT", IdentityDecision.NoMatch)]
+    [InlineData("民國69年5月20日", "1982/5/20", Direction.Support, Partial, "DOB_AGREES_WITHIN_TOLERANCE", IdentityDecision.ProbableMatch)] // ROC 69 = 1980
+    [InlineData("民國69年5月20日", "民國71年5月21日", Direction.Conflict, Conflict, "FULL_DOB_CONFLICT", IdentityDecision.NoMatch)]
+    [InlineData(null, "1950/1/1", Direction.Neutral, SubjectMissing, null, IdentityDecision.Review)]                              // missing is no conflict
+    [InlineData("1980/5/20", null, Direction.Neutral, ProfileMissing, null, IdentityDecision.Review)]
+    public void Birth_dates_more_than_two_years_apart_conflict_and_closer_ones_agree_within_tolerance(string? subject, string? profile,
+        Direction direction, ComparisonStatus status, string? detail, IdentityDecision decision)
+    {
+        var s = Subject() with { DateOfBirth = PartialDate.Parse(subject) };
+        var p = profile is null ? Profile() : Profile(PartialDate.Parse(profile)!.Value);
+        var e = EvidenceBuilder.DateOfBirthEvidence(s, p);
+        Assert.Equal((direction, status, detail), (e.Direction, e.Status, e.Detail));
+        if (detail == ReasonCodes.DobAgreesWithinTolerance) Assert.Equal(Strength.Low, e.Strength); // the weakest DOB support
+        Assert.Equal(decision, IdentityDecisionPolicy.Decide(s, p).Decision);
+    }
+
+    [Fact]
+    public void The_within_tolerance_note_says_how_far_apart_at_the_known_precision()
+    {
+        Assert.Equal("客戶 1980-05-20、名單 1982-05-20，相差 730 天，未逾 2 年，依出生日期容許規則視為相符",
+            EvidenceBuilder.DateOfBirthEvidence(Subject(), Profile(new PartialDate(1982, 5, 20))).Note);
+        Assert.Equal("客戶 1980-05-20、名單 1982，出生年相差 2 年，未逾 2 年，依出生日期容許規則視為相符",
+            EvidenceBuilder.DateOfBirthEvidence(Subject(), Profile(new PartialDate(1982))).Note);
+    }
+
+    [Theory]
+    [InlineData(new[] { "1970/1/1", "1975/1/1" }, IdentityDecision.Review)]     // scattered Profile DOBs (over 2 years apart): downgraded
+    [InlineData(new[] { "1970/1/1" }, IdentityDecision.NoMatch)]
+    public void A_dob_conflict_against_scattered_profile_dobs_is_downgraded_to_review(string[] dobs, IdentityDecision decision)
+    {
+        var r = IdentityDecisionPolicy.Decide(Subject(), Profile([.. dobs.Select(d => PartialDate.Parse(d)!.Value)]));
+        Assert.Equal((ReasonCodes.FullDobConflict, decision), (r.HardConflict, r.Decision));
+        Assert.Equal(decision == IdentityDecision.Review, r.ReasonCodes.Contains(ReasonCodes.SourceQualityDowngrade));
     }
 
     // Many or scattered Profile DOBs.

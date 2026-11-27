@@ -94,11 +94,22 @@ internal static class Uploads
         return (bytes is null ? null : DecodeAll(bytes), error);
     }
 
-    public static async Task<(CaseInput? Input, Dictionary<string, string>? Contents, ProblemHttpResult? Error)> ReadUploadAsync(IFormFileCollection files, CancellationToken ct)
+    /// <param name="pages">The snapshot files of the pages the request names (<see cref="PageService.PinAsync"/>), read with the upload.</param>
+    public static async Task<(CaseInput? Input, Dictionary<string, string>? Contents, ProblemHttpResult? Error)> ReadUploadAsync(IFormFileCollection files,
+        IReadOnlyDictionary<string, string> pages, CancellationToken ct)
     {
         var (bytes, error) = await ReadBytesAsync(files, ct);
         if (bytes is null) return (null, null, error);
+        foreach (var (name, text) in pages) bytes[name] = Encoding.UTF8.GetBytes(text);
         return (TxtCaseReader.ReadFiles(bytes), DecodeAll(bytes), null);
+    }
+
+    /// <summary>The snapshot files of the named pages, or the problem when one is not READ (PAGE_UNUSABLE, PAGE_NOT_READY).</summary>
+    public static async Task<(IReadOnlyDictionary<string, string>? Files, ProblemHttpResult? Error)> PinAsync(PageService pages, IReadOnlyCollection<string>? pageIds, CancellationToken ct)
+    {
+        if (pageIds is not { Count: > 0 }) return (new Dictionary<string, string>(), null);
+        var pinned = await pages.PinAsync(pageIds, ct);
+        return Problems.Pages(pinned) is { } problem ? (null, problem) : (pinned.Files, null);
     }
 
     private static Dictionary<string, string> DecodeAll(Dictionary<string, byte[]> bytes) =>

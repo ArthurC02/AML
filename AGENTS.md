@@ -4,7 +4,7 @@ AML screening PoC: given a customer (or related party) and candidate list Profil
 
 ## Mental model in five facts
 
-1. **Two independent questions per candidate.** Identity (`NO_MATCH`, `REVIEW`, internal `PROBABLE_MATCH`; automatic `MATCH` only in the scoring rule's match band once that rule decides, so not emitted today; under that rule no blanket human review for Sanction/PEP/RCA, while today's stage 3 table keeps `RELEASE_CONTROL_HUMAN_REVIEW`; the rule's goal is to conclude MATCH or NO_MATCH wherever the evidence allows, measured by the decided rate) and source condition (`HIT`, `NOT_HIT`, `UNKNOWN`). They are decided separately and combined only by the combination matrix (`Screening/Assessment.cs`).
+1. **Two independent questions per candidate.** Identity (`NO_MATCH`, `REVIEW`, internal `PROBABLE_MATCH`; automatic `MATCH` only in the scoring rule's match band once that rule decides, so not emitted today; no blanket human review for Sanction/PEP/RCA: an identity NO_MATCH gives NO_HIT for every list type; the rule's goal is to conclude MATCH or NO_MATCH wherever the evidence allows, measured by the decided rate) and source condition (`HIT`, `NOT_HIT`, `UNKNOWN`). They are decided separately and combined only by the combination matrix (`Screening/Assessment.cs`).
 2. **Evidence first.** Readers turn inputs into fields with raw value, normalized value, precision and location; comparisons become evidence groups; `HardConflictGate` can only say "different person" on validated rules; `IdentityDecisionPolicy` decides the rest. Missing or unparseable data becomes a finding (`MISSING`, `AMBIGUOUS` …), never an invented value.
 3. **Every emitted code is in `Codes/CodeCatalog.cs`** (served by `GET /api/codes`). A new reason code without a catalog entry is a bug.
 4. **Case state is append-only.** A re-analysis creates a new revision; `CaseService` is the only writer of Case state (through `ICaseStore`). Other modules return typed results.
@@ -20,7 +20,7 @@ Api ──► Services ──► Core
 
 - `Aml.Core`: all decision logic, pure, zero package dependencies; ports (`Ports/ICaseStore`, `IJobStore`, `IListStore`) live here.
 - `Aml.Services`: orchestration (`CaseService`, `BatchService`, `ListService`).
-- `Aml.Infra`: implements the ports and readers: `Persistence/` (Dapper + DbUp, SQL only in `Sql/Sql.sqlite.xml`, schema `Scripts/Sqlite/0001_schema.sql`), `Txt/`, `Html/`, `Web/`, `Excel/`, `Jobs/`. Depends on Core only.
+- `Aml.Infra`: implements the ports and readers: `Persistence/` (Dapper + DbUp, SQL only in `Sql/Sql.sqlite.xml`, schema `Scripts/Sqlite/0001_schema.sql`, add-only scripts after it), `Txt/`, `Html/`, `Web/`, `Excel/`, `Jobs/`. Depends on Core only.
 - `Aml.Api`: composition root and minimal-API endpoints; no business logic.
 - `tools/`: working tools for the models, not part of the product: `Aml.StageEval` (console, uses Core and Infra, built by CI), `stage-model/`, `llm-stage/`, `news-model/`, `stage-rules/`, `labels/`, `judgments/`, `data/` (Python) and `colab/`. Data, labels and models stay outside the repo, found through `AML_*` environment variables or arguments; the tools print counts only. The data is sensitive personal data: `tools/data` packs it for another machine as an encrypted original and a pseudonymised copy (the user types the password). Each tool has a README; the skills in `.claude/skills/` (`measure-stage`, `prune-rules`, `label-data`, `gemma-stage`, `news-models`, `colab-job`, `data-bundle`) walk through them.
 
@@ -40,7 +40,8 @@ Api ──► Services ──► Core
 | REST, batch, job table | `Api/Endpoints/`, `Services/BatchService.cs`, `Infra/Jobs/JobStore.cs`; spec `docs/feature/pipeline-api-and-batch.md` |
 | Storage | `Infra/Persistence/`; spec `docs/feature/persistence.md` |
 | Web text (crawler, PDF) | `Infra/Web/`; spec `docs/feature/web-text.md` |
-| External sources (received URL, grounding search, judgments; not built) | `docs/feature/external-sources.md` |
+| A received URL (page in, persons out; a Case naming it by `pageIds`) | `Api/Endpoints/PagesEndpoints.cs`, `Services/PageService.cs`, `Infra/Web/UrlGuard.cs` (SSRF guard on every hop), `Core/Pages/` (`PageUrl`, `PageReadings`, `PageCandidates`: a page person as a candidate, pinned as a Case input file); spec `docs/feature/external-sources.md#received-url-source-2` |
+| External sources (grounding search, judgments; not built) | `docs/feature/external-sources.md` |
 | Scoring rule (decided, built as measurement only; weights proposed) | `Core/Scoring/ScoringRule.cs` (policy record `ScoringPolicy.Proposed`); spec `docs/feature/scoring-rule.md`; comparison with stage 3 in `GoldenMetricsTests` |
 | Why something is the way it is | `docs/adr/README.md` (index with status) |
 | Terms (Profile, revision, evidence group …) | `docs/feature/glossary.md` |

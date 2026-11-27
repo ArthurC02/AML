@@ -11,7 +11,7 @@ internal static class BatchesEndpoints
     {
         var batches = app.MapGroup("/api/batches");
 
-        batches.MapPost("/", async Task<Results<Accepted<BatchSubmitted>, ProblemHttpResult>> (BatchItemRequest[] items, BatchService service, CancellationToken ct) =>
+        batches.MapPost("/", async Task<Results<Accepted<BatchSubmitted>, ProblemHttpResult>> (BatchItemRequest[] items, BatchService service, PageService pages, CancellationToken ct) =>
         {
             var fix = $"Give every item subjectRef, triggerEventId and files: file name → text of a .txt, .html or .htm file up to {Uploads.MaxSizeText}.";
             if (items.Length == 0) return Problems.Of(Problems.InvalidRequest, "No items", fix, new { parameter = "body" });
@@ -19,11 +19,16 @@ internal static class BatchesEndpoints
             var invalid = items.SelectMany((item, index) => Uploads.ItemErrors(item).Select(error => new { item = index, error })).ToArray();
             if (invalid.Length > 0)
                 return Problems.Of(Problems.InvalidRequest, $"Every item needs subjectRef and triggerEventId (up to {Uploads.MaxRefLength} characters) and readable files", fix, invalid);
+            // The pages are pinned now: each job carries the version it was submitted with, as a Case's input does.
+            var pinned = await pages.PinAsync(items.SelectMany(i => i.PageIds ?? []), ct);
+            if (Problems.Pages(pinned) is { } pageProblem) return pageProblem;
+            items = [.. items.Select(i => i.PageIds is not { Count: > 0 } ? i
+                : i with { Files = CasesEndpoints.WithPages(i.Files, i.PageIds.Distinct(StringComparer.Ordinal).ToDictionary(Aml.Core.Pages.PageSnapshots.FileName, id => pinned.Files[Aml.Core.Pages.PageSnapshots.FileName(id)])) })];
             var submitted = await service.SubmitAsync(items, ct);
             return TypedResults.Accepted($"/api/batches/{submitted.BatchId}", submitted);
         })
         .WithSummary("Queue many Cases for analysis")
-        .WithDescription("Each item has subjectRef, triggerEventId and files (file name → text content), the same inputs as POST /api/cases. Items already queued under the same triggerEventId and subjectRef are listed as duplicates and not queued again. Returns 202 with batchId; progress is at GET /api/batches/{batchId}.")
+        .WithDescription("Each item has subjectRef, triggerEventId and files (file name → text content) and optional pageIds, the same inputs as POST /api/cases; each named page is taken as stored at submission (PAGE_NOT_READY 409 while one is PENDING, PAGE_UNUSABLE 400 for an unknown, REFUSED or FAILED one, for the whole batch). Items already queued under the same triggerEventId and subjectRef are listed as duplicates and not queued again. Returns 202 with batchId; progress is at GET /api/batches/{batchId}.")
         .WithName("submitBatch")
         .WithTags(Tags.Batches);
 

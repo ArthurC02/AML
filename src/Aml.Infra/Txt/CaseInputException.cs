@@ -29,7 +29,7 @@ public sealed class CaseInputException : Exception
         {
             return read();
         }
-        catch (Exception e) when (e is IndexOutOfRangeException or KeyNotFoundException or InvalidOperationException or FormatException or ArgumentException or IOException)
+        catch (Exception e) when (e is IndexOutOfRangeException or KeyNotFoundException or InvalidOperationException or FormatException or ArgumentException or IOException or System.Text.Json.JsonException)
         {
             throw new CaseInputException(file, null, Malformed, $"{file} is not in the export layout.", e);
         }

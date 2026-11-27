@@ -51,7 +51,7 @@ public static class SyntheticMeasure
                 var condition = hit.Conditions.FirstOrDefault(x => x.Type == t.ListType);
                 var conditionRight = condition is not null && (t.ConditionHolds ? condition.Status == ConditionStatus.Hit : condition.Status == ConditionStatus.NotHit);
                 bool? stageRight = t.Stage is { } s ? condition?.LegalStage == s : null;
-                var score = ScoringRule.Identity(hit.Identity, entityRecord: false, PolicyFor(t, policy));
+                var score = Score(t, hit.Identity, policy);
                 var scoreResult = ScoreResult(hit, score);
                 outcomes.Add(new(c, t, hit, score, errors, conditionRight, stageRight,
                     Loss(t, hit.PairResult, hit, errors, condition, conditionRight, score: null),
@@ -61,19 +61,11 @@ public static class SyntheticMeasure
         return outcomes;
     }
 
-    /// <summary>
-    /// The rule scores a stated value at the attached news' factor; a record whose text is a press release or a court
-    /// ruling is scored at that source's factor instead (the rule has no per-Profile source kind yet).
-    /// </summary>
-    public static ScoringPolicy PolicyFor(CandidateTruth t, ScoringPolicy? policy = null)
-    {
-        var p = policy ?? ScoringPolicy.Proposed;
-        if (t.ScoredAs is SourceKind.OfficialList or SourceKind.AllowlistedNews) return p;
-        var reliability = new Dictionary<SourceKind, decimal>(p.Reliability) { [SourceKind.AllowlistedNews] = p.Reliability[t.ScoredAs] };
-        return p with { Reliability = reliability };
-    }
+    /// <summary>The identity score with the stated values counted at the factor of the record's text (news, press release, court ruling).</summary>
+    public static IdentityScore Score(CandidateTruth t, IdentityResult identity, ScoringPolicy? policy = null) =>
+        ScoringRule.Identity(identity, entityRecord: false, policy, text: t.ScoredAs == SourceKind.OfficialList ? SourceKind.AllowlistedNews : t.ScoredAs);
 
-    /// <summary>The pair result if the score band decided identity (automatic MATCH allowed, no release control: scoring-rule.md).</summary>
+    /// <summary>The pair result if the score band decided identity (automatic MATCH allowed: scoring-rule.md).</summary>
     public static ScreeningAssessment ScoreResult(HitResult hit, IdentityScore score) =>
         hit.Conditions.Count == 0 || hit.Conditions.All(c => c.Status == ConditionStatus.NotHit) ? ScreeningAssessment.NotApplicable
         : score.Band switch
@@ -100,7 +92,6 @@ public static class SyntheticMeasure
         var id = hit.Identity;
         if (score is null)
         {
-            if (id.Decision == IdentityDecision.NoMatch && hit.PairReasonCodes.Contains(AssessmentPolicy.ReleaseControlHumanReview)) return "release control: NO_MATCH held for review";
             if (id.Decision == IdentityDecision.ProbableMatch) return t.SamePerson ? "identity: PROBABLE_MATCH, no automatic MATCH in Phase 1" : "identity: PROBABLE_MATCH for another person";
             return "identity: REVIEW, " + Stage3Reason(id);
         }
@@ -109,7 +100,8 @@ public static class SyntheticMeasure
             : score.Items.Count == 0 ? "no item beyond the prerequisites" : "support below the thresholds");
     }
 
-    private static string Stage3Reason(IdentityResult id) => id.HardConflict is { } hard ? $"pending hard conflict {hard}"
+    private static string Stage3Reason(IdentityResult id) => id.HardConflict is { } hard
+            ? HardConflictGate.ValidatedReasonCodes.Contains(hard) ? $"hard conflict {hard} downgraded (source quality)" : $"pending hard conflict {hard}"
         : id.Stage3Row switch
         {
             Stage3Rows.Conflict => "row 1 conflict " + id.ReasonCodes[0],
@@ -174,5 +166,5 @@ public static class SyntheticMeasure
 
     /// <summary>Identity bands of every pair under a policy, for the sensitivity table.</summary>
     public static IReadOnlyList<(CandidateTruth Truth, IdentityScore Score)> Rescore(IReadOnlyList<PairOutcome> outcomes, ScoringPolicy policy) =>
-        [.. outcomes.Where(o => o.Hit is not null).Select(o => (o.Truth, ScoringRule.Identity(o.Hit!.Identity, entityRecord: false, PolicyFor(o.Truth, policy))))];
+        [.. outcomes.Where(o => o.Hit is not null).Select(o => (o.Truth, Score(o.Truth, o.Hit!.Identity, policy)))];
 }

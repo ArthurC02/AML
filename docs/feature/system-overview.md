@@ -28,7 +28,6 @@ Build a traceable identity adjudication flow for customer and related-party scre
 - any model's verdict as the identity decision or the score, and AI-assigned match probabilities ([ADR-0001](../adr/0001-identity-adjudication.md));
 - photo or face comparison;
 - scoring weights the user has not approved deciding a result: until approval they are tried in measurement only and the stage 3 table decides ([scoring rule](scoring-rule.md#validation));
-- automatic confirmation (automatic MATCH) for PEP or Sanction cases, until the user confirms whether it applies to them;
 - any UI;
 - the human workflow: reviewer and approver roles, human decisions, approvals, final disposition, close and reopen. The system does identification only ([ADR-0004](../adr/0004-identification-only.md)); Golden Case human results are labels for measurement.
 
@@ -37,7 +36,7 @@ Build a traceable identity adjudication flow for customer and related-party scre
 - Automatic NO_MATCH: enabled only for validated hard-conflict rules.
 - Automatic MATCH: allowed in the scoring rule's MATCH band without a veto or cap, once the score is the decision; until then none, and a unique-identifier agreement is PROBABLE_MATCH.
 - PROBABLE_MATCH: high-priority review only.
-- PEP, Sanction and RCA candidates: no blanket human review once the scoring rule decides; automatic MATCH and NO_MATCH apply to every list type (read from the user's statement of 2026-11-26; the user can restore the control). While the stage 3 table decides, `RELEASE_CONTROL_HUMAN_REVIEW` keeps a raised condition of theirs in REVIEW.
+- PEP, Sanction and RCA candidates: no blanket human review (the user's decision of 2026-11-27). The algorithm's conclusion stands for every list type: an identity NO_MATCH gives NO_HIT today, and the scoring rule's automatic MATCH will apply to them too once it decides. The cost is plain: a wrong automatic NO_MATCH on a sanctioned person is the most expensive error the system can make. What guards against it is that NO_MATCH comes only from validated hard conflicts (an impossible age at a reported event; birth dates more than two years apart, with their downgrades), and a raised Sanction condition left in REVIEW is first in line. Unverified: no real Sanction or PEP Golden Case exists, and a list's 1 January birth date may be a placeholder ([identity adjudication](identity-adjudication.md#hard-conflict-gate)).
 - Decisiveness: the system exists to conclude MATCH or NO_MATCH wherever the evidence allows; REVIEW is the remainder, and the decided rate is the primary measure ([scoring rule](scoring-rule.md#purpose)).
 - Article 22 recommendations: advisory only; the final selection happens outside the system.
 - Source updates: create a new analysis revision; do not overwrite history.

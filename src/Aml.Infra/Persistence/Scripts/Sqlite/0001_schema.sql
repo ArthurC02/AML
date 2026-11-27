@@ -48,6 +48,7 @@ CREATE TABLE analysis_lineage (
     input_files_json      TEXT    NOT NULL,
     profiles_json         TEXT    NOT NULL,
     news_model_version    TEXT    NULL,     -- the news models that read an attached article; NULL when none ran
+    pages_json            TEXT    NULL,     -- the received pages used, each with its text hash; NULL when none (the text is in case_input)
     CONSTRAINT pk_analysis_lineage PRIMARY KEY (case_id, revision),
     CONSTRAINT fk_lineage_analysis FOREIGN KEY (case_id, revision) REFERENCES case_analysis (case_id, revision)
 );
@@ -150,4 +151,4 @@ CREATE TABLE list_profile (
 );
 
 -- The format of this file; must equal CaseJson.SchemaVersion (checked at startup and by CaseStoreTests).
-PRAGMA user_version = 8;
+PRAGMA user_version = 9;

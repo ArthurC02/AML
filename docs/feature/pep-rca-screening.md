@@ -34,7 +34,7 @@ The policy maps only approved source fields and source values. SIP, Financial Cr
 conditionType: PEP | RCA
 status: HIT | NOT_HIT | UNKNOWN
 pepType: null
-policyVersion: source-policy-0.2
+policyVersion: source-policy-0.3
 evidenceRefs: []
 reasonCodes: []
 ```
@@ -79,7 +79,6 @@ The explanation lists these checks as pending ([verification records](review-and
 
 Under an approved risk policy, an UNKNOWN PEP condition scores as a HIT ([risk scoring](watchlist-and-adverse-information.md#risk-scoring)).
 
-Until GC-04 is validated:
+PEP and RCA pairs use the canonical [combination matrix](data-contracts.md#combination-matrix) as any other list type does: an identity NO_MATCH (a validated hard conflict) on a HIT or UNKNOWN PEP or RCA condition gives NO_HIT, with no blanket human review (the user's decision of 2026-11-27); the [scoring rule](scoring-rule.md)'s automatic MATCH, once it decides, applies to them too. GC-04 (PEP acceptance) is not validated and no real PEP Golden Case exists, so that NO_HIT rests on the hard-conflict rules alone ([identity adjudication](identity-adjudication.md#hard-conflict-gate)).
 
-- while the stage 3 table decides, a PEP or RCA condition that is HIT or UNKNOWN keeps the pair in REVIEW (`RELEASE_CONTROL_HUMAN_REVIEW`); once the [scoring rule](scoring-rule.md) decides, its automatic MATCH and NO_MATCH apply to PEP and RCA pairs as to any other (read from the user's statement of 2026-11-26; the user can restore the control);
-- former-PEP treatment has no fixed duration: it follows the 認定標準 Article 5 risk-based assessment, left to the reviewer through `FORMER_PEP_INFLUENCE`.
+Former-PEP treatment has no fixed duration: it follows the 認定標準 Article 5 risk-based assessment, left to the reviewer through `FORMER_PEP_INFLUENCE`.

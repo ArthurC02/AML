@@ -1,5 +1,5 @@
 {
-  "$id": "aml:HitSummary:v8",
+  "$id": "aml:HitSummary:v9",
   "type": [
     "object",
     "null"
@@ -228,10 +228,11 @@
             ]
           },
           "stage3Row": {
-            "description": "假設成立時的第三階段列號",
+            "description": "假設成立時的第三階段列號；完整出生日期衝突是第一階段硬衝突，為 null",
             "type": [
               "string",
-              "integer"
+              "integer",
+              "null"
             ],
             "pattern": "^-?(?:0|[1-9]\\d*)$"
           },
@@ -255,7 +256,6 @@
         "required": [
           "field",
           "assumption",
-          "stage3Row",
           "decision",
           "reasonCode",
           "text"

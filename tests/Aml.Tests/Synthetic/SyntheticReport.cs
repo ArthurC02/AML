@@ -104,6 +104,14 @@ public static class SyntheticReport
         foreach (var g in hits.Where(x => x.Score!.Applied.Contains(ScoringRule.HeldPendingValidation) && x.Score.Total <= ScoringPolicy.Proposed.NoMatch && x.Hit!.Identity.HardConflict is null)
             .GroupBy(x => $"{Items(x.Score!)}: {(x.Truth.SamePerson ? "same person" : "another person")}")) Line($"| {g.Key} | {g.Count()} |");
 
+        Line("\nBirth-date tolerance (2 years): pairs by truth and DOB evidence; product, score at +8, score at +25");
+        var tolerant25 = SyntheticMeasure.Rescore(o, ScoringPolicy.Proposed with { DobWithinTolerance = 25 }).ToDictionary(x => x.Truth, x => x.Score.Band);
+        foreach (var g in hits.Where(x => x.Hit!.Identity.Evidence[Core.Shared.EvidenceGroup.DateOfBirth] is { Status: not (Core.Shared.ComparisonStatus.SubjectMissing or Core.Shared.ComparisonStatus.ProfileMissing) })
+            .GroupBy(x => $"{(x.Truth.SamePerson ? "same" : "other")}{(x.Truth.Tags.Contains("dob:typo") ? " (one-day typo)" : "")}: {DobKind(x)}").OrderBy(g => g.Key, StringComparer.Ordinal))
+            Line($"| {g.Key} | {g.Count()} | {Tally(g.Select(x => x.Hit!.Identity.Decision.ToString()))} | {Tally(g.Select(x => x.Score!.Band.ToString()))} | {Tally(g.Select(x => tolerant25[x.Truth].ToString()))} |");
+        var strangers = hits.Where(x => !x.Truth.SamePerson && x.Case.Subject.Dob is not null && x.Truth.Fields.Dobs.Count > 0).ToList();
+        Line($"| strangers with a DOB on both sides | {strangers.Count}; within two years (truth) {strangers.Count(x => x.Truth.Fields.Dobs.Any(d => !x.Case.Subject.Dob!.Value.IsMoreThanYearsApart(d, Core.Identity.EvidenceBuilder.DobToleranceYears)))} |");
+
         Line("\nSensitivity (identity, score band)");
         Line("| policy | decided | auto MATCH (precision) | auto NO_MATCH (precision) | PROBABLE_MATCH (same person) |");
         foreach (var (label, p) in Sensitivity)
@@ -129,7 +137,13 @@ public static class SyntheticReport
         ("T_probable_exact 25", ScoringPolicy.Proposed with { ProbableExact = 25 }),
         ("T_no_match -10", ScoringPolicy.Proposed with { NoMatch = -10 }),
         ("T_no_match -40", ScoringPolicy.Proposed with { NoMatch = -40 }),
+        ("DOB within tolerance +25", ScoringPolicy.Proposed with { DobWithinTolerance = 25 }),
     ];
+
+    private static string DobKind(PairOutcome x) => x.Hit!.Identity.Evidence[Core.Shared.EvidenceGroup.DateOfBirth] is var e && e.Status == Core.Shared.ComparisonStatus.Conflict
+        ? e.Detail! : e.Detail == Core.Shared.ReasonCodes.DobAgreesWithinTolerance ? "within tolerance" : e.IsSupport ? $"agrees {e.Strength}" : $"{e.Status} {e.Detail}";
+
+    private static string Tally(IEnumerable<string> xs) => string.Join(", ", xs.GroupBy(x => x).OrderBy(g => g.Key, StringComparer.Ordinal).Select(g => $"{g.Key} {g.Count()}"));
 
     private static bool WrongIdentity(IdentityBand band, CandidateTruth t) =>
         band == IdentityBand.Match && !t.SamePerson || band == IdentityBand.NoMatch && t.SamePerson;

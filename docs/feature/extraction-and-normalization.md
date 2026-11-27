@@ -177,7 +177,7 @@ Multi-valued and time-varying fields (several birth years, past offices, old and
 
 An age is extracted only when stated explicitly for a named person:
 
-- counted: Arabic or Chinese numerals (四十四歲、廿二歲, `ChineseNumerals.Parse`), bracketed numbers (陳志明（44歲）, `(44)`), English forms next to a romanized name (Chen Chih-Ming, 44; aged 44; 44-year-old); 足歲、周歲、週歲 mean 歲;
+- counted: Arabic or Chinese numerals (四十四歲、廿二歲, `ChineseNumerals.Parse`), bracketed numbers (陳志明（44歲）, `(44)`), also after a gender in the bracket (陳志明（男，44歲）), English forms next to a romanized name (Chen Chih-Ming, 44; aged 44; 44-year-old); 足歲、周歲、週歲 mean 歲;
 - not counted: approximations or ranges (七八十歲、20 多歲), age thresholds (未滿 18 歲), statistics (被害人平均年齡 65 歲);
 - the age belongs to the person the sentence grammatically refers to, never by default to the Profile subject; 「甲、乙分別為 44 歲、45 歲」 yields one age per person in order, and nothing when the numbers of names and ages differ;
 - the stated age is preserved unchanged; names keep their source spelling.

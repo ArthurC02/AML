@@ -1,6 +1,6 @@
 # Web Text
 
-`Infra/Web` fetches web pages and PDFs and keeps their readable text. It is used to gather training and evaluation text for the news models; no case analysis reads it yet. The [external sources](external-sources.md) (a received URL, grounding search, judgments) will read pages through it; the table below limits training text, not what a Case may read.
+`Infra/Web` fetches web pages and PDFs and keeps their readable text. A received URL (`POST /api/pages`, [external sources](external-sources.md#received-url-source-2)) is fetched and read through it by `WebPages.ReadAsync` in the `FETCH_PAGE` job; a Case that names the page reads its stored text, never fetching it ([matched against the customer](external-sources.md#matched-against-the-customer)). It also gathers training and evaluation text for the news models. Grounding search and judgments will read pages through it too; the table below limits training text, not what a Case may read.
 
 ## Fetching
 
@@ -12,10 +12,12 @@
   - Rules are compared with the path as sent, percent-encoded. A rule written in Chinese (`Disallow: /政策/`) matches.
   - A missing `robots.txt` (4xx other than 429) allows everything.
   - A failing one (5xx, 429, unreachable, timed out) means the site is not crawled for now. The failure is not remembered, so the next request asks again.
-- **Delay**: it waits between requests to one site, the configured delay or the site's `Crawl-delay` (at most a minute) if longer. The `Crawl-delay` holds from the `robots.txt` request on.
+- **Delay**: it waits between requests to one site, the configured delay (1 s in the API) or the site's `Crawl-delay` (at most a minute) if longer. The `Crawl-delay` holds from the `robots.txt` request on. Times come from the injected `TimeProvider`.
 - **Redirects**: it follows them itself, at most 5. Each hop is a new request, checked against its own site's `robots.txt` and delay.
+- **URL guard**: every request, `robots.txt` and each redirect hop included, first passes `UrlGuard` (http or https, no credentials, port 80 or 443, every resolved address public; [external sources](external-sources.md#common-path)). Host names resolve through a function the caller gives (the system DNS in the API, a table in tests), so no test touches the network.
 - It sends one request at a time, with a generic agent name and no contact details.
 - It takes only HTML and PDF replies (media type case-insensitive; `application/x-pdf` counts as PDF). It stops reading past 10 MB.
+- It never returns a bare failure: the result is the page or the problem code that stopped it (`ROBOTS_DISALLOWED`, `ROBOTS_UNAVAILABLE`, `URL_NOT_ALLOWED`, `UNSUPPORTED_MEDIA_TYPE`, `TOO_LARGE`, `TOO_MANY_REDIRECTS`, `HTTP_STATUS:<n>`, `UNREACHABLE`), marked transient when asking again later may help.
 
 ## Main text of a web page
 
@@ -44,7 +46,7 @@ The page is decoded by its meta charset (UTF-8, Big5); a charset given only in t
 - A PDF of more than 200 pages or 2,000,000 characters is refused. So is an unreadable or encrypted one. Every refusal is a `FormatException`.
 - PdfPig has no time or decompression budget of its own; the fetcher's 10 MB cap is the only bound.
 - A PDF whose fonts carry no character map yields no usable text.
-- `PdfText.Unwrap` joins the lines a PDF wraps inside a paragraph, so a sentence or a name is not split across lines. No product path applies it yet; only tests and the external news-model evaluator call it. Run it after site templates are removed, because those are compared line by line. A line runs on into the next only when all of these hold:
+- `PdfText.Unwrap` joins the lines a PDF wraps inside a paragraph, so a sentence or a name is not split across lines. A received PDF page is unwrapped (`WebPages.ReadAsync`); the external news-model evaluator calls it too. Run it after site templates are removed, because those are compared line by line. A line runs on into the next only when all of these hold:
   - it is full: at least 80% of the text's usual line width (the 80th percentile of lines at least 10 wide). A Chinese character, a full-width sign or a symbol a Chinese font sets full-width (○ ※ — “”) counts two; digits, Latin and Greek letters and half-width forms count one.
   - it does not end a sentence: 。！？；：.!?:… optionally followed by closing quotes or brackets (」』”’）)》), or a line ending in 」 or 』.
   - the next line does not open a list item: 一、, （一） or (1), 1、 1. 1．, ①.

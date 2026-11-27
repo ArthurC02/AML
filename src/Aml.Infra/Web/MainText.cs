@@ -2,12 +2,14 @@ using System.Text;
 using System.Text.RegularExpressions;
 using AngleSharp.Dom;
 using AngleSharp.Html.Dom;
+using Aml.Core.Pages;
+using Aml.Core.Shared;
 using Aml.Infra.Html;
 
 namespace Aml.Infra.Web;
 
-/// <summary>The readable text of a web page: its title and the main text, one paragraph per line.</summary>
-public sealed record PageText(string? Title, string Text);
+/// <summary>The readable text of a web page: its title, the main text, one paragraph per line, and the publication date it states (<see cref="PublishedDates"/>).</summary>
+public sealed record PageText(string? Title, string Text, PartialDate? PublishedOn = null, PublicationSource PublishedOnSource = PublicationSource.Missing);
 
 /// <summary>
 /// Keeps a web page's main text and drops its menus, headers, footers, share buttons and link lists (web-text.md).
@@ -34,6 +36,7 @@ public static partial class MainText
 
     private static PageText From(IHtmlDocument doc)
     {
+        var metadata = PublishedDates.Metadata(doc);
         if (doc.Body is not { } body) return new PageText(Clean(doc.Title), "");
         HtmlExport.CheckDepth(body);
         var pageH1 = body.QuerySelectorAll("h1").FirstOrDefault(h => h.Closest("header,nav") is null);
@@ -54,7 +57,9 @@ public static partial class MainText
         foreach (var e in main.QuerySelectorAll("ul,ol,div,p,td,table,section,dl").ToList())
             if (counts.TryGetValue(e, out var c) && c.Links > 0 && LinkDensity(c) > 0.5) e.Remove();
         var title = Clean(main.QuerySelector("h1")?.TextContent) ?? Clean(pageH1?.TextContent) ?? Clean(doc.Title);
-        return new PageText(title, Lines(main));
+        var text = Lines(main);
+        var (on, source) = PublishedDates.Agreed(metadata, PublishedDates.FromText(text));
+        return new PageText(title, text, on, source);
     }
 
     // Visible characters, characters inside links and commas of every element, children before parents: document order

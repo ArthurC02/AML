@@ -355,6 +355,23 @@ public class ScreeningPolicyTests
     // An aside is read as the rest of the text.
     [InlineData("陳志明涉詐欺（按金額經查已達五百萬元，業經起訴）。", LegalStage.Indicted)]
     [InlineData("陳志明涉詐欺（即白手套所涉部分，業經起訴）。", LegalStage.Indicted)]
+    // A clause ending with 宣判 is read with the next.
+    [InlineData("本院審理陳志明被訴洗錢案件，今日宣判，陳志明無罪。", LegalStage.Acquitted)]
+    [InlineData("陳志明涉詐欺遭起訴，法院今日宣判，判處陳志明有期徒刑一年。", LegalStage.Convicted)]
+    [InlineData("陳志明遭起訴，法院今日宣判。", LegalStage.Indicted)]
+    [InlineData("法院昨天宣判，李小四無罪。陳志明遭起訴。", LegalStage.Indicted)] // the clause after 宣判 is another person's
+    [InlineData("陳志明遭起訴，法院今日宣判，同案被告李小四獲判無罪。", LegalStage.Indicted)] // 同案 opens the clause after 宣判
+    // A co-defendant's clause, to the next naming the person, is not theirs.
+    [InlineData("法院判處陳志明有期徒刑一年，同案的李小四則獲判無罪。", LegalStage.Convicted)]
+    [InlineData("檢方依洗錢罪起訴陳志明。同案被告李小四則獲不起訴處分。", LegalStage.Indicted)]
+    [InlineData("陳志明遭起訴，同案被告李小四、王大同，均獲不起訴處分。", LegalStage.Indicted)]
+    [InlineData("同案被告李小四遭起訴，陳志明則獲不起訴處分。", LegalStage.Dismissed)]
+    [InlineData("陳志明遭起訴。同案被告李小四、陳志明均獲不起訴處分。", LegalStage.Dismissed)] // a 同案 clause naming the person is theirs
+    [InlineData("法院判處李小四有期徒刑一年，同案被告陳志明獲判無罪。", LegalStage.Acquitted)]
+    [InlineData("同案被告李小四遭起訴，法院判處陳志明有期徒刑一年。", LegalStage.Convicted)]
+    // A text that never names the person is about them as a whole: its 提起公訴 is theirs.
+    [InlineData("本署偵辦陳姓男子涉嫌詐欺案件，業已偵查終結，認陳姓男子犯罪嫌疑重大，依詐欺取財罪嫌提起公訴。", LegalStage.Indicted)]
+    [InlineData("本署偵辦陳姓男子涉嫌詐欺案件，業已偵查終結，不提起公訴。", LegalStage.Alleged)] // 不提起公訴 is no indictment
     // A judgment's codes for its defendants (A05) are not read; the only defendant's 被告 is theirs, and a subjectless dismissal a listed defendant's.
     [InlineData(CodedSoleJudgment + "A05公訴不受理。\n理 由\nA05所涉詐欺犯行，業經檢察官為不起訴處分確定。", LegalStage.Dismissed)]
     [InlineData(CodedSoleJudgment + "被告犯詐欺取財罪，處有期徒刑六月。\n事 實\n略。", LegalStage.Convicted)]
@@ -504,7 +521,7 @@ public class ScreeningPolicyTests
         Assert.Equal(expected, string.Join(",", DispositionPolicy.Recommend(Subject(), profile, conditions, Identity(), news).PendingChecks));
     }
 
-    // a NOT_HIT controlled condition is no release control; a NOT_HIT Sanction does not raise the review priority.
+    // a NOT_HIT PEP adds nothing beside a closed pair; a NOT_HIT Sanction does not raise the review priority.
 
     [Fact]
     public void not_hit_pep_beside_a_closed_adverse_media_pair_stays_no_hit()

@@ -1,5 +1,5 @@
 {
-  "$id": "aml:AnalysisLineage:v8",
+  "$id": "aml:AnalysisLineage:v9",
   "type": [
     "object",
     "null"
@@ -100,6 +100,54 @@
         "string",
         "null"
       ],
+      "default": null
+    },
+    "pages": {
+      "description": "分析所用的收到網頁與其內文版本；網頁固定在案件輸入檔中，重新分析讀同一版本；沒有網頁時省略",
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "pageId": {
+            "description": "網頁編號",
+            "type": "string"
+          },
+          "url": {
+            "description": "正規化網址",
+            "type": "string"
+          },
+          "fetchedAt": {
+            "description": "取得時間",
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "contentHash": {
+            "description": "回應內容的 SHA-256",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "textHash": {
+            "description": "內文（UTF-8）的 SHA-256：此 revision 所用的內文版本",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pageId",
+          "url",
+          "textHash"
+        ]
+      },
       "default": null
     }
   },

@@ -15,6 +15,8 @@ internal static class Problems
     public const string NotFound = "NOT_FOUND";
     public const string HttpError = "HTTP_ERROR";
     public const string InternalError = "INTERNAL_ERROR";
+    public const string PageNotReady = "PAGE_NOT_READY";
+    public const string PageUnusable = "PAGE_UNUSABLE";
 
     public static string Type(string code) => $"/api/codes/{code}";
 
@@ -40,8 +42,21 @@ internal static class Problems
     };
 
     public static ProblemHttpResult Of(string code, string detail, string fix, params object[] errors) =>
-        TypedResults.Problem(detail, type: Type(code), title: Title(code), statusCode: StatusCodes.Status400BadRequest,
+        Of(StatusCodes.Status400BadRequest, code, detail, fix, errors);
+
+    public static ProblemHttpResult Of(int status, string code, string detail, string fix, params object[] errors) =>
+        TypedResults.Problem(detail, type: Type(code), title: Title(code), statusCode: status,
             extensions: new Dictionary<string, object?> { ["errors"] = errors, ["fix"] = fix });
+
+    /// <summary>PAGE_UNUSABLE (400) when a named page is unknown, REFUSED or FAILED; else PAGE_NOT_READY (409) when one is PENDING; null when every page is READ.</summary>
+    public static ProblemHttpResult? Pages(Aml.Services.PinnedPages pinned) =>
+        pinned.Unusable.Count > 0
+            ? Of(PageUnusable, "Some named pages cannot be used.", "Name only pages that GET /api/pages/{pageId} returns READ; a REFUSED or FAILED page can be sent to POST /api/pages again on a later day.",
+                [.. pinned.Unusable.Select(p => (object)new { parameter = "pageIds", pageId = p.PageId, status = p.Status, problem = p.Problem })])
+        : pinned.NotReady.Count > 0
+            ? Of(StatusCodes.Status409Conflict, PageNotReady, "Some named pages are still being fetched.", "Wait until GET /api/pages/{pageId} returns READ, then send the request again.",
+                [.. pinned.NotReady.Select(id => (object)new { parameter = "pageIds", pageId = id, status = "PENDING" })])
+        : null;
 
     public static ProblemHttpResult? Top(int? top) => top is < 1 or > ProfilesEndpoints.MaxTop
         ? Of(InvalidRequest, $"top must be 1 to {ProfilesEndpoints.MaxTop}.", $"Send a top from 1 to {ProfilesEndpoints.MaxTop}, or leave it out for {ProfilesEndpoints.DefaultTop}.", new { parameter = "top" })

@@ -48,6 +48,9 @@ public static partial class StatedAgeCheck
     private const string NotThresholdOrApproximation = "(?<![\\d〇零一二兩三四五六七八九十廿卅百]|滿|約|逾|近|超過|未滿|年滿)";
     private const string Respectively = "分別";
 
+    // 陳志明（男，45歲）: a gender may stand before the age in the bracket after the name.
+    private const string GenderFirst = "(?:[男女][，,、]\\s?)?";
+
     private const int MaxNames = 100;
 
     /// <summary>
@@ -89,7 +92,7 @@ public static partial class StatedAgeCheck
     {
         var n = Regex.Escape(name);
         return new Regex(
-            $@"{n}\s?[（(，,]?\s?(?:今年|現年|(?<event>時年))?\s?{AgeNumber}{AgeUnit}|{NotThresholdOrApproximation}{AgeNumber}{AgeUnit}的?{n}"
+            $@"{n}\s?[（(，,]?\s?{GenderFirst}(?:今年|現年|(?<event>時年))?\s?{AgeNumber}{AgeUnit}|{NotThresholdOrApproximation}{AgeNumber}{AgeUnit}的?{n}"
             + $@"|{n},?\s+aged\s+(?<n>\d{{1,3}})\b|\b(?<n>\d{{1,3}})-year-old\s+{n}|{n}\s?\((?<n>\d{{1,3}})\)",
             RegexOptions.IgnoreCase);
     }

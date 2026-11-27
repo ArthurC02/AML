@@ -73,6 +73,7 @@ internal sealed class RulingText
 internal readonly record struct SentenceScope(string Text, bool Own, bool Attributable);
 
 /// <summary>
-/// A clause of the report; <see cref="Mine"/> says it names the person.
+/// A clause of the report; <see cref="Mine"/> says it names the person, <see cref="Other"/> that it speaks of a
+/// co-defendant (<see cref="ReportForm.OpensOnOther"/>), <see cref="Unnamed"/> that the text never names the person.
 /// </summary>
-internal readonly record struct ClauseScope(string Clause, bool Mine, SentenceScope Sentence, bool Bystander);
+internal readonly record struct ClauseScope(string Clause, bool Mine, SentenceScope Sentence, bool Bystander, bool Other, bool Unnamed);

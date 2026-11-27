@@ -52,9 +52,11 @@ public static class CaseLifecycle
 
     /// <summary>A configured stage model's answer is missing on some raised condition (HIT or UNKNOWN, with
     /// STAGE_READER_NO_ANSWER): a batch job retries before it writes (pipeline-api-and-batch.md#durable-batch-execution). A
-    /// NOT_HIT condition keeps its indicator but is no reason to retry: the condition does not hold, so its stage is not one a reviewer acts on.</summary>
+    /// NOT_HIT condition keeps its indicator but is no reason to retry: the condition does not hold, so its stage is not one a reviewer acts on.
+    /// Nor is a page person's: its stage was read when the page was (its FETCH_PAGE job retried), and the pinned reading cannot change.</summary>
     public static bool StageAnswerMissing(CaseAnalysis a) =>
-        a.Hits.Any(h => h.Conditions.Any(c => c.Status != Screening.ConditionStatus.NotHit && c.ReasonCodes.Contains(Screening.Stage.StageVote.ReaderNoAnswer)));
+        a.Hits.Any(h => h.Conditions.Any(c => c.Status != Screening.ConditionStatus.NotHit && c.Basis != Screening.ConditionBasis.PageReading
+            && c.ReasonCodes.Contains(Screening.Stage.StageVote.ReaderNoAnswer)));
 
     private static bool IsIncomplete(CaseAnalysis a) => a.NotEvaluatedProfiles.Count > 0;
 

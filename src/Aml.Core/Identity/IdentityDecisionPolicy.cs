@@ -8,7 +8,8 @@ public static class IdentityDecisionPolicy
 {
     private const int StrongSupportMinimumCount = 2;
 
-    private static readonly EvidenceGroup[] ProfileGroupsWithConflictCode = [EvidenceGroup.DateOfBirth, EvidenceGroup.Document];
+    // A DOB conflict never reaches stage 3: the gate closes it (HardConflictGate.Check).
+    private static readonly EvidenceGroup[] ProfileGroupsWithConflictCode = [EvidenceGroup.Document];
     private static readonly EvidenceGroup[] NewsGroupsWithConflictCode = [EvidenceGroup.StatedAge, EvidenceGroup.StatedBirthDate];
 
     public static IdentityResult Decide(ScreenedSubject s, SourceProfile p, NewsItem? news = null)
@@ -34,7 +35,7 @@ public static class IdentityDecisionPolicy
     private static IdentityResult HardConflictDecision(IReadOnlyDictionary<EvidenceGroup, Evidence> e, SourceProfile p, string hard)
     {
         if (!HardConflictGate.ValidatedReasonCodes.Contains(hard)) return new IdentityResult(e, hard, null, IdentityDecision.Review, [hard]);
-        return HardConflictGate.SourceQualityConcern(p, e)
+        return HardConflictGate.SourceQualityConcern(p, e, hard)
             ? new IdentityResult(e, hard, null, IdentityDecision.Review, [hard, ReasonCodes.SourceQualityDowngrade])
             : new IdentityResult(e, hard, null, IdentityDecision.NoMatch, [hard]);
     }
@@ -94,6 +95,12 @@ public static class IdentityDecisionPolicy
         var result = new List<WouldChangeIf>();
         foreach (var (evidence, assumption, label) in Assumptions(dob))
         {
+            // A conflicting full DOB is the validated stage 1 rule, not a stage 3 row.
+            if (evidence is { Group: EvidenceGroup.DateOfBirth, Direction: Direction.Conflict })
+            {
+                result.Add(new(evidence.Group, assumption, null, IdentityDecision.NoMatch, evidence.Detail!, $"若{label}：身分判斷為第一階段硬衝突 {evidence.Detail}"));
+                continue;
+            }
             var e = new Dictionary<EvidenceGroup, Evidence>(r.Evidence) { [evidence.Group] = evidence };
             var (row, decision, code) = Stage3(e);
             if (row != r.Stage3Row)
@@ -112,7 +119,8 @@ public static class IdentityDecisionPolicy
         if (dob?.Status != ComparisonStatus.Exact)
         {
             assumptions.Add((new(EvidenceGroup.DateOfBirth, Direction.Support, ComparisonStatus.Exact, Strength.High), Assumption.Agree, "完整出生日期相符"));
-            assumptions.Add((new(EvidenceGroup.DateOfBirth, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.FullDobConflict), Assumption.Conflict, "完整出生日期不符"));
+            assumptions.Add((new(EvidenceGroup.DateOfBirth, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.FullDobConflict), Assumption.Conflict,
+                $"完整出生日期相差逾 {EvidenceBuilder.DobToleranceYears} 年"));
         }
         return assumptions;
     }

@@ -28,14 +28,17 @@ internal static class LegalStageReading
         var ruling = RulingReading.Read(news, names);
         var suspected = false;
         var bystander = ReportRules.Bystander(ruling);
+        var unnamed = !StageText.MentionsAnyName(news, names);
         foreach (var (start, length) in StageText.Spans(news, 0, news.Length, StageText.SentenceEnds))
         {
             var sentence = ReportForm.Scope(news, start, length, names, bystander);
             suspected |= ReportRules.SaysSuspected(sentence);
-            foreach (var (at, size) in StageText.Spans(news, start, length, StageText.ClauseEnds))
+            var other = false; // from a clause opening on a co-defendant to the next naming the person
+            foreach (var (clause, written) in ReportForm.Clauses(news, start, length))
             {
-                var clause = news.Substring(at, size);
-                var scope = new ClauseScope(clause, ReportForm.IsMine(clause, names), sentence, bystander);
+                var mine = ReportForm.IsMine(clause, names);
+                other = !mine && (other || ReportForm.OpensOnOther(written));
+                var scope = new ClauseScope(clause, mine, sentence, bystander, other, unnamed);
                 if (DecisionList.FirstOf(Transitions, scope) is { } next) (stage, basis) = (next.Stage, next.Code);
             }
         }

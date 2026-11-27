@@ -74,22 +74,27 @@ public static partial class NewsDigests
 
     private sealed record Mention(int At, int Length, string Key, string Name, NewsMatch Match, string? Role, bool Anonymous = false);
 
-    public static NewsDigest? Build(NewsItem? news, IReadOnlyList<string> profileNames, string sourceRef, INewsModel? model = null)
+    public static NewsDigest? Build(NewsItem? news, IReadOnlyList<string> profileNames, string sourceRef, INewsModel? model = null) =>
+        news is null ? null : Read(news, profileNames, sourceRef, model).Digest;
+
+    /// <summary>The digest, and for each of its people in their order every mention's place in the text (at, length).</summary>
+    internal static (NewsDigest Digest, IReadOnlyList<IReadOnlyList<(int At, int Length)>> Mentions) Read(NewsItem news, IReadOnlyList<string> profileNames,
+        string sourceRef, INewsModel? model)
     {
-        if (news is null) return null;
         var text = news.Text;
         var names = profileNames.Take(100).Where(n => n.Length > 1).ToList();
         var surnames = names.Where(n => CjkText.IsCjk(n[0])).Select(Surname).ToHashSet(StringComparer.Ordinal);
         var mentions = Mentions(text, names, surnames);
         // Quoted speech is a claim: no event is read inside it (as for the legal stage), but names are.
         var blanked = StagePatterns.Quoted().Replace(text, m => new string('　', m.Length));
-        var people = People(text, mentions);
+        var grouped = People(text, mentions);
+        var people = grouped.Select(g => g.Person).ToList();
         // An event names its person as the people list does: by the first full name, else the first form.
         var shownAs = mentions.GroupBy(m => m.Key, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => (g.FirstOrDefault(m => !m.Anonymous) ?? g.First()).Name, StringComparer.Ordinal);
         var events = Events(text, blanked, mentions, shownAs, news.PublishedOn);
-        return new NewsDigest(sourceRef, people, events, Summary(news, sourceRef, people, events),
-            model is null ? null : NewsModelReading.Read(text, names, model));
+        return (new NewsDigest(sourceRef, people, events, Summary(news, sourceRef, people, events),
+            model is null ? null : NewsModelReading.Read(text, names, model)), grouped.Select(g => g.Mentions).ToList());
     }
 
     // ---- People ------------------------------------------------------------------------------------------------
@@ -311,7 +316,8 @@ public static partial class NewsDigests
 
     private static Regex RoleThenName() => RoleThenNamePattern;
 
-    [GeneratedRegex(@"(?<=^|[，,。！？；\n、「」『』]|而|但|則|另外|隨後|其後|後來|至於)(?<name>\p{IsCJKUnifiedIdeographs}{2,4}?)(?:也|亦|則|已|均)?(?=遭到|遭|被|獲|涉嫌|涉及|坦承|供稱|否認)", RegexOptions.Multiline)]
+    // A dateline's closing bracket (〔記者／臺北報導〕, 【記者／台北報導】) opens the lead's first clause.
+    [GeneratedRegex(@"(?<=^|[，,。！？；\n、「」『』〕】]|而|但|則|另外|隨後|其後|後來|至於)(?<name>\p{IsCJKUnifiedIdeographs}{2,4}?)(?:也|亦|則|已|均)?(?=遭到|遭|被|獲|涉嫌|涉及|坦承|供稱|否認)", RegexOptions.Multiline)]
     private static partial Regex ClauseOpeningName();
 
     [GeneratedRegex(@"(?<surname>張簡|歐陽|范姜|周黃|江謝|張廖|\p{IsCJKUnifiedIdeographs})(?:(?<named>姓)(?<kind>男子|女子|男童|女童|少年|少女|嫌犯|嫌疑人|被告|婦人|老翁|負責人|董事長|業者|員警|移工|商人|男|女)|(?<kind>男|女|嫌|翁|婦|某|董|童))")]
@@ -326,7 +332,7 @@ public static partial class NewsDigests
     [GeneratedRegex(@"(?:少年|少女|男童|女童|被害人|告訴人|證人|被告|嫌犯)[A-ZＡ-Ｚ甲乙丙丁]")]
     private static partial Regex LetteredParty();
 
-    private static List<NewsPerson> People(string text, List<Mention> mentions) =>
+    private static List<(NewsPerson Person, IReadOnlyList<(int At, int Length)> Mentions)> People(string text, List<Mention> mentions) =>
         mentions.GroupBy(m => m.Key, StringComparer.Ordinal)
             .OrderBy(g => g.Key == ProfileKey ? 0 : g.First().Match == NewsMatch.ProfileSurname ? 1 : 2).ThenBy(g => g.First().At)
             .Take(MaxPeople)
@@ -336,7 +342,8 @@ public static partial class NewsDigests
                 // An occupation the roles already list (董事長王大明) is not repeated.
                 var identifiers = NewsIdentifiers.Read(text, g.Select(m => m.Name))
                     .Where(i => i.Kind != NewsIdentifierKind.Occupation || !roles.Contains(i.Text!, StringComparer.Ordinal)).ToList();
-                return new NewsPerson((g.FirstOrDefault(m => !m.Anonymous) ?? g.First()).Name, g.First().Match, roles, Party(roles), g.Count(), identifiers);
+                var person = new NewsPerson((g.FirstOrDefault(m => !m.Anonymous) ?? g.First()).Name, g.First().Match, roles, Party(roles), g.Count(), identifiers);
+                return (person, (IReadOnlyList<(int, int)>)g.Select(m => (m.At, m.Length)).ToList());
             })
             .ToList();
 

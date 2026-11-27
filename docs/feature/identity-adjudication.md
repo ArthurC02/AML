@@ -19,6 +19,9 @@ BM25 and displayed similarity values are not identity probabilities ([ADR-0001](
 | DIRECT_REFERENCE | a known Profile ID | a named Profile |
 | INDEX_SEARCH | a name query over the list database | large source sets |
 | PREVIOUS_LINK | the Profiles used by the Case's latest input | re-analysis after a source update |
+| SOURCE_PAGE | the persons of a received page the Case names (`pageIds`) | scenario 2; a person whose written name is EXACT against the subject's by the name comparison below is a candidate, every other person is recorded as not one ([external sources](external-sources.md#matched-against-the-customer)) |
+
+A page person's Profile holds its names only, and the page's text is its attached news, the publication date the page states its report date ([external sources](external-sources.md#common-path); none when it states none or its sources disagree, never the fetch date): the age, birth dates and gender written next to the name are stated values (`StatedAgeCheck`, `NewsStatedCheck`), which agree or differ but never conclude NO_MATCH; an age on a page without a publication date is `AGE_NOT_COMPARABLE`; the two-year birth-date rule is the Profile DOB field's alone.
 
 They are served by `GET /api/profiles/search` (INDEX_SEARCH), `GET /api/profiles/{profileId}` (DIRECT_REFERENCE) and `GET /api/cases/{caseId}/candidates?source=table|previous` (CONTROLLED_SET, PREVIOUS_LINK) ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md)). INDEX_SEARCH (steps 3 and 5 of the [operating architecture](system-overview.md#operating-architecture)) runs `Core/Retrieval/ProfileIndex` over the structured Profiles of the list database:
 
@@ -96,8 +99,37 @@ Direct identifiers are a full date of birth (DAY precision) and a comparable doc
 - Two values from different records or sources are not independent unless their source relationship is known; otherwise the explanation states "source relationship unknown". Several reports of the same event are one piece of evidence.
 - Precision is never lowered: a full DOB is not rewritten as a year, and a year match is never a full-date match.
 - A coarser Profile DOB that a more precise one already covers (1970 next to 1970-05-01) is dropped before comparison.
-- When the Profile lists several DOB values, the best agreeing value is used at its own precision; the other values are source ambiguity, not a conflict. A conflict needs every Profile value to disagree.
+- When the Profile lists several DOB values, the best agreeing value is used at its own precision; the other values are source ambiguity, not a conflict. A conflict needs every Profile value to be more than two years from the customer's ([birth-date tolerance](#birth-date-tolerance)).
 - Agreeing with one of many or scattered Profile DOBs (three or more values, or a span over two years; placeholder cut-off pending calibration) is no rare coincidence: it is recorded as `PROFILE_MULTIPLE_DOB`, neutral and never support.
+
+### Birth-date tolerance
+
+The customer's DOB against the Profile's own DOB field (list data), by `EvidenceBuilder.DateOfBirthEvidence`, with one policy value, `EvidenceBuilder.DobToleranceYears` = 2. It reads the user's decisions of 2026-11-27: 「生日兩年內都可以接受」 and 「兩年以內可以判定符合」, so a difference of more than two years concludes "different person" and one of two years or less is a birth-date agreement.
+
+| Customer against the Profile's DOBs (best value first) | Evidence | Code | Decision |
+|---|---|---|---|
+| a value agrees at the precision both sides have | support at that level (HIGH day, MEDIUM month, LOW year) | none, or `BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE` | as before |
+| none agrees, a value is two years or less away | support, PARTIAL, LOW: the weakest DOB agreement, as a birth year agreeing | `DOB_AGREES_WITHIN_TOLERANCE`; the note says how far apart (相差 N 天 for two full dates, else 出生年相差 N 年) | stage 3 like a birth year: row 4 with every prerequisite EXACT and nothing unsettled in DOCUMENT or EMPLOYMENT, else row 5; never row 3 (not HIGH) |
+| every value is more than two years away | CONFLICT | `FULL_DOB_CONFLICT` (full dates on both sides) or `DOB_CONFLICT` | [hard conflict](#hard-conflict-gate), validated: NO_MATCH |
+| either side has no DOB | NEUTRAL, missing | none | no conflict, no support |
+
+The boundary, in calendar terms. Each value stands for the days it can mean: a full date one day, a year-month its month, a year its year. Two values are more than two years apart only when the later one's first possible day comes after the earlier one's last possible day plus two calendar years (`PartialDate.IsMoreThanYearsApart`); 29 February plus two years is 28 February. So:
+
+- full dates: 1980-05-20 and 1982-05-20 are within (exactly two years), 1982-05-21 is a conflict; 2000-02-29 and 2002-02-28 are within, 2002-03-01 is a conflict;
+- coarser values are compared at the coarser precision, and a difference that may be two years or less is never a conflict: years 1980 and 1982 are within, 1980 and 1983 a conflict; 1980-05 and 1982-05 within, 1982-06 a conflict; 1980-05-20 against the year 1982 within, against 1983 a conflict;
+- 民國 dates are read as their AD year first (民國69年 = 1980).
+
+Where it applies, and where not:
+
+- Only the Profile's own DOB field. A birth date or age stated in attached text keeps its own rules: a stated birth date still agrees only when equal at its precision, a stated age keeps ±2 years at the time point, and neither ever concludes NO_MATCH ([birth date and gender stated in a source](#birth-date-and-gender-stated-in-a-source)). A Profile DOB within tolerance counts as the Profile's DOB agreeing there (the same fact told twice).
+- Scattered Profile DOBs (three or more values, or over two years apart) stay source ambiguity: agreeing within tolerance with one of them is `PROFILE_MULTIPLE_DOB`, neutral; a conflict with all of them is downgraded to REVIEW (`SOURCE_QUALITY_DOWNGRADE`).
+- Profile merges still refuse a merge only on no agreeing DOB (`DOB_CONFLICT` there keeps its merge meaning).
+
+Its cost, stated plainly:
+
+- a different person with the same name born within two years of the customer is read as a birth-date agreement: with name, gender and nationality EXACT that is PROBABLE_MATCH (row 4), as a shared birth year already was; on the synthetic set 10 strangers' pairs carry it and 4 of them reach PROBABLE_MATCH ([measurement](../plan/poc-delivery-plan.md#synthetic-end-to-end-set));
+- a Profile DOB entered more than two years wrong concludes NO_MATCH for the right person, without a reviewer. A one-day or a one-year recording error is within tolerance and no longer a conflict;
+- a placeholder day on the list (1 January for a year-only value) is compared as a full date; no placeholder check exists.
 
 ## Comparison measures
 
@@ -106,7 +138,7 @@ Per evidence group (step 6 of the [operating architecture](system-overview.md#op
 | Group | Measure | Implementation |
 |---|---|---|
 | NAME | exact after normalization, with disclosed relaxations; romanization variants and Jaro-Winkler / Levenshtein as `PARTIAL` features inside the group | yes; see [name comparison](#name-comparison) |
-| DATE_OF_BIRTH | precision-aware comparison and conflict check | yes; scattered Profile DOBs give `PROFILE_MULTIPLE_DOB` ([comparison rules](#comparison-rules)) |
+| DATE_OF_BIRTH | precision-aware comparison, two-year tolerance and conflict check | yes; agreement within two years is `DOB_AGREES_WITHIN_TOLERANCE`, more than two years the hard conflict ([birth-date tolerance](#birth-date-tolerance)); scattered Profile DOBs give `PROFILE_MULTIPLE_DOB` ([comparison rules](#comparison-rules)) |
 | DOCUMENT | type + issuing country/authority + number | yes: same key and number is `UNIQUE` support (row 2), same key with a different number is `DOCUMENT_IDENTITY_CONFLICT` (row 1); a document of another type or country is UNCERTAIN `NOT_COMPARABLE`, which does not block row 4; no sample Profile carries a document yet |
 | ADDRESS | structured Taiwan address fields; token Jaccard for unstructured text | yes: city to floor key (old names and full-width digits folded), else Jaccard over words and CJK bigrams; always UNCERTAIN (`SAME_ADDRESS_NO_PERIOD` or `SOFT_DIFFERENCE`), since neither source gives validity periods |
 | EMPLOYMENT | occupation and employer company, same period only | yes: same organization with overlapping periods on both sides (each needs a start; an open end runs to the present; compared by year, the coarsest common precision) is `MEDIUM` support; without periods `SAME_ORGANIZATION_NO_COMMON_PERIOD`; a different employer is UNCERTAIN `DIFFERENT_ORGANIZATION`, never a conflict. The bank export has an occupation category only, so subject employments are not yet extracted: an occupation category against Profile roles is `NOT_COMPARABLE` (subject employer missing), which does not block row 4 |
@@ -160,10 +192,10 @@ Applies only to an age explicitly stated for a named person in a bounded source 
 - Requires a full DOB on the subject side; otherwise the result is `AGE_NOT_COMPARABLE`, and with a partial DOB and a report date the note gives the possible age range at the report date (`StatedAgeCheck.AgeRange`, e.g. 45～46 歲 for a birth year only), which is shown, not compared.
 - |difference| ≤ 2 (inclusive) → `AGE_COMPATIBLE_AT_REPORT`, recorded like `TEMPORALLY_PLAUSIBLE`: compatible is not support.
 - |difference| > 2 → `AGE_DIFFERENCE_AT_REPORT`, a soft conflict that keeps the pair in REVIEW unless a document agrees ([stage 3](#stage-3-table)); it is never a hard conflict.
-- Without a full subject DOB or a report date the result is `AGE_NOT_COMPARABLE`.
+- Without a full subject DOB or a report date the result is `AGE_NOT_COMPARABLE`. The report date of attached news is its published date; of a received page, the publication date the page states (`publishedOn`, [external sources](external-sources.md#common-path)), so a page without one gives `AGE_NOT_COMPARABLE`, never a comparison at the fetch date.
 - An age stated with 時年 is the age when the reported event happened, whose date the text does not give; it is never compared with the report date and gives `AGE_NOT_COMPARABLE`.
-- Phase 1 reads the age only when it is adjacent to the Profile person's name in the same sentence of attached news (e.g. 陳志明（45歲）, 45歲的陳志明).
-- The ±2 tolerance applies to stated ages only, never to DOB comparisons.
+- Phase 1 reads the age only when it is adjacent to the Profile person's name in the same sentence of attached news (e.g. 陳志明（45歲）, 陳志明（男，45歲）, 45歲的陳志明).
+- This ±2 tolerance is the stated age's own; the Profile's DOB field has its [two-year tolerance](#birth-date-tolerance), in calendar days, not in ages.
 
 ### Birth date and gender stated in a source
 
@@ -214,18 +246,19 @@ Stage 1 of the three-stage policy ([ADR-0001](../adr/0001-identity-adjudication.
 |---|---|---|---|
 | impossible age at explicitly attributed event | `IMPOSSIBLE_AGE_AT_REPORTED_EVENT` | GC-01 | automatic NO_MATCH |
 | impossible role at explicitly attributed event | `IMPOSSIBLE_ROLE_AT_REPORTED_EVENT` | pending; exercised by [AUG-01-01](../plan/golden-cases.md#augmented-cases) | REVIEW |
-| reliable exact DOB conflict | `FULL_DOB_CONFLICT` | GC-06 pending; exercised by AUG-11-05 | REVIEW |
-| comparable document-identity conflict | `DOCUMENT_IDENTITY_CONFLICT` | pending; exercised by AUG-11-02 | REVIEW |
+| every Profile DOB more than two years from the customer's, full dates on both sides | `FULL_DOB_CONFLICT` | user's decision 2026-11-27 ([birth-date tolerance](#birth-date-tolerance)); GC-06 not supplied; exercised by unit tests | automatic NO_MATCH |
+| the same at year or month precision | `DOB_CONFLICT` | user's decision 2026-11-27; exercised by AUG-02-02 | automatic NO_MATCH |
+| comparable document-identity conflict | `DOCUMENT_IDENTITY_CONFLICT` | pending (reissued documents unverified); exercised by AUG-11-02 | REVIEW |
 | source-record death preceding customer birth | `DEATH_BEFORE_CUSTOMER_BIRTH` | pending; exercised by AUG-11-06 | REVIEW |
 
-A pending rule still fires and records its reason code; it only cannot close the pair automatically. Impossible age and impossible role need a subject DOB to the day: with a year or month only, the age at the role start is not known and neither rule fires. Impossible role and death before birth are checked in the gate (`HardConflictGate`); a full DOB or document conflict reaches REVIEW through stage 3 row 1. Impossible role uses a controlled title list pending approval: directors and supervisors (董事, 董事長, 副董事長, 常務董事, 獨立董事, 監察人, Director, Supervisor) need full legal capacity, adulthood being 20 before 2023-01-01 and 18 since. The whole title must be on the list, so "Director of Marketing" is not a board director. Death before birth needs every date the death value can stand for to precede every date the DOB can stand for. A rule moves to automatic NO_MATCH when its Golden Case is validated and the policy version is released.
+A pending rule still fires and records its reason code; it only cannot close the pair automatically. The gate checks, first rule wins: death before birth, impossible age, the DOB conflict, impossible role. Impossible age and impossible role need a subject DOB to the day: with a year or month only, the age at the role start is not known and neither rule fires. A document conflict reaches REVIEW through stage 3 row 1. The DOB conflict is validated by the user's decision, not by a Golden Case: GC-06 (different persons with full DOBs) is still to come and will check it. Impossible role uses a controlled title list pending approval: directors and supervisors (董事, 董事長, 副董事長, 常務董事, 獨立董事, 監察人, Director, Supervisor) need full legal capacity, adulthood being 20 before 2023-01-01 and 18 since. The whole title must be on the list, so "Director of Marketing" is not a board director. Death before birth needs every date the death value can stand for to precede every date the DOB can stand for. A rule moves to automatic NO_MATCH when its Golden Case is validated and the policy version is released.
 
 Each rule records its reason code as the pair's `hardConflict`. Source-quality concerns can downgrade a potential hard conflict to REVIEW. `HardConflictGate.SourceQualityConcern` (pending approval) turns a validated rule into REVIEW with `SOURCE_QUALITY_DOWNGRADE` when:
 
-- the Profile has a dated role without its organization, or a role dated to the year only;
-- the Profile's own DOB makes a role just as impossible, so the role date itself is suspect;
 - the Profile has values the reader could not parse;
-- the same pair has HIGH or UNIQUE support.
+- the same pair has HIGH or UNIQUE support (for a DOB conflict: an agreeing document);
+- for impossible age: the Profile has a dated role without its organization, or a role dated to the year only, or its own DOB makes a role just as impossible, so the role date itself is suspect;
+- for a DOB conflict: the Profile's DOBs are scattered (three or more, or over two years apart).
 
 ## Decision policy
 
@@ -243,7 +276,7 @@ Insufficient or conflicting evidence
     → REVIEW
 ```
 
-Today the identity decision is NO_MATCH, REVIEW or PROBABLE_MATCH; no MATCH is emitted. PROBABLE_MATCH is internal ([ADR-0001](../adr/0001-identity-adjudication.md)). The decided [scoring rule](scoring-rule.md) replaces the stage 3 table below once its weights are approved and its gates pass; until then its proposed weights are tried in measurement only (`ScoringRule`, computed by tests beside the table), the table decides and no score is part of a result. Automatic MATCH is allowed (user, 2026-11-26) in the scoring rule's MATCH band without a veto or cap, from the switch on, for every list type: the rule keeps no blanket human review for Sanction, PEP or RCA candidates (read from the user's statement of 2026-11-26; the user can restore the control). `FellegiSunter.Score` computes a calibration weight for Gate D only ([calibration weight](#calibration-weight)); the analysis does not run it, and it is outside the result and the explanation. The calibration tools are in place and are not wired to any decision: `FellegiSunter.Pattern` turns a pair's evidence into an agreement pattern, `EstimateParameters` estimates m, u per group and the match share from unlabelled patterns by expectation-maximization under conditional independence, `Weight` scores a pattern with the estimate, and `Calibrate` picks the highest weight threshold that keeps a required recall on labelled pairs, with the precision it gives.
+Today the identity decision is NO_MATCH, REVIEW or PROBABLE_MATCH; no MATCH is emitted. PROBABLE_MATCH is internal ([ADR-0001](../adr/0001-identity-adjudication.md)). The decided [scoring rule](scoring-rule.md) replaces the stage 3 table below once its weights are approved and its gates pass; until then its proposed weights are tried in measurement only (`ScoringRule`, computed by tests beside the table), the table decides and no score is part of a result. Automatic MATCH is allowed (user, 2026-11-26) in the scoring rule's MATCH band without a veto or cap, from the switch on, for every list type. Neither NO_MATCH nor MATCH is held for Sanction, PEP or RCA candidates: the identity decision gives the [combination matrix](data-contracts.md#combination-matrix)'s cell whatever the list type (no blanket human review, the user's decision of 2026-11-27). A wrong NO_MATCH on a sanctioned person is the most expensive error the system can make; the validated rules above and their downgrades are what stand against it, and they are not yet checked on a real Sanction or PEP Golden Case or against placeholder 1 January birth dates on lists. `FellegiSunter.Score` computes a calibration weight for Gate D only ([calibration weight](#calibration-weight)); the analysis does not run it, and it is outside the result and the explanation. The calibration tools are in place and are not wired to any decision: `FellegiSunter.Pattern` turns a pair's evidence into an agreement pattern, `EstimateParameters` estimates m, u per group and the match share from unlabelled patterns by expectation-maximization under conditional independence, `Weight` scores a pattern with the estimate, and `Calibrate` picks the highest weight threshold that keeps a required recall on labelled pairs, with the precision it gives.
 
 ### Support strength
 
@@ -255,6 +288,7 @@ Proposed, pending GC-06/GC-07 calibration. Levels follow the chance of an accide
 | DATE_OF_BIRTH | DAY precision on both sides, EXACT | HIGH | ≈ 1/22,000 |
 | DATE_OF_BIRTH | MONTH precision agrees | MEDIUM | ≈ 1/700 |
 | DATE_OF_BIRTH | YEAR only agrees | LOW | ≈ 1/60 |
+| DATE_OF_BIRTH | not equal, within two years (`DOB_AGREES_WITHIN_TOLERANCE`) | LOW | ≈ 1/9 for a five-year window of births over some 45 years (not measured) |
 | ADDRESS | same period, house-number level | MEDIUM | |
 | ADDRESS | same period, district level only | LOW | |
 | EMPLOYMENT, COMPANY_ASSOCIATION, RELATIONSHIP | explicit, same period | MEDIUM | |
@@ -269,7 +303,7 @@ Applied only when no hard conflict fired. The first matching row wins. The table
 
 | # | Condition | Decision | Reason code |
 |---|---|---|---|
-| 1 | a `CONFLICT` in DATE_OF_BIRTH or DOCUMENT without a hard rule; or, without UNIQUE support, `AGE_DIFFERENCE_AT_REPORT` or a `CONFLICT` in STATED_BIRTH_DATE | REVIEW | the conflict's code, the first of `FULL_DOB_CONFLICT` / `DOB_CONFLICT`, `DOCUMENT_IDENTITY_CONFLICT`, `AGE_DIFFERENCE_AT_REPORT`, `NEWS_BIRTH_DATE_DIFFERENCE` |
+| 1 | a `CONFLICT` in DOCUMENT; or, without UNIQUE support, `AGE_DIFFERENCE_AT_REPORT` or a `CONFLICT` in STATED_BIRTH_DATE (a DATE_OF_BIRTH conflict never reaches stage 3: it is the stage 1 rule) | REVIEW | the conflict's code, the first of `DOCUMENT_IDENTITY_CONFLICT`, `AGE_DIFFERENCE_AT_REPORT`, `NEWS_BIRTH_DATE_DIFFERENCE` |
 | 2 | UNIQUE support | MATCH when the release policy allows; Phase 1: PROBABLE_MATCH | `UNIQUE_IDENTIFIER_AGREEMENT` |
 | 3 | HIGH support plus at least one other non-prerequisite support, and no `GENDER_CONFLICT` or STATED_GENDER conflict | PROBABLE_MATCH | `STRONG_SUPPORT_COMBINATION` |
 | 4 | every hit prerequisite is EXACT (name after normalization and disclosed relaxations, gender, nationality), DATE_OF_BIRTH is support at the finest precision both sides allow, and no DOCUMENT or EMPLOYMENT value is CONFLICT or UNCERTAIN other than `NOT_COMPARABLE` | PROBABLE_MATCH | `CONSISTENT_AT_AVAILABLE_PRECISION` |
@@ -280,8 +314,9 @@ Applied only when no hard conflict fired. The first matching row wins. The table
 - Address and other location differences are weak ([comparison rules](#comparison-rules)); they never trigger row 1 and never block row 4.
 - Employment is never a conflict (a different employer is not evidence against identity), so it never triggers row 1; an uncertain employment still blocks row 4.
 - A DOB agreement recorded as `PROFILE_MULTIPLE_DOB` is not support, so it does not satisfy row 4.
+- Agreement within tolerance (`DOB_AGREES_WITHIN_TOLERANCE`, LOW) satisfies row 4 like a birth year agreeing, and is a support for row 5; it is never the HIGH support row 3 needs.
 - Opposite genders rule out rows 3 and 4; the pair falls to row 5 or 6 and `GENDER_CONFLICT` is recorded alongside. A gender in attached news that differs from the customer's does the same with `NEWS_GENDER_DIFFERENCE` ([birth date and gender stated in a source](#birth-date-and-gender-stated-in-a-source)).
-- A document number outranks what news states next to a name: with UNIQUE support, a stated-age or news birth date conflict does not make row 1; the pair is row 2 and the conflict's code is recorded alongside. A conflict in the Profile's own DATE_OF_BIRTH or DOCUMENT still comes first.
+- A document number outranks what news states next to a name: with UNIQUE support, a stated-age or news birth date conflict does not make row 1; the pair is row 2 and the conflict's code is recorded alongside. A conflict in the Profile's own DOCUMENT still comes first.
 - `NO_BILATERAL_DIRECT_IDENTIFIER` is recorded alongside whenever it applies.
 - Review priority follows the row: 2, 3 and 4 first, then 5, then 1 and 6.
 
@@ -295,7 +330,9 @@ Golden Case check:
 | GC-11 | name, gender, nationality agree; one of two Profile birth years agrees; Profile has no document, employment or address | 4 | PROBABLE_MATCH | PROBABLE_MATCH / REVIEW |
 | GC-12 | related party: name and nationality agree, gender missing; Profile has no DOB; nothing else comparable | 6 | REVIEW | REVIEW |
 
-Row 4 makes common names with a shared birth year PROBABLE_MATCH. That only raises review priority; GC-07 (highly similar, final NO_MATCH) will show whether it needs narrowing.
+No Golden Case result changes with the birth-date tolerance: GC-01 stays the impossible-age veto, GC-03 and GC-11 agree on the birth year, GC-02 and GC-12 have no Profile DOB. Two augmented cases change ([augmented cases](../plan/golden-cases.md#augmented-cases)): AUG-02-02 (a year more than two years off) is now stage 1 NO_MATCH `DOB_CONFLICT`, and AUG-11-05 (a full Profile DOB under two years from the customer's) is now row 4 `DOB_AGREES_WITHIN_TOLERANCE`.
+
+Row 4 makes common names with a shared birth year, or a birth date within two years, PROBABLE_MATCH. That only raises review priority; GC-07 (highly similar, final NO_MATCH) will show whether it needs narrowing.
 
 ### Calibration weight
 
@@ -343,11 +380,12 @@ Only registered codes may appear in decisions. New codes are added here with the
 | `TEMPORALLY_PLAUSIBLE` | IdentityDecisionPolicy | customer age and role at the reported event are possible; not support for identity |
 | `IMPOSSIBLE_AGE_AT_REPORTED_EVENT` | IdentityDecisionPolicy | hard conflict; validated by GC-01 |
 | `IMPOSSIBLE_ROLE_AT_REPORTED_EVENT` | IdentityDecisionPolicy | hard conflict; pending validation |
-| `FULL_DOB_CONFLICT` | IdentityDecisionPolicy | hard conflict; pending GC-06 |
+| `FULL_DOB_CONFLICT` | HardConflictGate | every Profile DOB more than two years off, full dates on both sides; hard conflict, validated by the user's decision of 2026-11-27 |
 | `DOCUMENT_IDENTITY_CONFLICT` | IdentityDecisionPolicy | hard conflict; pending validation |
 | `DEATH_BEFORE_CUSTOMER_BIRTH` | IdentityDecisionPolicy | hard conflict; pending validation |
-| `DOB_CONFLICT` | IdentityDecisionPolicy | every Profile DOB disagrees, without a full date on both sides; soft conflict, row 1 |
+| `DOB_CONFLICT` | HardConflictGate | every Profile DOB more than two years off, without a full date on both sides; hard conflict, validated by the user's decision of 2026-11-27. In a Profile merge: no agreeing DOB, merge refused |
 | `BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE` | IdentityDecisionPolicy | years agree, but at least one side has YEAR precision only |
+| `DOB_AGREES_WITHIN_TOLERANCE` | EvidenceBuilder | no Profile DOB equal at its precision, one within two years; LOW support, as a birth year |
 | `GENDER_CONFLICT` | IdentityDecisionPolicy | subject and Profile genders differ; prerequisite conflict that rules out rows 3 and 4 |
 | `SOURCE_QUALITY_DOWNGRADE` | IdentityDecisionPolicy | a validated hard conflict kept in REVIEW because of a source-quality concern |
 | `NON_PERSON_SUBJECT_REVIEW` | IdentityDecisionPolicy | organization, vessel or other Profile with no comparable entity identifier, or compared with a natural-person subject; REVIEW |
@@ -405,7 +443,7 @@ Every code a decision or explanation emits is in the code catalog, served by `GE
 
 ### Contrastive explanation
 
-`IdentityDecisionPolicy.Contrast` answers "what would change the decision": for a document of the same type and issuing country, and for a full DOB, each not yet comparable on both sides, it assumes agreement and conflict in turn and re-runs the [stage 3 table](#stage-3-table) with every other piece of evidence fixed. An outcome on the current row is left out. For GC-03 (row 4): a document that agrees moves the pair to row 2 `UNIQUE_IDENTIFIER_AGREEMENT`, one that conflicts to row 1 `DOCUMENT_IDENTITY_CONFLICT`, and a full DOB that conflicts to row 1 `FULL_DOB_CONFLICT`; a full DOB that agrees keeps row 4 and is not listed.
+`IdentityDecisionPolicy.Contrast` answers "what would change the decision": for a document of the same type and issuing country, and for a full DOB, each not yet comparable on both sides, it assumes agreement and conflict in turn and re-runs the [stage 3 table](#stage-3-table) with every other piece of evidence fixed. A full DOB more than two years off is the stage 1 rule: it is listed as `FULL_DOB_CONFLICT` with decision NO_MATCH and no row (`stage3Row` null; 若完整出生日期相差逾 2 年：身分判斷為第一階段硬衝突 FULL_DOB_CONFLICT), without re-checking the source-quality downgrade. An outcome on the current row is left out. For GC-03 (row 4): a document that agrees moves the pair to row 2 `UNIQUE_IDENTIFIER_AGREEMENT`, one that conflicts to row 1 `DOCUMENT_IDENTITY_CONFLICT`, and a full DOB more than two years off gives the stage 1 `FULL_DOB_CONFLICT`; a full DOB that agrees keeps row 4 and is not listed.
 
 - It is empty for non-Person records, a pair with a hard conflict, rows 1 and 2, and a Profile whose DOBs are scattered (`PROFILE_MULTIPLE_DOB`).
 - It names the row, the identity decision and the code only, never the external result: Phase 1 shows every PROBABLE_MATCH as REVIEW.

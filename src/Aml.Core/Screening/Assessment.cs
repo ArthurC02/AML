@@ -9,10 +9,12 @@ public enum ReviewPriority { High, Normal, Low }
 
 public sealed record PairAssessment(ScreeningAssessment Result, ReviewPriority? Priority, IReadOnlyList<string> ReasonCodes);
 
-/// <summary>Canonical combination matrix (data-contracts.md, ADR-0004) plus the Phase 1 release controls.</summary>
+/// <summary>
+/// Canonical combination matrix (data-contracts.md, ADR-0004), the same for every list type: an identity NO_MATCH gives
+/// NO_HIT on a Sanction, PEP or RCA condition as on any other (no blanket human review, the user's decision of 2026-11-27).
+/// </summary>
 public static class AssessmentPolicy
 {
-    public const string ReleaseControlHumanReview = "RELEASE_CONTROL_HUMAN_REVIEW";
     public const string SourceConditionUnknown = "SOURCE_CONDITION_UNKNOWN";
     public const string AttachedNewsDisagreesWithProfile = "ATTACHED_NEWS_DISAGREES_WITH_PROFILE";
 
@@ -31,12 +33,6 @@ public static class AssessmentPolicy
             : conditions.Max(c => Combine(c.Status, identity.Decision));
         if (conditions.Any(c => c.Status == ConditionStatus.Unknown)) reasons.Add(SourceConditionUnknown);
 
-        if (result == ScreeningAssessment.NoHit && conditions.Any(IsUnderReleaseControl))
-        {
-            result = ScreeningAssessment.Review;
-            reasons.Add(ReleaseControlHumanReview);
-        }
-
         var newsDisagrees = result == ScreeningAssessment.Review && NewsDisagreesWithProfile(identity);
         if (newsDisagrees) reasons.Add(AttachedNewsDisagreesWithProfile);
         return new PairAssessment(result, result == ScreeningAssessment.Review ? Priority(identity, conditions, newsDisagrees) : null, reasons);
@@ -50,10 +46,6 @@ public static class AssessmentPolicy
     public static bool NewsDisagreesWithProfile(IdentityResult identity) =>
         identity.Evidence.Values.Any(e => e is { Group: Shared.EvidenceGroup.StatedBirthDate or Shared.EvidenceGroup.StatedGender, Status: Shared.ComparisonStatus.Uncertain }
             && e.Detail is Shared.ReasonCodes.NewsBirthDateDifference or Shared.ReasonCodes.NewsGenderDifference);
-
-    // Always human review until GC-04 / GC-05 are validated.
-    private static bool IsUnderReleaseControl(SourceCondition c) =>
-        c.Type is ListType.Pep or ListType.Rca or ListType.Sanction && IsRaised(c);
 
     private static bool IsRaised(SourceCondition c) => c.Status != ConditionStatus.NotHit;
 

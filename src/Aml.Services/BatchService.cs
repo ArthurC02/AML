@@ -5,7 +5,8 @@ using Aml.Core.Subjects;
 
 namespace Aml.Services;
 
-public sealed record BatchItemRequest(string SubjectRef, string TriggerEventId, IReadOnlyDictionary<string, string> Files);
+/// <param name="PageIds">Received pages (POST /api/pages) to screen the subject against as well; each must be READ.</param>
+public sealed record BatchItemRequest(string SubjectRef, string TriggerEventId, IReadOnlyDictionary<string, string> Files, IReadOnlyList<string>? PageIds = null);
 
 public sealed record BatchSubmitted(string BatchId, int Queued, IReadOnlyList<string> Duplicates);
 
@@ -48,7 +49,7 @@ public sealed record BatchOptions
 /// <summary>At most MaxWorkers jobs in flight; a finished job frees its slot for the next one at once.</summary>
 [System.Diagnostics.CodeAnalysis.SuppressMessage("Design", "CA1001", Justification = "The slot semaphore holds no handle and must outlive a drain that overruns the host's shutdown timeout.")]
 public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadOnlyDictionary<string, string>, CaseInput> read, BatchOptions options, TimeProvider clock,
-    ListService? lists = null)
+    ListService? lists = null, PageService? pages = null)
 {
     public const string AnalyzeCase = "ANALYZE_CASE";
     public const string ReanalyzeCase = "REANALYZE_CASE";
@@ -180,6 +181,22 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
 
     private async Task RunAsync(ClaimedJob job, CancellationToken ct)
     {
+        if (job.JobType == PageService.FetchPage)
+        {
+            if (ReadPagePayload(job) is not { } page || pages is null)
+            {
+                await DeadLetterAsync(job, InvalidPayload).ConfigureAwait(false);
+                return;
+            }
+            // A page job stores the page, not a Case: it completes with no Case or revision.
+            await RunGuardedAsync(job, async deadline =>
+            {
+                await pages.FetchAsync(page, job.JobId, job.AttemptCount >= options.MaxAttempts, () => RenewLeaseBeforeWriteAsync(job, ct), deadline).ConfigureAwait(false);
+                return (null, null);
+            }, ct, errorCode => pages.FailAsync(page, job.JobId, errorCode)).ConfigureAwait(false);
+            return;
+        }
+
         var (item, reanalysis) = ReadPayload(job);
         if (item is null && reanalysis is null)
         {
@@ -190,15 +207,26 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         var input = item is null ? null : await ReadInputOrDeadLetterAsync(job, item).ConfigureAwait(false);
         if (item is not null && input is null) return;
 
+        await RunGuardedAsync(job, async deadline =>
+        {
+            var record = await AnalyzeOrReanalyzeAsync(job, item, input, reanalysis, deadline, ct).ConfigureAwait(false);
+            return (record.CaseId, record.CurrentRevision);
+        }, ct).ConfigureAwait(false);
+    }
+
+    /// <param name="deadLettered">Called with the error code after the job is dead-lettered here (a page job stores its page FAILED).</param>
+    private async Task RunGuardedAsync(ClaimedJob job, Func<CancellationToken, Task<(string? CaseId, int? Revision)>> work, CancellationToken ct,
+        Func<string, Task>? deadLettered = null)
+    {
         // CaseService checks the deadline before writing. The constructor, unlike CancelAfter, cancels at once for a zero timeout.
         // The deadline runs on the injected clock, as every other time of a job does.
         using var deadline = new CancellationTokenSource(options.Timeout, clock);
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, deadline.Token);
         try
         {
-            var record = await AnalyzeOrReanalyzeAsync(job, item, input, reanalysis, linked.Token, ct).ConfigureAwait(false);
+            var (caseId, revision) = await work(linked.Token).ConfigureAwait(false);
             // Outcome writes take no token: once the analysis is stored, a stopping host still records it.
-            if (!await queue.CompleteAsync(job.JobId, job.LeaseOwner, record.CaseId, record.CurrentRevision, clock.GetUtcNow(), CancellationToken.None).ConfigureAwait(false))
+            if (!await queue.CompleteAsync(job.JobId, job.LeaseOwner, caseId, revision, clock.GetUtcNow(), CancellationToken.None).ConfigureAwait(false))
                 Warn?.Invoke($"Job {job.JobId}: completed, but its lease had passed to another worker; the job state was left to that worker");
             AmlTelemetry.JobAttempts.Add(1, new KeyValuePair<string, object?>("outcome", "SUCCEEDED"));
         }
@@ -217,11 +245,19 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
             // Not written (only attempts before the last hold it back): retried after the backoff, never DEAD_LETTER from here.
             await FailAsync(job, StageNoAnswer, deadLetter: false).ConfigureAwait(false);
         }
+        catch (PageFetchRetryException e)
+        {
+            // A transient page problem before the last attempt: retried after the backoff; the last attempt stores FAILED.
+            await FailAsync(job, e.Message, deadLetter: false).ConfigureAwait(false);
+        }
 #pragma warning disable CA1031 // failure isolation: one item's error must not stop the batch
         catch (Exception e)
 #pragma warning restore CA1031
         {
-            await FailAsync(job, e is OperationCanceledException ? Timeout : ExceptionCode(e), job.AttemptCount >= options.MaxAttempts).ConfigureAwait(false);
+            var code = e is OperationCanceledException ? Timeout : ExceptionCode(e);
+            var lastAttempt = job.AttemptCount >= options.MaxAttempts;
+            await FailAsync(job, code, lastAttempt).ConfigureAwait(false);
+            if (lastAttempt && deadLettered is not null) await deadLettered(code).ConfigureAwait(false);
         }
     }
 
@@ -267,6 +303,18 @@ public sealed class BatchService(IJobStore queue, CaseService cases, Func<IReadO
         catch (Exception e) when (e is JsonException or ArgumentNullException or NotSupportedException)
         {
             return (null, null);
+        }
+    }
+
+    private static PageJob? ReadPagePayload(ClaimedJob job)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<PageJob>(job.Payload, CaseJson.Options) is { PageId: not null, Url: not null } page ? page : null;
+        }
+        catch (JsonException)
+        {
+            return null;
         }
     }
 

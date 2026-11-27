@@ -25,6 +25,8 @@ public class ExtractionRuleTests
     [InlineData("陳志明今年四十五歲", 45)]
     [InlineData("廿二歲的陳志明", 22)]
     [InlineData("陳志明（45足歲）", 45)]
+    [InlineData("陳志明（男，45歲）", 45)]
+    [InlineData("陳志明（女、四十五歲）", 45)]
     [InlineData("陳志明現年45周歲", 45)]
     [InlineData("Chen Chih-Ming, aged 45, was indicted", 45)]
     [InlineData("the 45-year-old Chen Chih-Ming", 45)]
@@ -40,6 +42,7 @@ public class ExtractionRuleTests
     [InlineData("未滿18歲的陳志明")]          // threshold
     [InlineData("被害人平均年齡65歲，陳志明否認")] // statistic, not adjacent
     [InlineData("王大同、李四分別為44歲、45歲")]  // the Profile person is not among them
+    [InlineData("李小四（男，45歲）與陳志明涉詐欺")] // another person's bracket
     public void Approximations_thresholds_and_other_people_are_not_stated_ages(string text) =>
         Assert.Null(StatedAgeCheck.FindStatedAge(text, ["陳志明"]));
 

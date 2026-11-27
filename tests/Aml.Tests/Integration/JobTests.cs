@@ -317,7 +317,7 @@ public sealed class JobTests : ServiceTestBase
         public Task<IReadOnlyList<string>> EnqueueAsync(IReadOnlyList<NewJob> jobs, DateTimeOffset now, CancellationToken ct) => inner.EnqueueAsync(jobs, now, ct);
         public Task<IReadOnlyList<ClaimedJob>> ClaimAsync(string leaseOwner, int take, DateTimeOffset now, DateTimeOffset leaseExpiry, CancellationToken ct) =>
             inner.ClaimAsync(leaseOwner, take, now, leaseExpiry, ct);
-        public Task<bool> CompleteAsync(string jobId, string leaseOwner, string caseId, int revision, DateTimeOffset now, CancellationToken ct) =>
+        public Task<bool> CompleteAsync(string jobId, string leaseOwner, string? caseId, int? revision, DateTimeOffset now, CancellationToken ct) =>
             inner.CompleteAsync(jobId, leaseOwner, caseId, revision, now, ct);
         public Task<bool> FailAsync(string jobId, string leaseOwner, bool deadLetter, string errorCode, DateTimeOffset nextAttemptAt, DateTimeOffset now, CancellationToken ct) =>
             inner.FailAsync(jobId, leaseOwner, deadLetter, errorCode, nextAttemptAt, now, ct);

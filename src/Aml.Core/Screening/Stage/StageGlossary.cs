@@ -9,7 +9,7 @@ namespace Aml.Core.Screening.Stage;
 internal static class StageGlossary
 {
     /// <summary>The version of this glossary; change it with any entry.</summary>
-    internal const string Version = "stage-glossary-5";
+    internal const string Version = "stage-glossary-6";
 
     // ---- Stages and penalties ----
 
@@ -215,6 +215,16 @@ internal static class StageGlossary
 
     /// <inheritdoc cref="ListGoesOnWords"/>
     internal static readonly string[] ListGoesOn = ListGoesOnWords.Split('|');
+
+    /// <summary>
+    /// What opens a report's clause about a co-defendant (同案的李小四則獲判無罪, 同案被告李小四獲不起訴處分): from such a clause
+    /// that does not name the person to the next that does, in its sentence, the stage keywords are not theirs. A word that
+    /// may open the person's own clause would lose their stage.
+    /// </summary>
+    internal const string OtherPersonOpenerWords = "同案";
+
+    /// <inheritdoc cref="OtherPersonOpenerWords"/>
+    internal static readonly string[] OtherPersonOpeners = OtherPersonOpenerWords.Split('|');
 
     /// <summary>The benches that may rule before the person's name in an order's subject (pattern OrderSubject: 經合議庭判決王大明…).</summary>
     internal const string CourtBenches = "本院|合議庭|國民法官法庭";

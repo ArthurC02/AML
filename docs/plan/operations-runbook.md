@@ -8,7 +8,8 @@
 |---|---|
 | Process | `Aml.Api` (ASP.NET Core); hosts the REST API and `JobWorker` |
 | Database | SQLite file from `Database:ConnectionString`, in write-ahead-log mode: `<file>-wal` and `<file>-shm` sit next to it while it is in use and belong to it. **Pending:** target database (SQL Server or Oracle) |
-| Schema | One DbUp script (`0001_schema.sql`) runs at startup; a failed upgrade or an invalid SQL catalog stops the process |
+| Schema | The DbUp scripts (`0001_schema.sql`, then the add-only `0002_web_page.sql`) run at startup, each once; a failed upgrade or an invalid SQL catalog stops the process |
+| Outbound web | A received URL is fetched from the API process (`FETCH_PAGE`): system DNS, no proxy, ports 80 and 443 to public addresses only (URL guard). The host needs that egress; a deployment behind a proxy needs the guard extended first |
 | Health | `GET /health` returns `Healthy` when the database answers `System.Ping` |
 | Telemetry | OpenTelemetry; set `OTEL_EXPORTER_OTLP_ENDPOINT` to export traces, metrics and logs |
 | Authentication | **Pending:** OIDC identity provider. Until then, run only on a closed network |

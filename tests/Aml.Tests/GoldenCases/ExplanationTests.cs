@@ -1,6 +1,7 @@
 using Aml.Core.Cases;
 using Aml.Core.Explanation;
 using Aml.Core.Identity;
+using Aml.Core.Screening;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
 using Aml.Infra.Txt;
@@ -109,9 +110,9 @@ public class ExplanationTests
     }
 
     [Fact]
-    public void A_validated_hard_conflict_on_a_pep_says_the_identity_is_excluded_but_the_pair_stays_for_review()
+    public void A_validated_hard_conflict_on_a_pep_excludes_the_identity_as_on_any_other_list_type()
     {
-        // A role from age 9: the validated rule excludes the identity, but a PEP condition keeps the pair under release control.
+        // A role from age 9: the validated rule excludes the identity and the PEP pair closes (no blanket human review).
         var subject = new ScreenedSubject(SubjectRole.Customer, null, ["陳志明"], Gender.Male, new PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
         var profile = new SourceProfile("DJ:1", Gender.Male, ["陳志明"], [], ["TW"], [],
             [new SourceCategory("Politically Exposed Person (PEP)", null)], [], [new ProfileRole("部長", "某部", new PartialDate(1990, 1))], [], null, [], []);
@@ -120,8 +121,8 @@ public class ExplanationTests
         var h = Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input, asOf: new DateOnly(2026, 11, 4))).Hits);
 
         Assert.Equal(ReasonCodes.ImpossibleAgeAtReportedEvent, h.HardConflict);
-        Assert.StartsWith("硬衝突 IMPOSSIBLE_AGE_AT_REPORTED_EVENT，身分可排除，但名單條件依放行控制", h.Summary.KeyEvidenceOrGaps, StringComparison.Ordinal);
-        Assert.DoesNotContain("足以排除", h.Summary.KeyEvidenceOrGaps, StringComparison.Ordinal);
+        Assert.Equal("硬衝突 IMPOSSIBLE_AGE_AT_REPORTED_EVENT，足以排除。除姓名、國籍、性別等前提條件外，沒有任何佐證。", h.Summary.KeyEvidenceOrGaps);
+        Assert.Equal(ScreeningAssessment.NoHit, h.PairResult);
     }
 
     [Fact]
@@ -159,14 +160,15 @@ public class ExplanationTests
         var h = Hit("GC-03");
 
         Assert.Equal(4, h.Stage3Row);
-        // A full DOB that agrees keeps row 4, so it is not listed.
+        // A full DOB that agrees keeps row 4, so it is not listed; one more than two years off is the stage 1 rule (no row).
         Assert.Equal(
             [
-                (EvidenceGroup.Document, Assumption.Agree, 2, ReasonCodes.UniqueIdentifierAgreement),
+                (EvidenceGroup.Document, Assumption.Agree, (int?)2, ReasonCodes.UniqueIdentifierAgreement),
                 (EvidenceGroup.Document, Assumption.Conflict, 1, ReasonCodes.DocumentIdentityConflict),
-                (EvidenceGroup.DateOfBirth, Assumption.Conflict, 1, ReasonCodes.FullDobConflict),
+                (EvidenceGroup.DateOfBirth, Assumption.Conflict, null, ReasonCodes.FullDobConflict),
             ],
             h.WouldChangeIf.Select(w => (w.Field, w.Assumption, w.Stage3Row, w.ReasonCode)));
+        Assert.Equal("若完整出生日期相差逾 2 年：身分判斷為第一階段硬衝突 FULL_DOB_CONFLICT", h.WouldChangeIf[2].Text);
         Assert.Equal("若同類證件相符：身分判斷移至第三階段第 2 列 UNIQUE_IDENTIFIER_AGREEMENT", h.WouldChangeIf[0].Text);
         Assert.All(h.WouldChangeIf, w => Assert.DoesNotContain("REVIEW", w.Text, StringComparison.Ordinal));
     }

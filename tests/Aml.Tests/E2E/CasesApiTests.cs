@@ -162,9 +162,11 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(4, hit.GetProperty("stage3Row").GetInt32());
         Assert.Equal("90000031", hit.GetProperty("profileId").GetString());
         Assert.False(hit.TryGetProperty("comparison", out _));
-        // identity-adjudication.md#contrastive-explanation, GC-03 on row 4: a full DOB that agrees keeps row 4 and is not listed.
-        Assert.Equal([("DOCUMENT", "AGREE", 2, "UNIQUE_IDENTIFIER_AGREEMENT"), ("DOCUMENT", "CONFLICT", 1, "DOCUMENT_IDENTITY_CONFLICT"), ("DATE_OF_BIRTH", "CONFLICT", 1, "FULL_DOB_CONFLICT")],
-            hit.GetProperty("wouldChangeIf").EnumerateArray().Select(w => (Str(w, "field"), Str(w, "assumption"), w.GetProperty("stage3Row").GetInt32(), Str(w, "reasonCode"))));
+        // identity-adjudication.md#contrastive-explanation, GC-03 on row 4: a full DOB that agrees keeps row 4 and is not listed;
+        // one more than two years off is the stage 1 rule, without a row.
+        Assert.Equal([("DOCUMENT", "AGREE", (int?)2, "UNIQUE_IDENTIFIER_AGREEMENT"), ("DOCUMENT", "CONFLICT", 1, "DOCUMENT_IDENTITY_CONFLICT"), ("DATE_OF_BIRTH", "CONFLICT", null, "FULL_DOB_CONFLICT")],
+            hit.GetProperty("wouldChangeIf").EnumerateArray().Select(w => (Str(w, "field"), Str(w, "assumption"),
+                w.TryGetProperty("stage3Row", out var row) && row.ValueKind == JsonValueKind.Number ? row.GetInt32() : (int?)null, Str(w, "reasonCode"))));
         var detail = await client.GetFromJsonAsync<JsonElement>(hit.GetProperty("detail").GetString(), ct);
         Assert.Equal(ComparisonFields, detail.GetProperty("comparison").EnumerateArray().Select(r => r.GetProperty("field").GetString()));
         Assert.Equal(detail.GetRawText(), (await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/hits/1", ct)).GetRawText());
@@ -367,7 +369,8 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         var stable = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/revisions/2", ct);
         Assert.Equal(0, stable.GetProperty("explanation").GetProperty("changesFromPreviousRevision").GetArrayLength());
 
-        // Source update: the Profile's birth years become 1960 only → DOB conflict, identity PROBABLE_MATCH → REVIEW.
+        // Source update: the Profile's birth years become 1960 only → more than two years off the customer's, the validated
+        // DOB conflict: identity PROBABLE_MATCH → NO_MATCH, pair REVIEW → NO_HIT.
         using var updated = await client.PostAsync($"/api/cases/{caseId}/analyses", Files("GC-11", (name, text) =>
             name.StartsWith("名單資料", StringComparison.Ordinal)
                 ? text.Replace("1	Date of Birth	1973", "1	Date of Birth	1960", StringComparison.Ordinal)
@@ -377,7 +380,9 @@ public sealed class CasesApiTests(ApiHost api) : IClassFixture<ApiHost>
         var changed = await client.GetFromJsonAsync<JsonElement>($"/api/cases/{caseId}/revisions/3", ct);
         var changes = changed.GetProperty("explanation").GetProperty("changesFromPreviousRevision").EnumerateArray().ToList();
         Assert.Contains(changes, c => c.GetProperty("kind").GetString() == "IDENTITY_CHANGED"
-            && c.GetProperty("from").GetString() == "PROBABLE_MATCH" && c.GetProperty("to").GetString() == "REVIEW");
+            && c.GetProperty("from").GetString() == "PROBABLE_MATCH" && c.GetProperty("to").GetString() == "NO_MATCH");
+        Assert.Contains(changes, c => c.GetProperty("kind").GetString() == "RESULT_CHANGED"
+            && c.GetProperty("from").GetString() == "REVIEW" && c.GetProperty("to").GetString() == "NO_HIT");
 
         // Revisions are append-only: revision 1 reads byte for byte as before, and revision 2 is kept unchanged as history.
         Assert.Equal(first, await client.GetStringAsync($"/api/cases/{caseId}/revisions/1", ct));

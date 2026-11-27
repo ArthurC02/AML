@@ -50,8 +50,9 @@ public class NewsStatedCheckTests
     // different news date is two sources disagreeing, not a conflict with the customer.
     [InlineData("陳志明（男，民國69年5月20日生）涉嫌詐欺。", 19800520, Direction.Neutral, Exact, Strength.None, ReasonCodes.NewsBirthDateAgrees, 4)]
     [InlineData("陳志明（男，民國70年1月1日生）涉嫌詐欺。", 19800520, Direction.Neutral, Uncertain, Strength.None, ReasonCodes.NewsBirthDateDifference, 4)]
-    // The Profile's own date differs: row 1 on the Profile's code, and the agreeing news date still counts as support.
-    [InlineData("陳志明（男，民國69年5月20日生）涉嫌詐欺。", 19700101, Direction.Support, Exact, Strength.Medium, ReasonCodes.NewsBirthDateAgrees, 1)]
+    // The Profile's own date is within two years (agreement within tolerance, support): the agreeing news date is the same
+    // fact again, neutral; the pair stays on row 4.
+    [InlineData("陳志明（男，民國69年5月20日生）涉嫌詐欺。", 19790101, Direction.Neutral, Exact, Strength.None, ReasonCodes.NewsBirthDateAgrees, 4)]
     // Two dates next to one written name, more than two years apart: agreeing with one is no support; none agreeing is a conflict.
     [InlineData("陳志明（男，民國69年5月20日生）涉嫌詐欺。另一名陳志明（男，民國50年3月3日生）遭通緝。", 0, Direction.Neutral, Exact, Strength.None, ReasonCodes.NewsBirthDateAmbiguous, 6)]
     [InlineData("陳志明（男，民國60年5月20日生）涉嫌詐欺。另一名陳志明（男，民國50年3月3日生）遭通緝。", 0, Direction.Conflict, Conflict, Strength.None, ReasonCodes.NewsBirthDateDifference, 1)]
@@ -70,6 +71,16 @@ public class NewsStatedCheckTests
         Assert.Equal(row, r.Stage3Row);
         Assert.Null(r.HardConflict);
         Assert.NotEqual(IdentityDecision.NoMatch, r.Decision);
+    }
+
+    [Fact]
+    public void A_profile_dob_more_than_two_years_off_closes_the_pair_whatever_the_news_states()
+    {
+        // The news date agrees and is still support, but the Profile's own field decides: the validated DOB conflict.
+        var r = IdentityDecisionPolicy.Decide(Subject(Born), Profile(Gender.Male, new PartialDate(1970, 1, 1)), News("陳志明（男，民國69年5月20日生）涉嫌詐欺。"));
+        var e = r.Evidence[EvidenceGroup.StatedBirthDate];
+        Assert.Equal((Direction.Support, Exact, Strength.Medium, ReasonCodes.NewsBirthDateAgrees), (e.Direction, e.Status, e.Strength, e.Detail));
+        Assert.Equal((ReasonCodes.FullDobConflict, (int?)null, IdentityDecision.NoMatch), (r.HardConflict, r.Stage3Row, r.Decision));
     }
 
     [Fact]

@@ -24,17 +24,17 @@ public sealed record ScoringPolicy
 {
     public static readonly ScoringPolicy Proposed = new();
 
-    public string Version { get; init; } = "score-proposal-0.1";
+    public string Version { get; init; } = "score-proposal-0.2";
     public decimal Document { get; init; } = 40;
     public decimal DobDay { get; init; } = 25;
     public decimal DobMonth { get; init; } = 15;
     public decimal DobYear { get; init; } = 8;
+    public decimal DobWithinTolerance { get; init; } = 8;
     public decimal AddressHouseNumber { get; init; } = 15;
     public decimal AddressDistrict { get; init; } = 5;
     public decimal Association { get; init; } = 15;
     public decimal OtherIdentifier { get; init; } = 5;
     public decimal EntityIdentifier { get; init; } = 40;
-    public decimal DobConflict { get; init; } = -25;
     public decimal DocumentConflict { get; init; } = -40;
     public decimal StatedDifference { get; init; } = -8;
     public decimal Match { get; init; } = 60;
@@ -94,11 +94,16 @@ public static class ScoringRule
     /// Identity score of one pair. A validated hard conflict is the veto (the pipeline's NO_MATCH); a pending or downgraded
     /// one holds the pair at REVIEW whatever the sum. <paramref name="entityRecord"/>: the Profile is not a Person record.
     /// </summary>
-    public static IdentityScore Identity(IdentityResult r, bool entityRecord, ScoringPolicy? policy = null)
+    /// <param name="record">The kind of source the record's own fields come from: a list (1.0), or the page or judgment a
+    /// person was read from, whose fields count at that source's factor.</param>
+    /// <param name="text">The kind of the text the stated values (age, birth date next to the name) are read from: attached
+    /// news by default, a press release or a court text at its own factor, a page at the page's.</param>
+    public static IdentityScore Identity(IdentityResult r, bool entityRecord, ScoringPolicy? policy = null,
+        SourceKind record = SourceKind.OfficialList, SourceKind text = SourceKind.AllowlistedNews)
     {
         var p = policy ?? ScoringPolicy.Proposed;
         var e = r.Evidence;
-        var items = e.Values.OrderBy(v => v.Group).Select(v => Item(v, p)).OfType<ScoreItem>().ToList();
+        var items = e.Values.OrderBy(v => v.Group).Select(v => Item(v, p, record, text)).OfType<ScoreItem>().ToList();
         var total = items.Sum(i => i.Points);
         IdentityScore Result(IdentityBand band, string? threshold, IReadOnlyList<string> applied) => new(items, applied, total, band, threshold, p.Version);
 
@@ -124,7 +129,8 @@ public static class ScoringRule
 
         var caps = new List<(IdentityBand Max, string Code)>();
         if (entityRecord) caps.Add((e.GetValueOrDefault(EntityIdentifier)?.IsSupport == true ? IdentityBand.ProbableMatch : IdentityBand.Review, CappedEntityRecord));
-        if (Is(DateOfBirth, ComparisonStatus.Conflict) || Is(Document, ComparisonStatus.Conflict)) caps.Add((IdentityBand.Review, CappedProfileConflict));
+        // A DOB conflict is the validated veto above; the document conflict is still pending.
+        if (Is(Document, ComparisonStatus.Conflict)) caps.Add((IdentityBand.Review, CappedProfileConflict));
         if (Is(EvidenceGroup.Gender, ComparisonStatus.Conflict) || Is(StatedGender, ComparisonStatus.Conflict)) caps.Add((IdentityBand.Review, CappedGenderConflict));
         var binding = caps.Where(c => c.Max < band).ToList();
         if (binding.Count > 0) band = binding.Min(c => c.Max);
@@ -132,18 +138,18 @@ public static class ScoringRule
         return Result(band, threshold, applied);
     }
 
-    // Profile fields are the list vendor's (reliability 1.0); stated values come from the attached news.
-    private static ScoreItem? Item(Evidence v, ScoringPolicy p)
+    // Profile fields count at the record's source factor, stated values at their text's. A DOB conflict is a veto (validated
+    // hard conflict), outside the sum, so it gives no item.
+    private static ScoreItem? Item(Evidence v, ScoringPolicy p, SourceKind field, SourceKind news)
     {
-        const SourceKind field = SourceKind.OfficialList, news = SourceKind.AllowlistedNews;
         (decimal Points, string Code, SourceKind Source)? x = (v.Group, v.Direction, v.Strength) switch
         {
             (Document, Direction.Support, _) => (p.Document, ReasonCodes.UniqueIdentifierAgreement, field),
             (Document, Direction.Conflict, _) => (p.DocumentConflict, ReasonCodes.DocumentIdentityConflict, field),
+            (DateOfBirth, Direction.Support, _) when v.Detail == ReasonCodes.DobAgreesWithinTolerance => (p.DobWithinTolerance, ReasonCodes.DobAgreesWithinTolerance, field),
             (DateOfBirth, Direction.Support, Strength.High) => (p.DobDay, DobDay, field),
             (DateOfBirth, Direction.Support, Strength.Medium) => (p.DobMonth, DobMonth, field),
             (DateOfBirth, Direction.Support, _) => (p.DobYear, DobYear, field),
-            (DateOfBirth, Direction.Conflict, _) => (p.DobConflict, v.Detail ?? ReasonCodes.DobConflict, field),
             (EvidenceGroup.Address, Direction.Support, >= Strength.Medium) => (p.AddressHouseNumber, Address, field),
             (EvidenceGroup.Address, Direction.Support, _) => (p.AddressDistrict, Address, field),
             (Employment or CompanyAssociation or Relationship, Direction.Support, _) => (p.Association, Association, field),

@@ -49,24 +49,26 @@ AML/
 │   │   ├── Retrieval/            # ProfileIndex (alias, BM25, n-gram, reading-key routes), ProfileMerge
 │   │   ├── Cases/                # CaseAnalyzer, Case records, revision changes, lineage, quality, CaseViews and page tokens, CaseJson (JSON form and schemas)
 │   │   ├── Explanation/          # ExplanationBuilder, NewsDigest (rules), NewsModelReading (corrections of the news models' output)
-│   │   └── Ports/                # ICaseStore, IJobStore, IListStore, INewsModel, IStageReader
+│   │   ├── Pages/                # received URL: PageUrl (rules, canonical URL, page id), problem codes, PageReadings (a page's persons), PageCandidates (screening them for a Case, SOURCE_PAGE) and PageSnapshots (the pinned page file)
+│   │   └── Ports/                # ICaseStore, IJobStore, IListStore, IPageStore, INewsModel, IStageReader
 │   ├── Aml.Services/             # orchestration
 │   │   ├── CaseService.cs        # sole writer of Case state; builds each revision's lineage and quality
 │   │   ├── ProfileFiles.cs       # Profile file names and the list content hash
 │   │   ├── BatchService.cs       # job-table batches
+│   │   ├── PageService.cs        # received pages: queue FETCH_PAGE, run it, store the outcome
 │   │   ├── AmlTelemetry.cs       # traces and metrics: analyses, durations, job attempts, workbooks
 │   │   └── ListService.cs        # list database, retrieval, merges, REANALYZE_CASE jobs on Profile change
 │   ├── Aml.Infra/                # implements Core/Ports
 │   │   ├── Persistence/          # see feature/persistence.md
 │   │   ├── Txt/                  # .txt export reader (UTF-8, CP950 fallback), CaseInputException
 │   │   ├── Html/                 # HTML page to export layout (AngleSharp)
-│   │   ├── Web/                  # polite fetching (robots.txt, delay), main text of web pages and PDFs
+│   │   ├── Web/                  # URL guard (SSRF), polite fetching (robots.txt, delay), main text of web pages and PDFs, WebPages (a received URL as text)
 │   │   ├── Excel/                # Xlsx (SpreadsheetML with the standard library), CaseWorkbook (eleven sheets)
 │   │   ├── Models/               # OnnxNewsModel and OnnxStageClassifier (ONNX Runtime), BertWordPiece (the training tokenizer, with offsets), OllamaStageReader (LLM over HTTP, prompt in stage-prompt.txt)
 │   │   └── Jobs/                 # JobStore
 │   └── Aml.Api/                  # composition root
 │       ├── Program.cs            # DI, OpenAPI, OpenTelemetry, health check, endpoint registration
-│       ├── Endpoints/            # minimal API endpoints per resource (cases, batches, profiles, codes), upload reading, problems
+│       ├── Endpoints/            # minimal API endpoints per resource (cases, batches, profiles, pages, codes), upload reading, problems
 │       └── Workers/JobWorker.cs  # BackgroundService
 ├── tools/                        # working tools for the models, outside the product (plan/stage-model-training.md, plan/news-model-training.md)
 │   ├── Aml.StageEval/            # system-level stage measurement through SourceConditions.Determine (built by CI)
@@ -85,7 +87,7 @@ AML/
         ├── Synthetic/            # generated Cases with truth, as exports, through the readers and the analyzer (in process)
         ├── Integration/          # services, repositories and the job table on SQLite
         ├── E2E/                  # critical API flows through WebApplicationFactory
-        ├── TestSupport.cs        # TestDatabase, ApiHost, ManualTimeProvider, Wait
+        ├── TestSupport.cs        # TestDatabase, ApiHost, ManualTimeProvider, WebStub (the web and DNS from memory), Wait
         └── TestPyramidTests.cs   # keeps each layer well below the one under it
 ```
 
@@ -103,7 +105,7 @@ Implementation notes:
 - No human workflow in the PoC ([ADR-0004](../adr/0004-identification-only.md)).
 - `POST /api/cases` analyzes synchronously; `POST /api/batches` queues items in the job table and `Workers/JobWorker` runs them through `BatchService` ([durable batch execution](../feature/pipeline-api-and-batch.md#durable-batch-execution)). The job store is `Infra/Jobs/JobStore` behind `Core/Ports/IJobStore` (named "Store" because CA1711 rejects a "Queue" suffix).
 - Each revision records source condition status and basis, pair result, review priority, pair reason codes and the changes from the previous revision; a missing Profile makes the revision PARTIAL and keeps the previous effective result.
-- Persistence is SQLite-only (`SqliteDatabase`, `SqlCatalog`, `CaseStore`) with one schema script, `0001_schema.sql`; the PoC database is rebuilt when the schema or stored format changes ([ADR-0023](../adr/0023-business-api-data-and-workbook.md)). `IDbConnectionFactory` and `ISqlDialect` are extracted when a second provider is chosen.
+- Persistence is SQLite-only (`SqliteDatabase`, `SqlCatalog`, `CaseStore`) with the schema script `0001_schema.sql` and add-only scripts for new tables (`0002_web_page.sql`); the PoC database is rebuilt when an existing table or the stored format changes ([ADR-0023](../adr/0023-business-api-data-and-workbook.md)). `IDbConnectionFactory` and `ISqlDialect` are extracted when a second provider is chosen.
 - Stored results are Core records, serialized with `CaseJson.Options` and read back into their types; `CaseJson.Schema` generates their JSON Schemas (`GET /api/schemas/{name}`) with field descriptions and `x-sensitivity`. Each revision also stores its lineage, data quality and hit facts ([lineage and quality](../feature/pipeline-api-and-batch.md#lineage-and-quality)).
 - `GET /health` runs `System.Ping`. OpenTelemetry traces, metrics and logs are on (ASP.NET Core plus the `Aml` source and meter: `aml.analyses`, `aml.analysis.duration`, `aml.job.attempts`, `aml.workbooks`, `aml.workbook.duration`, `aml.workbook.size`); OTLP export starts only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set.
 - The list database (`list_profile`) and each revision's input files (`case_input`, decoded text) are stored for retrieval and re-analysis ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md)). A Profile version is hashed on its export text, so an HTML page and its `.txt` export are one version. `POST /api/profiles/import` stores a changed Profile as a new version and, in the same transaction, queues a `REANALYZE_CASE` job for every Case whose latest input holds a different version of it; the jobs run through `BatchService` and are tracked as one batch (`GET /api/batches/{batchId}`).

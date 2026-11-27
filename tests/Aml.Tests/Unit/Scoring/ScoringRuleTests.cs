@@ -19,6 +19,7 @@ public class ScoringRuleTests
         ["DobDay"] = new(EvidenceGroup.DateOfBirth, Direction.Support, Exact, Strength.High),
         ["DobMonth"] = new(EvidenceGroup.DateOfBirth, Direction.Support, Partial, Strength.Medium),
         ["DobYear"] = new(EvidenceGroup.DateOfBirth, Direction.Support, Partial, Strength.Low, ReasonCodes.BirthYearMatchFullDateNotComparable),
+        ["DobTolerance"] = new(EvidenceGroup.DateOfBirth, Direction.Support, Partial, Strength.Low, ReasonCodes.DobAgreesWithinTolerance),
         ["DobFullConflict"] = new(EvidenceGroup.DateOfBirth, Direction.Conflict, Conflict, Strength.None, ReasonCodes.FullDobConflict),
         ["DobConflict"] = new(EvidenceGroup.DateOfBirth, Direction.Conflict, Conflict, Strength.None, ReasonCodes.DobConflict),
         ["AddrHouse"] = new(EvidenceGroup.Address, Direction.Support, Exact, Strength.Medium),
@@ -51,6 +52,22 @@ public class ScoringRuleTests
     private static decimal D(string s) => decimal.Parse(s, CultureInfo.InvariantCulture);
 
     [Theory]
+    // A list record's own fields count at the list's 1.0; a record read from a page or judgment at that source's factor.
+    [InlineData("DobYear", SourceKind.OfficialList, SourceKind.AllowlistedNews, "8")]
+    [InlineData("DobYear", SourceKind.AllowlistedNews, SourceKind.AllowlistedNews, "4.8")]
+    [InlineData("OtherId", SourceKind.CourtJudgment, SourceKind.CourtJudgment, "5")]
+    // Stated values count at their text's factor: news 0.6, a press release 0.8, a court text 1.0, a model's reading 0.
+    [InlineData("NewsDobFull", SourceKind.OfficialList, SourceKind.AllowlistedNews, "9.0")]
+    [InlineData("NewsDobFull", SourceKind.OfficialList, SourceKind.PressRelease, "12.0")]
+    [InlineData("NewsDobFull", SourceKind.OfficialList, SourceKind.CourtJudgment, "15")]
+    [InlineData("NewsDobDiff", SourceKind.AllowlistedNews, SourceKind.ModelRead, "0")]
+    public void Each_item_counts_at_the_factor_of_the_source_its_value_comes_from(string evidence, SourceKind record, SourceKind text, string points)
+    {
+        var item = Assert.Single(ScoringRule.Identity(Pair([evidence]), entityRecord: false, record: record, text: text).Items);
+        Assert.Equal((D(points), Named[evidence].Group is EvidenceGroup.StatedBirthDate ? text : record), (item.Points, item.Source));
+    }
+
+    [Theory]
     [InlineData("DocAgree", "UNIQUE_IDENTIFIER_AGREEMENT", "40")]
     [InlineData("DobDay", "SCORE_DOB_DAY", "25")]
     [InlineData("DobMonth", "SCORE_DOB_MONTH", "15")]
@@ -62,8 +79,9 @@ public class ScoringRuleTests
     [InlineData("Relative", "SCORE_ASSOCIATION", "15")]
     [InlineData("OtherId", "SCORE_OTHER_IDENTIFIER", "5")]
     [InlineData("EntityId", "ENTITY_IDENTIFIER_AGREEMENT", "40")]
-    [InlineData("DobFullConflict", "FULL_DOB_CONFLICT", "-25")]
-    [InlineData("DobConflict", "DOB_CONFLICT", "-25")]
+    [InlineData("DobTolerance", "DOB_AGREES_WITHIN_TOLERANCE", "8")]       // as a birth year agreeing
+    [InlineData("DobFullConflict", null, "0")]                            // the validated veto, outside the sum
+    [InlineData("DobConflict", null, "0")]
     [InlineData("DocConflict", "DOCUMENT_IDENTITY_CONFLICT", "-40")]
     [InlineData("AgeDiff", "AGE_DIFFERENCE_AT_REPORT", "-4.8")]          // −8 × news 0.6
     [InlineData("NewsDobDiff", "NEWS_BIRTH_DATE_DIFFERENCE", "-4.8")]
@@ -77,7 +95,7 @@ public class ScoringRuleTests
         var s = ScoringRule.Identity(Pair([evidence]), entityRecord: false);
         Assert.Equal(code is null ? [] : new[] { code }, s.Items.Select(i => i.Code));
         Assert.Equal(D(points), s.Total);
-        Assert.Equal("score-proposal-0.1", s.PolicyVersion);
+        Assert.Equal("score-proposal-0.2", s.PolicyVersion);
     }
 
     [Theory]
@@ -89,10 +107,12 @@ public class ScoringRuleTests
     [InlineData(new[] { "GenderMissing", "DobMonth", "Employer" }, "30", ProbableMatch, "SCORE_BAND_PROBABLE_MATCH", new string[0])] // T_probable tie
     [InlineData(new[] { "GenderMissing", "DobMonth", "OtherId" }, "20", Review, null, new string[0])]
     [InlineData(new[] { "DocAgree", "DobMonth", "OtherId" }, "60", Match, "SCORE_BAND_MATCH", new string[0])]  // T_match tie
-    [InlineData(new[] { "GenderMissing", "DobConflict" }, "-25", Review, null, new[] { "SCORE_HELD_PENDING_VALIDATION" })] // T_no_match tie, pending item
+    [InlineData(new[] { "DobTolerance" }, "8", ProbableMatch, "SCORE_BAND_PROBABLE_MATCH", new string[0])]         // within tolerance, as row 4
+    [InlineData(new[] { "GenderMissing", "DobTolerance" }, "8", Review, null, new string[0])]
     [InlineData(new[] { "GenderMissing", "DocConflict" }, "-40", Review, null, new[] { "SCORE_HELD_PENDING_VALIDATION" })]
     [InlineData(new[] { "AgeDiff", "DobYear" }, "3.2", Review, null, new string[0])]
-    [InlineData(new[] { "DocAgree", "DobFullConflict" }, "15", Review, "SCORE_BAND_PROBABLE_MATCH", new[] { "SCORE_CAPPED_PROFILE_CONFLICT" })] // spec: 40 − 25 = 15 kept at row 1
+    [InlineData(new[] { "DobDay", "Employer", "Relative", "Company", "AddrHouse", "DocConflict" }, "45", Review, "SCORE_BAND_PROBABLE_MATCH",
+        new[] { "SCORE_CAPPED_PROFILE_CONFLICT" })] // 85 − 40: the pending document conflict keeps row 1
     [InlineData(new[] { "GenderConflict", "DocAgree", "DobDay" }, "65", Review, "SCORE_BAND_MATCH", new[] { "SCORE_CAPPED_GENDER_CONFLICT" })]
     [InlineData(new[] { "NewsGenderDiff", "DocAgree" }, "40", Review, "SCORE_BAND_PROBABLE_MATCH", new[] { "SCORE_CAPPED_GENDER_CONFLICT" })]
     [InlineData(new[] { "GenderMissing", "DobMonth", "AddrHouse" }, "30", ProbableMatch, "SCORE_BAND_PROBABLE_MATCH", new string[0])] // listed difference: two MEDIUM
@@ -120,6 +140,10 @@ public class ScoringRuleTests
     [InlineData(ReasonCodes.ImpossibleAgeAtReportedEvent, IdentityDecision.NoMatch, new string[0], NoMatch, new[] { "IMPOSSIBLE_AGE_AT_REPORTED_EVENT" })]
     [InlineData(ReasonCodes.ImpossibleAgeAtReportedEvent, IdentityDecision.Review, new[] { "IMPOSSIBLE_AGE_AT_REPORTED_EVENT", "SOURCE_QUALITY_DOWNGRADE" }, Review,
         new[] { "IMPOSSIBLE_AGE_AT_REPORTED_EVENT", "SOURCE_QUALITY_DOWNGRADE", "SCORE_HELD_PENDING_VALIDATION" })]
+    [InlineData(ReasonCodes.FullDobConflict, IdentityDecision.NoMatch, new[] { "FULL_DOB_CONFLICT" }, NoMatch, new[] { "FULL_DOB_CONFLICT" })]
+    [InlineData(ReasonCodes.DobConflict, IdentityDecision.NoMatch, new[] { "DOB_CONFLICT" }, NoMatch, new[] { "DOB_CONFLICT" })]
+    [InlineData(ReasonCodes.FullDobConflict, IdentityDecision.Review, new[] { "FULL_DOB_CONFLICT", "SOURCE_QUALITY_DOWNGRADE" }, Review,
+        new[] { "FULL_DOB_CONFLICT", "SOURCE_QUALITY_DOWNGRADE", "SCORE_HELD_PENDING_VALIDATION" })]
     [InlineData(ReasonCodes.DeathBeforeCustomerBirth, IdentityDecision.Review, new[] { "DEATH_BEFORE_CUSTOMER_BIRTH" }, Review,
         new[] { "DEATH_BEFORE_CUSTOMER_BIRTH", "SCORE_HELD_PENDING_VALIDATION" })]
     public void Hard_conflicts_veto_when_validated_and_hold_at_review_otherwise(string hard, IdentityDecision decision, string[] reasons, IdentityBand band, string[] applied)

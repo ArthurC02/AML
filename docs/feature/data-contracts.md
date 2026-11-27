@@ -17,7 +17,8 @@ The stored analysis result and explanation, each revision's lineage and quality,
 - `subjectRef`
 - `triggerEventId`
 - `revision` (`analysisRevision` on a batch item)
-- `profileKey = "DJ:" + profileId`; the Case and hit views carry both. `DJ:` (the list vendor) is the only namespace built; the external sources add `WEB:` and `JY:` ([external sources](external-sources.md#common-path))
+- `profileKey = "DJ:" + profileId` for a list Profile; the Case and hit views carry both. `WEB:<pageId>-<n>` is a person on a received page (retrieval mode `SOURCE_PAGE`, `candidateRows` 0); `JY:` (judgments) is proposed ([external sources](external-sources.md#common-path))
+- `pageId` of each page a revision used, with its text hash (lineage `pages`)
 - `listVersion` and `contentHash` of each Profile a revision used (lineage)
 - `batchId / jobId`
 
@@ -98,12 +99,12 @@ Phase 1 has no MATCH decision. The explanation of each hit restates the decision
 type: SANCTION | PEP | RCA | SIE | OFFICIAL_WANTED_LIST
     | OTHER_OFFICIAL_LIST | ADVERSE_MEDIA | BANK_INTERNAL_LIST | UNKNOWN
 status: HIT | NOT_HIT | UNKNOWN
-basis: FLAG | CATEGORY_MAPPING | UNMAPPED
+basis: FLAG | CATEGORY_MAPPING | UNMAPPED | PAGE_READING   # PAGE_READING: a received page's person
 riskCategories: []        # e.g. [FRAUD, TAX_EVASION]; ADVERSE_MEDIA only
 legalStage: UNKNOWN       # UNKNOWN | ALLEGED | INDICTED | WANTED | CONVICTED | ACQUITTED | DISMISSED;
                           # source wording preserved, never upgraded
 amlRelevance: null        # ADVERSE_MEDIA only: RELATED | UNRELATED | UNCERTAIN
-policyVersion: source-policy-0.2
+policyVersion: source-policy-0.3
 reasonCodes: []
 pepType: null             # PEP and RCA only, see /api/codes
 program: null             # SANCTION with a confirmed measure: the list name
@@ -135,7 +136,7 @@ Canonical pair-level matrix ([ADR-0004](../adr/0004-identification-only.md)), ap
 - No identity MATCH is emitted today, so the system never produces a pair HIT. Once the [scoring rule](scoring-rule.md) decides, an automatic MATCH with a HIT condition gives a pair HIT (MATCH × UNKNOWN stays REVIEW).
 - A pair with an UNKNOWN condition carries `SOURCE_CONDITION_UNKNOWN`, whatever its result.
 - A pair with several conditions takes the highest result (NOT_APPLICABLE < NO_HIT < REVIEW < HIT); a pair with none is NOT_APPLICABLE.
-- Phase 1 release control, while the stage 3 table decides: a pair with a HIT or UNKNOWN Sanction, PEP or RCA condition that would be NO_HIT is REVIEW with `RELEASE_CONTROL_HUMAN_REVIEW`. It ends when the [scoring rule](scoring-rule.md) decides, whose automatic MATCH and NO_MATCH apply to every list type (read from the user's statement of 2026-11-26; the user can restore the control).
+- The matrix is the same for every list type: an identity NO_MATCH on a HIT or UNKNOWN Sanction, PEP or RCA condition gives NO_HIT, as on adverse media (no blanket human review; the user's decision of 2026-11-27). The [scoring rule](scoring-rule.md)'s automatic MATCH, once it decides, is not held for these list types either. What still keeps such a pair in REVIEW is the identity itself: REVIEW or PROBABLE_MATCH, a validated hard conflict downgraded inside the gate (source quality, strong support with a conflict), or a pending rule ([identity adjudication](identity-adjudication.md#hard-conflict-gate)).
 - A candidate Profile without Profile data is not evaluated: it is listed in `notEvaluatedProfiles`, and the Case result is NOT_EVALUATED.
 
 PROBABLE_MATCH is never exposed; it surfaces as REVIEW with high priority. Case-level aggregation is in [case management](case-management.md#case-level-result).

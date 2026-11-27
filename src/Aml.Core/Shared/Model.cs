@@ -72,6 +72,16 @@ public readonly record struct PartialDate(
         && (Month is null || other.Month is null || Month == other.Month)
         && (Day is null || other.Day is null || Day == other.Day);
 
+    /// <summary>
+    /// True only when every day this value can stand for is more than <paramref name="years"/> calendar years from every day
+    /// <paramref name="other"/> can stand for: the later value's first possible day is after the earlier value's last possible
+    /// day plus the years (29 February plus a common year is 28 February). An imprecise value is never further than it may be.
+    /// </summary>
+    public bool IsMoreThanYearsApart(PartialDate other, int years) =>
+        other.EarliestDay > LatestDay.AddYears(years) || EarliestDay > other.LatestDay.AddYears(years);
+
+    private DateOnly EarliestDay => new(Year, Month ?? 1, Day ?? 1);
+
     public override string ToString() => Precision switch
     {
         DatePrecision.Year => Year.ToString(CultureInfo.InvariantCulture),

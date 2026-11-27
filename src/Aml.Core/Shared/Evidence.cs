@@ -35,6 +35,7 @@ public static class ReasonCodes
     public const string NoNonPrerequisiteSupport = "NO_NON_PREREQUISITE_SUPPORT";
     public const string NoBilateralDirectIdentifier = "NO_BILATERAL_DIRECT_IDENTIFIER";
     public const string BirthYearMatchFullDateNotComparable = "BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE";
+    public const string DobAgreesWithinTolerance = "DOB_AGREES_WITHIN_TOLERANCE";
     public const string AgeCompatibleAtReport = "AGE_COMPATIBLE_AT_REPORT";
     public const string AgeDifferenceAtReport = "AGE_DIFFERENCE_AT_REPORT";
     public const string AgeNotComparable = "AGE_NOT_COMPARABLE";

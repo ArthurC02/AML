@@ -12,7 +12,7 @@ public enum ListType { Sanction, Pep, Rca, Sie, OfficialWantedList, OtherOfficia
 
 public enum ConditionStatus { Hit, NotHit, Unknown }
 
-public enum ConditionBasis { Flag, CategoryMapping, Unmapped }
+public enum ConditionBasis { Flag, CategoryMapping, Unmapped, PageReading }
 
 public enum LegalStage { Unknown, Alleged, Indicted, Wanted, Convicted, Acquitted, Dismissed }
 
@@ -45,7 +45,7 @@ public sealed record StageReaderResult(
 /// <summary>List-type determination and source conditions (ADR-0005).</summary>
 public static partial class SourceConditions
 {
-    public const string PolicyVersion = "source-policy-0.2";
+    public const string PolicyVersion = "source-policy-0.3";
     public const string SanctionMeasureNotConfirmed = "SANCTION_MEASURE_NOT_CONFIRMED";
     public const string UnmappedCategory = "UNMAPPED_CATEGORY";
 
@@ -215,6 +215,32 @@ public static partial class SourceConditions
             StageReaders = readers,
             ReasonCodes = [.. new[] { disagree ? StageVote.ReadersDisagree : null, noAnswer ? StageVote.ReaderNoAnswer : null }.OfType<string>()],
         };
+    }
+
+    public const string PagePersonNotSuspect = "PAGE_PERSON_NOT_SUSPECT";
+    public const string PageStageNotRead = "PAGE_STAGE_NOT_READ";
+
+    /// <summary>
+    /// The condition of a person read from a received page (external-sources.md#common-path): ADVERSE_MEDIA with the legal
+    /// stage the page reading already gave that person (the rules, voted with the stage models when they were configured),
+    /// never read again here. A role word the rules read next to the name that is no suspect's (被害人, 證人, 檢察官 …) is
+    /// NOT_HIT; the news models' party is not used (a model's role is not measured). Otherwise a stage gives HIT and no stage UNKNOWN.
+    /// </summary>
+    public static IReadOnlyList<SourceCondition> FromPage(Pages.PagePerson person, SourceProfile profile, string text)
+    {
+        var rulesReadNonSuspect = person.ReadBy == Pages.PersonReadBy.RuleRead && person.Party is { } party && party != Explanation.NewsParty.Suspect;
+        var status = rulesReadNonSuspect ? ConditionStatus.NotHit : person.Stage == LegalStage.Unknown ? ConditionStatus.Unknown : ConditionStatus.Hit;
+        var codes = person.StageReasonCodes.Append(status switch
+        {
+            ConditionStatus.NotHit => PagePersonNotSuspect,
+            ConditionStatus.Unknown when person.StageReasonCodes.Count == 0 => PageStageNotRead,
+            _ => null,
+        }).OfType<string>().ToList();
+        return
+        [
+            new(ListType.AdverseMedia, status, ConditionBasis.PageReading, [], person.Stage, Relevance([], text, profile), PolicyVersion, codes,
+                LegalStageBasis: person.StageBasis, StageReaders: person.StageReaders),
+        ];
     }
 
     private static List<string> AdverseMediaRiskCategories(SourceProfile profile) =>

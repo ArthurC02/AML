@@ -6,7 +6,7 @@ using Aml.Core.Subjects;
 
 namespace Aml.Tests.Unit.Screening;
 
-/// <summary>Combination matrix, Sanction/PEP policies and Phase 1 release controls, on minimal synthetic data.</summary>
+/// <summary>Combination matrix per list type and Sanction/PEP policies, on minimal synthetic data.</summary>
 public class ScreeningTests
 {
     private static readonly PartialDate Dob = new(1980, 5, 20);
@@ -66,22 +66,56 @@ public class ScreeningTests
     public void Pep_subtype_comes_from_the_subcategory(string category, string? sub, string? expected) =>
         Assert.Equal(expected, Assert.Single(SourceConditions.Determine(Profile(category, sub), false, null)).PepType);
 
-    [Fact]
-    public void Pep_and_rca_candidates_stay_in_review_even_after_a_hard_conflict()
+    // Assess on one condition, a row per list type: an identity NO_MATCH gives NO_HIT whatever the list type (no blanket
+    // human review, data-contracts.md#combination-matrix); what stays REVIEW keeps its priority (Sanction raised or PROBABLE_MATCH High).
+    [Theory]
+    [InlineData(ListType.Sanction, ConditionStatus.Hit, IdentityDecision.NoMatch, ScreeningAssessment.NoHit, null)]
+    [InlineData(ListType.Sanction, ConditionStatus.Unknown, IdentityDecision.NoMatch, ScreeningAssessment.NoHit, null)]
+    [InlineData(ListType.Pep, ConditionStatus.Hit, IdentityDecision.NoMatch, ScreeningAssessment.NoHit, null)]
+    [InlineData(ListType.Pep, ConditionStatus.Unknown, IdentityDecision.NoMatch, ScreeningAssessment.NoHit, null)]
+    [InlineData(ListType.Rca, ConditionStatus.Hit, IdentityDecision.NoMatch, ScreeningAssessment.NoHit, null)]
+    [InlineData(ListType.Rca, ConditionStatus.Unknown, IdentityDecision.NoMatch, ScreeningAssessment.NoHit, null)]
+    [InlineData(ListType.Sie, ConditionStatus.Hit, IdentityDecision.NoMatch, ScreeningAssessment.NoHit, null)]
+    [InlineData(ListType.OfficialWantedList, ConditionStatus.Hit, IdentityDecision.NoMatch, ScreeningAssessment.NoHit, null)]
+    [InlineData(ListType.OtherOfficialList, ConditionStatus.Hit, IdentityDecision.NoMatch, ScreeningAssessment.NoHit, null)]
+    [InlineData(ListType.AdverseMedia, ConditionStatus.Hit, IdentityDecision.NoMatch, ScreeningAssessment.NoHit, null)]
+    [InlineData(ListType.BankInternalList, ConditionStatus.Unknown, IdentityDecision.NoMatch, ScreeningAssessment.NoHit, null)]
+    [InlineData(ListType.Unknown, ConditionStatus.Unknown, IdentityDecision.NoMatch, ScreeningAssessment.NoHit, null)]
+    [InlineData(ListType.Sanction, ConditionStatus.NotHit, IdentityDecision.NoMatch, ScreeningAssessment.NotApplicable, null)]
+    [InlineData(ListType.Sanction, ConditionStatus.Hit, IdentityDecision.Review, ScreeningAssessment.Review, ReviewPriority.High)]
+    [InlineData(ListType.Sanction, ConditionStatus.Unknown, IdentityDecision.Review, ScreeningAssessment.Review, ReviewPriority.High)]
+    [InlineData(ListType.Pep, ConditionStatus.Hit, IdentityDecision.ProbableMatch, ScreeningAssessment.Review, ReviewPriority.High)]
+    [InlineData(ListType.Pep, ConditionStatus.Hit, IdentityDecision.Review, ScreeningAssessment.Review, ReviewPriority.Low)]
+    [InlineData(ListType.Rca, ConditionStatus.Unknown, IdentityDecision.Review, ScreeningAssessment.Review, ReviewPriority.Low)]
+    [InlineData(ListType.AdverseMedia, ConditionStatus.Hit, IdentityDecision.ProbableMatch, ScreeningAssessment.Review, ReviewPriority.High)]
+    public void Pair_result_per_list_type(ListType type, ConditionStatus status, IdentityDecision decision, ScreeningAssessment result, ReviewPriority? priority)
     {
-        // Chairman in 1990 while the customer was 10: a validated hard conflict, but PEP is under the release control.
+        var condition = new SourceCondition(type, status, ConditionBasis.CategoryMapping, [], LegalStage.Unknown, null, SourceConditions.PolicyVersion, []);
+        var pair = AssessmentPolicy.Assess([condition], new IdentityResult(new Dictionary<EvidenceGroup, Evidence>(), null, 6, decision, []));
+        Assert.Equal((result, priority), (pair.Result, pair.Priority));
+        Assert.Equal(status == ConditionStatus.Unknown ? new[] { AssessmentPolicy.SourceConditionUnknown } : [], pair.ReasonCodes);
+    }
+
+    [Fact]
+    public void Pep_and_rca_candidates_close_on_a_validated_hard_conflict_like_any_other()
+    {
+        // Chairman in 1990 while the customer was 10: a validated hard conflict excludes the identity whatever the list type.
         var roles = new[] { new ProfileRole("董事長", "某公司", new PartialDate(1990, 7)) };
         var pep = Analyze(Profile("Politically Exposed Person", "Former PEP", roles: roles));
         Assert.Equal(IdentityDecision.NoMatch, pep.Identity.Decision);
-        Assert.Equal(ScreeningAssessment.Review, pep.PairResult);
-        Assert.Contains(AssessmentPolicy.ReleaseControlHumanReview, pep.PairReasonCodes);
+        Assert.Equal((ScreeningAssessment.NoHit, (ReviewPriority?)null), (pep.PairResult, pep.ReviewPriority));
+        Assert.Empty(pep.PairReasonCodes);
         Assert.Equal("FORMER_PEP", pep.Conditions[0].PepType);
 
         var rca = Analyze(Profile("Special Interest Person (SIP)", "Fraud", roles: roles), isRca: true);
         Assert.Contains(rca.Conditions, c => c.Type == ListType.Rca && c.PepType == "RCA_UNCONFIRMED");
-        Assert.Equal(ScreeningAssessment.Review, rca.PairResult);
+        Assert.Equal(ScreeningAssessment.NoHit, rca.PairResult);
 
-        // The same hard conflict on adverse media alone closes the pair automatically.
+        // The unconfirmed sanction (UNKNOWN) closes the same way and still says its condition is unknown.
+        var sanction = Analyze(Profile("Sanctions Lists", roles: roles));
+        Assert.Equal(ScreeningAssessment.NoHit, sanction.PairResult);
+        Assert.Equal([AssessmentPolicy.SourceConditionUnknown], sanction.PairReasonCodes);
+
         Assert.Equal(ScreeningAssessment.NoHit, Analyze(Profile("Special Interest Person (SIP)", "Fraud", roles: roles)).PairResult);
     }
 

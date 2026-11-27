@@ -44,7 +44,7 @@
 
 - `IdentityDecisionPolicy`, with `HardConflictGate`: identity decision
 - `SourceConditions`: list-type determination and source conditions for every list type
-- `AssessmentPolicy`: combination matrix and Phase 1 release controls
+- `AssessmentPolicy`: combination matrix (the same for every list type) and review priority
 - `DispositionPolicy`: advisory Article 22 recommendation
 - `RiskPolicy` and `RiskScoring`: AML risk scoring under an approved policy
 

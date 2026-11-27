@@ -74,16 +74,21 @@ public class IdentityRuleTests
     }
 
     [Fact]
-    public void Full_dob_conflict_is_row_1_review_never_no_match()
+    public void A_dob_more_than_two_years_off_is_the_validated_hard_conflict_and_closer_is_agreement_within_tolerance()
     {
-        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DatesOfBirth = [new PartialDate(1981, 5, 20)] });
+        var r = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DatesOfBirth = [new PartialDate(1982, 5, 21)] });
         Assert.Equal(ComparisonStatus.Conflict, r.Evidence[EvidenceGroup.DateOfBirth].Status);
-        Assert.Null(r.HardConflict);
-        Assert.Equal((1, IdentityDecision.Review), (r.Stage3Row, r.Decision));
-        Assert.Equal(ReasonCodes.FullDobConflict, r.ReasonCodes[0]);
+        Assert.Equal((ReasonCodes.FullDobConflict, (int?)null, IdentityDecision.NoMatch), (r.HardConflict, r.Stage3Row, r.Decision));
+        Assert.Equal([ReasonCodes.FullDobConflict], r.ReasonCodes);
 
-        var year = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DatesOfBirth = [new PartialDate(1975)] });
-        Assert.Equal(ReasonCodes.DobConflict, year.ReasonCodes[0]);
+        var year = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DatesOfBirth = [new PartialDate(1977)] });
+        Assert.Equal((ReasonCodes.DobConflict, IdentityDecision.NoMatch), (year.HardConflict, year.Decision));
+
+        var near = IdentityDecisionPolicy.Decide(Subject("陳志明"), Profile("陳志明") with { DatesOfBirth = [new PartialDate(1981, 5, 20)] });
+        Assert.Equal((Direction.Support, Partial, Strength.Low, ReasonCodes.DobAgreesWithinTolerance),
+            (near.Evidence[EvidenceGroup.DateOfBirth].Direction, near.Evidence[EvidenceGroup.DateOfBirth].Status, near.Evidence[EvidenceGroup.DateOfBirth].Strength, near.Evidence[EvidenceGroup.DateOfBirth].Detail));
+        Assert.Equal("客戶 1980-05-20、名單 1981-05-20，相差 365 天，未逾 2 年，依出生日期容許規則視為相符", near.Evidence[EvidenceGroup.DateOfBirth].Note);
+        Assert.Equal((4, IdentityDecision.ProbableMatch), (near.Stage3Row, near.Decision)); // as a birth year agreeing
     }
 
     [Fact]
@@ -129,12 +134,17 @@ public class IdentityRuleTests
     }
 
     [Fact]
-    public void Dob_conflict_code_comes_before_a_document_conflict_code()
+    public void A_dob_conflict_closes_the_pair_in_stage_1_before_a_document_conflict_reaches_row_1()
     {
         var r = IdentityDecisionPolicy.Decide(Subject("陳志明") with { Document = NationalId }, Profile("陳志明") with
-        { DatesOfBirth = [new PartialDate(1981, 5, 20)], Documents = [new("TW_NATIONAL_ID", "A223456788", "TW")] });
-        Assert.Equal((1, IdentityDecision.Review), (r.Stage3Row, r.Decision));
-        Assert.Equal(ReasonCodes.FullDobConflict, r.ReasonCodes[0]);
+        { DatesOfBirth = [new PartialDate(1982, 5, 21)], Documents = [new("TW_NATIONAL_ID", "A223456788", "TW")] });
+        Assert.Equal(((int?)null, IdentityDecision.NoMatch, ReasonCodes.FullDobConflict), (r.Stage3Row, r.Decision, r.HardConflict));
+
+        // An agreeing document is UNIQUE support: the same DOB conflict is kept in REVIEW (SOURCE_QUALITY_DOWNGRADE).
+        var agreeing = IdentityDecisionPolicy.Decide(Subject("陳志明") with { Document = NationalId }, Profile("陳志明") with
+        { DatesOfBirth = [new PartialDate(1982, 5, 21)], Documents = [new("TW_NATIONAL_ID", "A123456789", "TW")] });
+        Assert.Equal((IdentityDecision.Review, ReasonCodes.FullDobConflict), (agreeing.Decision, agreeing.HardConflict));
+        Assert.Equal([ReasonCodes.FullDobConflict, ReasonCodes.SourceQualityDowngrade], agreeing.ReasonCodes);
     }
 
     // The Profile role runs 2015–2020; periods are compared by year.

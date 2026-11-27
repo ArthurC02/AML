@@ -77,7 +77,7 @@ public sealed class JobStore(SqliteDatabase db) : IJobStore
     public Task<bool> RenewLeaseAsync(string jobId, string leaseOwner, DateTimeOffset leaseExpiry, CancellationToken ct) =>
         ChangesOneAsync("Batch.RenewLease", new { jobId, leaseOwner, leaseExpiry = FormatTime(leaseExpiry) }, ct);
 
-    public Task<bool> CompleteAsync(string jobId, string leaseOwner, string caseId, int revision, DateTimeOffset now, CancellationToken ct) =>
+    public Task<bool> CompleteAsync(string jobId, string leaseOwner, string? caseId, int? revision, DateTimeOffset now, CancellationToken ct) =>
         ChangesOneAsync("Batch.Complete", new { jobId, leaseOwner, caseId, revision, now = FormatTime(now) }, ct);
 
     public Task<bool> ReleaseAsync(string jobId, string leaseOwner, int maxReleases, int maxAttempts, DateTimeOffset now, CancellationToken ct) =>

@@ -96,12 +96,14 @@ public class AugmentedCaseTests
     }
 
     [Fact]
-    public void AUG_11_05_full_dob_conflict_is_row_1_review()
+    public void AUG_11_05_a_different_full_dob_within_two_years_is_agreement_within_tolerance()
     {
+        // Before the tolerance (2026-11-27) this was FULL_DOB_CONFLICT on row 1; the dates are under two years apart.
         var (_, a) = Augment("GC-11", [(Profile11, "Date of Birth\t1973", "Date of Birth\t1973/8/1")]);
         var id = Identity(a);
-        Assert.Equal((1, IdentityDecision.Review), (id.Stage3Row, id.Decision));
-        Assert.Equal(ReasonCodes.FullDobConflict, id.ReasonCodes[0]);
+        Assert.Equal((4, IdentityDecision.ProbableMatch), (id.Stage3Row, id.Decision));
+        Assert.Equal((Direction.Support, Strength.Low, ReasonCodes.DobAgreesWithinTolerance),
+            (id.Evidence[EvidenceGroup.DateOfBirth].Direction, id.Evidence[EvidenceGroup.DateOfBirth].Strength, id.Evidence[EvidenceGroup.DateOfBirth].Detail));
     }
 
     [Fact]
@@ -296,11 +298,11 @@ public class AugmentedCaseTests
     [Fact]
     public void AUG_02_02_year_only_dob_conflict_is_dob_conflict_not_full_dob_conflict()
     {
+        // More than two years off at year precision: the validated DOB conflict (2026-11-27), stage 1 NO_MATCH; before, row 1 REVIEW.
         var (_, a) = Augment("GC-02", [Before(Profile21, "狀態:\tActive", "日期:\n編號\t類型\t日期\n1\tDate of Birth\t1980")]);
         var id = Hit21(a).Identity;
-        Assert.Equal((1, IdentityDecision.Review), (id.Stage3Row, id.Decision));
-        Assert.Equal(ReasonCodes.DobConflict, id.ReasonCodes[0]);
-        Assert.Null(id.HardConflict); // never a stage 1 hard conflict
+        Assert.Equal(((int?)null, IdentityDecision.NoMatch, ReasonCodes.DobConflict), (id.Stage3Row, id.Decision, id.HardConflict));
+        Assert.Equal([ReasonCodes.DobConflict], id.ReasonCodes);
     }
 
     [Fact]
@@ -561,7 +563,7 @@ public class AugmentedCaseTests
     }
 
     [Fact]
-    public void AUG_03_06_rca_has_no_presumption_and_stays_under_release_control()
+    public void AUG_03_06_rca_has_no_presumption_and_an_undecided_identity_stays_in_review()
     {
         var (_, a) = Augment("GC-03", [("名單資料_90000031.txt", "1\tOther Official List\t", "1\tRelative or Close Associate (RCA)\t")]);
         var hit = Assert.Single(a.Hits);

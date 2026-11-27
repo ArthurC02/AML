@@ -101,8 +101,7 @@ public static class EvidenceBuilder
         var events = p.Roles.Select(r => r.From).OfType<PartialDate>().ToList();
         if (news?.PublishedOn is { } at) events.Add(at);
         if (events.Count == 0) return null;
-        var hard = HardConflictGate.Check(s, p);
-        if (hard is ReasonCodes.ImpossibleAgeAtReportedEvent or ReasonCodes.ImpossibleRoleAtReportedEvent)
+        if (HardConflictGate.RoleConflict(dob, p) is { } hard)
             return new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, hard);
         var youngest = events.Min(d => HardConflictGate.MaxAgeAt(dob, d));
         var note = $"最早事件時最多 {youngest} 歲";
@@ -205,7 +204,18 @@ public static class EvidenceBuilder
             string.Create(CultureInfo.InvariantCulture, $"{EvidenceDetails.SoftDifference}（Jaccard {jaccard:0.00}，{similarity}）"));
     }
 
-    private static Evidence DateOfBirthEvidence(ScreenedSubject s, SourceProfile p)
+    /// <summary>
+    /// Birth dates more than this many calendar years apart are a conflict (FULL_DOB_CONFLICT / DOB_CONFLICT, a validated
+    /// hard conflict); closer but not equal at the known precision is agreement within tolerance (user, 2026-11-27).
+    /// </summary>
+    public const int DobToleranceYears = 2;
+
+    /// <summary>
+    /// The customer's DOB against the Profile's own DOBs: an agreeing value at its precision is support at that level; else a
+    /// value within <see cref="DobToleranceYears"/> is LOW support DOB_AGREES_WITHIN_TOLERANCE; else every value is more than
+    /// the tolerance apart, a conflict.
+    /// </summary>
+    public static Evidence DateOfBirthEvidence(ScreenedSubject s, SourceProfile p)
     {
         const EvidenceGroup g = EvidenceGroup.DateOfBirth;
         if (s.DateOfBirth is not { } dob) return new(g, Direction.Neutral, ComparisonStatus.SubjectMissing);
@@ -213,7 +223,7 @@ public static class EvidenceBuilder
         if (dobs.Count == 0) return new(g, Direction.Neutral, ComparisonStatus.ProfileMissing);
 
         var agreeing = dobs.Where(dob.AgreesWith).OrderByDescending(d => d.Precision).ToList();
-        if (agreeing.Count == 0) return DobConflictEvidence(dob, dobs);
+        if (agreeing.Count == 0) return WithinToleranceEvidence(dob, dobs) ?? DobConflictEvidence(dob, dobs);
         var precision = (DatePrecision)Math.Min((int)dob.Precision, (int)agreeing[0].Precision);
         var status = precision == DatePrecision.Day ? ComparisonStatus.Exact : ComparisonStatus.Partial;
         // Scattered DOBs are source ambiguity: agreeing with one of them is never support (never stage 3 row 4).
@@ -221,6 +231,21 @@ public static class EvidenceBuilder
             return new(g, Direction.Neutral, status, Strength.None, Findings.ProfileMultipleDob);
         return new(g, Direction.Support, status, SupportStrength(precision),
             precision == DatePrecision.Year ? ReasonCodes.BirthYearMatchFullDateNotComparable : null);
+    }
+
+    // Agreement within tolerance is the weakest DOB support (LOW, as a birth year), whatever the precision; the note says how far apart.
+    private static Evidence? WithinToleranceEvidence(PartialDate dob, IReadOnlyList<PartialDate> profileDobs)
+    {
+        var near = profileDobs.Where(d => !dob.IsMoreThanYearsApart(d, DobToleranceYears)).OrderByDescending(d => d.Precision).ToList();
+        if (near.Count == 0) return null;
+        if (AreScattered(profileDobs))
+            return new(EvidenceGroup.DateOfBirth, Direction.Neutral, ComparisonStatus.Partial, Strength.None, Findings.ProfileMultipleDob);
+        var d = near[0];
+        var apart = dob.Precision == DatePrecision.Day && d.Precision == DatePrecision.Day
+            ? $"相差 {Math.Abs(dob.LatestDay.DayNumber - d.LatestDay.DayNumber)} 天"
+            : $"出生年相差 {Math.Abs(dob.Year - d.Year)} 年";
+        return new(EvidenceGroup.DateOfBirth, Direction.Support, ComparisonStatus.Partial, Strength.Low, ReasonCodes.DobAgreesWithinTolerance,
+            $"客戶 {dob}、名單 {d}，{apart}，未逾 {DobToleranceYears} 年，依出生日期容許規則視為相符");
     }
 
     private static Evidence DobConflictEvidence(PartialDate dob, IReadOnlyList<PartialDate> profileDobs)

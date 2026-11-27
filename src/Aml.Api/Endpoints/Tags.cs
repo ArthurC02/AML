@@ -6,5 +6,6 @@ internal static class Tags
     public const string Cases = "Cases";
     public const string Batches = "Batches";
     public const string Profiles = "Profiles";
+    public const string Sources = "Sources";
     public const string ReferenceData = "Reference data";
 }

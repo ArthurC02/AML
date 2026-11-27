@@ -10,9 +10,9 @@ SQLite for the PoC, replaced later by Microsoft SQL Server or Oracle; Dapper + D
 Aml.Infra/Persistence/
 ├── SqliteDatabase.cs         # connections, DbUp upgrade, the only place aware of the provider
 ├── SqlCatalog.cs             # loads Sql.<provider>.xml
-├── Repositories/             # CaseStore, ListStore (JobStore lives in Aml.Infra/Jobs)
+├── Repositories/             # CaseStore, ListStore, PageStore (JobStore lives in Aml.Infra/Jobs)
 ├── Sql/                      # Sql.xsd, Sql.sqlite.xml
-└── Scripts/Sqlite/           # DbUp DDL: 0001_schema.sql
+└── Scripts/Sqlite/           # DbUp DDL: 0001_schema.sql, 0002_web_page.sql, 0003_web_page_published.sql
 ```
 
 When a second provider is chosen, the provider-specific parts of `SqliteDatabase` move behind `IDbConnectionFactory` and an `ISqlDialect` (parameter prefix rewrite, unique-violation detection).
@@ -21,14 +21,15 @@ When a second provider is chosen, the provider-specific parts of `SqliteDatabase
 |---|---|
 | `aml_case` | one row per Case; unique on `(trigger_event_id, subject_ref)` (`uq_case_trigger`), indexed by `subject_ref` |
 | `case_analysis` | every analysis revision with its result and explanation as JSON, read back into their Core types |
-| `case_input` | the input files (decoded text) of each revision, for re-analysis after a source update |
-| `analysis_lineage` | what a revision was computed from: input file names and SHA-256, each Profile with its list version or `CASE_FILES`, the source-policy, code-catalog, schema and application versions, the analysis date (`as_of`, UTC) the time-dependent rules ran on, and the news model version when the [news models](watchlist-and-adverse-information.md#news-models) read an article (`news_model_version`, else null) |
+| `case_input` | the input files (decoded text) of each revision, for re-analysis after a source update; a received page the analysis named is one of them, `網頁_<pageId>.json`, the page record as read, so the Case's link to a page lives here, never on `web_page` ([external sources](external-sources.md#matched-against-the-customer)) |
+| `analysis_lineage` | what a revision was computed from: input file names and SHA-256, each Profile with its list version or `CASE_FILES`, the source-policy, code-catalog, schema and application versions, the analysis date (`as_of`, UTC) the time-dependent rules ran on, the news model version when the [news models](watchlist-and-adverse-information.md#news-models) read an article (`news_model_version`, else null), and each received page used with its URL, fetch time, body hash and text hash (`pages_json`, else null) |
 | `analysis_quality` | data quality of a revision: comparison cells by status, Profiles not evaluated, findings counted by code |
 | `case_hit`, `hit_evidence`, `hit_reason` | queryable facts of each hit (identity decision, stage 3 row, hard conflict, pair result, priority; each evidence group's direction, status, strength and detail code; identity, pair and disposition reason codes in order); `hit_reason` indexed by `reason_code` |
-| `job` | batch jobs (`ANALYZE_CASE`, `REANALYZE_CASE`) and their payloads; unique on `idempotency_key` (`uq_job_idempotency`), indexed by `(batch_id, status)` and, for claiming, `(status, priority DESC, created_at, next_attempt_at)`; `payload` is the last column |
+| `job` | batch jobs (`ANALYZE_CASE`, `REANALYZE_CASE`, `FETCH_PAGE`) and their payloads; unique on `idempotency_key` (`uq_job_idempotency`), indexed by `(batch_id, status)` and, for claiming, `(status, priority DESC, created_at, next_attempt_at)`; `payload` is the last column |
 | `list_profile` | every captured Profile version with the SHA-256 of its normalized export text ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md)); rows are never updated or deleted |
+| `web_page` | one row per page received by URL, keyed by its page id: canonical URL, status (`PENDING`, `READ`, `REFUSED`, `FAILED`) and problem, the `FETCH_PAGE` job and batch it is queued under, and its latest fetch (final URL, media type, title, time, body SHA-256, main text, the publication date at its precision and its source `METADATA`, `TEXT` or `MISSING` (both NULL until read), the reading as JSON, [external sources](external-sources.md#received-url-source-2)); a fetch overwrites the previous one; the long columns are last, as in `job` |
 
-The schema is one DbUp script, `0001_schema.sql`. The PoC database is disposable ([ADR-0023](../adr/0023-business-api-data-and-workbook.md)): when the schema or the stored JSON format changes (`CaseJson.SchemaVersion`), the script changes and the database file is deleted and created again. The script records the format as `PRAGMA user_version`, and startup refuses an existing database whose version is not `CaseJson.SchemaVersion`. Old formats are never read; a stored record that does not read as its type fails. Before a production database exists, an ADR switches to add-only migrations starting from this schema.
+The schema is `0001_schema.sql` plus add-only scripts, each a new table or a new nullable column (`0002_web_page.sql`, `0003_web_page_published.sql`), run in name order. The PoC database is disposable ([ADR-0023](../adr/0023-business-api-data-and-workbook.md)): when an existing column or the stored JSON format changes (`CaseJson.SchemaVersion`), `0001` changes and the database file is deleted and created again. `0001` records the format as `PRAGMA user_version`, and startup refuses an existing database whose version is not `CaseJson.SchemaVersion`; a script that only adds a table or a nullable column (read as null on rows stored before it) leaves the format as it is, and DbUp applies it to an existing database at startup. Old formats are never read; a stored record that does not read as its type fails. Before a production database exists, an ADR switches every change to add-only migrations starting from this schema.
 
 The JSON in `case_analysis` is the full record; the fact tables are an index of it for calibration and monitoring queries, written in the same transaction, so they never disagree with it.
 
@@ -70,6 +71,8 @@ Multilingual names on SQL Server require `nvarchar`; `varchar` without a UTF-8 c
 | `CaseStore.AcceptAnalysisAsync` | the analysis revision with its lineage, quality and hit facts, its input files and the move of the Case to it; a revision is never stored without the input it was run on | `Case.InsertAnalysis`, `Case.InsertLineage`, `Case.InsertQuality`, `Case.InsertHit`, `Case.InsertEvidence`, `Case.InsertReason`, `Case.InsertInput`, `Case.AcceptAnalysis` |
 | `ListStore.CaptureAsync` | a new Profile version and the `REANALYZE_CASE` jobs it causes (transactional outbox) | `Extraction.GetLatestProfile`, `Extraction.InsertProfile`, `Batch.Enqueue` |
 | `JobStore.EnqueueAsync` (list) | every item of one `POST /api/batches`; an item whose idempotency key is already queued is skipped | `Batch.Enqueue` |
+| `PageStore.QueueAsync` | the `FETCH_PAGE` job and the page marked `PENDING` under it (transactional outbox); when the job's key is already queued nothing changes and the stored page is returned | `Batch.Enqueue`, `Extraction.QueuePage` or `Extraction.InsertPage`, `Extraction.GetPage` |
+| `PageStore.SaveAsync` | a fetch outcome, only while the page is queued under that job (`job_id`), so a late earlier job never overwrites a newer fetch | `Extraction.SavePage` |
 | `JobStore.ClaimAsync` | the claim of every job taken in one round | `Batch.ListClaimable`, `Batch.Claim`, `Batch.GetClaimed` |
 
 ## Group commit
@@ -92,7 +95,7 @@ Revision numbers are allocated optimistically: `CaseService` takes the Case's cu
 
 In the outbox, a job whose idempotency key is already in the job table is skipped (unique violation on that statement only); the version and the other jobs still commit.
 
-Other statements used by these flows: `Case.GetAnalysis`, `Case.GetLineage` and `Case.GetQuality` read one revision back; `Case.LatestInput` and `Case.LatestInputs` read the latest stored input of one Case or of every Case; `Extraction.ListVersion` counts `list_profile` rows, which, because the table is append-only, changes with every capture and keys the cached retrieval index.
+Other statements used by these flows: `Case.GetAnalysis`, `Case.GetLineage` and `Case.GetQuality` read one revision back; `Case.LatestInput` and `Case.LatestInputs` read the latest stored input of one Case or of every Case; `Extraction.ListVersion` counts `list_profile` rows, which, because the table is append-only, changes with every capture and keys the cached retrieval index; `Extraction.GetPage` reads one page. A job that writes no Case (`FETCH_PAGE`) completes with null `case_id` and `analysis_revision`.
 
 ## Job claim
 

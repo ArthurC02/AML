@@ -191,7 +191,7 @@ public class WebTextTests
     [Fact]
     public async Task The_fetcher_follows_robots_skips_other_types_and_stops_at_the_size_cap()
     {
-        var handler = new Stub(path => path switch
+        var handler = WebStub.ByPath(path => path switch
         {
             "/robots.txt" => (HttpStatusCode.OK, "text/plain", Encoding.UTF8.GetBytes("User-agent: *\nDisallow: /secret")),
             "/page" => (HttpStatusCode.OK, "text/html", Encoding.UTF8.GetBytes("<p>ok</p>")),
@@ -201,16 +201,16 @@ public class WebTextTests
             "/go-page" => (HttpStatusCode.MovedPermanently, "location:/page", []),
             _ => (HttpStatusCode.NotFound, "text/html", []),
         });
-        using var fetcher = new PoliteFetcher("test-agent", TimeSpan.Zero, handler);
+        using var fetcher = new PoliteFetcher("test-agent", TimeSpan.Zero, WebStub.Dns(), handler);
         var ct = TestContext.Current.CancellationToken;
-        Assert.NotNull(await fetcher.GetAsync(new Uri("https://example.test/page"), ct));
-        Assert.Null(await fetcher.GetAsync(new Uri("https://example.test/secret/1"), ct));
-        Assert.Null(await fetcher.GetAsync(new Uri("https://example.test/image"), ct));
-        Assert.Null(await fetcher.GetAsync(new Uri("https://example.test/huge"), ct));
-        Assert.Null(await fetcher.GetAsync(new Uri("https://example.test/missing"), ct));
+        Assert.NotNull((await fetcher.GetAsync(new Uri("https://example.test/page"), ct)).Page);
+        Assert.Equal("ROBOTS_DISALLOWED", (await fetcher.GetAsync(new Uri("https://example.test/secret/1"), ct)).Problem);
+        Assert.Equal("UNSUPPORTED_MEDIA_TYPE", (await fetcher.GetAsync(new Uri("https://example.test/image"), ct)).Problem);
+        Assert.Equal("TOO_LARGE", (await fetcher.GetAsync(new Uri("https://example.test/huge"), ct)).Problem);
+        Assert.Equal("HTTP_STATUS:404", (await fetcher.GetAsync(new Uri("https://example.test/missing"), ct)).Problem);
         // A redirect is a new request: its target is checked against robots.txt too.
-        Assert.Null(await fetcher.GetAsync(new Uri("https://example.test/go-secret"), ct));
-        Assert.Equal("https://example.test/page", (await fetcher.GetAsync(new Uri("https://example.test/go-page"), ct))!.Url.ToString());
+        Assert.Equal("ROBOTS_DISALLOWED", (await fetcher.GetAsync(new Uri("https://example.test/go-secret"), ct)).Problem);
+        Assert.Equal("https://example.test/page", (await fetcher.GetAsync(new Uri("https://example.test/go-page"), ct)).Page!.Url.ToString());
         Assert.DoesNotContain(handler.Requested, p => p.StartsWith("/secret", StringComparison.Ordinal));
         Assert.Equal(1, handler.Requested.Count(p => p == "/robots.txt"));
     }
@@ -218,40 +218,24 @@ public class WebTextTests
     [Fact]
     public async Task A_site_whose_robots_txt_fails_is_not_crawled_and_asked_again_later()
     {
-        var handler = new Stub(path => path == "/robots.txt" ? (HttpStatusCode.ServiceUnavailable, "text/plain", []) : (HttpStatusCode.OK, "text/html", "<p>x</p>"u8.ToArray()));
-        using var fetcher = new PoliteFetcher("test-agent", TimeSpan.Zero, handler);
-        Assert.Null(await fetcher.GetAsync(new Uri("https://example.test/page"), TestContext.Current.CancellationToken));
-        Assert.Null(await fetcher.GetAsync(new Uri("https://example.test/page"), TestContext.Current.CancellationToken));
+        var handler = WebStub.ByPath(path => path == "/robots.txt" ? (HttpStatusCode.ServiceUnavailable, "text/plain", []) : (HttpStatusCode.OK, "text/html", "<p>x</p>"u8.ToArray()));
+        using var fetcher = new PoliteFetcher("test-agent", TimeSpan.Zero, WebStub.Dns(), handler);
+        Assert.Equal(new FetchResult(null, "ROBOTS_UNAVAILABLE", Transient: true), await fetcher.GetAsync(new Uri("https://example.test/page"), TestContext.Current.CancellationToken));
+        Assert.Equal(new FetchResult(null, "ROBOTS_UNAVAILABLE", Transient: true), await fetcher.GetAsync(new Uri("https://example.test/page"), TestContext.Current.CancellationToken));
         Assert.Equal(["/robots.txt", "/robots.txt"], handler.Requested);
     }
 
     [Fact]
     public async Task A_redirected_robots_txt_is_followed()
     {
-        var handler = new Stub(path => path switch
+        var handler = WebStub.ByPath(path => path switch
         {
             "/robots.txt" => (HttpStatusCode.Found, "location:/robots", []),
             "/robots" => (HttpStatusCode.OK, "text/plain", "User-agent: *\nDisallow: /secret"u8.ToArray()),
             _ => (HttpStatusCode.OK, "text/html", "<p>x</p>"u8.ToArray()),
         });
-        using var fetcher = new PoliteFetcher("test-agent", TimeSpan.Zero, handler);
-        Assert.NotNull(await fetcher.GetAsync(new Uri("https://example.test/page"), TestContext.Current.CancellationToken));
-        Assert.Null(await fetcher.GetAsync(new Uri("https://example.test/secret"), TestContext.Current.CancellationToken));
-    }
-
-    private sealed class Stub(Func<string, (HttpStatusCode Status, string Type, byte[] Body)> reply) : HttpMessageHandler
-    {
-        public List<string> Requested { get; } = [];
-
-        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            var path = request.RequestUri!.AbsolutePath;
-            Requested.Add(path);
-            var (status, type, body) = reply(path);
-            var response = new HttpResponseMessage(status) { RequestMessage = request, Content = new ByteArrayContent(body) };
-            if (type.StartsWith("location:", StringComparison.Ordinal)) response.Headers.Location = new Uri(type["location:".Length..], UriKind.Relative);
-            else response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(type);
-            return Task.FromResult(response);
-        }
+        using var fetcher = new PoliteFetcher("test-agent", TimeSpan.Zero, WebStub.Dns(), handler);
+        Assert.NotNull((await fetcher.GetAsync(new Uri("https://example.test/page"), TestContext.Current.CancellationToken)).Page);
+        Assert.Equal("ROBOTS_DISALLOWED", (await fetcher.GetAsync(new Uri("https://example.test/secret"), TestContext.Current.CancellationToken)).Problem);
     }
 }

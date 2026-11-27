@@ -1,8 +1,10 @@
+using System.Net;
 using Aml.Api;
 using Aml.Api.Endpoints;
 using Aml.Api.Workers;
 using Aml.Core.Cases;
 using Aml.Core.Codes;
+using Aml.Core.Pages;
 using Aml.Core.Ports;
 using Aml.Core.Subjects;
 using Aml.Infra.Html;
@@ -11,6 +13,7 @@ using Aml.Infra.Models;
 using Aml.Infra.Persistence;
 using Aml.Infra.Persistence.Repositories;
 using Aml.Infra.Txt;
+using Aml.Infra.Web;
 using Aml.Services;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -85,6 +88,15 @@ builder.Services.AddSingleton<IListStore, ListStore>();
 builder.Services.AddSingleton<Func<string, SourceProfile>>(TxtCaseReader.ParseProfile);
 builder.Services.AddSingleton<Func<string, string>>(TxtCaseReader.ProfileExportText);
 builder.Services.AddSingleton<ListService>();
+// Pages received by URL: fetched politely through the URL guard, which resolves every host with the system DNS.
+builder.Services.AddSingleton<IPageStore, PageStore>();
+builder.Services.AddSingleton(_ => new PoliteFetcher("Mozilla/5.0 (compatible; AmlPoC-research/0.1)", TimeSpan.FromSeconds(1), Dns.GetHostAddressesAsync));
+builder.Services.AddSingleton<Func<Uri, CancellationToken, Task<PageFetch>>>(sp =>
+{
+    var fetcher = sp.GetRequiredService<PoliteFetcher>();
+    return (url, ct) => WebPages.ReadAsync(fetcher, url, ct);
+});
+builder.Services.AddSingleton<PageService>();
 builder.Services.AddHostedService<JobWorker>();
 // A null field is left out of the views and revision records (CaseJson), so a property whose C# type can be null is never required.
 builder.Services.AddOpenApi(o => o.AddSchemaTransformer((schema, ctx, ct) =>
@@ -171,6 +183,7 @@ app.UseSwaggerUI(o => o.SwaggerEndpoint("/openapi/v1.json", "AML PoC"));
 app.MapCases();
 app.MapBatches();
 app.MapProfiles();
+app.MapPages();
 app.MapCodes();
 
 app.Run();

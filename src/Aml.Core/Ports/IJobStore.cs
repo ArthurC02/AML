@@ -30,8 +30,8 @@ public interface IJobStore
     /// <summary>Extends the lease of a running job. False when the caller no longer owns it.</summary>
     Task<bool> RenewLeaseAsync(string jobId, string leaseOwner, DateTimeOffset leaseExpiry, CancellationToken ct);
 
-    /// <summary>False when the caller no longer owns the lease (nothing changed).</summary>
-    Task<bool> CompleteAsync(string jobId, string leaseOwner, string caseId, int revision, DateTimeOffset now, CancellationToken ct);
+    /// <summary>False when the caller no longer owns the lease (nothing changed). A job that writes no Case (FETCH_PAGE) passes nulls.</summary>
+    Task<bool> CompleteAsync(string jobId, string leaseOwner, string? caseId, int? revision, DateTimeOffset now, CancellationToken ct);
 
     /// <summary>Back to PENDING at <paramref name="nextAttemptAt"/>, or DEAD_LETTER. False when the caller no longer owns the lease.</summary>
     Task<bool> FailAsync(string jobId, string leaseOwner, bool deadLetter, string errorCode, DateTimeOffset nextAttemptAt, DateTimeOffset now, CancellationToken ct);

@@ -13,8 +13,11 @@ internal static class ReportRules
 
     // Someone a judgment names who is not its defendant gets a stage only from the clause naming them:
     // 被告依王大明指示…，量處被告有期徒刑七年 sentences the defendant, 檢察官起訴被告…，其中王大明之陳述… indicts the defendant.
-    internal static LegalStage? KeywordStage(ClauseScope c) =>
-        LastStageIn(c.Clause, c.Sentence.Attributable && (!c.Bystander || c.Mine), c.Sentence.Own && (!c.Bystander || c.Mine));
+    // A co-defendant's clause (同案的李小四則獲判無罪) tells their outcome, not the person's. A text that never writes the
+    // person's names (a press release's 陳姓男子) is about them as a whole: its 提起公訴 is theirs.
+    internal static LegalStage? KeywordStage(ClauseScope c) => c.Other ? null
+        : LastStageIn(c.Clause, c.Sentence.Attributable && (!c.Bystander || c.Mine), c.Sentence.Own && (!c.Bystander || c.Mine),
+            c.Unnamed && c.Sentence.Attributable);
 
     // ---- What the report says of the person as a whole ----
 
@@ -46,7 +49,7 @@ internal static class ReportRules
     // The last stage keyword of the clause: a dismissal or indictment where the clause may be the person's, 提起公訴 (a
     // judgment's word for the indictment, and a judgment names many people), a conviction or an acquittal only in a
     // sentence naming them.
-    private static LegalStage? LastStageIn(string clause, bool attributable, bool own)
+    private static LegalStage? LastStageIn(string clause, bool attributable, bool own, bool unnamed)
     {
         var found = new List<(int End, LegalStage Stage)>();
         if (attributable)
@@ -54,9 +57,9 @@ internal static class ReportRules
             Find(found, clause, StagePatterns.Dismissal(), LegalStage.Dismissed);
             Find(found, clause, StagePatterns.Indictment(), LegalStage.Indicted);
         }
+        if (own || unnamed) Find(found, clause, StagePatterns.PublicProsecution(), LegalStage.Indicted);
         if (own)
         {
-            Find(found, clause, StagePatterns.PublicProsecution(), LegalStage.Indicted);
             Find(found, clause, StagePatterns.Conviction(), LegalStage.Convicted);
             Find(found, clause, StagePatterns.Acquittal(), LegalStage.Acquitted);
         }

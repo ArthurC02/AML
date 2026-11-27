@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using Aml.Core.Normalization;
+using Aml.Core.Pages;
 using Aml.Core.Retrieval;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
@@ -23,8 +24,20 @@ public static partial class TxtCaseReader
     public static CaseInput ReadFiles(IReadOnlyDictionary<string, string> files) =>
         ReadFiles(files.ToDictionary(f => f.Key, f => Encoding.UTF8.GetBytes(f.Value)));
 
-    public static CaseInput ReadFiles(IReadOnlyDictionary<string, byte[]> files) =>
-        ReadExport(CaseExport.Of(files.Select(f => (Path.GetFileName(f.Key), f.Value))));
+    /// <summary>The export files, and the received pages a Case was given (<see cref="PageSnapshots"/>, never a client's upload).</summary>
+    public static CaseInput ReadFiles(IReadOnlyDictionary<string, byte[]> files)
+    {
+        var pages = files.Where(f => PageSnapshots.IsFile(f.Key)).OrderBy(f => f.Key, StringComparer.Ordinal).ToList();
+        var input = ReadExport(CaseExport.Of(files.Where(f => !PageSnapshots.IsFile(f.Key)).Select(f => (Path.GetFileName(f.Key), f.Value))));
+        if (pages.Count == 0) return input;
+        var hashes = new Dictionary<string, string>(input.SourceHashes!);
+        foreach (var (name, bytes) in pages) hashes[Path.GetFileName(name)] = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
+        return input with
+        {
+            SourceHashes = hashes,
+            Pages = [.. pages.Select(p => ReadOrMalformed(Path.GetFileName(p.Key), () => PageSnapshots.Read(Encoding.UTF8.GetString(p.Value))))],
+        };
+    }
 
     /// <summary>Reads a case folder; the source folder is never written.</summary>
     public static CaseInput Read(string folder) =>

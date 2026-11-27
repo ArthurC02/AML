@@ -10,7 +10,7 @@ namespace Aml.Tests.E2E;
 /// </summary>
 public sealed class ContractTests(ApiHost api) : IClassFixture<ApiHost>
 {
-    private static readonly string[] Tags = ["Cases", "Batches", "Profiles", "Reference data"];
+    private static readonly string[] Tags = ["Cases", "Batches", "Profiles", "Sources", "Reference data"];
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     [Fact]

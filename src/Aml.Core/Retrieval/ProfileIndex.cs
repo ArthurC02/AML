@@ -7,7 +7,7 @@ using Aml.Core.Subjects;
 namespace Aml.Core.Retrieval;
 
 /// <summary>How a candidate reached the Case (identity-adjudication.md#retrieval-modes).</summary>
-public enum RetrievalMode { DirectReference, ControlledSet, IndexSearch, PreviousLink }
+public enum RetrievalMode { DirectReference, ControlledSet, IndexSearch, PreviousLink, SourcePage }
 
 /// <summary>
 /// One retrieved Profile. The score only ranks candidates for inspection: it is never an identity probability and never

@@ -8,13 +8,14 @@ public enum IdentityDecision { NoMatch, Review, ProbableMatch }
 public enum Assumption { Agree, Conflict }
 
 /// <summary>
-/// What stage 3 would decide if one direct identifier became comparable on both sides. It names the row and code only,
-/// never the external result, and holds every other piece of evidence fixed.
+/// What the identity decision would be if one direct identifier became comparable on both sides: a stage 3 row, or for a
+/// conflicting full DOB the stage 1 rule. It names the row or rule and code only, never the external result, and holds
+/// every other piece of evidence fixed.
 /// </summary>
 public sealed record WouldChangeIf(
     [property: Description("假設的項目：DOCUMENT 或 DATE_OF_BIRTH")] EvidenceGroup Field,
     [property: Description("假設相符（AGREE）或衝突（CONFLICT）")] Assumption Assumption,
-    [property: Description("假設成立時的第三階段列號")] int Stage3Row,
+    [property: Description("假設成立時的第三階段列號；完整出生日期衝突是第一階段硬衝突，為 null")] int? Stage3Row,
     [property: Description("假設成立時的身分判斷（不是對外結果）")] IdentityDecision Decision,
     [property: Description("假設成立時的理由碼")] string ReasonCode,
     [property: Description("中文說明")] string Text);

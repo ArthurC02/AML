@@ -172,7 +172,7 @@ GC-04 to GC-10 ([ADR-0008](../adr/0008-validation-and-deferred-capabilities.md))
 
 - GC-04 PEP/RCA
 - GC-05 Sanction
-- GC-06 full DOB conflict
+- GC-06 full DOB conflict (the rule is already released by the user's decision of 2026-11-27, more than two years apart; GC-06 checks it, and a different person born within two years shows its cost)
 - GC-07 highly similar final NO_MATCH
 - GC-08 source update result reversal
 - GC-09 Article 22 ① foreign PEP presumption
@@ -209,7 +209,7 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-01-03 | GC-01 | customer DOB 1985 → 1960 | plausible age | no hard conflict, row 6 REVIEW on both Profiles |
 | AUG-01-04 | GC-01 | chairman from 1990 (year only) | `SOURCE_QUALITY_DOWNGRADE` | REVIEW; the other Profile stays NO_MATCH |
 | AUG-02-01 | GC-02 | Profile DOB 1975/9 | month-precision DOB agreement | PARTIAL, MEDIUM support, row 4 PROBABLE_MATCH, still no direct identifier |
-| AUG-02-02 | GC-02 | Profile DOB 1980 | `DOB_CONFLICT` | row 1 REVIEW, not FULL_DOB_CONFLICT, no hard conflict |
+| AUG-02-02 | GC-02 | Profile DOB 1980 | `DOB_CONFLICT` (more than two years off at year precision) | stage 1 NO_MATCH, not FULL_DOB_CONFLICT (was row 1 REVIEW before the birth-date tolerance, 2026-11-27) |
 | AUG-02-03 | GC-02 | news states 林美玲（49歲） | stated age compatible | `AGE_COMPATIBLE_AT_REPORT`, neutral, row 6 unchanged |
 | AUG-02-04 | GC-02 | news states 林美玲（30歲） | `AGE_DIFFERENCE_AT_REPORT` | soft conflict, row 1 REVIEW, never NO_MATCH |
 | AUG-02-05 | GC-02 | news 分案偵辦 → 起訴 | legal stage | INDICTED; `amlRelevance` stays UNCERTAIN |
@@ -250,7 +250,7 @@ Changes use the samples' dummy values (`A123456789`, `A223456788` failing the ch
 | AUG-11-02 | GC-11 | Profile national ID with another number | `DOCUMENT_IDENTITY_CONFLICT` | row 1 REVIEW |
 | AUG-11-03 | GC-11 | Profile passport only | document not comparable | UNCERTAIN `NOT_COMPARABLE`; row 4 PROBABLE_MATCH unchanged (a document of another type or country does not block row 4) |
 | AUG-11-04 | GC-11 | Profile DOB 1973 → 1973/6/12 | full DOB agreement | HIGH support, row 4, direct identifier present |
-| AUG-11-05 | GC-11 | Profile DOB 1973 → 1973/8/1 | `FULL_DOB_CONFLICT` (GC-06 stand-in) | row 1 REVIEW |
+| AUG-11-05 | GC-11 | Profile DOB 1973 → 1973/8/1 | `DOB_AGREES_WITHIN_TOLERANCE` (a different full date under two years from the customer's) | LOW support, row 4 PROBABLE_MATCH (was `FULL_DOB_CONFLICT` row 1 REVIEW, the GC-06 stand-in, before the birth-date tolerance, 2026-11-27) |
 | AUG-11-06 | GC-11 | Profile deceased, died 1970 | `DEATH_BEFORE_CUSTOMER_BIRTH` | fires, REVIEW, Case IN_REVIEW |
 | AUG-11-07 | GC-11 | Profile address = customer address in current form | structured address | `SAME_ADDRESS_NO_PERIOD`, never support, row 4 unchanged |
 | AUG-11-08 | GC-11 | full DOB plus the same company with overlapping periods | employment support | row 3 PROBABLE_MATCH |

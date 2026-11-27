@@ -124,7 +124,7 @@
           "Cases"
         ],
         "summary": "Create a Case from the export files and run the first analysis; 201 when created, 200 when it already existed",
-        "description": "Send multipart form fields subjectRef, triggerEventId and files (案件資訊*.txt, 名單資料_<id>.txt, the customer or related-party files and any 新聞資訊_<id>.txt, or the same pages as HTML), or JSON {subjectRef, triggerEventId, files: {name: text}} as one batch item. One Case per alert (trigger event and subject): repeating the same triggerEventId and subjectRef returns the existing Case with 200. Returns the Case summary with links to its hits and its full revision. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.",
+        "description": "Send multipart form fields subjectRef, triggerEventId and files (案件資訊*.txt, 名單資料_<id>.txt, the customer or related-party files and any 新聞資訊_<id>.txt, or the same pages as HTML), or JSON {subjectRef, triggerEventId, files: {name: text}} as one batch item. pageIds (a repeated form field, or a JSON array) names received pages (POST /api/pages) to screen the subject against as well: each person on a page whose name is EXACT against the subject's becomes a hit with profileKey WEB:<pageId>-<n> (retrieval mode SOURCE_PAGE); every person is listed in the revision's pages, candidate or not. The page version used is kept with the Case's input, so a re-analysis reads the same text. A page still PENDING is PAGE_NOT_READY (409); an unknown, REFUSED or FAILED page is PAGE_UNUSABLE (400). The Case information and subject files stay required. One Case per alert (trigger event and subject): repeating the same triggerEventId and subjectRef returns the existing Case with 200. Returns the Case summary with links to its hits and its full revision. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.",
         "operationId": "createCase",
         "requestBody": {
           "content": {
@@ -149,6 +149,15 @@
                       "type": "string",
                       "format": "binary"
                     }
+                  },
+                  "pageIds": {
+                    "type": [
+                      "null",
+                      "array"
+                    ],
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -171,6 +180,15 @@
                   "files": {
                     "type": "object",
                     "additionalProperties": {
+                      "type": "string"
+                    }
+                  },
+                  "pageIds": {
+                    "type": [
+                      "null",
+                      "array"
+                    ],
+                    "items": {
                       "type": "string"
                     }
                   }
@@ -317,7 +335,7 @@
           "Cases"
         ],
         "summary": "Run a new analysis revision with updated input files; returns the Case summary",
-        "description": "Send the full set of export files again, as multipart, as for POST /api/cases, when the bank files of an existing Case changed. A changed list Profile needs no call: POST /api/profiles/import queues that re-analysis. A revision that is not complete does not replace the effective result.",
+        "description": "Send the full set of export files again, as multipart, as for POST /api/cases, when the bank files of an existing Case changed, with pageIds again for every received page the revision is to use: a page is read as it is stored now, so a page fetched again since the last revision is used only here. A changed list Profile needs no call: POST /api/profiles/import queues that re-analysis, which keeps the pages of the latest input as they were. A revision that is not complete does not replace the effective result.",
         "operationId": "reanalyzeCase",
         "parameters": [
           {
@@ -339,7 +357,20 @@
                 "type": "object",
                 "properties": {
                   "files": {
-                    "$ref": "#/components/schemas/IFormFileCollection"
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    }
+                  },
+                  "pageIds": {
+                    "type": [
+                      "null",
+                      "array"
+                    ],
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -557,10 +588,9 @@
                         {
                           "field": "DATE_OF_BIRTH",
                           "assumption": "CONFLICT",
-                          "stage3Row": 1,
-                          "decision": "REVIEW",
+                          "decision": "NO_MATCH",
                           "reasonCode": "FULL_DOB_CONFLICT",
-                          "text": "若完整出生日期不符：身分判斷移至第三階段第 1 列 FULL_DOB_CONFLICT"
+                          "text": "若完整出生日期相差逾 2 年：身分判斷為第一階段硬衝突 FULL_DOB_CONFLICT"
                         }
                       ],
                       "detail": "/api/cases/0199a3c2-5b7e-7c3d-9f10-2a4b6c8d0e03/hits/1?view=detail&revision=1"
@@ -774,7 +804,7 @@
           "Batches"
         ],
         "summary": "Queue many Cases for analysis",
-        "description": "Each item has subjectRef, triggerEventId and files (file name → text content), the same inputs as POST /api/cases. Items already queued under the same triggerEventId and subjectRef are listed as duplicates and not queued again. Returns 202 with batchId; progress is at GET /api/batches/{batchId}.",
+        "description": "Each item has subjectRef, triggerEventId and files (file name → text content) and optional pageIds, the same inputs as POST /api/cases; each named page is taken as stored at submission (PAGE_NOT_READY 409 while one is PENDING, PAGE_UNUSABLE 400 for an unknown, REFUSED or FAILED one, for the whole batch). Items already queued under the same triggerEventId and subjectRef are listed as duplicates and not queued again. Returns 202 with batchId; progress is at GET /api/batches/{batchId}.",
         "operationId": "submitBatch",
         "requestBody": {
           "content": {
@@ -1112,6 +1142,90 @@
           }
         }
       }
+    },
+    "/api/pages": {
+      "post": {
+        "tags": [
+          "Sources"
+        ],
+        "summary": "Receive a URL: the page as stored when fetched within a day, else queue a FETCH_PAGE job",
+        "description": "The URL is canonicalised (lower-case host, no default port, no fragment, no utm_* parameter); pageId is the first 16 hex digits of its SHA-256. A page fetched within a day returns 200 with its summary view. Otherwise 202 with Location /api/pages/{pageId}, the page PENDING and its FETCH_PAGE job (jobId, batchId; GET /api/batches/{batchId}). The job fetches through the URL guard (every request and redirect hop must resolve to public addresses only, port 80 or 443, no credentials), follows robots.txt and reads the main text; the job payload holds the page id and URL only. A URL that is not absolute http(s), holds a user name or password, uses another port or is over 2,048 characters is INVALID_REQUEST.",
+        "operationId": "fetchPage",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageRecord"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageQueued"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pages/{pageId}": {
+      "get": {
+        "tags": [
+          "Sources"
+        ],
+        "summary": "A received page: status (PENDING, READ, REFUSED or FAILED with its problem) and, once READ, the persons it names",
+        "description": "Each person is read by the rules of the news digest, and by the news models and stage models when configured: profileKey (WEB:<pageId>-<n>), name and the forms written, roles, party, every mention's offset in the text, and the legal stage with its basis (and each stage reader when models vote). view=summary (default) leaves out the text, the identifiers written next to a name, the stated age, birth dates and gender, the events and the readers' quotes; view=full adds them, each identifier and event with its offset. A page decides nothing: it is not matched against anyone here. A problem is a PAGE_PROBLEM code in /api/codes.",
+        "operationId": "getPage",
+        "parameters": [
+          {
+            "name": "pageId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "view",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PageRecord"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1182,6 +1296,16 @@
               "string"
             ],
             "description": "讀了附加新聞的新聞模型版本；未設定模型或沒有命中附有新聞時為 null"
+          },
+          "pages": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PageUse"
+            },
+            "description": "分析所用的收到網頁與其內文版本；網頁固定在案件輸入檔中，重新分析讀同一版本；沒有網頁時省略"
           }
         }
       },
@@ -1396,6 +1520,15 @@
             "additionalProperties": {
               "type": "string"
             }
+          },
+          "pageIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
           }
         }
       },
@@ -1514,6 +1647,16 @@
               "$ref": "#/components/schemas/ImportedDecision"
             },
             "description": "自輸入檔讀入的舊決定"
+          },
+          "pages": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PageScreening"
+            },
+            "description": "分析所用的收到網頁：每頁每個人與受檢對象姓名的比對，候選人與非候選人都列出；沒有網頁時省略"
           },
           "schemaVersion": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -1923,7 +2066,8 @@
         "enum": [
           "FLAG",
           "CATEGORY_MAPPING",
-          "UNMAPPED"
+          "UNMAPPED",
+          "PAGE_READING"
         ]
       },
       "ConditionStatus": {
@@ -2506,7 +2650,7 @@
               "integer",
               "string"
             ],
-            "description": "疑似名單表中合併為此 hit 的列數",
+            "description": "疑似名單表中合併為此 hit 的列數；收到網頁的人物（WEB:）為 0",
             "format": "int32"
           },
           "conditions": {
@@ -3489,6 +3633,477 @@
           }
         }
       },
+      "PageEvent": {
+        "required": [
+          "event"
+        ],
+        "type": "object",
+        "properties": {
+          "event": {
+            "$ref": "#/components/schemas/NewsEvent"
+          },
+          "at": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PageIdentifier": {
+        "required": [
+          "kind"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/NewsIdentifierKind"
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "number": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "at": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PageMention": {
+        "required": [
+          "at",
+          "length"
+        ],
+        "type": "object",
+        "properties": {
+          "at": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "length": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "PagePerson": {
+        "required": [
+          "profileKey",
+          "name",
+          "forms",
+          "roles",
+          "mentions",
+          "identifiers",
+          "statedBirthDates",
+          "stage",
+          "stageReasonCodes",
+          "events",
+          "readBy"
+        ],
+        "type": "object",
+        "properties": {
+          "profileKey": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "forms": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "party": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NewsParty"
+              }
+            ]
+          },
+          "mentions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PageMention"
+            }
+          },
+          "identifiers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PageIdentifier"
+            }
+          },
+          "statedAge": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "statedBirthDates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PartialDate"
+            }
+          },
+          "statedGender": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Gender"
+              }
+            ]
+          },
+          "stage": {
+            "$ref": "#/components/schemas/LegalStage"
+          },
+          "stageBasis": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "stageReaders": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/StageReaderResult"
+            }
+          },
+          "stageReasonCodes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PageEvent"
+            }
+          },
+          "readBy": {
+            "$ref": "#/components/schemas/PersonReadBy"
+          }
+        }
+      },
+      "PagePersonScreening": {
+        "required": [
+          "profileKey",
+          "name",
+          "readBy",
+          "nameStatus",
+          "mode",
+          "candidate"
+        ],
+        "type": "object",
+        "properties": {
+          "profileKey": {
+            "type": "string",
+            "description": "網頁人物鍵（WEB:<pageId>-<n>）"
+          },
+          "name": {
+            "type": "string",
+            "description": "網頁所寫的姓名"
+          },
+          "readBy": {
+            "description": "誰讀出此人：RULE_READ（規則）或 MODEL_READ（只有新聞模型）",
+            "$ref": "#/components/schemas/PersonReadBy"
+          },
+          "nameStatus": {
+            "description": "受檢對象姓名與此人姓名寫法的比對：EXACT 才成為候選人",
+            "$ref": "#/components/schemas/ComparisonStatus"
+          },
+          "nameDetail": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "比對細節，見 /api/codes；遮蔽的姓名為 REDACTED_NAME"
+          },
+          "mode": {
+            "description": "檢索方式：SOURCE_PAGE（案件指名的收到網頁）",
+            "$ref": "#/components/schemas/RetrievalMode"
+          },
+          "candidate": {
+            "type": "boolean",
+            "description": "是否成為候選人（此人是一個 hit）：姓名 EXACT 時為 true"
+          }
+        }
+      },
+      "PageQueued": {
+        "required": [
+          "pageId",
+          "url",
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PageStatus"
+          },
+          "jobId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "batchId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PageRecord": {
+        "required": [
+          "pageId",
+          "url",
+          "status",
+          "requestedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PageStatus"
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "jobId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "batchId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "problem": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "finalUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "mediaType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "fetchedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "contentHash": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "text": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "persons": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PagePerson"
+            }
+          },
+          "otherEvents": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PageEvent"
+            }
+          },
+          "model": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/NewsModelReadout"
+              }
+            ]
+          },
+          "publishedOn": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PartialDate"
+              }
+            ]
+          },
+          "publishedOnSource": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PublicationSource"
+              }
+            ]
+          }
+        }
+      },
+      "PageRequest": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PageScreening": {
+        "required": [
+          "pageId",
+          "persons"
+        ],
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "網頁編號"
+          },
+          "persons": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PagePersonScreening"
+            },
+            "description": "網頁上的每一個人與比對結果；不是候選人的人也列出，不會靜默略過"
+          }
+        }
+      },
+      "PageStatus": {
+        "enum": [
+          "PENDING",
+          "READ",
+          "REFUSED",
+          "FAILED"
+        ]
+      },
+      "PageUse": {
+        "required": [
+          "pageId",
+          "url",
+          "textHash"
+        ],
+        "type": "object",
+        "properties": {
+          "pageId": {
+            "type": "string",
+            "description": "網頁編號"
+          },
+          "url": {
+            "type": "string",
+            "description": "正規化網址"
+          },
+          "fetchedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "取得時間",
+            "format": "date-time"
+          },
+          "contentHash": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "回應內容的 SHA-256"
+          },
+          "textHash": {
+            "type": "string",
+            "description": "內文（UTF-8）的 SHA-256：此 revision 所用的內文版本"
+          }
+        }
+      },
       "PairChange": {
         "required": [
           "profileId",
@@ -3576,6 +4191,12 @@
             "format": "date"
           }
         }
+      },
+      "PersonReadBy": {
+        "enum": [
+          "RULE_READ",
+          "MODEL_READ"
+        ]
       },
       "ProfileImport": {
         "required": [
@@ -3912,6 +4533,14 @@
           }
         }
       },
+      "PublicationSource": {
+        "enum": [
+          "METADATA",
+          "TEXT",
+          "MISSING",
+          null
+        ]
+      },
       "ReanalysisJob": {
         "required": [
           "jobId",
@@ -4006,7 +4635,8 @@
           "DIRECT_REFERENCE",
           "CONTROLLED_SET",
           "INDEX_SEARCH",
-          "PREVIOUS_LINK"
+          "PREVIOUS_LINK",
+          "SOURCE_PAGE"
         ]
       },
       "RetrievedCandidate": {
@@ -4561,7 +5191,6 @@
         "required": [
           "field",
           "assumption",
-          "stage3Row",
           "decision",
           "reasonCode",
           "text"
@@ -4579,10 +5208,11 @@
           "stage3Row": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
+              "null",
               "integer",
               "string"
             ],
-            "description": "假設成立時的第三階段列號",
+            "description": "假設成立時的第三階段列號；完整出生日期衝突是第一階段硬衝突，為 null",
             "format": "int32"
           },
           "decision": {
@@ -4613,6 +5243,9 @@
     },
     {
       "name": "Profiles"
+    },
+    {
+      "name": "Sources"
     }
   ]
 }

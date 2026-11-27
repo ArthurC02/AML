@@ -103,8 +103,8 @@
       <description>What one revision was computed from.</description>
       <sql><![CDATA[
         INSERT INTO analysis_lineage (case_id, revision, schema_version, source_policy_version, code_catalog_version,
-                                      app_version, as_of, input_files_json, profiles_json, news_model_version)
-        VALUES (@caseId, @revision, @schemaVersion, @sourcePolicyVersion, @codeCatalogVersion, @appVersion, @asOf, @inputFilesJson, @profilesJson, @newsModelVersion)
+                                      app_version, as_of, input_files_json, profiles_json, news_model_version, pages_json)
+        VALUES (@caseId, @revision, @schemaVersion, @sourcePolicyVersion, @codeCatalogVersion, @appVersion, @asOf, @inputFilesJson, @profilesJson, @newsModelVersion, @pagesJson)
       ]]></sql>
     </statement>
 
@@ -112,7 +112,7 @@
       <description>Lineage of one revision.</description>
       <sql><![CDATA[
         SELECT l.input_files_json, l.profiles_json, l.source_policy_version, l.code_catalog_version, l.schema_version, l.app_version, l.as_of,
-               l.news_model_version
+               l.news_model_version, l.pages_json
         FROM analysis_lineage l
         WHERE l.case_id = @caseId AND l.revision = @revision
       ]]></sql>
@@ -354,6 +354,44 @@
       <description>Version of the whole list database: rows are never updated or deleted, so the count grows with every capture.</description>
       <sql><![CDATA[
         SELECT COUNT(*) FROM list_profile
+      ]]></sql>
+    </statement>
+
+    <statement id="Extraction.GetPage" kind="Select">
+      <description>One page received by URL, with its latest fetch.</description>
+      <sql><![CDATA[
+        SELECT p.page_id, p.canonical_url, p.status, p.problem, p.requested_at, p.job_id, p.batch_id, p.final_url, p.media_type,
+               p.title, p.fetched_at, p.content_hash, p.main_text, p.reading_json, p.published_on, p.published_on_source
+        FROM web_page p
+        WHERE p.page_id = @pageId
+      ]]></sql>
+    </statement>
+
+    <statement id="Extraction.InsertPage" kind="Insert">
+      <description>A page received for the first time, queued under its fetch job.</description>
+      <sql><![CDATA[
+        INSERT INTO web_page (page_id, canonical_url, status, requested_at, job_id, batch_id)
+        VALUES (@pageId, @canonicalUrl, 'PENDING', @now, @jobId, @batchId)
+      ]]></sql>
+    </statement>
+
+    <statement id="Extraction.QueuePage" kind="Update">
+      <description>A known page queued again under a new fetch job; the previous fetch stays until the new one is stored.</description>
+      <sql><![CDATA[
+        UPDATE web_page
+        SET status = 'PENDING', problem = NULL, requested_at = @now, job_id = @jobId, batch_id = @batchId
+        WHERE page_id = @pageId
+      ]]></sql>
+    </statement>
+
+    <statement id="Extraction.SavePage" kind="Update">
+      <description>A fetch outcome; only the job the page is queued under may store one, so a late earlier job never overwrites a newer fetch.</description>
+      <sql><![CDATA[
+        UPDATE web_page
+        SET status = @status, problem = @problem, final_url = @finalUrl, media_type = @mediaType, title = @title, fetched_at = @fetchedAt,
+            content_hash = @contentHash, main_text = @mainText, reading_json = @readingJson, published_on = @publishedOn,
+            published_on_source = @publishedOnSource
+        WHERE page_id = @pageId AND job_id = @jobId
       ]]></sql>
     </statement>
   </module>

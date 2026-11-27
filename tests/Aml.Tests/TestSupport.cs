@@ -1,3 +1,4 @@
+using System.Net;
 using Aml.Infra.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -125,6 +126,40 @@ public sealed class ManualTimeProvider(DateTimeOffset start) : TimeProvider
             Dispose();
             return ValueTask.CompletedTask;
         }
+    }
+}
+
+/// <summary>
+/// The web from memory: each request gets the reply for its URL, and is recorded. A type "location:&lt;url&gt;" makes the
+/// reply a redirect there. No request leaves the process.
+/// </summary>
+public sealed class WebStub(Func<Uri, (HttpStatusCode Status, string Type, byte[] Body)> reply) : HttpMessageHandler
+{
+    /// <summary>The address every host resolves to unless named: TEST-NET-3, a public documentation address.</summary>
+    public static readonly IPAddress Public = IPAddress.Parse("203.0.113.10");
+
+    public static WebStub ByPath(Func<string, (HttpStatusCode Status, string Type, byte[] Body)> reply) => new(u => reply(u.AbsolutePath));
+
+    /// <summary>A resolver for the URL guard: the hosts given resolve to their addresses, every other host to <see cref="Public"/>.</summary>
+    public static Func<string, CancellationToken, Task<IPAddress[]>> Dns(IReadOnlyDictionary<string, string[]>? hosts = null) =>
+        (host, _) => Task.FromResult(hosts?.GetValueOrDefault(host) is { } a ? a.Select(IPAddress.Parse).ToArray() : [Public]);
+
+    public List<string> Requested { get; } = [];
+
+    public List<Uri> RequestedUrls { get; } = [];
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        lock (Requested)
+        {
+            Requested.Add(request.RequestUri!.AbsolutePath);
+            RequestedUrls.Add(request.RequestUri);
+        }
+        var (status, type, body) = reply(request.RequestUri);
+        var response = new HttpResponseMessage(status) { RequestMessage = request, Content = new ByteArrayContent(body) };
+        if (type.StartsWith("location:", StringComparison.Ordinal)) response.Headers.Location = new Uri(type["location:".Length..], UriKind.RelativeOrAbsolute);
+        else response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(type);
+        return Task.FromResult(response);
     }
 }
 

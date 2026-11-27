@@ -1,3 +1,4 @@
+using Aml.Core.Pages;
 using Aml.Core.Screening;
 using Aml.Core.Screening.Stage;
 
@@ -11,8 +12,9 @@ public sealed record CodeEntry(string Code, string Kind, string Name, string Des
 /// </summary>
 public static class CodeCatalog
 {
-    public const string Version = "codes-9";
+    public const string Version = "codes-13";
 
+    private const string Sources = "docs/feature/external-sources.md";
     private const string Identity = "docs/feature/identity-adjudication.md";
     private const string Extraction = "docs/feature/extraction-and-normalization.md";
     private const string Watchlist = "docs/feature/watchlist-and-adverse-information.md";
@@ -28,13 +30,14 @@ public static class CodeCatalog
     public static readonly IReadOnlyDictionary<string, CodeEntry> All = new (string Kind, string Code, string Name, string Description, string Rule, string Doc)[]
     {
         ("IDENTITY_REASON", "TEMPORALLY_PLAUSIBLE", "時序合理", "受檢對象在報導事件或職務起始時的年齡可能成立；不是身分佐證。", "EvidenceBuilder.TemporalEvidence", Identity + "#temporal-and-role-consistency"),
-        ("IDENTITY_REASON", "IMPOSSIBLE_AGE_AT_REPORTED_EVENT", "事件時年齡不可能", "受檢對象在名單記載的事件（職務開始）時未滿 14 歲；已由 GC-01 驗證的硬衝突，可排除身分，除非來源品質降級（SOURCE_QUALITY_DOWNGRADE）或名單條件依放行控制仍需人工複核。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
+        ("IDENTITY_REASON", "IMPOSSIBLE_AGE_AT_REPORTED_EVENT", "事件時年齡不可能", "受檢對象在名單記載的事件（職務開始）時未滿 14 歲；已由 GC-01 驗證的硬衝突，排除身分（NO_MATCH），各名單類型皆同，除非來源品質降級（SOURCE_QUALITY_DOWNGRADE）。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
         ("IDENTITY_REASON", "IMPOSSIBLE_ROLE_AT_REPORTED_EVENT", "事件時職務不可能", "受檢對象在職務起始時未達該職務的法定年齡；規則待驗證，維持 REVIEW。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
-        ("IDENTITY_REASON", "FULL_DOB_CONFLICT", "完整出生日期不符", "雙方都有完整出生日期且不同；第三階段第 1 列，REVIEW。", "EvidenceBuilder.Build", Identity + "#stage-3-table"),
+        ("IDENTITY_REASON", "FULL_DOB_CONFLICT", "完整出生日期相差逾兩年", "雙方都有完整出生日期，名單所有出生日期都與受檢對象相差超過 2 年；使用者 2026-11-27 決定放行的硬衝突，排除身分（NO_MATCH），各名單類型皆同，除非來源品質降級（SOURCE_QUALITY_DOWNGRADE）。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
         ("IDENTITY_REASON", "DOCUMENT_IDENTITY_CONFLICT", "同類證件不符", "同類型、同發證國的證件號碼不同；第三階段第 1 列，REVIEW。", "EvidenceBuilder.DocumentEvidence", Identity + "#stage-3-table"),
         ("IDENTITY_REASON", "DEATH_BEFORE_CUSTOMER_BIRTH", "名單人物死於受檢對象出生前", "名單記載的死亡日期早於受檢對象出生；規則待驗證，維持 REVIEW。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
-        ("IDENTITY_REASON", "DOB_CONFLICT", "出生日期不符", "名單所有出生日期都與受檢對象不符，且雙方沒有共同的完整日期；第三階段第 1 列。也用於拒絕出生日期矛盾的名單合併。", "EvidenceBuilder.Build", Identity + "#stage-3-table"),
+        ("IDENTITY_REASON", "DOB_CONFLICT", "出生日期相差逾兩年", "名單所有出生日期都與受檢對象相差超過 2 年（以較粗的精度比，可能不逾 2 年就不算），且雙方沒有共同的完整日期；使用者 2026-11-27 決定放行的硬衝突，排除身分（NO_MATCH），各名單類型皆同，除非來源品質降級。名單合併時另指沒有任何相符的出生日期，合併被拒絕。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
         ("IDENTITY_REASON", "BIRTH_YEAR_MATCH_FULL_DATE_NOT_COMPARABLE", "出生年相符，完整日期無法比對", "出生年相同，但至少一方只有年份。", "EvidenceBuilder.Build", Identity + "#reason-code-registry"),
+        ("IDENTITY_REASON", "DOB_AGREES_WITHIN_TOLERANCE", "出生日期在兩年容許內相符", "名單出生日期與受檢對象不同，但相差未逾 2 年；依出生日期容許規則（使用者 2026-11-27）視為相符，是最弱的出生日期佐證（LOW，與只相符到年同級），說明寫出相差多少。", "EvidenceBuilder.DateOfBirthEvidence", Identity + "#birth-date-tolerance"),
         ("IDENTITY_REASON", "GENDER_CONFLICT", "性別不符", "雙方性別不同；前提條件衝突，排除第三階段第 3、4 列。也用於拒絕性別矛盾的名單合併。", "EvidenceBuilder.Build", Identity + "#stage-3-table"),
         ("IDENTITY_REASON", "SOURCE_QUALITY_DOWNGRADE", "來源品質降級", "已驗證的硬衝突因來源品質疑慮而維持 REVIEW。", "HardConflictGate.SourceQualityConcern", Identity + "#hard-conflict-gate"),
         ("IDENTITY_REASON", "NON_PERSON_SUBJECT_REVIEW", "非自然人記錄待複核", "名單是組織、船舶等非自然人記錄，沒有可比對的實體識別碼，或受檢對象是自然人；REVIEW。", "IdentityDecisionPolicy.EntityDecision", Identity + "#reason-code-registry"),
@@ -66,7 +69,7 @@ public static class CodeCatalog
         ("SCORE", "SCORE_BAND_PROBABLE_MATCH", "達 PROBABLE_MATCH 門檻", "評分規則（試算，未核准）：身分分數 ≥ 30，或三項前提條件皆 EXACT 且證件、任職沒有未決差異時 ≥ 8。", "ScoringRule.Identity", Scoring + "#identity-score"),
         ("SCORE", "SCORE_BAND_NO_MATCH", "達 NO_MATCH 門檻", "評分規則（試算，未核准）：身分分數 ≤ -25，且所有負分項目都來自已驗證規則。", "ScoringRule.Identity", Scoring + "#identity-score"),
         ("SCORE", "SCORE_HELD_PENDING_VALIDATION", "規則待驗證，維持 REVIEW", "評分規則（試算，未核准）：待驗證的硬衝突、經來源品質降級的硬衝突，或只靠待驗證的負分項目達到 NO_MATCH 門檻時，維持 REVIEW。", "ScoringRule.Identity", Scoring + "#identity-score"),
-        ("SCORE", "SCORE_CAPPED_PROFILE_CONFLICT", "名單欄位衝突上限", "評分規則（試算，未核准）：名單本身的出生日期或證件與客戶衝突，最高 REVIEW（保留第三階段第 1 列）。", "ScoringRule.Identity", Scoring + "#identity-score"),
+        ("SCORE", "SCORE_CAPPED_PROFILE_CONFLICT", "名單欄位衝突上限", "評分規則（試算，未核准）：名單本身的證件與客戶衝突（待驗證規則），最高 REVIEW（保留第三階段第 1 列）；出生日期衝突是已驗證的否決，不在此列。", "ScoringRule.Identity", Scoring + "#identity-score"),
         ("SCORE", "SCORE_CAPPED_GENDER_CONFLICT", "性別不符上限", "評分規則（試算，未核准）：名單或附加新聞所載性別與客戶不同，最高 REVIEW。", "ScoringRule.Identity", Scoring + "#identity-score"),
         ("SCORE", "SCORE_CAPPED_ENTITY_RECORD", "非自然人記錄上限", "評分規則（試算，未核准）：非自然人記錄最高 PROBABLE_MATCH，沒有相符的實體識別碼時最高 REVIEW，直到有實體 Golden Case。", "ScoringRule.Identity", Scoring + "#identity-score"),
         ("SCORE", "SCORE_CONDITION_BASIS", "名單條件依據分數", "評分規則（試算，未核准）：名單條件依旗標或類別對應為 HIT 時 100、NOT_HIT 時 0，乘來源可信度。", "ScoringRule.Condition", Scoring + "#condition-score"),
@@ -74,8 +77,7 @@ public static class CodeCatalog
         ("SCORE", "SCORE_CONDITION_STAGE_UNKNOWN", "法律階段未知，條件 UNKNOWN", "評分規則（試算，未核准）：來源人物的法律階段為 UNKNOWN（讀取者不一致或模型回答缺值），條件依規則為 UNKNOWN，不計分、不會降為 NOT_HIT。", "ScoringRule.SourcePerson", Scoring + "#condition-score"),
         ("SCORE", "SCORE_CONDITION_BAND", "達條件門檻", "評分規則（試算，未核准）：條件分數 ≥ 60 為 HIT，30 以上未滿 60 為 UNKNOWN。", "ScoringRule.Condition", Scoring + "#condition-score"),
 
-        ("PAIR_REASON", "RELEASE_CONTROL_HUMAN_REVIEW", "放行控制：人工複核", "Sanction、PEP 或 RCA 條件為 HIT 或 UNKNOWN、原本為 NO_HIT 的組合，第一階段一律轉 REVIEW 交由人工。", "AssessmentPolicy.Assess", Disposition + "#two-results-read-separately"),
-        ("PAIR_REASON", "SOURCE_CONDITION_UNKNOWN", "名單條件未知", "名單條件無法確定（UNKNOWN）；身分 NO_MATCH 時為 NO_HIT，Sanction、PEP、RCA 則由放行控制轉 REVIEW。", "AssessmentPolicy.Assess", Watchlist + "#reason-codes"),
+        ("PAIR_REASON", "SOURCE_CONDITION_UNKNOWN", "名單條件未知", "名單條件無法確定（UNKNOWN）；身分 NO_MATCH 時為 NO_HIT（各名單類型皆同），否則為 REVIEW。", "AssessmentPolicy.Assess", Watchlist + "#reason-codes"),
         ("PAIR_REASON", "ATTACHED_NEWS_DISAGREES_WITH_PROFILE", "附加新聞與名單記錄不一致", "附加新聞在名單人物姓名旁所載的出生日期或性別與客戶不同，而名單本身的欄位與客戶相符：兩個來源互相不一致，新聞可能不是這位名單人物的。身分判斷不變；PROBABLE_MATCH 的複核優先序由 HIGH 降為 NORMAL（Sanction 仍為 HIGH）。", "AssessmentPolicy.Assess", Identity + "#birth-date-and-gender-stated-in-a-source"),
 
         ("DISPOSITION", "ART22_FOREIGN_PEP_PRESUMPTION", "第 22 條①：外國 PEP 推定", "依第 22 條第 1 款推定；身分判斷不變。", "DispositionPolicy.Recommend", Disposition + "#article-22-1-foreign-pep-presumption"),
@@ -94,6 +96,8 @@ public static class CodeCatalog
         ("CONDITION_REASON", "FLAG_CATEGORY_CONFLICT", "旗標與類別矛盾", "旗標與名單類別矛盾；以旗標為準並記錄。", "SourceConditions.Determine", Watchlist + "#reason-codes"),
         ("CONDITION_REASON", "BLACKLIST_TYPE_UNDECIDED", "黑名單類型未定", "黑名單＝YES，但來源欄位無法決定名單類型。", "SourceConditions.Determine", Watchlist + "#reason-codes"),
         ("CONDITION_REASON", "IS_RCA_FLAG", "RCA 旗標", "RCA 條件來自 Is RCA? = YES。", "SourceConditions.Determine", Watchlist + "#reason-codes"),
+        ("CONDITION_REASON", SourceConditions.PagePersonNotSuspect, "網頁人物不是嫌疑人", "規則在收到網頁中此人姓名前讀出非嫌疑人的身分詞（被害人、證人、檢察官等）；ADVERSE_MEDIA 條件為 NOT_HIT。新聞模型讀出的身分不採用（量測不可靠）。", "SourceConditions.FromPage", Sources + "#common-path"),
+        ("CONDITION_REASON", SourceConditions.PageStageNotRead, "網頁未讀出法律階段", "收到網頁沒有讀出此人的法律階段，也沒有讀出非嫌疑人的身分詞；ADVERSE_MEDIA 條件為 UNKNOWN，待複核閱讀網頁。", "SourceConditions.FromPage", Sources + "#common-path"),
         ("CONDITION_REASON", "UNMAPPED_CATEGORY", "未對應的類別", "名單類別沒有對應的名單類型；UNKNOWN，待複核。", "SourceConditions.Determine", Watchlist + "#reason-codes"),
         ("CONDITION_REASON", "SANCTION_MEASURE_NOT_CONFIRMED", "制裁措施未確認", "制裁名單未確認現行措施；條件為 UNKNOWN。", "SourceConditions.Determine", "docs/feature/sanctions-screening.md#sanction-condition"),
         ("CONDITION_REASON", "RCA_OUTSIDE_STATUTORY_SCOPE", "RCA 超出法定範圍", "關係不在法定 RCA 範圍內。", "SourceConditions.Determine", "docs/feature/pep-rca-screening.md#rca-relationship-scope"),
@@ -145,6 +149,7 @@ public static class CodeCatalog
         ("EVIDENCE_DETAIL", "NOT_IDENTICAL_AFTER_NORMALIZATION", "正規化後仍不同", "姓名正規化後不完全相同；括號內為相似度。", "NameComparison.CompareNames", Identity + "#name-comparison"),
         ("EVIDENCE_DETAIL", "NAME_ORDER_VARIANT", "姓名順序不同", "姓氏位置移動後姓名相同。", "NameComparison.CompareNames", Identity + "#name-comparison"),
         ("EVIDENCE_DETAIL", "DIACRITIC_VARIANT", "變音符號差異", "去除變音符號後姓名相同。", "NameComparison.CompareNames", Identity + "#name-comparison"),
+        ("EVIDENCE_DETAIL", PageCandidates.RedactedName, "姓名已遮蔽", "收到網頁中此人的姓名寫法都含遮蔽字元（王○明）；不比對，不是候選人。", "PageCandidates.Screen", Sources + "#redacted-names"),
         ("EVIDENCE_DETAIL", "NOT_COMPARABLE_CROSS_SCRIPT", "跨文字無法比對", "雙方姓名沒有共同的文字系統。", "NameComparison.CompareNames", Identity + "#name-comparison"),
         ("EVIDENCE_DETAIL", "VARIANT_CHARACTERS", "異體字", "受控異體字轉換後姓名相同。", "NameComparison.CompareNames", Identity + "#name-comparison"),
         ("EVIDENCE_DETAIL", "ROMANIZATION_VARIANT", "拼音系統差異", "羅馬拼音在不同拼音系統下讀音相同。", "NameComparison.CompareNames", Identity + "#name-comparison"),
@@ -192,9 +197,11 @@ public static class CodeCatalog
         ("PROBLEM", "UNSUPPORTED_FILE", "不支援的檔案", "只接受 .txt、.html、.htm，每檔 5 MB 以內。", "Uploads", Api + "#errors"),
         ("PROBLEM", "INPUT_INCOMPLETE", "輸入檔不完整", "缺少必要檔案：恰好一份案件資訊，以及受檢對象自己的背景資料檔。缺名單檔不是錯誤（該名單為 NOT_EVALUATED）。", "TxtCaseReader.RequiredFileProblem", Api + "#errors"),
         ("PROBLEM", "INPUT_UNREADABLE", "輸入檔無法讀取", "檔案不是預期的匯出版面；errors[] 指出檔案、表格與問題。", "TxtCaseReader", Api + "#errors"),
-        ("PROBLEM", "NOT_FOUND", "找不到", "案件、revision、批次、名單或路徑不存在。", "Api", Api + "#errors"),
+        ("PROBLEM", "NOT_FOUND", "找不到", "案件、revision、批次、名單、網頁或路徑不存在。", "Api", Api + "#errors"),
         ("PROBLEM", "HTTP_ERROR", "HTTP 錯誤", "其他 4xx，例如方法不允許；依 status 處理。", "Api", Api + "#errors"),
         ("PROBLEM", "INTERNAL_ERROR", "系統錯誤", "未預期的錯誤；不需修改請求，稍後重試或通報。", "Api", Api + "#errors"),
+        ("PROBLEM", "PAGE_NOT_READY", "網頁尚未讀取", "pageIds 指名的網頁仍為 PENDING（409）；等 GET /api/pages/{pageId} 為 READ 後重送。", "PageService.PinAsync", Sources + "#received-url-source-2"),
+        ("PROBLEM", "PAGE_UNUSABLE", "網頁無法使用", "pageIds 指名的網頁不存在，或為 REFUSED、FAILED（400）；errors[] 列出每個網頁與其問題。", "PageService.PinAsync", Sources + "#received-url-source-2"),
         ("LIST_TYPE", "SANCTION", "制裁", "制裁名單。", "SourceConditions.Determine", Watchlist + "#list-types"),
         ("LIST_TYPE", "PEP", "重要政治性職務人士", "PEP 名單。", "SourceConditions.Determine", Watchlist + "#list-types"),
         ("LIST_TYPE", "RCA", "PEP 之家屬或密切關係人", "RCA：PEP 的家屬或密切關係人。", "SourceConditions.Determine", Watchlist + "#list-types"),
@@ -209,6 +216,7 @@ public static class CodeCatalog
         ("CONDITION_BASIS", "FLAG", "依旗標", "條件由名單旗標決定。", "SourceConditions.Determine", Watchlist + "#list-type-determination"),
         ("CONDITION_BASIS", "CATEGORY_MAPPING", "依類別對照", "條件由名單類別對照決定。", "SourceConditions.Determine", Watchlist + "#list-type-determination"),
         ("CONDITION_BASIS", "UNMAPPED", "未對照", "類別沒有對照，條件為 UNKNOWN。", "SourceConditions.Determine", Watchlist + "#list-type-determination"),
+        ("CONDITION_BASIS", "PAGE_READING", "依網頁讀取", "收到網頁中此人的條件：讀網頁時已讀出（並在設定模型時投票）的法律階段，與規則讀出的身分詞。", "SourceConditions.FromPage", Sources + "#common-path"),
         ("LEGAL_STAGE", "ALLEGED", "涉嫌", "僅有指控或報導。", "SourceConditions.Determine", Watchlist + "#legalprocedural-stage"),
         ("LEGAL_STAGE", "INDICTED", "起訴", "已起訴，尚未判決。", "SourceConditions.Determine", Watchlist + "#legalprocedural-stage"),
         ("LEGAL_STAGE", "WANTED", "通緝", "通緝中；不是判決。", "SourceConditions.Determine", Watchlist + "#legalprocedural-stage"),
@@ -269,6 +277,20 @@ public static class CodeCatalog
         ("JOB_ERROR", "EXCEPTION", "未預期的例外", "EXCEPTION:<例外型別>，例如資料庫錯誤；依重試預算重試，預算用盡後修正原因再以 rerun 重跑。", "BatchService", Api + "#durable-batch-execution"),
         ("JOB_ERROR", "LEASE_EXPIRED", "租約逾期", "工作者中途停止，租約到期後工作回到佇列；預算用盡則進入 DEAD_LETTER。", "JobStore.ReclaimExpiredAsync", Api + "#durable-batch-execution"),
         ("JOB_ERROR", "RELEASE_LIMIT", "停機中斷過多", "主機停機時中斷超過 Batch:MaxReleases 次後，每次中斷都計入嘗試；預算用盡則進入 DEAD_LETTER。確認工作為何拖住停機後再以 rerun 重跑。", "JobStore.ReleaseAsync", Api + "#durable-batch-execution"),
+        // Who found a person on a received page (readBy); a finding, never a verdict.
+        ("PAGE_PERSON_READ_BY", "RULE_READ", "規則讀出", "新聞摘要的規則讀出此人。", "PageReadings.Read", Sources + "#received-url-source-2"),
+        ("PAGE_PERSON_READ_BY", "MODEL_READ", "模型讀出", "只有新聞模型讀出此人（規則未讀出）；其姓名寫法為模型所讀，不是識別證據。成為案件的 hit 時也是該網頁人物的資料品質 finding：姓名只是前提條件，姓名旁所載的值仍由規則讀出。", "PageReadings.Read", Sources + "#received-url-source-2"),
+        // Why a page received by URL was not read (the page's problem); a transient one is retried by its FETCH_PAGE job and is also that job's error code.
+        ("PAGE_PROBLEM", PageProblems.UrlNotAllowed, "網址不允許", "網址或轉址目標不是 http／https、含帳號密碼、埠不是 80／443，或主機解析到 loopback、私有、link-local、unique-local 等非公開位址（SSRF 防護）；不重試，網頁為 REFUSED。", "UrlGuard.RefusalAsync", Sources + "#received-url-source-2"),
+        ("PAGE_PROBLEM", PageProblems.RobotsDisallowed, "robots.txt 不允許", "網站的 robots.txt 不允許讀取此網址或其轉址；不重試，網頁為 REFUSED。", "PoliteFetcher.GetAsync", Sources + "#received-url-source-2"),
+        ("PAGE_PROBLEM", PageProblems.RobotsUnavailable, "robots.txt 無法取得", "網站的 robots.txt 回應 5xx、429 或無法連線，暫不讀取；工作依重試預算重試，最後一次仍失敗時網頁為 FAILED。", "PoliteFetcher.GetAsync", Sources + "#received-url-source-2"),
+        ("PAGE_PROBLEM", PageProblems.UnsupportedMediaType, "不支援的內容類型", "回應不是 HTML 或 PDF；不重試，網頁為 REFUSED。", "PoliteFetcher.GetAsync", Sources + "#received-url-source-2"),
+        ("PAGE_PROBLEM", PageProblems.TooLarge, "內容過大", "回應超過 10 MB；不重試，網頁為 REFUSED。", "PoliteFetcher.GetAsync", Sources + "#received-url-source-2"),
+        ("PAGE_PROBLEM", PageProblems.TooManyRedirects, "轉址過多", "轉址超過 5 次；不重試，網頁為 REFUSED。", "PoliteFetcher.GetAsync", Sources + "#received-url-source-2"),
+        ("PAGE_PROBLEM", "HTTP_STATUS", "HTTP 狀態碼", "HTTP_STATUS:<狀態碼>，回應不是成功：408、429 與 5xx 依重試預算重試，最後一次仍失敗時網頁為 FAILED；其他（如 404）不重試，網頁為 REFUSED。", "PoliteFetcher.GetAsync", Sources + "#received-url-source-2"),
+        ("PAGE_PROBLEM", PageProblems.NoMainText, "沒有內文", "網頁讀不出內文（空白、巢狀過深或解析逾時）；不重試，網頁為 REFUSED。", "WebPages.ReadAsync", Sources + "#received-url-source-2"),
+        ("PAGE_PROBLEM", PageProblems.PdfRefused, "PDF 無法讀取", "PDF 無法讀取、已加密、超過 200 頁或 2,000,000 字；不重試，網頁為 REFUSED。", "WebPages.ReadAsync", Sources + "#received-url-source-2"),
+        ("PAGE_PROBLEM", PageProblems.Unreachable, "無法連線", "主機名稱查不到、連線失敗或逾時；工作依重試預算重試，最後一次仍失敗時網頁為 FAILED。", "PoliteFetcher.GetAsync", Sources + "#received-url-source-2"),
         ("INPUT_PROBLEM", "MISSING", "缺檔", "必要檔案不存在。", "TxtCaseReader.RequiredFileProblem", Api + "#errors"),
         ("INPUT_PROBLEM", "DUPLICATE", "重複", "同一份必要檔案出現兩次，或兩個檔案讀成同一名稱。", "TxtCaseReader", Api + "#errors"),
         ("INPUT_PROBLEM", "MISSING_SECTION", "缺少區段", "案件資訊沒有「疑似符合的名單資料」區段。", "TxtCaseReader.ReadCaseTable", Api + "#errors"),

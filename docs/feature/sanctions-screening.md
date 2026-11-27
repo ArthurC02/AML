@@ -40,7 +40,7 @@ status: HIT | NOT_HIT | UNKNOWN
 program: null
 jurisdiction: null
 effectiveStatus: UNKNOWN
-policyVersion: source-policy-0.2
+policyVersion: source-policy-0.3
 evidenceRefs: []
 reasonCodes: []
 ```
@@ -49,11 +49,10 @@ Missing mappings or unknown codes produce UNKNOWN, never NOT_HIT.
 
 ## Pair result
 
-Sanction pairs use the canonical [combination matrix](data-contracts.md#combination-matrix); the Phase 1 restriction below then applies.
+Sanction pairs use the canonical [combination matrix](data-contracts.md#combination-matrix) as any other list type does: an identity NO_MATCH on a HIT or UNKNOWN Sanction condition gives NO_HIT, with no blanket human review (the user's decision of 2026-11-27). The [scoring rule](scoring-rule.md)'s automatic MATCH, once it decides, applies to Sanction pairs as to any other.
 
-## Phase 1 restriction
+## Review priority and what is not yet shown
 
-GC-05 validates Sanction acceptance; production-grade automatic Sanction decisions are not claimed before it. Once the [scoring rule](scoring-rule.md) decides, its automatic MATCH and NO_MATCH apply to Sanction pairs as to any other (read from the user's statement of 2026-11-26; the user can restore the control).
-
-- While the stage 3 table decides, a Sanction condition that is HIT or UNKNOWN keeps the pair in REVIEW (release control `RELEASE_CONTROL_HUMAN_REVIEW`) and gives it review priority High; a NOT_HIT Sanction condition does neither.
+- A Sanction pair that stays in REVIEW (identity REVIEW or PROBABLE_MATCH) has review priority High whenever its Sanction condition is HIT or UNKNOWN; a NOT_HIT Sanction condition does not raise it.
+- A wrong automatic NO_MATCH on a sanctioned person is the most expensive error the system can make. NO_MATCH comes only from the validated hard conflicts (an impossible age at a reported event; birth dates more than two years apart, with the gate's downgrades), so a sanctioned person is closed only when the list's own data excludes the customer. Not yet shown: GC-05 (Sanction acceptance) is not validated and no real Sanction Golden Case exists, and a list's 1 January birth date may be a placeholder that the two-year rule reads as a real date ([identity adjudication](identity-adjudication.md#hard-conflict-gate)).
 - Under an approved risk policy, an UNKNOWN Sanction condition scores as a HIT and any scored Sanction condition makes the risk level High ([risk scoring](watchlist-and-adverse-information.md#risk-scoring)).

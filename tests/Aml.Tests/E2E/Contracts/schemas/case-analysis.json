@@ -1,5 +1,5 @@
 {
-  "$id": "aml:CaseAnalysis:v8",
+  "$id": "aml:CaseAnalysis:v9",
   "type": [
     "object",
     "null"
@@ -565,7 +565,7 @@
             ]
           },
           "candidateRows": {
-            "description": "疑似名單表中合併為此 hit 的列數",
+            "description": "疑似名單表中合併為此 hit 的列數；收到網頁的人物（WEB:）為 0",
             "type": [
               "string",
               "integer"
@@ -608,7 +608,8 @@
                   "enum": [
                     "FLAG",
                     "CATEGORY_MAPPING",
-                    "UNMAPPED"
+                    "UNMAPPED",
+                    "PAGE_READING"
                   ]
                 },
                 "riskCategories": {
@@ -1062,6 +1063,98 @@
           "value"
         ]
       }
+    },
+    "pages": {
+      "description": "分析所用的收到網頁：每頁每個人與受檢對象姓名的比對，候選人與非候選人都列出；沒有網頁時省略",
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "pageId": {
+            "description": "網頁編號",
+            "type": "string"
+          },
+          "persons": {
+            "description": "網頁上的每一個人與比對結果；不是候選人的人也列出，不會靜默略過",
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "profileKey": {
+                  "description": "網頁人物鍵（WEB:<pageId>-<n>）",
+                  "type": "string"
+                },
+                "name": {
+                  "description": "網頁所寫的姓名",
+                  "type": "string",
+                  "x-sensitivity": "PERSONAL"
+                },
+                "readBy": {
+                  "description": "誰讀出此人：RULE_READ（規則）或 MODEL_READ（只有新聞模型）",
+                  "enum": [
+                    "RULE_READ",
+                    "MODEL_READ"
+                  ]
+                },
+                "nameStatus": {
+                  "description": "受檢對象姓名與此人姓名寫法的比對：EXACT 才成為候選人",
+                  "enum": [
+                    "EXACT",
+                    "PARTIAL",
+                    "CONFLICT",
+                    "UNCERTAIN",
+                    "SUBJECT_MISSING",
+                    "PROFILE_MISSING"
+                  ]
+                },
+                "nameDetail": {
+                  "description": "比對細節，見 /api/codes；遮蔽的姓名為 REDACTED_NAME",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "mode": {
+                  "description": "檢索方式：SOURCE_PAGE（案件指名的收到網頁）",
+                  "enum": [
+                    "DIRECT_REFERENCE",
+                    "CONTROLLED_SET",
+                    "INDEX_SEARCH",
+                    "PREVIOUS_LINK",
+                    "SOURCE_PAGE"
+                  ]
+                },
+                "candidate": {
+                  "description": "是否成為候選人（此人是一個 hit）：姓名 EXACT 時為 true",
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "profileKey",
+                "name",
+                "readBy",
+                "nameStatus",
+                "mode",
+                "candidate"
+              ]
+            }
+          }
+        },
+        "required": [
+          "pageId",
+          "persons"
+        ]
+      },
+      "default": null
     },
     "schemaVersion": {
       "description": "儲存格式版本",

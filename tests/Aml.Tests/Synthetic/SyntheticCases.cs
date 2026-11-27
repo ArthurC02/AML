@@ -26,17 +26,17 @@ public sealed record SyntheticAssumptions
     public int Seed { get; init; } = 20261126;
     public DateOnly AsOf { get; init; } = new(2026, 11, 26);
 
-    /// <summary>Cases per kind of the first candidate Profile.</summary>
-    public IReadOnlyDictionary<RecordKind, int> Cases { get; init; } = new Dictionary<RecordKind, int>
-    {
-        [RecordKind.Sanction] = 40,
-        [RecordKind.Pep] = 40,
-        [RecordKind.Rca] = 30,
-        [RecordKind.WantedList] = 30,
-        [RecordKind.News] = 60,
-        [RecordKind.PressRelease] = 50,
-        [RecordKind.CourtRuling] = 50,
-    };
+    /// <summary>Cases per kind of the first candidate Profile, generated in this order.</summary>
+    public IReadOnlyList<(RecordKind Kind, int Count)> Cases { get; init; } =
+    [
+        (RecordKind.Sanction, 40),
+        (RecordKind.Pep, 40),
+        (RecordKind.Rca, 30),
+        (RecordKind.WantedList, 30),
+        (RecordKind.News, 60),
+        (RecordKind.PressRelease, 50),
+        (RecordKind.CourtRuling, 50),
+    ];
 
     public double SamePerson { get; init; } = 0.5;               // the first Profile is the customer
     public double SecondStrangerProfile { get; init; } = 0.2;    // the Case also lists a same-name stranger's Profile
@@ -72,6 +72,10 @@ public sealed record SyntheticAssumptions
     public double MaskedNameInRelease { get; init; } = 0.3;      // a press release writes 陳姓男子
     public double StatedAgeOffByOne { get; init; } = 0.1;
     public double Html { get; init; } = 0.2;                     // customer and Profile files as HTML pages
+
+    // Received pages stating an age (scenario 2, ReceivedPages): where the page states its publication date.
+    public double PagePublishedInMetadata { get; init; } = 0.5;  // meta article:published_time
+    public double PagePublishedInText { get; init; } = 0.3;      // else a date line under the title (half 民國); the rest state none
 
     public IReadOnlyDictionary<RecordKind, ProfileCompleteness> Profile { get; init; } = new Dictionary<RecordKind, ProfileCompleteness>
     {
@@ -131,6 +135,16 @@ public sealed record SyntheticCase(string Id, bool Html, IReadOnlyDictionary<str
 
 /// <summary>A source document of a path not built yet (a received URL, grounding search, periodic judgments), with its truth.</summary>
 public sealed record ExternalFixture(string Scenario, string CustomerCase, string Kind, string Url, string Content, IReadOnlyList<(string WrittenName, bool IsCustomer, LegalStage Stage)> Persons);
+
+/// <summary>One person a received page names: the Case's customer or another person, a suspect or not, and the legal stage the page tells.</summary>
+public sealed record PagePersonTruth(string WrittenName, bool IsCustomer, bool Suspect, LegalStage Stage)
+{
+    /// <summary>The combination-matrix cell the truth gives: NOT_APPLICABLE for a non-suspect, NO_HIT for another person, HIT for the customer.</summary>
+    public ScreeningAssessment Expected => !Suspect ? ScreeningAssessment.NotApplicable : IsCustomer ? ScreeningAssessment.Hit : ScreeningAssessment.NoHit;
+}
+
+/// <summary>A page received by URL for a Case's customer, of one variant, with the truth of every person it names.</summary>
+public sealed record ReceivedPage(string CustomerCase, string Variant, string Url, string Content, IReadOnlyList<PagePersonTruth> Persons, PartialDate? PublishedOn = null);
 
 /// <summary>
 /// Deterministic generator of the synthetic end-to-end set: invented persons only (names from a fixed table of common
@@ -482,7 +496,7 @@ public sealed class SyntheticCaseGenerator
     private string NewsFile(RecordKind kind, Person p, LegalStage stage, PartialDate published, List<string> tags)
     {
         var t = a.Text[kind];
-        var age = HardConflictAge(p.Dob, published) + (P(a.StatedAgeOffByOne) ? 1 : 0);
+        var age = AgeAt(p.Dob, published) + (P(a.StatedAgeOffByOne) ? 1 : 0);
         var g = p.Gender == Gender.Male ? "男" : "女";
         var statesAge = P(t.Age);
         var statesGender = P(t.Gender);
@@ -547,7 +561,9 @@ public sealed class SyntheticCaseGenerator
         return $"{r.Next(1, 99)}\n社會\n{city}詐欺案進度\n本報訊\n{body.Length} 字\n{published.Year} 年 {published.Month} 月 {published.Day} 日\n{publisher}\n{body}\n文件 SYN{r.Next(100000, 999999)}\n";
     }
 
-    private static int HardConflictAge(PartialDate dob, PartialDate at) => Core.Identity.HardConflictGate.MaxAgeAt(dob, at);
+    // Age on a day, both dates full: one year less while the birthday is still to come. Computed here, not by the product.
+    private static int AgeAt(PartialDate dob, PartialDate at) =>
+        at.Year - dob.Year - ((at.Month!.Value, at.Day!.Value).CompareTo((dob.Month!.Value, dob.Day!.Value)) < 0 ? 1 : 0);
 
     // ---- The paths not built yet: their source documents with truth, generated and not run ----
 
@@ -581,6 +597,88 @@ public sealed class SyntheticCaseGenerator
                 "地方新聞：社區活動報導 | 示範新聞網", []));
         }
         return result;
+    }
+
+    /// <summary>
+    /// Every received page of scenario 2 with the truth of each person it names: the 20 pages of <see cref="External"/>
+    /// (the customer after the dateline, another person after 同案的, both suspects), and 20 more written for what those
+    /// cannot show, 4 of each variant, for customers of the Cases after the first 20 that have a full birth date and a gender
+    /// (a generator of their own, seed 20261127, so the set and <see cref="External"/> stay as they were):
+    /// VICTIM and WITNESS (the customer named by 被害人 or 證人 beside another person who is the suspect),
+    /// STRANGER_DOB_FAR and STRANGER_DOB_NEAR (a suspect with the customer's very name and gender whose birth date, written
+    /// next to the name as 民國, is 3 to 15 years, or exactly one year, from the customer's), and CUSTOMER_DOB (the customer
+    /// as a suspect, the birth date written next to the name being the customer's own); then the 24 pages stating an age
+    /// (<see cref="AgePages"/>).
+    /// </summary>
+    public static IReadOnlyList<ReceivedPage> ReceivedPages(IReadOnlyList<SyntheticCase> cases)
+    {
+        var pages = External(cases).Where(f => f.Scenario == "RECEIVED_URL")
+            .Select(f => new ReceivedPage(f.CustomerCase, "CUSTOMER_AND_CO_NAMED", f.Url, f.Content, [.. f.Persons.Select(p => new PagePersonTruth(p.WrittenName, p.IsCustomer, true, p.Stage))]))
+            .ToList();
+        var g = new SyntheticCaseGenerator(SyntheticAssumptions.Default with { Seed = 20261127 });
+        string[] variants = ["VICTIM", "WITNESS", "STRANGER_DOB_FAR", "STRANGER_DOB_NEAR", "CUSTOMER_DOB"];
+        var customers = cases.Skip(20).Where(c => c.Subject is { Dob.Precision: DatePrecision.Day, Gender: not null } && c.Subject.Names[0].Length == 3).Take(4 * variants.Length).ToList();
+        foreach (var (c, i) in customers.Select((c, i) => (c, i)))
+        {
+            var (name, dob, sex) = (c.Subject.Names[0], c.Subject.Dob!.Value, c.Subject.Gender == Gender.Male ? "男" : "女");
+            var other = g.NewPerson().Hant;
+            var variant = variants[i % variants.Length];
+            var shift = variant switch { "STRANGER_DOB_FAR" => (g.P(0.5) ? 1 : -1) * g.r.Next(3, 16), "STRANGER_DOB_NEAR" => g.P(0.5) ? 1 : -1, _ => 0 };
+            var stated = shift == 0 ? dob : new PartialDate(dob.Year + shift, dob.Month, Math.Min(dob.Day!.Value, 28));
+            var roc = $"民國{stated.Year - 1911}年{stated.Month}月{stated.Day}日生";
+            var (lead, persons) = variant switch
+            {
+                "VICTIM" => ($"〔本報記者／臺北報導〕{other}涉嫌以投資名義詐取款項，被害人{name}報案後，警方約談到案依詐欺罪嫌移送地檢署偵辦。",
+                    new PagePersonTruth[] { new(other, false, true, LegalStage.Alleged), new(name, true, false, LegalStage.Unknown) }),
+                "WITNESS" => ($"〔本報記者／臺中報導〕{other}涉嫌詐欺，遭臺中地檢署提起公訴，證人{name}出庭作證。",
+                    [new(other, false, true, LegalStage.Indicted), new(name, true, false, LegalStage.Unknown)]),
+                _ => ($"〔本報記者／高雄報導〕被告{name}（{sex}，{roc}）涉嫌詐欺，遭高雄地檢署提起公訴。", [new(name, variant == "CUSTOMER_DOB", true, LegalStage.Indicted)]),
+            };
+            var page = $"<html><head><title>詐欺案進度</title></head><body><article><h1>詐欺案追蹤</h1><p>{lead}</p></article></body></html>";
+            pages.Add(new(c.Id, variant, $"https://news.example.test/variants/{g.r.Next(100000, 999999)}", page, persons));
+        }
+        pages.AddRange(AgePages(customers.Count, cases));
+        return pages;
+    }
+
+    /// <summary>
+    /// 24 pages stating an age next to the name, 8 of each variant, for the next customers of the same kind (a generator of
+    /// its own, seed 20261128, so the pages above stay as they were): AGE_CUSTOMER (the customer as a suspect, the age at the
+    /// publication date, one year off at <see cref="SyntheticAssumptions.StatedAgeOffByOne"/>), AGE_STRANGER_NEAR and
+    /// AGE_STRANGER_FAR (a suspect with the customer's very name whose age differs by 1 to 2, or 3 to 15, years). The
+    /// publication date (within three years before AsOf) is in the metadata, on a date line under the title, or nowhere, at
+    /// <see cref="SyntheticAssumptions.PagePublishedInMetadata"/> and <see cref="SyntheticAssumptions.PagePublishedInText"/>.
+    /// </summary>
+    private static List<ReceivedPage> AgePages(int skip, IReadOnlyList<SyntheticCase> cases)
+    {
+        var g = new SyntheticCaseGenerator(SyntheticAssumptions.Default with { Seed = 20261128 });
+        string[] variants = ["AGE_CUSTOMER", "AGE_STRANGER_NEAR", "AGE_STRANGER_FAR"];
+        var customers = cases.Skip(20).Where(c => c.Subject is { Dob.Precision: DatePrecision.Day, Gender: not null } && c.Subject.Names[0].Length == 3)
+            .Skip(skip).Take(8 * variants.Length).ToList();
+        var pages = new List<ReceivedPage>();
+        foreach (var (c, i) in customers.Select((c, i) => (c, i)))
+        {
+            var name = c.Subject.Names[0];
+            var variant = variants[i % variants.Length];
+            var on = g.a.AsOf.AddDays(-g.r.Next(1, 3 * 365));
+            var published = new PartialDate(on.Year, on.Month, on.Day);
+            var age = AgeAt(c.Subject.Dob!.Value, published);
+            age += variant switch
+            {
+                "AGE_STRANGER_NEAR" => (g.P(0.5) ? 1 : -1) * g.r.Next(1, 3),
+                "AGE_STRANGER_FAR" => (g.P(0.5) ? 1 : -1) * g.r.Next(3, 16),
+                _ => g.P(g.a.StatedAgeOffByOne) ? (g.P(0.5) ? 1 : -1) : 0,
+            };
+            var where = g.r.NextDouble();
+            var (meta, line, stated) = where < g.a.PagePublishedInMetadata ? ($"<meta property=\"article:published_time\" content=\"{on.Year}-{on.Month:D2}-{on.Day:D2}T09:00:00+08:00\">", "", (PartialDate?)published)
+                : where < g.a.PagePublishedInMetadata + g.a.PagePublishedInText
+                    ? ("", $"<p>{(g.P(0.5) ? $"{on.Year}/{on.Month:D2}/{on.Day:D2} 09:00" : $"民國{on.Year - 1911}年{on.Month}月{on.Day}日")}</p>", published)
+                    : ("", "", null);
+            var page = $"<html><head><title>詐欺案進度</title>{meta}</head><body><article><h1>詐欺案追蹤</h1>{line}<p>〔本報記者／高雄報導〕被告{name}（{age}歲）涉嫌詐欺，遭高雄地檢署提起公訴。</p></article></body></html>";
+            pages.Add(new(c.Id, variant, $"https://news.example.test/ages/{g.r.Next(100000, 999999)}", page,
+                [new(name, variant == "AGE_CUSTOMER", true, LegalStage.Indicted)], stated));
+        }
+        return pages;
     }
 
     /// <summary>A short stable digest of the whole set, for the determinism test.</summary>

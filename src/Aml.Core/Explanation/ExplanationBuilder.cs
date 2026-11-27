@@ -37,7 +37,8 @@ public static class ExplanationBuilder
         var categories = p.Categories.Select(c => c.Subcategory is null ? c.Category : $"{c.Category} / {c.Subcategory}").ToList();
         var support = e.Values.Where(v => v.IsSupport).ToList();
         var unknown = rows.Where(r => IsUnknown(r.Status)).Select(r => r.Field).ToList();
-        var news = input.NewsByProfileId.GetValueOrDefault(ProfileKeys.IdOf(p.ProfileKey));
+        var news = Pages.PageCandidates.Find(input, p.ProfileKey) is var (page, person) ? Pages.PageCandidates.News(page, person)
+            : input.NewsByProfileId.GetValueOrDefault(ProfileKeys.IdOf(p.ProfileKey));
         var sources = Sources(p, news, h.Conditions);
 
         return new HitExplanation(
@@ -96,8 +97,8 @@ public static class ExplanationBuilder
     {
         var sources = p.Sources.Select((x, i) => new ExplanationSource($"S{i + 1}", x.Id, x.Name, x.Url, x.PublishedOn, x.RetrievedOn, SourceUse.ProfileRecord, true)).ToList();
         if (news is not null)
-            sources.Add(new ExplanationSource($"S{sources.Count + 1}", news.DocumentId ?? $"{p.ProfileKey}#news", $"{news.Publisher}：{news.Title}", null,
-                news.PublishedOn?.ToString(), null,
+            sources.Add(new ExplanationSource($"S{sources.Count + 1}", news.DocumentId ?? $"{p.ProfileKey}#news", $"{news.Publisher}：{news.Title}", news.Url,
+                news.PublishedOn?.ToString(), news.RetrievedOn,
                 conditions.Any(c => c.Type == ListType.AdverseMedia) ? SourceUse.LegalStage : SourceUse.Context, true));
         return sources;
     }
@@ -108,6 +109,9 @@ public static class ExplanationBuilder
     private static string ExternalData(HitResult h, List<string> categories, List<ExplanationSource> sources, bool hasNews)
     {
         var p = h.Profile;
+        if (ProfileKeys.IsWeb(p.ProfileKey))
+            return $"收到網頁的人物 {p.ProfileKey}{Cite(sources)}判定為 {Join(h.Conditions.Select(Condition))}；網頁除姓名旁所載者外沒有出生日期、國籍或性別欄位"
+                + (p.Findings.Contains(Pages.PageCandidates.ModelRead) ? "；此人由新聞模型讀出（MODEL_READ）" : "") + "。";
         return $"名單 {p.ProfileKey}（{Join(categories)}）{Cite(sources.Where(x => x.UsedFor == SourceUse.ProfileRecord))}判定為 {Join(h.Conditions.Select(Condition))}；"
             + $"出生日期 {OrMissing(Join(p.DatesOfBirth.Select(d => d.ToString())))}；國籍 {OrMissing(Join(p.Citizenship))}；性別 {OrMissing(Gender(p.Gender))}；"
             + $"附加新聞{(hasNews ? "有" + Cite(sources.Where(x => x.UsedFor != SourceUse.ProfileRecord)) : "無")}。";
@@ -202,7 +206,7 @@ public static class ExplanationBuilder
             new(f[2], WithLocation(s.Nationalities, subjectCountries), WithLocation(p.Citizenship, p.AddressCountries), StatusOf(EvidenceGroup.Nationality), null,
                 subjectCountries.Count == 0 || p.AddressCountries.Count == 0 ? null : subjectCountries.Intersect(p.AddressCountries).Any() ? "所在地國家相符" : "所在地國家不同"),
             new(f[3], s.DateOfBirth is { } own ? WithAge(own, asOf) : null, NullIfEmpty(Join(p.DatesOfBirth.Select(d => WithAge(d, asOf)))), StatusOf(EvidenceGroup.DateOfBirth),
-                DobDifference(e, p), NullIfEmpty(string.Join("；", new[] { EvidenceGroup.StatedAge, EvidenceGroup.StatedBirthDate }.Select(g => e.GetValueOrDefault(g)?.Note).OfType<string>()))),
+                DobDifference(e, p), NullIfEmpty(string.Join("；", new[] { EvidenceGroup.DateOfBirth, EvidenceGroup.StatedAge, EvidenceGroup.StatedBirthDate }.Select(g => e.GetValueOrDefault(g)?.Note).OfType<string>()))),
             new(f[4], Gender(s.Gender), Gender(p.Gender), StatusOf(EvidenceGroup.Gender), DetailOf(EvidenceGroup.StatedGender), e.GetValueOrDefault(EvidenceGroup.StatedGender)?.Note),
             new(f[5], NullIfEmpty(Join(new[] { s.Document is { } d ? $"{d.Type} {Mask(d.Number)}" : null, // Only a legal person's tax number is compared (as its registration number), so only that one is shown.
                     s.IsEntity && s.TaxId is { State: ValueState.Present, Value: { } tax } ? $"統編 {Mask(tax)}" : null }.OfType<string>())),
@@ -286,8 +290,6 @@ public static class ExplanationBuilder
         if (h.Identity.HardConflict is { } hc)
             sb.Append("硬衝突 " + hc + (!HardConflictGate.ValidatedReasonCodes.Contains(hc) ? "，規則尚待驗證，不自動排除。"
                 : h.Identity.ReasonCodes.Contains(ReasonCodes.SourceQualityDowngrade) ? "，但來源品質有疑慮（SOURCE_QUALITY_DOWNGRADE），維持人工複核，不自動排除。"
-                // The identity is excluded, but a raised Sanction, PEP or RCA condition keeps the pair for a person to close.
-                : h.PairReasonCodes.Contains(AssessmentPolicy.ReleaseControlHumanReview) ? "，身分可排除，但名單條件依放行控制（RELEASE_CONTROL_HUMAN_REVIEW）仍需人工複核。"
                 : "，足以排除。"));
         sb.Append(support.Count == 0
             ? "除姓名、國籍、性別等前提條件外，沒有任何佐證。"

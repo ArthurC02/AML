@@ -1,7 +1,7 @@
 # ADR-0008: Validation backlog and deferred capabilities behind the Phase 1 controls
 
 - Status: Accepted
-- Date: 2026-11-02; updated 2026-11-09 (merged former ADR-0021), 2026-11-20 (Fellegi-Sunter groups and placeholders), 2026-11-26 (risk scoring is not the scoring rule; no blanket human review for PEP and Sanction under the scoring rule)
+- Date: 2026-11-02; updated 2026-11-09 (merged former ADR-0021), 2026-11-20 (Fellegi-Sunter groups and placeholders), 2026-11-26 (risk scoring is not the scoring rule; no blanket human review for PEP and Sanction under the scoring rule), 2026-11-27 (the DOB conflict released by the user's decision ahead of GC-06; the document conflict stays pending; the Sanction/PEP/RCA human-review release control lifted)
 
 ## Context
 
@@ -9,8 +9,8 @@ Only GC-01 to GC-03 have real data; waiting for GC-04 to GC-08 would stall all w
 
 ## Decision
 
-- **Pending Golden Cases do not block development.** The automatic decisions related to each pending case stay disabled or restricted until it is validated ([validation backlog](../plan/golden-cases.md#validation-backlog)). GC-04 and GC-05 validate PEP/RCA and Sanction acceptance; they no longer hold those candidates in blanket human review once the scoring rule decides (read from the user's statement of 2026-11-26; the user can restore the control), and today's code keeps `RELEASE_CONTROL_HUMAN_REVIEW` while the stage 3 table decides.
-- **Deferred capabilities are built without changing any release control:**
+- **Pending Golden Cases do not block development.** The automatic decisions related to each pending case stay disabled or restricted until it is validated ([validation backlog](../plan/golden-cases.md#validation-backlog)), or until the user releases one by decision: the DOB conflict (more than two years apart) concludes NO_MATCH since 2026-11-27 without GC-06, which will check it when supplied ([birth-date tolerance](../feature/identity-adjudication.md#birth-date-tolerance)). GC-04 and GC-05 will check PEP/RCA and Sanction acceptance; they no longer hold those candidates in blanket human review (the user lifted that control on 2026-11-27, [ADR-0001](0001-identity-adjudication.md)): an identity NO_MATCH gives NO_HIT for them as for any list type, so until GC-04 and GC-05 are supplied that NO_HIT rests on the validated hard-conflict rules alone.
+- **Deferred capabilities are built without changing any Phase 1 control:**
   - **List database and retrieval**: `list_profile` keeps every captured Profile version with its SHA-256; `Core/Retrieval/ProfileIndex` searches by exact alias, word BM25 and character n-grams, counted by Profile, through `GET /api/profiles/search`, `GET /api/profiles/{profileId}` and `GET /api/cases/{caseId}/candidates`. Scores rank only ([ADR-0001](0001-identity-adjudication.md)).
   - **Profile merging**: `ProfileMerge` groups Profiles on a shared comparable document key or a recorded "same as" link, never on names; merged Profiles keep their IDs.
   - **Source refresh**: `case_input` stores the files of every revision; a changed Profile re-analyzes each Case whose latest input used it.

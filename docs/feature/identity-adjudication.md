@@ -239,6 +239,17 @@ Measured on the annotated judgments (old development set, 35 suspects with an an
 
 Nationality and residence written next to the name are shown in the news digest for the reviewer and are not compared: a residence has no period, and a nationality word in news is often a description, not a citizenship.
 
+### Several news items
+
+A Profile can have several attached news files (新聞資訊_, 新聞資訊1_, 新聞資訊2_ …, [extraction](extraction-and-normalization.md#file-layouts)). Every item is read; with one item the rules below reduce to the single-item rules.
+
+- Stated age: read per item, each at its own report date. A compatible age in any item stands (`AGE_COMPATIBLE_AT_REPORT`); otherwise a difference stands; otherwise the first item's reading. The note lists every item's reading.
+- Stated birth dates and genders: the values of all items are one reading, as if written in one item. 男 in one item and 女 in another gives no gender reading.
+- Temporal check: every item's report date is an event.
+- The [two-year conflict](#two-year-conflict-on-stated-values) keeps its meaning across items: at least one value compared, and every compared value, in every item, more than two years off. One near item beside one far item never concludes; an item whose value is not compared neither blocks nor concludes.
+- [Implausible age at a dated document](#implausible-age-at-a-dated-document-advisory): one qualifying item gives the hint, whatever the others say.
+- The legal stage across items: [watchlist and adverse information](watchlist-and-adverse-information.md#several-news-items).
+
 ### Two-year conflict on stated values
 
 By the user's decisions of 2026-11-27, the two-year rule of the [birth-date tolerance](#birth-date-tolerance) concludes on what attached news of a list Profile, or a received page (`WEB:` key, [external sources](external-sources.md#matched-against-the-customer)), states next to the name, on the different-person side only (`HardConflictGate`):
@@ -284,6 +295,33 @@ Each rule records its reason code as the pair's `hardConflict`. Source-quality c
 - for impossible age: the Profile has a dated role without its organization, or a role dated to the year only, or its own DOB makes a role just as impossible, so the role date itself is suspect;
 - for a DOB conflict: the Profile's DOBs are scattered (three or more, or over two years apart).
 
+### Implausible age at a dated document (advisory)
+
+The shape it reads is the vendor's attached news with a dated header, on a Profile without a birth date of its own: a customer far too young on the item's date to be the accused or the company officer the item names. It is a hint, not a hard conflict (user's decision 2026-11-27, [ADR-0001](../adr/0001-identity-adjudication.md)): `HardConflictGate.ImplausibleAgeAtDocument` gives the TEMPORAL_ROLE evidence a CONFLICT with the advisory code `AGE_IMPLAUSIBLE_AT_DOCUMENT` (not a validated code), and the pair goes to [stage 3](#stage-3-table) row 1, REVIEW, where a stated age difference sits; it is never NO_MATCH. With an agreeing document the pair is row 2 and the code is recorded alongside. A pair a hard conflict decides (for example `STATED_DOB_CONFLICT`) carries no hint: no code, no note, no explanation line. The hint is given when all of these hold:
+
+- the customer's birth date is known to the day, and the Profile has no birth date of its own (else the [birth-date rules](#birth-date-tolerance) decide);
+- an attached item of the Profile (a list Profile's news, or a received page by its publication date, [external sources](external-sources.md#matched-against-the-customer)) has a header date to the day: the media article's date line or a court release's 公告日 ([extraction](extraction-and-normalization.md#file-layouts)). Never a date in the body, a year-only or relative date, the Profile notes, the vendor's review date or a page's update date (`UPDATE_DATE`);
+- the customer's oldest possible age that day is under 14 (`MinimumRoleAge`, the age of criminal responsibility; the role-table rule uses the same constant). A customer born after the header date (a negative age) is hinted too;
+- the role is read locally, at the Profile person's own mentions in that item (`HardConflictGate.RoleAChildCannotHold`), under a [full name form](#two-year-conflict-on-stated-values) only:
+  - basis: a suspect word (被告, 共同被告, 嫌犯, 犯嫌, 嫌疑人) or a company officer word (董事長, 副董事長, 董事, 監察人, 總經理, 負責人, 執行長; 實際負責人 and 常務董事 end in one; a 前 prefix counts) standing directly before a whole full-name mention. Nothing else: no event the news digest attributes (its actor falls back to the last name earlier in the sentence, so 檢察官陳志明今天起訴一名詐欺嫌犯 would read as the person indicted), no role or party of an anonymised alias the digest folds into the person (陳嫌 beside 被害人陳志明), no model reading. So 判處陳志明有期徒刑, with no word before the name, does not count;
+  - whole mention: the name is followed by punctuation, whitespace, the end of the text, a particle that never starts a name or an organisation (涉, 遭, 被, 與, 及, 等, 因, 已, 則, 也, 亦, 稱, 說, 並, 坦, 供, 否, 辯, 均, 獲, 未, 不, 的) or an offence or penalty word of a court text (詐欺, 貪污, 違反, 侵占, 背信, 洗錢, 竊盜, 偽造, 有期徒刑, 無期徒刑, 拘役, 罰金, 死刑). 被告陳志明宏 and 陳志明國小 are other names. This boundedness applies to this rule only; the digest and the other readers do not use it;
+  - disqualifiers: any mention of a full name directly after a victim, complainant or witness word (被害人, 受害人, 被害者, 受害者, 告訴人, 告發人, 檢舉人, 證人), a child word (少年, 少女, 男童, 女童, 兒童, 學童, 幼童, 學生) or an official word (主任檢察官, 檢察官, 審判長, 法官, 律師, 辯護人, 警員, 員警, 警官) makes the item silent, whatever its other mentions say (法官陳志明 beside 被告陳志明 gives no hint);
+  - a minor or child context anywhere in the item makes the whole item silent, on purpose for the whole item (cheap, and it errs to silence; a juvenile defendant may be the young customer): 少年, 少女, 未成年, 兒童, 男童, 女童, 幼童, 學童, 孩童, 國小, 國中, 小學, 中學生, 學生 (so also 少年法庭, 國中生, 小學生), 高中, 國一, 國二, 國三, 幼稚園, 幼兒園, 就讀, 年幼, 年紀尚幼, 幼兒, 嬰兒, 稚子, 小六生, 未滿 N 歲, or any age under 18 stated anywhere (N 歲, 年僅 N);
+  - a guardian or limited capacity anywhere makes it silent (法定代理人, 監護人, 監護宣告, 受監護, 輔助宣告, 無行為能力, 限制行為能力, 代為出席, 由父母), and so does a civil or inheritance matter (民事, 原告, 繼承, 遺產, 損害賠償, 連帶給付): a minor can be a civil defendant or an heir holding shares;
+  - a kinship word directly before a full name or its role word makes it silent (兒子, 女兒, 孫子, 孫女, 子女, 幼子, 幼女);
+  - a role word inside another word does not qualify (原被告, 準被告, 代位被告); the officer compounds 實際負責人, 副董事長, 副總經理, 獨立董事, 常務董事 are listed and qualify, and a case number before 被告 (第1234號被告) is not such a word;
+  - a nominal officer or a name used by someone else anywhere in the item makes it silent (人頭, 掛名, 冒名, 冒用, 盜用, 借名, 名義負責人, 登記負責人): a minor so registered or whose name was used is the same person;
+  - a mention does not qualify when its sentence holds a negation, mistaken-identity, misuse or harm cue (否認, 並非, 不是, 誤傳, 誤認, 誤植, 同名, 冒用, 冒名, 盜用, 人頭, 掛名, 名義, 被害, 受害, 遭詐, 受騙), or 非 stands directly before its word (非董事陳志明); a qualifying mention in another sentence without such a cue still counts;
+- the item does not state an age compatible with the customer's at that date, or the customer's birth date.
+
+The word lists are in one place, `Identity/DocumentAgeWords.cs`. The rule reads natural-language text with these closed lists, which are known to be incomplete. The reading is linear in the item: sentence ends are found once and each sentence's cues checked once; over 1,000 mentions of the Profile's names in one item the item is silent. No hint: an official only, a person merely mentioned, a masked or anonymised form, a two-character alias, a role not read. One qualifying item is enough for the hint, whatever another item says.
+
+What the reviewer sees: the TEMPORAL_ROLE note names the item (its place in the attached order, from 1), its header date, the role read and the customer's oldest age that day, and the explanation opens the pair's 相符／衝突 sentence with it and names it first among the conflicts (附加新聞日期時的年齡), for example 「第 1 則附加新聞（報導日期 2017-05-09）稱名單人物為「董事」，當日客戶最多 10 歲；未自動判定，請覆核。」 Review priority follows the existing rules: row 1 REVIEW is LOW, HIGH when a Sanction condition is raised; so a pair that would otherwise sit on rows 3 to 5 (PROBABLE_MATCH at HIGH, or partial support at NORMAL) is row 1 at LOW with the hint, as with a stated age difference. The [score band](scoring-rule.md) gives it no item (0 points) and no veto.
+
+Why it is advisory: it reads natural-language text with closed word lists known to be incomplete, and it is not measured on real labelled Cases with the bank's decisions. It becomes a concluding rule only on a measured error rate on such Cases ([open question](../plan/open-questions.md#data-and-source)). On the real-shape synthetic set it is given to 6 pairs, all strangers, which a veto would conclude ([measurement](../plan/poc-delivery-plan.md#real-shape-synthetic-set)).
+
+Ways the hint can be wrong, were it a veto (not measured on real data): (a) a vendor Profile that merges namesakes: when the customer is one of them, an adult namesake's item on the same Profile hints against the customer, whatever the customer's own items say; (b) a compatible stated age in another item does not cancel the hint (only the qualifying item's own stated age does); (c) a wrong header date (a database's load date, a reprint); (d) a customer birth date entered wrongly at the bank; (e) a minor used as a nominal officer or account holder, or whose name was used without consent, is hinted although it is the same person when the item says nothing of it; (f) a sentence form the word lists do not know, such as a guardian, civil-suit or inheritance context written in other words than the listed ones. A minor of 14 or more who really is a defendant is outside the hint by the threshold, as wanted. Company officers take the same 14, not adulthood, by decision (the [impossible-role rule](#hard-conflict-gate) with adulthood stays pending).
+
 ## Decision policy
 
 ```text
@@ -327,7 +365,7 @@ Applied only when no hard conflict fired. The first matching row wins. The table
 
 | # | Condition | Decision | Reason code |
 |---|---|---|---|
-| 1 | a `CONFLICT` in DOCUMENT; or, without UNIQUE support, `AGE_DIFFERENCE_AT_REPORT` or a `CONFLICT` in STATED_BIRTH_DATE (a DATE_OF_BIRTH conflict never reaches stage 3: it is the stage 1 rule) | REVIEW | the conflict's code, the first of `DOCUMENT_IDENTITY_CONFLICT`, `AGE_DIFFERENCE_AT_REPORT`, `NEWS_BIRTH_DATE_DIFFERENCE` |
+| 1 | a `CONFLICT` in DOCUMENT; or, without UNIQUE support, the advisory `AGE_IMPLAUSIBLE_AT_DOCUMENT` (TEMPORAL_ROLE), `AGE_DIFFERENCE_AT_REPORT` or a `CONFLICT` in STATED_BIRTH_DATE (a DATE_OF_BIRTH conflict never reaches stage 3: it is the stage 1 rule) | REVIEW | the conflict's code, the first of `DOCUMENT_IDENTITY_CONFLICT`, `AGE_IMPLAUSIBLE_AT_DOCUMENT`, `AGE_DIFFERENCE_AT_REPORT`, `NEWS_BIRTH_DATE_DIFFERENCE` |
 | 2 | UNIQUE support | MATCH when the release policy allows; Phase 1: PROBABLE_MATCH | `UNIQUE_IDENTIFIER_AGREEMENT` |
 | 3 | HIGH support plus at least one other non-prerequisite support, and no `GENDER_CONFLICT` or STATED_GENDER conflict | PROBABLE_MATCH | `STRONG_SUPPORT_COMBINATION` |
 | 4 | every hit prerequisite is EXACT (name after normalization and disclosed relaxations, gender, nationality), DATE_OF_BIRTH is support at the finest precision both sides allow, and no DOCUMENT or EMPLOYMENT value is CONFLICT or UNCERTAIN other than `NOT_COMPARABLE` | PROBABLE_MATCH | `CONSISTENT_AT_AVAILABLE_PRECISION` |
@@ -403,6 +441,7 @@ Only registered codes may appear in decisions. New codes are added here with the
 |---|---|---|
 | `TEMPORALLY_PLAUSIBLE` | IdentityDecisionPolicy | customer age and role at the reported event are possible; not support for identity |
 | `IMPOSSIBLE_AGE_AT_REPORTED_EVENT` | IdentityDecisionPolicy | hard conflict; validated by GC-01 |
+| `AGE_IMPLAUSIBLE_AT_DOCUMENT` | EvidenceBuilder | advisory conflict, stage 3 row 1 REVIEW; never concludes ([implausible age at a dated document](#implausible-age-at-a-dated-document-advisory)) |
 | `IMPOSSIBLE_ROLE_AT_REPORTED_EVENT` | IdentityDecisionPolicy | hard conflict; pending validation |
 | `FULL_DOB_CONFLICT` | HardConflictGate | every Profile DOB more than two years off, full dates on both sides; hard conflict, validated by the user's decision of 2026-11-27 |
 | `DOCUMENT_IDENTITY_CONFLICT` | IdentityDecisionPolicy | hard conflict; pending validation |

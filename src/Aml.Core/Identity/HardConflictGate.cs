@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+using Aml.Core.Normalization;
 using Aml.Core.Shared;
 using Aml.Core.Subjects;
 
@@ -10,7 +12,7 @@ namespace Aml.Core.Identity;
 /// for the person (STATED_DOB_CONFLICT), is validated by the user's decisions of 2026-11-27; DOCUMENT_IDENTITY_CONFLICT is
 /// pending and reaches REVIEW through stage 3 row 1.
 /// </summary>
-public static class HardConflictGate
+public static partial class HardConflictGate
 {
     public static readonly IReadOnlySet<string> ValidatedReasonCodes = new HashSet<string>
         { ReasonCodes.ImpossibleAgeAtReportedEvent, ReasonCodes.FullDobConflict, ReasonCodes.DobConflict, ReasonCodes.StatedDobConflict };
@@ -53,7 +55,11 @@ public static class HardConflictGate
     /// The first rule that fires: death before birth, impossible age, the DOB conflict, impossible role, and the values the
     /// text <paramref name="news"/> states next to the name, as compared in <paramref name="evidence"/> (<see cref="StatedConflict"/>).
     /// </summary>
-    public static string? Check(ScreenedSubject s, SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence>? evidence = null, NewsItem? news = null)
+    public static string? Check(ScreenedSubject s, SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence>? evidence = null, NewsItem? news = null) =>
+        Check(s, p, evidence, news is null ? [] : [news]);
+
+    /// <summary>As <see cref="Check(ScreenedSubject, SourceProfile, IReadOnlyDictionary{EvidenceGroup, Evidence}?, NewsItem?)"/>, the stated values read across every news item of the Profile.</summary>
+    public static string? Check(ScreenedSubject s, SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence>? evidence, IReadOnlyList<NewsItem> news)
     {
         if (s.DateOfBirth is not { } dob) return null;
         if (p.DateOfDeath is { } death && Before(death, dob)) return ReasonCodes.DeathBeforeCustomerBirth;
@@ -62,6 +68,108 @@ public static class HardConflictGate
         return EvidenceBuilder.DateOfBirthEvidence(s, p) is { Direction: Direction.Conflict, Detail: { } dobConflict } ? dobConflict
             : role ?? StatedConflict(s, dob, p, evidence, news);
     }
+
+    /// <summary>The attached item that grounds the hint: its place (from 1), its header date, the role read and the customer's oldest age that day.</summary>
+    public sealed record DocumentAge(int Item, PartialDate On, string Role, int MaxAge);
+
+    /// <summary>
+    /// Implausible age at a dated document, advisory (user, 2026-11-27: a hint until real labelled Cases measure it; it is
+    /// no hard conflict and never concludes): the customer, born on a known day, was under <see cref="MinimumRoleAge"/> at
+    /// most on the header date (to the day) of an attached item in which the rules read for the Profile person, under a full
+    /// name form (<see cref="StatedAgeCheck.IsFullForm"/>), a role a child cannot hold (<see cref="RoleAChildCannotHold"/>);
+    /// a customer born after the header date (a negative age) too. One such item is enough. Silent when the Profile has a
+    /// DOB of its own (the birth-date rules decide), and for an item whose stated age is compatible or stated birth date
+    /// agrees with the customer's (the item may be about the customer).
+    /// </summary>
+    public static DocumentAge? ImplausibleAgeAtDocument(ScreenedSubject s, SourceProfile p, IReadOnlyList<NewsItem> news)
+    {
+        if (s.DateOfBirth is not { Precision: DatePrecision.Day } dob || p.DatesOfBirth.Count > 0) return null;
+        var names = p.Names.Where(StatedAgeCheck.IsFullForm).ToList();
+        if (names.Count == 0) return null;
+        for (var i = 0; i < news.Count; i++)
+        {
+            if (news[i].PublishedOn is not { Precision: DatePrecision.Day } on || MaxAgeAt(dob, on) >= MinimumRoleAge) continue;
+            if (StatedAgeCheck.Check(s, p, news[i])?.Status == ComparisonStatus.Exact
+                || NewsStatedCheck.CheckBirthDate(s, p, news[i], null)?.Detail == ReasonCodes.NewsBirthDateAgrees) continue;
+            if (RoleAChildCannotHold(news[i].Text, names) is { } role) return new(i + 1, on, role, MaxAgeAt(dob, on));
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The word a child cannot be called that stands directly before a whole full-name mention of the Profile person in
+    /// <paramref name="text"/>: a suspect word or a company officer word, optionally after 前. Read from the mentions alone:
+    /// no event the digest attributes, no role of an alias folded into the person. Null when any mention of a full name is
+    /// directly preceded by a victim, complainant, witness, child or official word, or when none is preceded by a
+    /// qualifying word. A mention is whole when the name is followed by punctuation, whitespace, the end, or one of
+    /// <see cref="DocumentAgeWords.SafeFollowers"/> (陳志明宏, 陳志明國小 are other names). Silent for the whole item when it
+    /// holds a minor or child cue or an age under 18 anywhere, or a nominal-officer or used-name cue; a mention whose
+    /// sentence holds a negation, mistaken-identity, misuse or harm cue, or whose word follows 非, does not qualify.
+    /// </summary>
+    internal static string? RoleAChildCannotHold(string text, IReadOnlyList<string> fullNames)
+    {
+        // A minor or child context, or a nominal officer or used name, anywhere in the item: silent, on purpose for the whole item.
+        if (DocumentAgeWords.MinorCues.Concat(DocumentAgeWords.NominalCues).Any(w => text.Contains(w, StringComparison.Ordinal)) || StatesMinorAge(text)) return null;
+        // Sentence ends found once; each sentence's cues are checked once (linear in the text, whatever the mentions).
+        var ends = new List<int>();
+        for (var i = text.AsSpan().IndexOfAny(DocumentAgeWords.SentenceEnds); i >= 0;)
+        {
+            ends.Add(i);
+            var next = text.AsSpan(i + 1).IndexOfAny(DocumentAgeWords.SentenceEnds);
+            i = next < 0 ? -1 : i + 1 + next;
+        }
+        var cueBySentence = new Dictionary<int, bool>();
+        bool SentenceHasCue(int at)
+        {
+            var k = ends.BinarySearch(at);
+            k = k < 0 ? ~k : k; // the sentence ends at ends[k], or at the text's end
+            if (cueBySentence.TryGetValue(k, out var hit)) return hit;
+            var from = k == 0 ? 0 : ends[k - 1] + 1;
+            var sentence = text.AsSpan(from, (k < ends.Count ? ends[k] : text.Length) - from);
+            hit = false;
+            foreach (var c in DocumentAgeWords.SentenceCues) hit |= sentence.Contains(c, StringComparison.Ordinal);
+            return cueBySentence[k] = hit;
+        }
+
+        string? basis = null;
+        var mentions = 0;
+        foreach (var name in fullNames)
+            for (var at = text.IndexOf(name, StringComparison.OrdinalIgnoreCase); at >= 0; at = text.IndexOf(name, at + name.Length, StringComparison.OrdinalIgnoreCase))
+            {
+                if (++mentions > DocumentAgeWords.MaxMentions) return null;
+                // Any such mention blocks, whole or not: a victim, witness, child or official word, or a kinship word, before the name.
+                if (WordBefore(text, at, DocumentAgeWords.Disqualifying) is not null || WordBefore(text, at, DocumentAgeWords.Kinship) is not null) return null;
+                if (!IsWhole(text, at + name.Length) || WordBefore(text, at, DocumentAgeWords.Qualifying) is not { } word) continue;
+                var wordAt = at - word.Length;
+                if (WordBefore(text, wordAt, DocumentAgeWords.Kinship) is not null) return null; // 兒子董事陳志明
+                if (basis is not null) continue;
+                if (wordAt > 0 && text[wordAt - 1] == DocumentAgeWords.NegationBeforeRole) continue; // 非董事陳志明
+                if (WordBefore(text, wordAt, DocumentAgeWords.NotRolePrefixes) is not null) continue; // 原被告, 準被告: another word
+                if (SentenceHasCue(at)) continue;
+                basis = word;
+            }
+        return basis;
+    }
+
+    // 12歲, 十二歲, 未滿18歲, 年僅12: any age under 18 stated anywhere. ponytail: the first 1000 ages only; a longer list is no article.
+    private static bool StatesMinorAge(string text) =>
+        AgeAnywhere().Matches(text).Take(DocumentAgeWords.MaxMentions)
+            .Any(m => m.Groups["under"].Success || ChineseNumerals.Parse(m.Groups["n"].Value) is < DocumentAgeWords.MinorAge);
+
+    [GeneratedRegex("(?<under>未滿)?\\s?(?<n>\\d{1,3}|[〇零一二兩三四五六七八九十廿]{1,4})\\s?(?:足|周|週)?歲|年僅\\s?(?<n>\\d{1,3}|[〇零一二兩三四五六七八九十廿]{1,4})")]
+    private static partial Regex AgeAnywhere();
+
+    private static string? WordBefore(string text, int at, string[] words)
+    {
+        var before = text.AsSpan(0, at);
+        foreach (var w in words)
+            if (before.EndsWith(w, StringComparison.Ordinal))
+                return before.Length > w.Length && before[^(w.Length + 1)] == '前' ? "前" + w : w;
+        return null;
+    }
+
+    private static bool IsWhole(string text, int end) =>
+        end >= text.Length || !char.IsLetterOrDigit(text[end]) || DocumentAgeWords.SafeFollowers.Any(f => text.AsSpan(end).StartsWith(f, StringComparison.Ordinal));
 
     /// <summary>
     /// The birth dates and the age at the report date that attached news or a received page states next to the name (user,
@@ -72,9 +180,10 @@ public static class HardConflictGate
     /// (reaching here, that DOB agrees with the customer's, and the news may be about someone else), or when HIGH or UNIQUE
     /// support agrees (a document outranks the text). The far value must also be read next to a full name form
     /// (<see cref="StatedAgeCheck.IsFullForm"/>): a short alias may stand inside another person's name; what such an alias
-    /// reads still blocks, but never concludes.
+    /// reads still blocks, but never concludes. Across several news items the same holds of all their values together: a
+    /// compatible age or a near birth date in any item keeps the pair open.
     /// </summary>
-    private static string? StatedConflict(ScreenedSubject s, PartialDate dob, SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence>? evidence, NewsItem? news)
+    private static string? StatedConflict(ScreenedSubject s, PartialDate dob, SourceProfile p, IReadOnlyDictionary<EvidenceGroup, Evidence>? evidence, IReadOnlyList<NewsItem> news)
     {
         // An agreeing document (or any HIGH support) outranks what a text states next to a name, as in stage 3 row 2.
         if (evidence is null || p.DatesOfBirth.Count > 0 || evidence.Values.Any(v => v.IsSupport && v.Strength >= Strength.High)) return null;

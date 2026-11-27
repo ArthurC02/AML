@@ -83,7 +83,7 @@ public static class CaseWorkbook
         Joined(h.PairReasonCodes), h.Disposition.Recommendation is { } d ? Code(d) : null, Joined(h.Disposition.ReasonCodes), Joined(h.Disposition.PendingChecks),
         Joined(h.DataQualityFindings), Joined(h.UnknownFields), Joined(h.WouldChangeIf.Select(w => w.Text)),
         h.Summary.InternalData, h.Summary.ExternalData, h.Summary.AgreementsAndDifferences, h.Summary.KeyEvidenceOrGaps, h.Summary.Conclusion,
-        h.NewsDigest is { } n ? string.Join("\n", n.Summary) : null,
+        h.NewsDigest is null ? null : string.Join("\n", h.AllNewsDigests.SelectMany(n => n.Summary)),
     ]));
 
     private static Table NewsPeople(IReadOnlyList<HitExplanation> hits) => new("新聞人物",
@@ -95,7 +95,7 @@ public static class CaseWorkbook
         new("角色", "newsDigest.people[].party", "SUSPECT、VICTIM、WITNESS 或 OFFICIAL；空白為看不出"),
         new("出現次數", "newsDigest.people[].mentions", "出現次數"),
         new("識別資訊", "newsDigest.people[].identifiers", "報導緊接姓名寫出的性別、年齡、出生日期、身分證字號（已遮罩）、國籍、住居地、職業與任職機構", Identifying: true),
-    ], hits.SelectMany(h => (h.NewsDigest?.People ?? []).Select(p => (IReadOnlyList<object?>)
+    ], hits.SelectMany(h => h.AllNewsDigests.SelectMany(n => n.People).Select(p => (IReadOnlyList<object?>)
         [h.HitNumber, p.Name, Code(p.Match), Joined(p.Roles), p.Party is { } party ? Code(party) : null, p.Mentions,
          Joined(p.Identifiers.Select(i => $"{Code(i.Kind)} {i.Text ?? i.Number}"))])));
 
@@ -117,7 +117,7 @@ public static class CaseWorkbook
         new("求刑", "newsDigest.events[].requestedPenalty", "檢方求刑原文"),
         new("判決確定", "newsDigest.events[].final", "報導寫明判決確定或定讞"),
         new("原文", "newsDigest.events[].quote", "事件所在句子的原文", Identifying: true),
-    ], hits.SelectMany(h => (h.NewsDigest?.Events ?? []).Select(e => (IReadOnlyList<object?>)
+    ], hits.SelectMany(h => h.AllNewsDigests.SelectMany(n => n.Events).Select(e => (IReadOnlyList<object?>)
         [h.HitNumber, Code(e.Type), Code(e.Certainty), Code(e.Source), e.Actor, e.ActorMatch is { } m ? Code(m) : null, e.Date, e.DateValue?.ToString(), e.Agency,
          Joined(e.Offences), Joined(e.OffenceCategories), e.Amount, e.Penalty, e.RequestedPenalty, YesNo(e.Final), e.Quote])));
 
@@ -131,8 +131,8 @@ public static class CaseWorkbook
         new("名單人物", "newsDigest.model.entities[].profileName", "姓名與名單人物相同"),
         new("出現次數", "newsDigest.model.entities[].mentions", "出現次數"),
         new("模型版本", "newsDigest.model.version", "人物模型與事件模型的檔案雜湊"),
-    ], hits.SelectMany(h => h.NewsDigest?.Model is { } m ? m.Entities.Select(e => (IReadOnlyList<object?>)
-        [h.HitNumber, e.Name, Joined(e.OtherForms), YesNo(e.Organisation), e.Party is { } p ? Code(p) : null, YesNo(e.ProfileName), e.Mentions, m.Version]) : []));
+    ], hits.SelectMany(h => h.AllNewsDigests.Select(n => n.Model).OfType<NewsModelReadout>().SelectMany(m => m.Entities.Select(e => (IReadOnlyList<object?>)
+        [h.HitNumber, e.Name, Joined(e.OtherForms), YesNo(e.Organisation), e.Party is { } p ? Code(p) : null, YesNo(e.ProfileName), e.Mentions, m.Version]))));
 
     private static Table ModelEvents(IReadOnlyList<HitExplanation> hits) => new("模型事件",
     [
@@ -142,7 +142,7 @@ public static class CaseWorkbook
         new("確定程度", "newsDigest.model.entities[].events[].certainty", "STATED、NEGATED 或 REQUESTED"),
         new("機率", "newsDigest.model.entities[].events[].probability", "模型機率，至少 0.4"),
         new("原文", "newsDigest.model.entities[].events[].quote", "機率最高的句子原文", Identifying: true),
-    ], hits.SelectMany(h => (h.NewsDigest?.Model?.Entities ?? []).SelectMany(e => e.Events.Select(v => (IReadOnlyList<object?>)
+    ], hits.SelectMany(h => h.AllNewsDigests.SelectMany(n => n.Model?.Entities ?? []).SelectMany(e => e.Events.Select(v => (IReadOnlyList<object?>)
         [h.HitNumber, e.Name, Code(v.Type), Code(v.Certainty), v.Probability, v.Quote]))));
 
     private static Table Comparison(IReadOnlyList<HitExplanation> hits) => new("比對",

@@ -51,8 +51,9 @@ public static class CaseAnalyzer
     private static HitResult Hit(CaseInput input, IGrouping<string, CandidateRow> rows, RiskPolicy? risk, DateOnly today, IReadOnlyList<IStageReader>? stageReaders)
     {
         var profile = input.Profiles[rows.Key];
-        var news = input.NewsByProfileId.GetValueOrDefault(rows.Key);
-        var conditions = SourceConditions.Determine(profile, rows.Any(r => r.IsRca), news?.Text, ListFlags.Merge(rows.Select(r => r.Flags ?? ListFlags.None)), today, stageReaders);
+        var news = input.NewsByProfileId.GetValueOrDefault(rows.Key) ?? [];
+        var conditions = SourceConditions.DetermineWithNews(profile, rows.Any(r => r.IsRca), [.. news.Select(n => n.Text)],
+            ListFlags.Merge(rows.Select(r => r.Flags ?? ListFlags.None)), today, stageReaders);
         return Pair(input.Subject, profile, rows.Count(), conditions, news, risk, today);
     }
 
@@ -60,15 +61,15 @@ public static class CaseAnalyzer
     private static HitResult PageHit(CaseInput input, PageRecord page, PagePerson person, RiskPolicy? risk, DateOnly today)
     {
         var profile = PageCandidates.Profile(person);
-        return Pair(input.Subject, profile, 0, SourceConditions.FromPage(person, profile, page.Text!), PageCandidates.News(page, person), risk, today);
+        return Pair(input.Subject, profile, 0, SourceConditions.FromPage(person, profile, page.Text!), [PageCandidates.News(page, person)], risk, today);
     }
 
-    private static HitResult Pair(ScreenedSubject subject, SourceProfile profile, int rows, IReadOnlyList<SourceCondition> conditions, NewsItem? news,
+    private static HitResult Pair(ScreenedSubject subject, SourceProfile profile, int rows, IReadOnlyList<SourceCondition> conditions, IReadOnlyList<NewsItem> news,
         RiskPolicy? risk, DateOnly today)
     {
         var identity = IdentityDecisionPolicy.Decide(subject, profile, news);
         var pair = AssessmentPolicy.Assess(conditions, identity);
-        var disposition = DispositionPolicy.Recommend(subject, profile, conditions, identity, news is not null, today);
+        var disposition = DispositionPolicy.Recommend(subject, profile, conditions, identity, news.Count > 0, today);
         return new HitResult(profile, rows, conditions, identity, pair.Result, pair.Priority, pair.ReasonCodes, disposition,
             RiskScoring.Assess(conditions, identity, risk));
     }

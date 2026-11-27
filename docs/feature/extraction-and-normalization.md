@@ -69,10 +69,21 @@ Customer, related party and Profile data are kept per person; one person's value
 
 ## File layouts
 
-- Customer files (`客戶-背景資料`, `客戶-聯絡資料`): a label line followed by its value line. A value line that is itself one of the known labels means the value was blank (`FIELD_BLANK`).
+- Customer files (`客戶-背景資料`, `客戶-聯絡資料`): a label line followed by its value line. A value line that is itself one of the known labels means the value was blank (`FIELD_BLANK`). 客戶別名 is one more name form of the customer, compared like 客戶名稱 and 本地名稱 (kept once when it repeats one); 職位, else 職稱, is the customer's title and 出生地點 the birth place, both shown and never compared. A dash or blank in any of them is missing.
 - Related-party file: `key ：` or `key :` lines (full- or half-width colon), the value on the following line or lines, joined with a space when it spans several; a key followed directly by the next key has an empty value.
-- Profile file (`名單資料_<id>`): `key:\tvalue` lines, or `key:` followed by a tab-separated table whose numbered rows are read. Row numbers may be full-width. A row with fewer cells than its table needs is left out with an `UNPARSEABLE:<table>` finding (e.g. `UNPARSEABLE:職位`); the rest of the Profile is still read.
-- News file (`新聞資訊_<id>`): the publication date is a line such as `2026 年 9 月 6 日` or `2026年9月6日` (full-width digits too), read by the date parser, so an impossible date such as 13月 or 2月30日 leaves the date out; the publisher the line after it, the document ID the `文件 <id>` line.
+- Profile file (`名單資料_<id>`): `key:\tvalue` lines, or `key:` followed by a tab-separated table whose numbered rows are read. Row numbers may be full-width. A row with fewer cells than its table needs is left out with an `UNPARSEABLE:<table>` finding (e.g. `UNPARSEABLE:職位`); the rest of the Profile is still read. The 國家資料 row `Resident of` is the Profile's residence country (not nationality, [country roles](#country-roles)); `已故?:` is read as a flag (True/False and the [flag words](#source-flags)), an unreadable value giving `AMBIGUOUS:已故?`. Neither is compared. The vendor's notes are read as [Profile notes](#profile-notes).
+- News files: every `新聞資訊_<id>`, `新聞資訊1_<id>`, `新聞資訊2_<id>` … of a Profile is read, the unnumbered one first, then by number. Each is one news item; how several are combined is in [identity adjudication](identity-adjudication.md#several-news-items) and [watchlist](watchlist-and-adverse-information.md#several-news-items). A news file has one of two shapes:
+  - Media article: id line, section, headline (third line), author, word count, the publication date (searched in the first eight lines only, the header block: the date is the sixth line, with two spare for a wrapped headline or section; a body line that is just a date is never the header date; a news file whose header date cannot be read is kept whole, header lines included, with the finding `UNPARSEABLE:<file>:header` on the Case) as a line such as `2026 年 9 月 6 日` or `2026年9月6日` (full-width digits too), read by the date parser so an impossible date such as 13月 or 2月30日 leaves the date out; the publisher the line after it; then optional header lines in this order: a source code such as `SMPL` (known by its place: only when a language line follows it, so an acronym opening the body stays body), a language such as `中文(繁體)`, a copyright line; the body; the trailer. The trailer is the last `文件 <id>` line (the document ID) when only blank lines and the `UI <version>` line follow it; any other line of that shape is body. When the version line follows and the line before `文件` is a short line (60 characters or fewer) without a CJK character after a Chinese body, that line is the provider and is trailer too; otherwise it is body (an English body's last line cannot be told from a company name, so it is kept). A file cut after its date line has a date and no body.
+  - Court press release, tried only when the file has no media date line (so a `公告日：` line in an article's body does not change its shape), and known by a dated `公告日：` label in the leading header block (spaces allowed inside the labels, as in `公 告 日`): the date is dotted, `106.05.09`, read as 民國 at DAY precision only after this label (a four-digit year is AD; text after the date, such as share links, is ignored); `發布單位：` is the publisher, `標 題：` the title, `檔案下載：` and the file name on its own line are header. The header is the leading block only: a label after the first body line is body. The body follows. A release without a date in its header is read as plain text without a date. `PartialDate.Parse` itself still refuses a bare ROC year.
+  - The text the readers see is the title and the body: no author, word count, source code, language, copyright, provider, document line or version line. The identity and stage rules read that text only, never the header and trailer lines.
+
+## Profile notes
+
+The vendor's free text on a Profile, `Watchlist ProfileNotes: …` on one line or `ProfileNotes:` followed by wrapped lines, is kept as `notes` on the Profile: the raw text, its location (`名單資料_<id>.txt:<line>`) and its parts. The text runs until a line with one of the Profile's own keys (Profile_ID, 記錄類型, 性別, 已故?, 狀態, 關鍵字 and the table sections 主要名稱, 國家資料, 類別, 日期, 職位, 地址, 來源 …) or any section key followed by a tab-separated row; any other key line (`Keywords:`, `Charges: …`, `https://…`, `備註：…`) continues it. An unknown scalar key after the notes is therefore kept in them: the lesser harm, since nothing is lost. Wrapped lines are joined with a space and split at the vendor's labels (Last Reviewed Date, Record Status, Comments, Keywords, People mentioned, Companies mentioned, Associated Entity Details, Profile); text before the first label is a part without a label.
+
+- Bounded: over 32,767 characters (a workbook cell's limit) the text is cut there with `FIELD_TRUNCATED:ProfileNotes`.
+- Stored in the Case input and cited in the explanation's source list as `<Profile key>#notes` (Watchlist ProfileNotes, a Profile record).
+- Not interpreted: no field, evidence, stage or condition is read from the notes.
 
 ## Candidate table
 
@@ -99,7 +110,7 @@ Words are matched in any letter case. `NO` is an explicit value, not unknown.
 
 ## Legacy review records
 
-Earlier manual results in the input, such as "是否符合名單", "理由" and the 客戶檢核處理紀錄 section with its table, are extracted as ImportedDecision ([case management](case-management.md#decision-records)) and excluded from every evidence path. The exclusion ends where that table ends; if the heading has no table, or text after the table looks like a continuation, a `LEGACY_RECORD_BOUNDARY_UNCLEAR` finding asks the reviewer to confirm. Source flags are not decisions and stay usable.
+Earlier manual results in the input, such as "是否符合名單", "理由" and the 客戶檢核處理紀錄 section with its table, are extracted as ImportedDecision ([case management](case-management.md#decision-records)) and excluded from every evidence path. In the candidate table they are read per row: the bank's 是否符合名單 cells (全不符合 and 全符合, joined with ` | ` when both hold a value) and 理由, each with the row's Profile ID; a dash is no decision. The exclusion ends where that table ends; if the heading has no table, or text after the table looks like a continuation, a `LEGACY_RECORD_BOUNDARY_UNCLEAR` finding asks the reviewer to confirm. Source flags are not decisions and stay usable.
 
 ## Name normalization
 
@@ -246,6 +257,7 @@ An address's country comes from its own block's country field (永久地址(國�
 - unreadable flag;
 - unclear legacy-record boundary;
 - historical administrative division;
+- Profile notes cut at their cap (`FIELD_TRUNCATED:ProfileNotes`);
 - Profile with several DOB values (`PROFILE_MULTIPLE_DOB`).
 
 Quality findings must remain visible to adjudication and explanations.

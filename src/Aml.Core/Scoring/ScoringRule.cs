@@ -139,7 +139,8 @@ public static class ScoringRule
     }
 
     // Profile fields count at the record's source factor, stated values at their text's. A DOB conflict is a veto (validated
-    // hard conflict), outside the sum, so it gives no item.
+    // hard conflict), outside the sum, so it gives no item. The advisory AGE_IMPLAUSIBLE_AT_DOCUMENT gives none either (0):
+    // a weight for it would be a new unapproved weight, and it is a hint for the reviewer, not evidence to sum.
     private static ScoreItem? Item(Evidence v, ScoringPolicy p, SourceKind field, SourceKind news)
     {
         (decimal Points, string Code, SourceKind Source)? x = (v.Group, v.Direction, v.Strength) switch

@@ -22,7 +22,7 @@ public static partial class HtmlExport
     {
         _ when stem.StartsWith("案件資訊", StringComparison.Ordinal) => Kind.CaseTable,
         _ when stem.StartsWith("名單資料_", StringComparison.Ordinal) => Kind.Profile,
-        _ when stem.StartsWith("新聞資訊_", StringComparison.Ordinal) => Kind.News,
+        _ when stem.StartsWith("新聞資訊", StringComparison.Ordinal) => Kind.News, // 新聞資訊_<id>, 新聞資訊1_<id> …
         "客戶-關聯人背景資料" => Kind.RelatedParty,
         _ => Kind.Customer,
     };

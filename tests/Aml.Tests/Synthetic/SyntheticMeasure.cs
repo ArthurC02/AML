@@ -148,7 +148,7 @@ public static class SyntheticMeasure
         if (!p.Citizenship.SequenceEqual(e.Citizenship)) errors.Add("profile:citizenship");
         if (!(p.Documents ?? []).Select(d => d.Number).SequenceEqual(e.DocumentNumbers)) errors.Add("profile:document");
         if (p.OfficialList?.Status != e.OfficialListStatus) errors.Add("profile:official-list");
-        if (e.NewsPublished is { } published && input.NewsByProfileId.GetValueOrDefault(t.ProfileId)?.PublishedOn != published) errors.Add("news:published");
+        if (e.NewsPublished is { } published && (input.NewsByProfileId.GetValueOrDefault(t.ProfileId) is not [var first, ..] || first.PublishedOn != published)) errors.Add("news:published");
         return errors;
     }
 

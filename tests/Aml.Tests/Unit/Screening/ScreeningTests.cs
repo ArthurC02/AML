@@ -20,7 +20,7 @@ public class ScreeningTests
 
     private static HitResult Analyze(SourceProfile p, bool isRca = false) =>
         CaseAnalyzer.Analyze(new CaseInput(Subject(), [new CandidateRow("陳志明", "1", null, isRca)],
-            new Dictionary<string, SourceProfile> { ["1"] = p }, new Dictionary<string, NewsItem>(), [])).Hits[0];
+            new Dictionary<string, SourceProfile> { ["1"] = p }, new Dictionary<string, IReadOnlyList<NewsItem>>(), [])).Hits[0];
 
     [Theory]
     [InlineData(ConditionStatus.Hit, IdentityDecision.NoMatch, ScreeningAssessment.NoHit)]
@@ -132,7 +132,7 @@ public class ScreeningTests
     public void Missing_profile_makes_the_revision_not_evaluated_and_partial()
     {
         var input = new CaseInput(Subject(), [new CandidateRow("陳志明", "1", null, false), new CandidateRow("陳志明", "2", null, false)],
-            new Dictionary<string, SourceProfile> { ["1"] = Profile("Special Interest Person (SIP)", "Fraud") }, new Dictionary<string, NewsItem>(), []);
+            new Dictionary<string, SourceProfile> { ["1"] = Profile("Special Interest Person (SIP)", "Fraud") }, new Dictionary<string, IReadOnlyList<NewsItem>>(), []);
         var a = CaseAnalyzer.Analyze(input);
 
         Assert.Equal(["DJ:2"], a.NotEvaluatedProfiles);
@@ -148,12 +148,12 @@ public class ScreeningTests
 
         var pepNo = new ListFlags(FlagValue.No, FlagValue.Missing, FlagValue.Missing);
         var notApplicable = CaseAnalyzer.Analyze(new CaseInput(Subject(), [new CandidateRow("陳志明", "1", null, false, pepNo)],
-            new Dictionary<string, SourceProfile> { ["1"] = Profile("Politically Exposed Person") }, new Dictionary<string, NewsItem>(), []));
+            new Dictionary<string, SourceProfile> { ["1"] = Profile("Politically Exposed Person") }, new Dictionary<string, IReadOnlyList<NewsItem>>(), []));
         Assert.Equal(ScreeningAssessment.NotApplicable, CaseLifecycle.Aggregate(notApplicable));
         Assert.Equal(CaseStatus.Closed, CaseLifecycle.AfterAnalysis(notApplicable, CaseStatus.InReview));
 
         var review = CaseAnalyzer.Analyze(new CaseInput(Subject(), [new CandidateRow("陳志明", "1", null, false)],
-            new Dictionary<string, SourceProfile> { ["1"] = Profile("Special Interest Person (SIP)", "Fraud") }, new Dictionary<string, NewsItem>(), []));
+            new Dictionary<string, SourceProfile> { ["1"] = Profile("Special Interest Person (SIP)", "Fraud") }, new Dictionary<string, IReadOnlyList<NewsItem>>(), []));
         Assert.Equal(CaseStatus.InReview, CaseLifecycle.AfterAnalysis(review, CaseStatus.Open));
     }
 

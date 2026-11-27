@@ -46,7 +46,7 @@ public class StageReaderCaseTests : ServiceTestBase
         {
             Rows = [.. one.Rows.Where(r => r.ProfileId != id), .. ids.SelectMany(i => one.Rows.Where(r => r.ProfileId == id).Select(r => r with { ProfileId = i }))],
             Profiles = ids.ToDictionary(i => i, i => one.Profiles[id] with { ProfileKey = Core.Retrieval.ProfileKeys.Prefix + i }),
-            NewsByProfileId = ids.ToDictionary(i => i, i => news with { ProfileId = i }),
+            NewsByProfileId = ids.ToDictionary(i => i, i => (IReadOnlyList<Core.Subjects.NewsItem>)[.. news.Select(n => n with { ProfileId = i })]),
         };
     }
 
@@ -225,12 +225,12 @@ public class StageReaderCaseTests : ServiceTestBase
 
         var (profileId, news) = Assert.Single(input.NewsByProfileId);
         var (text, names) = Assert.Single(reader.Calls);
-        Assert.Equal(news.Text, text);
+        Assert.Equal(Assert.Single(news).Text, text);
         Assert.Equal(input.Profiles[profileId].Names, names);
 
         // Every customer value that is not also one of the Profile's names: identifiers, birth date as written in Taiwan, addresses, work, relatives.
         var s = input.Subject;
-        var customer = new List<string?> { s.Document?.Number, s.ReferenceNumber, s.TaxId?.Value, s.Occupation };
+        var customer = new List<string?> { s.Document?.Number, s.ReferenceNumber, s.TaxId?.Value, s.Occupation, s.Title, s.BirthPlace };
         customer.AddRange(s.Names.Except(names));
         customer.AddRange(s.Addresses.SelectMany(a => new[] { a.Raw, a.Normalized }));
         customer.AddRange((s.Employments ?? []).Select(x => x.Organization));

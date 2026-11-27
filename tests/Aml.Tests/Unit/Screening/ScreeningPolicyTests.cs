@@ -25,7 +25,7 @@ public class ScreeningPolicyTests
 
     private static HitResult Analyze(SourceProfile p, ListFlags? flags = null, bool isRca = false, ScreenedSubject? subject = null, DateOnly? asOf = null) =>
         CaseAnalyzer.Analyze(new CaseInput(subject ?? Subject(), [new CandidateRow("陳志明", "1", null, isRca, flags)],
-            new Dictionary<string, SourceProfile> { ["1"] = p }, new Dictionary<string, NewsItem>(), []), asOf: asOf).Hits[0];
+            new Dictionary<string, SourceProfile> { ["1"] = p }, new Dictionary<string, IReadOnlyList<NewsItem>>(), []), asOf: asOf).Hits[0];
 
     private static ListFlags Flags(FlagValue pep = FlagValue.Missing, FlagValue blacklist = FlagValue.Missing, FlagValue adverse = FlagValue.Missing) =>
         new(pep, blacklist, adverse);

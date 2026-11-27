@@ -376,6 +376,19 @@ Every pair a rule concludes is one the product leaves in REVIEW today, so the ad
 
 **What it does not prove.** The kinds and counts are probes, chosen, not sampled: they say what each rule does on each failure mode, not how often the mode occurs, so the set gives no rate, and the "0 wrong" on the realistic group is not a precision. No figure here is evidence for release; real labelled pairs, including recycled and reissued documents, are still absent ([open questions](open-questions.md#identity-policy)).
 
+### Real-shape synthetic set
+
+`SyntheticCaseGenerator.RealShape` (seed 20261130, its own 20 Cases; every other set and its digest unchanged) writes Cases in the layout of a real export where the other sets use a plain one: a customer file with 客戶別名, 職稱 and 出生地點 (`-` or blank where absent), a Profile with `已故?`, a `Resident of` row and the vendor's notes (on one line, or for every third Case as a section with wrapped lines), news numbered `新聞資訊1_` (a media article with its full header and trailer, INDICTED) and for every other Case `新聞資訊2_` (a court press release a year later with spaced header labels and a 民國 dotted date, CONVICTED), and the bank's 是否符合名單 and 理由 per candidate row. Half the Cases are the customer, half a stranger. `RealShapeSetTests` pins:
+
+- every value written is read: alias, title, birth place, notes labels, residence and deceased flag, each news item's date, publisher and title in file order, the decision and reason with their Profile; no finding, and no trailer text in a news body;
+- the 10 single-item Profiles: stage right 10/10;
+- the 10 two-item Profiles (an indictment and a conviction): stage `UNKNOWN` with `STAGE_NEWS_ITEMS_DIFFER` 10/10, by construction of the [combination](../feature/watchlist-and-adverse-information.md#several-news-items);
+- no customer concluded NO_MATCH.
+
+Twelve more Cases (`DatedRoleCases`, after the 20, which keep their own digest) hold the advisory [implausible age at a dated document](../feature/identity-adjudication.md#implausible-age-at-a-dated-document-advisory), truth by construction: a customer born 2005 to 2008 against a stranger of the very same name and gender in an item dated 2016 to 2018, read there as a sentenced director in a list of four (4), a defendant in a court release (2), a victim (2) or a judge (2); and an adult customer who is the sentenced director (2). Hinted (`AGE_IMPLAUSIBLE_AT_DOCUMENT`, REVIEW on row 1): directors 4/4, defendants 2/2, victims 0/2, judges 0/2, the adult customer 0/2; no pair in the set is concluded NO_MATCH. What-if, for the open decision: as a veto it would conclude those 6, all strangers, and no same-person pair. On the other synthetic sets (end-to-end, adversarial, received pages) it hints no pair.
+
+It tests reading, not a rate: the forms and counts are chosen. The legal-stage combination across items is not measured on real data ([open questions](open-questions.md#data-and-source)).
+
 ## Requirement scorecard
 
 The system is judged by what it must do for each of its four sources ([external sources](../feature/external-sources.md)): find the right person, exclude the wrong one, get the source condition right, and state the facts right. Each measure runs through the Case output (pair result and explanation), never one component's count. No target is set before the user agrees one.

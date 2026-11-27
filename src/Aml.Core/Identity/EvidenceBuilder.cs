@@ -7,7 +7,14 @@ namespace Aml.Core.Identity;
 
 public static class EvidenceBuilder
 {
-    public static IReadOnlyDictionary<EvidenceGroup, Evidence> Build(ScreenedSubject s, SourceProfile p, NewsItem? news = null)
+    public static IReadOnlyDictionary<EvidenceGroup, Evidence> Build(ScreenedSubject s, SourceProfile p, NewsItem? news = null) => Build(s, p, news is null ? [] : [news]);
+
+    /// <summary>
+    /// With several news items: every item's report date is an event (<see cref="TemporalEvidence(ScreenedSubject, SourceProfile, IReadOnlyList{NewsItem})"/>);
+    /// the stated age is read in each item at its own report date and combined (<see cref="StatedAgeCheck.Check(ScreenedSubject, SourceProfile, IReadOnlyList{NewsItem}, bool)"/>);
+    /// the stated birth dates and genders of all items are taken together, as those of one item are.
+    /// </summary>
+    public static IReadOnlyDictionary<EvidenceGroup, Evidence> Build(ScreenedSubject s, SourceProfile p, IReadOnlyList<NewsItem> news)
     {
         var e = new Dictionary<EvidenceGroup, Evidence>();
         void Add(Evidence? evidence)
@@ -94,15 +101,23 @@ public static class EvidenceBuilder
     /// Age at every dated event (role start, report date) against the approved role constraints. Plausible is recorded as
     /// TEMPORALLY_PLAUSIBLE and is never support; an impossible age or role carries the hard-conflict code.
     /// </summary>
-    public static Evidence? TemporalEvidence(ScreenedSubject s, SourceProfile p, NewsItem? news)
+    public static Evidence? TemporalEvidence(ScreenedSubject s, SourceProfile p, NewsItem? news) => TemporalEvidence(s, p, news is null ? [] : [news]);
+
+    /// <inheritdoc cref="TemporalEvidence(ScreenedSubject, SourceProfile, NewsItem?)"/>
+    /// <param name="hint">False leaves out the advisory AGE_IMPLAUSIBLE_AT_DOCUMENT (a pair a hard conflict decides).</param>
+    public static Evidence? TemporalEvidence(ScreenedSubject s, SourceProfile p, IReadOnlyList<NewsItem> news, bool hint = true)
     {
         const EvidenceGroup g = EvidenceGroup.TemporalRole;
         if (s.DateOfBirth is not { Precision: DatePrecision.Day } dob) return null;
         var events = p.Roles.Select(r => r.From).OfType<PartialDate>().ToList();
-        if (news?.PublishedOn is { } at) events.Add(at);
+        events.AddRange(news.Select(n => n.PublishedOn).OfType<PartialDate>());
         if (events.Count == 0) return null;
         if (HardConflictGate.RoleConflict(dob, p) is { } hard)
             return new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, hard);
+        // Advisory: a conflict that never concludes; stage 3 row 1 holds the pair at REVIEW for a reviewer to read it.
+        if (hint && HardConflictGate.ImplausibleAgeAtDocument(s, p, news) is { } d)
+            return new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.AgeImplausibleAtDocument,
+                $"第 {d.Item} 則附加新聞（報導日期 {d.On}）稱名單人物為「{d.Role}」，當日客戶最多 {d.MaxAge} 歲；未自動判定，請覆核");
         var youngest = events.Min(d => HardConflictGate.MaxAgeAt(dob, d));
         var note = $"最早事件時最多 {youngest} 歲";
         return youngest >= HardConflictGate.MinimumRoleAge

@@ -74,7 +74,7 @@ public class NewsModelCaseTests : ServiceTestBase
     {
         var files = IndictedCase();
         var read = TxtCaseReader.ReadFiles(files);
-        return (files, read with { NewsByProfileId = read.NewsByProfileId.ToDictionary(n => n.Key, n => n.Value with { Text = Texts[key].ReplaceLineEndings("\n") }) });
+        return (files, read with { NewsByProfileId = read.NewsByProfileId.ToDictionary(n => n.Key, n => (IReadOnlyList<Core.Subjects.NewsItem>)[.. n.Value.Select(v => v with { Text = Texts[key].ReplaceLineEndings("\n") })]) });
     }
 
     /// <summary>

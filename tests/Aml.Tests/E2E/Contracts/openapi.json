@@ -124,7 +124,7 @@
           "Cases"
         ],
         "summary": "Create a Case from the export files and run the first analysis; 201 when created, 200 when it already existed",
-        "description": "Send multipart form fields subjectRef, triggerEventId and files (案件資訊*.txt, 名單資料_<id>.txt, the customer or related-party files and any 新聞資訊_<id>.txt, or the same pages as HTML), or JSON {subjectRef, triggerEventId, files: {name: text}} as one batch item. pageIds (a repeated form field, or a JSON array) names received pages (POST /api/pages) to screen the subject against as well: each person on a page whose name is EXACT against the subject's becomes a hit with profileKey WEB:<pageId>-<n> (retrieval mode SOURCE_PAGE); every person is listed in the revision's pages, candidate or not. The page version used is kept with the Case's input, so a re-analysis reads the same text. A page still PENDING is PAGE_NOT_READY (409); an unknown, REFUSED or FAILED page is PAGE_UNUSABLE (400). The Case information and subject files stay required. One Case per alert (trigger event and subject): repeating the same triggerEventId and subjectRef returns the existing Case with 200. Returns the Case summary with links to its hits and its full revision. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.",
+        "description": "Send multipart form fields subjectRef, triggerEventId and files (案件資訊*.txt, 名單資料_<id>.txt, the customer or related-party files and any 新聞資訊_<id>.txt or 新聞資訊<n>_<id>.txt, or the same pages as HTML), or JSON {subjectRef, triggerEventId, files: {name: text}} as one batch item. pageIds (a repeated form field, or a JSON array) names received pages (POST /api/pages) to screen the subject against as well: each person on a page whose name is EXACT against the subject's becomes a hit with profileKey WEB:<pageId>-<n> (retrieval mode SOURCE_PAGE); every person is listed in the revision's pages, candidate or not. The page version used is kept with the Case's input, so a re-analysis reads the same text. A page still PENDING is PAGE_NOT_READY (409); an unknown, REFUSED or FAILED page is PAGE_UNUSABLE (400). The Case information and subject files stay required. One Case per alert (trigger event and subject): repeating the same triggerEventId and subjectRef returns the existing Case with 200. Returns the Case summary with links to its hits and its full revision. Example: GC-03 gives result REVIEW with one hit, DJ:90000031, identityDecision PROBABLE_MATCH.",
         "operationId": "createCase",
         "requestBody": {
           "content": {
@@ -2561,10 +2561,20 @@
                 "type": "null"
               },
               {
-                "description": "附加新聞的人物、事件與固定句型摘要，依規則讀出；不影響任何判斷。沒有附加新聞時為 null",
+                "description": "附加新聞的人物、事件與固定句型摘要，依規則讀出；不影響任何判斷。沒有附加新聞時為 null；有多則時為第一則的",
                 "$ref": "#/components/schemas/NewsDigest"
               }
             ]
+          },
+          "moreNewsDigests": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/NewsDigest"
+            },
+            "description": "第二則起每則附加新聞的摘要，依附加新聞順序；只有一則或沒有時省略"
           }
         }
       },
@@ -2918,6 +2928,13 @@
             "type": "boolean",
             "description": "是否經獨立驗證；舊決定永遠不是系統判斷",
             "default": false
+          },
+          "profileId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "疑似名單表中此列的名單編號；整案的舊決定為 null"
           }
         }
       },
@@ -4226,6 +4243,50 @@
           }
         }
       },
+      "ProfileNotePart": {
+        "required": [
+          "text"
+        ],
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "description": "原文標籤，例如 Last Reviewed Date、Keywords、People mentioned、Companies mentioned、Profile；第一個標籤前的文字為 null"
+          },
+          "text": {
+            "type": "string",
+            "description": "該段原文"
+          }
+        }
+      },
+      "ProfileNotes": {
+        "required": [
+          "raw",
+          "location",
+          "parts"
+        ],
+        "type": "object",
+        "properties": {
+          "raw": {
+            "type": "string",
+            "description": "附註原文"
+          },
+          "location": {
+            "type": "string",
+            "description": "在名單檔中的位置（名單資料_<編號>.txt:<行>）"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProfileNotePart"
+            },
+            "description": "依原文標籤分出的段落，依原文順序"
+          }
+        }
+      },
       "ProfileRelationship": {
         "required": [
           "profileId",
@@ -5094,6 +5155,34 @@
               "type": "string"
             },
             "description": "指控相關國家"
+          },
+          "residenceCountries": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "居住國家（Resident of）；不是國籍，不參與比對"
+          },
+          "deceased": {
+            "type": [
+              "null",
+              "boolean"
+            ],
+            "description": "名單記載是否已故（已故?）；未記載或無法讀取時為 null"
+          },
+          "notes": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "description": "名單的英文附註（Watchlist ProfileNotes），依原文保存並依標籤分段；不加解讀，不參與任何判斷。沒有附註時為 null",
+                "$ref": "#/components/schemas/ProfileNotes"
+              }
+            ]
           }
         }
       },
@@ -5176,6 +5265,16 @@
               "boolean"
             ],
             "description": "去除空白後，引文是否出現在新聞原文中；沒有引文時省略"
+          },
+          "item": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "description": "讀的是第幾則附加新聞（依附加新聞順序，從 1 起）；只有一則時省略",
+            "format": "int32"
           }
         }
       },

@@ -16,6 +16,19 @@ public static partial class StatedAgeCheck
 {
     /// <param name="fullFormsOnly">Read only next to a <see cref="IsFullForm"/> name, a Latin one as a whole word: what a
     /// stated value must be read next to before it may conclude (HardConflictGate).</param>
+    /// <summary>
+    /// Several news items: each is read at its own report date, then one reading stands for them all, as within one item
+    /// the first age found does: a compatible age when any item gives one (the pair stays open, a far age elsewhere is in
+    /// the note), else a difference when any item gives one, else not comparable. Every item's note is kept.
+    /// </summary>
+    public static Evidence? Check(ScreenedSubject s, SourceProfile p, IReadOnlyList<NewsItem> news, bool fullFormsOnly = false)
+    {
+        var read = news.Select(n => Check(s, p, n, fullFormsOnly)).OfType<Evidence>().ToList();
+        if (read.Count <= 1) return read.FirstOrDefault();
+        var stands = read.FirstOrDefault(e => e.Status == ComparisonStatus.Exact) ?? read.FirstOrDefault(e => e.Status == ComparisonStatus.Conflict) ?? read[0];
+        return stands with { Note = string.Join("；", read.Select(e => e.Note).OfType<string>()) };
+    }
+
     public static Evidence? Check(ScreenedSubject s, SourceProfile p, NewsItem? news, bool fullFormsOnly = false)
     {
         if (news is null || Find(news.Text, p.Names, fullFormsOnly) is not var (stated, statedAtEventTime))

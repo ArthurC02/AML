@@ -19,7 +19,13 @@ public static partial class NewsStatedCheck
 {
     private const int FirstGregorianYear = 1000;
 
-    public static Evidence? CheckBirthDate(ScreenedSubject s, SourceProfile p, NewsItem? news, Evidence? profileDateOfBirth)
+    public static Evidence? CheckBirthDate(ScreenedSubject s, SourceProfile p, NewsItem? news, Evidence? profileDateOfBirth) =>
+        CheckBirthDate(s, p, Items(news), profileDateOfBirth);
+
+    private static IReadOnlyList<NewsItem> Items(NewsItem? news) => news is null ? [] : [news];
+
+    /// <summary>The birth dates every news item of the Profile states next to the name, taken together as one item's are.</summary>
+    public static Evidence? CheckBirthDate(ScreenedSubject s, SourceProfile p, IReadOnlyList<NewsItem> news, Evidence? profileDateOfBirth)
     {
         const EvidenceGroup g = EvidenceGroup.StatedBirthDate;
         var stated = StatedBirthDates(p, news);
@@ -56,13 +62,16 @@ public static partial class NewsStatedCheck
     /// The distinct birth dates written next to the Profile person's names, without a coarser one a more precise one covers;
     /// with <paramref name="fullFormsOnly"/>, next to a full name form only (<see cref="StatedAgeCheck.IsFullForm"/>).
     /// </summary>
-    internal static List<PartialDate> StatedBirthDates(SourceProfile p, NewsItem? news, bool fullFormsOnly = false)
+    internal static List<PartialDate> StatedBirthDates(SourceProfile p, IReadOnlyList<NewsItem> news, bool fullFormsOnly = false)
     {
         var read = Read(p, news, NewsIdentifierKind.BirthDate, fullFormsOnly).Select(Parse).OfType<PartialDate>().Distinct().ToList();
         return read.Where(d => !read.Exists(x => x.Precision > d.Precision && d.AgreesWith(x))).ToList();
     }
 
-    public static Evidence? CheckGender(ScreenedSubject s, SourceProfile p, NewsItem? news)
+    public static Evidence? CheckGender(ScreenedSubject s, SourceProfile p, NewsItem? news) => CheckGender(s, p, Items(news));
+
+    /// <summary>The genders every news item of the Profile states next to the name, taken together: one gender or no reading.</summary>
+    public static Evidence? CheckGender(ScreenedSubject s, SourceProfile p, IReadOnlyList<NewsItem> news)
     {
         const EvidenceGroup g = EvidenceGroup.StatedGender;
         if (s.Gender is not { } gender) return null;
@@ -76,8 +85,8 @@ public static partial class NewsStatedCheck
             : new(g, Direction.Conflict, ComparisonStatus.Conflict, Strength.None, ReasonCodes.NewsGenderDifference, note);
     }
 
-    private static IEnumerable<string> Read(SourceProfile p, NewsItem? news, NewsIdentifierKind kind, bool fullFormsOnly = false) =>
-        news is null ? [] : NewsIdentifiers.Read(news.Text, fullFormsOnly ? p.Names.Where(StatedAgeCheck.IsFullForm) : p.Names, wholeWords: fullFormsOnly)
+    private static IEnumerable<string> Read(SourceProfile p, IReadOnlyList<NewsItem> news, NewsIdentifierKind kind, bool fullFormsOnly = false) =>
+        news.SelectMany(n => NewsIdentifiers.Read(n.Text, fullFormsOnly ? p.Names.Where(StatedAgeCheck.IsFullForm) : p.Names, wholeWords: fullFormsOnly))
             .Where(i => i.Kind == kind && !string.IsNullOrEmpty(i.Text)).Select(i => i.Text!);
 
     /// <summary>民國70年1月1日生, 70年1月生, 1981年1月1日出生, 70年次: a year under 1000 is a ROC year, as news and judgments in Taiwan write it.</summary>

@@ -4,7 +4,7 @@ Each record holds the decisions in force on one subject: context, decision and c
 
 | ADR | Title | Status |
 |---|---|---|
-| [0001](0001-identity-adjudication.md) | Evidence-driven identity adjudication | Accepted; the scoring rule built as measurement only, its weights not approved; the DOB conflict (more than two years) released 2026-11-27, also for ages and birth dates stated in attached news or on a received page |
+| [0001](0001-identity-adjudication.md) | Evidence-driven identity adjudication | Accepted; the scoring rule built as measurement only, its weights not approved; the DOB conflict (more than two years) released 2026-11-27, also for ages and birth dates stated in attached news or on a received page; a customer under 14 at a dated item naming the person as accused or officer is an advisory hint, not a conclusion (2026-11-27) |
 | [0004](0004-identification-only.md) | Identification only: identity, source conditions and an advisory Article 22 | Accepted |
 | [0005](0005-list-types-and-risk-categories.md) | Bank list types, flag-first mapping and risk categories | Accepted |
 | [0006](0006-one-dotnet-api-application.md) | One .NET API application in four projects | Accepted, subject to governance |

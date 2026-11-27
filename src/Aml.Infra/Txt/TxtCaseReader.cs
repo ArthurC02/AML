@@ -79,9 +79,30 @@ public static partial class TxtCaseReader
 
         var profileIds = rows.Select(r => r.ProfileId).Distinct().ToList();
         var profiles = ReadPerProfileFilesPresent(export, profileIds, "名單資料", (_, file) => ParseProfile(export.Text(file)));
-        var news = ReadPerProfileFilesPresent(export, profileIds, "新聞資訊", (id, file) => ReadNews(id, export.Lines(file)));
+        var read = profileIds
+            .Select(id => (id, Items: NewsFilesOf(export, id).Select(file => (File: file, Item: ReadOrMalformed(file, () => ReadNews(id, export.Lines(file))))).ToList()))
+            .Where(x => x.Items.Count > 0)
+            .ToList();
+        var news = read.ToDictionary(x => x.id, x => (IReadOnlyList<NewsItem>)[.. x.Items.Select(i => i.Item)]);
+        // A news file whose header date could not be read (none in the header, or an impossible one): its text is kept
+        // whole, header lines included, so the unread header is disclosed rather than silently read as body.
+        var unreadHeaders = read.SelectMany(x => x.Items).Where(i => i.Item.PublishedOn is null).Select(i => $"{Unparseable}:{i.File}:header").ToList();
+        if (unreadHeaders.Count > 0) subject = subject with { Findings = [.. subject.Findings, .. unreadHeaders] };
         return new CaseInput(subject, rows, profiles, news, ImportedDecisions(subjectRow, rows, records)) { SourceHashes = export.SourceHashes };
     }
+
+    // 新聞資訊_<id>.txt first, then 新聞資訊1_<id>.txt, 新聞資訊2_<id>.txt … by number: one Profile's news items in a stable order.
+    private static List<string> NewsFilesOf(CaseExport export, string profileId) =>
+        export.Names
+            .Select(n => (Name: n, Match: NewsFileName().Match(n)))
+            .Where(x => x.Match.Success && x.Match.Groups[2].Value == profileId)
+            .OrderBy(x => x.Match.Groups[1].Value.Length == 0 ? -1 : int.Parse(x.Match.Groups[1].Value, CultureInfo.InvariantCulture))
+            .ThenBy(x => x.Name, StringComparer.Ordinal)
+            .Select(x => x.Name)
+            .ToList();
+
+    [GeneratedRegex("^新聞資訊(\\d{0,6})_(\\d+)\\.txt$", RegexOptions.IgnoreCase)]
+    private static partial Regex NewsFileName();
 
     private static bool IsCaseInfoFile(string name) => name.StartsWith(CaseInfoPrefix, StringComparison.Ordinal) && name.EndsWith(".txt", StringComparison.Ordinal);
 
@@ -99,8 +120,13 @@ public static partial class TxtCaseReader
     private static List<ImportedDecision> ImportedDecisions(SubjectRow subjectRow, List<CandidateRow> rows, List<string> records)
     {
         var imported = new List<ImportedDecision>();
-        if (subjectRow.ListMatch is { } listMatch) imported.Add(new("是否符合名單", listMatch));
-        foreach (var reason in rows.Select(r => r.LegacyReason).OfType<string>().Distinct()) imported.Add(new("理由", reason));
+        if (subjectRow.ListMatch is { } listMatch) imported.Add(new(ListMatchField, listMatch));
+        // Each candidate's own decision and reason, so a measurement can set them against the hit of that Profile.
+        imported.AddRange(rows
+            .SelectMany(r => new[] { (Field: ListMatchField, Value: r.LegacyDecision, r.ProfileId), (Field: "理由", Value: r.LegacyReason, r.ProfileId) })
+            .Where(x => x.Value is not null)
+            .Distinct()
+            .Select(x => new ImportedDecision(x.Field, x.Value!, ProfileId: x.ProfileId)));
         imported.AddRange(records.Select(r => new ImportedDecision(ProcessingRecord, r)));
         return imported;
     }
@@ -117,6 +143,7 @@ public static partial class TxtCaseReader
     public const string PlaceholderText = "PLACEHOLDER_TEXT";
     public const string Malformed = "MALFORMED";
     private const string ProcessingRecord = "客戶檢核處理紀錄";
+    private const string ListMatchField = "是否符合名單";
 
 
     private static readonly string[] CustomerFields = ["本地名稱", "客戶名稱", "性別", "出生日期", "國籍 1", "證件號碼"];
@@ -226,8 +253,13 @@ public static partial class TxtCaseReader
         var rca = wider ? FlagValue.Unparseable : SourceValues.Flag(Column("Is RCA?"));
         var flags = wider || !header.FlagsReadable ? new ListFlags(FlagValue.Unparseable, FlagValue.Unparseable, FlagValue.Unparseable, rca)
             : new ListFlags(SourceValues.Flag(Column("PEP")), SourceValues.Flag(Column("黑名單")), SourceValues.Flag(Column("負面新聞")), rca);
-        return new CandidateRow(Column("姓名/名稱")!, CjkText.HalfWidth(Column("名單資料編號")!), SourceValues.NullIfPlaceholder(Column("理由")), rca == FlagValue.Yes, flags);
+        // The row's own 是否符合名單？ cells as written: the one column, or its 全不符合 and 全符合 sub-columns.
+        var decision = string.Join(" | ", ListMatchColumns.Select(Column).Select(SourceValues.NullIfPlaceholder).OfType<string>());
+        return new CandidateRow(Column("姓名/名稱")!, CjkText.HalfWidth(Column("名單資料編號")!), SourceValues.NullIfPlaceholder(Column("理由")), rca == FlagValue.Yes, flags,
+            decision.Length > 0 ? decision : null);
     }
+
+    private static readonly string[] ListMatchColumns = ["是否符合名單？", "全不符合", "全符合"];
 
     private static (List<string>, List<string>) ReadProcessingRecord(string[] lines)
     {
@@ -243,7 +275,7 @@ public static partial class TxtCaseReader
     private static readonly HashSet<string> CustomerLabels =
     [
         "基本資料", "詳細資料", "客戶號碼", "客戶別名", "性別", "年收入", "稅號/統一編號", "客戶名稱", "出生日期", "證件種類", "國籍 1",
-        "發照地", "本地名稱", "出生地點", "證件號碼", "國籍 2", "客戶類型", "職業",
+        "發照地", "本地名稱", "出生地點", "證件號碼", "國籍 2", "客戶類型", "職業", "職位", "職稱",
     ];
 
     private const int MinTaxIdLength = 8;
@@ -262,7 +294,9 @@ public static partial class TxtCaseReader
         string? Value(string label) => SourceValues.NullIfPlaceholder(RawValue(label));
 
         var findings = MissingFieldFindings(CustomerFields.Select(f => (f, Array.IndexOf(background, f) >= 0, RawValue(f)))).ToList();
-        var names = new[] { Value("本地名稱"), Value("客戶名稱") }.OfType<string>().ToList();
+        // 客戶別名 is a name form of the customer, compared with the Profile's names like the others; "-" is no alias.
+        var aliases = new[] { Value("客戶別名") }.OfType<string>().ToList();
+        var names = new[] { Value("本地名稱"), Value("客戶名稱") }.OfType<string>().Concat(aliases).Distinct().ToList();
         // Country fields take the raw value: Country reads a code before treating the text as a placeholder.
         var nationalities = new[] { Country("國籍 1", RawValue("國籍 1"), findings), Country("國籍 2", RawValue("國籍 2"), findings) }.OfType<string>().ToList();
         var docNumber = Value("證件號碼");
@@ -283,6 +317,9 @@ public static partial class TxtCaseReader
             null, taxId, Occupation(Value("職業")), Dedupe(addresses, out var dup), AddressFindings(addresses, dup, findings), PartyType: Value("客戶類型"))
         {
             Relatives = export.Contains(RelatedPartyFile) ? ReadOrMalformed(RelatedPartyFile, () => RelatedPeople(export.Lines(RelatedPartyFile))) : null,
+            Aliases = aliases,
+            Title = Value("職位") ?? Value("職稱"),
+            BirthPlace = Value("出生地點"),
         };
     }
 
@@ -481,7 +518,7 @@ public static partial class TxtCaseReader
     /// <summary>One Profile file, as the export or as an HTML page: "key:\tvalue" lines, or "key:" followed by a tab-separated table.</summary>
     public static SourceProfile ParseProfile(string content)
     {
-        var (scalars, tableMap) = ReadProfileSections(ProfileExportText(content));
+        var (scalars, tableMap, notesLines) = ReadProfileSections(ProfileExportText(content));
         var tables = new ProfileTables(tableMap);
         var findings = tables.Findings;
 
@@ -503,6 +540,9 @@ public static partial class TxtCaseReader
         var sources = tables.CompleteNumberedRows("來源", SourceRowCells)
             .Select(r => Source($"DJ:{scalars[ProfileIdKey]}#source-{r[0]}", r[1], r.ElementAtOrDefault(2))).ToList();
         var otherIds = ReadOtherIdentifiers(tables);
+        var residence = CountriesOfKind(countries, "Resident of", findings);
+        var deceased = DeceasedFlag(scalars.GetValueOrDefault(DeceasedKey), findings);
+        var notes = ReadNotes(notesLines, scalars[ProfileIdKey], findings);
 
         return new SourceProfile(
             ProfileKey: ProfileKeys.KeyOf(scalars[ProfileIdKey]),
@@ -523,17 +563,52 @@ public static partial class TxtCaseReader
             DateOfDeath: death is { Year: > 0 } ? death : null,
             RecordType: scalars.GetValueOrDefault("記錄類型", "Person"),
             AllegationCountries: allegation,
-            OtherIdentifiers: otherIds);
+            OtherIdentifiers: otherIds,
+            ResidenceCountries: residence,
+            Deceased: deceased,
+            Notes: notes);
     }
 
-    private static (Dictionary<string, string> Scalars, Dictionary<string, List<string[]>> Tables) ReadProfileSections(string content)
+    private const string DeceasedKey = "已故?";
+
+    // An unreadable flag is AMBIGUOUS, not UNPARSEABLE: the flag decides nothing, so it must not downgrade a hard conflict
+    // as an unparsed Profile value does (HardConflictGate.SourceQualityConcern).
+    private static bool? DeceasedFlag(string? raw, List<string> findings)
+    {
+        var flag = SourceValues.Flag(raw);
+        if (flag == FlagValue.Unparseable) findings.Add($"{Ambiguous}:{DeceasedKey}");
+        return flag switch { FlagValue.Yes => true, FlagValue.No => false, _ => null };
+    }
+
+    private sealed record NotesLines(int FirstLine, List<string> Lines);
+
+    private static (Dictionary<string, string> Scalars, Dictionary<string, List<string[]>> Tables, NotesLines? Notes) ReadProfileSections(string content)
     {
         var scalars = new Dictionary<string, string>();
         var tables = new Dictionary<string, List<string[]>>();
         string? section = null;
-        foreach (var line in content.ReplaceLineEndings("\n").Split('\n'))
+        NotesLines? notes = null;
+        var inNotes = false;
+        var all = content.ReplaceLineEndings("\n").Split('\n');
+        for (var i = 0; i < all.Length; i++)
         {
+            var line = all[i];
+            // The vendor's free-text notes: "Watchlist ProfileNotes: …" on one line, or "ProfileNotes:" with the text on the
+            // lines after it. They run until a known key of the Profile or a table section; a wrapped line that only looks
+            // like a key (https://…, Charges: …, Keywords:) continues them.
+            if (NotesStart().Match(line) is { Success: true } start)
+            {
+                notes = new NotesLines(i + 1, [start.Groups[1].Value.Trim()]);
+                (inNotes, section) = (true, null);
+                continue;
+            }
             var m = KeyLine().Match(line);
+            if (inNotes && !(m.Success && EndsNotes(m, all.ElementAtOrDefault(i + 1))))
+            {
+                notes!.Lines.Add(line.Trim());
+                continue;
+            }
+            inNotes = false;
             if (m.Success)
             {
                 var key = m.Groups[1].Value.Trim();
@@ -546,7 +621,53 @@ public static partial class TxtCaseReader
                 tables[section].Add(Cells(line));
             }
         }
-        return (scalars, tables);
+        return (scalars, tables, notes);
+    }
+
+    [GeneratedRegex("^\\s*(?:Watchlist\\s+)?ProfileNotes\\s*[:：](.*)$", RegexOptions.IgnoreCase)]
+    private static partial Regex NotesStart();
+
+    // The Profile's own keys (scalars and table sections); any other key line inside the notes is wrapped notes text.
+    private static readonly HashSet<string> KnownProfileKeys =
+        [ProfileIdKey, "記錄類型", "性別", DeceasedKey, "狀態", "關鍵字", "主要名稱", "拼寫變化", "國家資料", "日期", "職位", "地址", "身分證明", "其他識別碼", "名單資訊", "類別", "來源"];
+
+    // Notes end at a known key or at any section key whose next line is a tab-separated table row. Any other key line
+    // (備註：…, https:, Charges:) is notes text: an unknown scalar key after the notes is kept in them rather than lost.
+    private static bool EndsNotes(Match key, string? next) =>
+        KnownProfileKeys.Contains(key.Groups[1].Value.Trim())
+        || (key.Groups[2].Value.Trim().Length == 0 && next?.Contains('\t', StringComparison.Ordinal) == true);
+
+    // The labels the notes are written with, in the vendor's spelling; text before the first is kept without a label.
+    [GeneratedRegex("(?<![^\\s])(Last Reviewed Date|Record Status|Comments|Keywords|People mentioned|Companies mentioned|Associated Entity Details|Profile)\\s*[:：]")]
+    private static partial Regex NoteLabel();
+
+    /// <summary>The notes are kept whole up to this many characters, a workbook cell's limit; beyond it they are cut with FIELD_TRUNCATED:ProfileNotes.</summary>
+    public const int MaxNotesCharacters = 32_767;
+
+    public const string FieldTruncated = "FIELD_TRUNCATED";
+
+    private static ProfileNotes? ReadNotes(NotesLines? lines, string profileId, List<string> findings)
+    {
+        var raw = string.Join('\n', lines?.Lines.Where(l => l.Length > 0) ?? []);
+        if (lines is null || raw.Length == 0) return null;
+        if (raw.Length > MaxNotesCharacters)
+        {
+            raw = raw[..(char.IsHighSurrogate(raw[MaxNotesCharacters - 1]) ? MaxNotesCharacters - 1 : MaxNotesCharacters)];
+            findings.Add($"{FieldTruncated}:ProfileNotes");
+        }
+        // Wrapped lines are one text: the parts are read on the lines joined with a space.
+        var flat = raw.Replace('\n', ' ');
+        var labels = NoteLabel().Matches(flat);
+        var parts = new List<ProfileNotePart>();
+        var before = flat[..(labels.Count > 0 ? labels[0].Index : flat.Length)].Trim();
+        if (before.Length > 0) parts.Add(new(null, before));
+        for (var i = 0; i < labels.Count; i++)
+        {
+            var from = labels[i].Index + labels[i].Length;
+            var to = i + 1 < labels.Count ? labels[i + 1].Index : flat.Length;
+            parts.Add(new(labels[i].Groups[1].Value, flat[from..to].Trim()));
+        }
+        return new ProfileNotes(raw, $"名單資料_{profileId}.txt:{lines.FirstLine}", parts);
     }
 
     private static List<string> ReadNames(ProfileTables tables)
@@ -646,28 +767,125 @@ public static partial class TxtCaseReader
     [GeneratedRegex("\\((https?://[^()\\s]+)\\)")]
     private static partial Regex SourceUrl();
 
-    // News export: id line, section, title, reporter, length, "2026 年 9 月 6 日" (or "2026年9月6日"), publisher, …, "文件 <id>".
+    private const int MaxProviderLine = 60;
+
+    private static bool IsProviderLine(string line) =>
+        line.Length is > 0 and <= MaxProviderLine && line.Any(char.IsLetter) && !line.Any(CjkText.IsCjk);
+
+    // The media header: id, section, headline, author, word count, then the date line (the sixth line); two spare lines
+    // for a headline or section that wraps. Past it the text is body.
+    private const int MediaHeaderLines = 8;
+
     private static NewsItem ReadNews(string profileId, string[] rawLines)
     {
         var lines = rawLines.Select(l => l.Trim()).ToArray();
-        var dateIndex = Array.FindIndex(lines, l => NewsDate().IsMatch(l));
-        PartialDate? published = null;
-        if (dateIndex >= 0)
-        {
-            // Through the date parser, which half-widths full-width digits and refuses 13月 or 2月30日: an impossible date is no date.
-            var g = NewsDate().Match(lines[dateIndex]).Groups;
-            published = PartialDate.Parse($"{g[1].Value}/{g[2].Value}/{g[3].Value}");
-        }
-        var docId = lines.Select(l => NewsDocument().Match(l)).FirstOrDefault(m => m.Success)?.Groups[1].Value;
-        return new NewsItem(profileId, docId, lines.ElementAtOrDefault(2) ?? "",
-            dateIndex >= 0 ? lines.ElementAtOrDefault(dateIndex + 1) : null, published, string.Join('\n', lines));
+        // The media date line is read in the header block only, so a body line that is just a date never becomes the
+        // header date; the court shape only when that block has none, so a "公告日：…" line in an article's body cannot flip it.
+        var dateIndex = Array.FindIndex(lines, 0, Math.Min(lines.Length, MediaHeaderLines), l => NewsDate().IsMatch(l));
+        return (dateIndex < 0 ? ReadCourtRelease(profileId, lines) : null) ?? ReadArticle(profileId, lines, dateIndex);
     }
+
+    // Media article: id line, section, headline, author, "522 字", "2017 年 5 月 9 日" (or "2017年5月9日"), publication,
+    // then optionally a source code (only when a language line follows it), a language and a copyright line; the body; the
+    // provider line, "文件 <id>" and a UI version line. The text the readers see is the headline and the body.
+    private static NewsItem ReadArticle(string profileId, string[] lines, int dateIndex)
+    {
+        // The document line is the trailer only in trailer position: the last such line, followed by nothing but blank
+        // lines and the UI version line. A body line such as "文件 A123" stays body.
+        var docIndex = Array.FindLastIndex(lines, l => NewsDocument().IsMatch(l));
+        if (docIndex >= 0 && lines[(docIndex + 1)..].Any(l => l.Length > 0 && !VersionLine().IsMatch(l))) docIndex = -1;
+        var title = lines.ElementAtOrDefault(2) ?? "";
+        var docId = docIndex >= 0 ? NewsDocument().Match(lines[docIndex]).Groups[1].Value : null;
+        if (dateIndex < 0) return new NewsItem(profileId, docId, title, null, null, string.Join('\n', lines));
+
+        // Through the date parser, which half-widths full-width digits and refuses 13月 or 2月30日: an impossible date is no date.
+        var g = NewsDate().Match(lines[dateIndex]).Groups;
+        var published = PartialDate.Parse($"{g[1].Value}/{g[2].Value}/{g[3].Value}");
+        var start = Math.Min(dateIndex + 2, lines.Length); // a file cut after its date line has no body
+        bool At(int i, Regex r) => i < lines.Length && r.IsMatch(lines[i]);
+        if (At(start, SourceCodeLine()) && At(start + 1, LanguageLine())) start++; // the source code is known by its place
+        if (At(start, LanguageLine())) start++;
+        if (At(start, CopyrightLine())) start++;
+        // In the full trailer (provider, 文件 <id>, UI <version>) the provider line stands before 文件: a short line without a
+        // CJK character after a Chinese body. Without the version line, or when that line is CJK text or the body is not
+        // Chinese (an English body's last line cannot be told from a company name), it is body.
+        var fullTrailer = docIndex > start && At(docIndex + 1, VersionLine()) && IsProviderLine(lines[docIndex - 1])
+            && lines[start..(docIndex - 1)].Any(l => l.Any(CjkText.IsCjk));
+        var end = docIndex >= start ? Math.Max(start, fullTrailer ? docIndex - 1 : docIndex) : lines.Length;
+        while (end > start && (lines[end - 1].Length == 0 || VersionLine().IsMatch(lines[end - 1]))) end--;
+        return new NewsItem(profileId, docId, title, lines.ElementAtOrDefault(dateIndex + 1), published, Body(title, lines[start..end]));
+    }
+
+    // Court press release: "公 告 日：106.05.09" (a dotted 民國 date; share-link text may follow), "發布單位：<court>",
+    // "標 題：<title>", "檔案下載：" and the file name; then the body. The header is the leading block only: a label after
+    // the body is body. Null when that block has no dated 公告日 label.
+    private static NewsItem? ReadCourtRelease(string profileId, string[] lines)
+    {
+        var headerEnd = -1;
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var l = lines[i];
+            var header = l.Length == 0 || l.StartsWith("名單資料編號", StringComparison.Ordinal) || ReleaseDateLabel().IsMatch(l)
+                || ReleaseUnit().IsMatch(l) || ReleaseTitle().IsMatch(l) || ReleaseDownload().IsMatch(l)
+                || (i > 0 && ReleaseDownload().IsMatch(lines[i - 1]) && AttachmentName().IsMatch(l));
+            if (!header) break;
+            headerEnd = i;
+        }
+        var head = lines[..(headerEnd + 1)];
+        var dateIndex = Array.FindIndex(head, l => ReleaseDate().IsMatch(l));
+        if (dateIndex < 0) return null;
+        string? Labelled(Regex label) =>
+            head.FirstOrDefault(label.IsMatch) is { } l ? SourceValues.NullIfPlaceholder(label.Match(l).Groups["v"].Value.Trim()) : null;
+        var title = Labelled(ReleaseTitle()) ?? "";
+        return new NewsItem(profileId, null, title, Labelled(ReleaseUnit()), ReleaseDateOf(ReleaseDate().Match(head[dateIndex])), Body(title, lines[(headerEnd + 1)..]));
+    }
+
+    // A dotted three-part date is read as 民國 only here, after the 公告日 label; a four-digit year is a Gregorian one.
+    private static PartialDate? ReleaseDateOf(Match m)
+    {
+        var (y, mo, d) = (m.Groups["y"].Value, m.Groups["m"].Value, m.Groups["d"].Value);
+        return PartialDate.Parse(y.Length == 4 ? $"{y}/{mo}/{d}" : $"民國{y}年{mo}月{d}日");
+    }
+
+    private static string Body(string title, string[] body) =>
+        string.Join('\n', new[] { title }.Concat(body).Where(l => l.Length > 0));
 
     [GeneratedRegex("^(\\d{4})\\s*年\\s*(\\d{1,2})\\s*月\\s*(\\d{1,2})\\s*日$")]
     private static partial Regex NewsDate();
 
     [GeneratedRegex("^文件 (\\S+)$")]
     private static partial Regex NewsDocument();
+
+    // After the publication: a source code (SMPL), a language (中文(繁體)) and a copyright line, in that order.
+    [GeneratedRegex("^[A-Z][A-Z0-9]{1,11}$")]
+    private static partial Regex SourceCodeLine();
+
+    [GeneratedRegex("^(?:中文|英文|日文|English|Chinese|Japanese)\\s*(?:[(（][^)）]*[)）])?$")]
+    private static partial Regex LanguageLine();
+
+    [GeneratedRegex("^(?:\\([cC]\\)|（[cC]）|©|Copyright\\b).*$")]
+    private static partial Regex CopyrightLine();
+
+    [GeneratedRegex("^公\\s*告\\s*日\\s*[:：]")]
+    private static partial Regex ReleaseDateLabel();
+
+    [GeneratedRegex("^UI\\s+[\\d.]+$")]
+    private static partial Regex VersionLine();
+
+    [GeneratedRegex("^公\\s*告\\s*日\\s*[:：]\\s*(?<y>\\d{2,4})\\.(?<m>\\d{1,2})\\.(?<d>\\d{1,2})(?!\\d)")]
+    private static partial Regex ReleaseDate();
+
+    [GeneratedRegex("^發\\s*布\\s*單\\s*位\\s*[:：](?<v>.*)$")]
+    private static partial Regex ReleaseUnit();
+
+    [GeneratedRegex("^標\\s*題\\s*[:：](?<v>.*)$")]
+    private static partial Regex ReleaseTitle();
+
+    [GeneratedRegex("^檔\\s*案\\s*下\\s*載\\s*[:：](?<v>.*)$")]
+    private static partial Regex ReleaseDownload();
+
+    [GeneratedRegex("^\\S+\\.(?:pdf|docx?|odt|txt|html?)$", RegexOptions.IgnoreCase)]
+    private static partial Regex AttachmentName();
 
     // "Profile_ID: 1", "性別:\tMale", "類別:"; excludes free text such as "Watchlist ProfileNotes: ..." (key has a space).
     [GeneratedRegex("^([^\\s:：]+\\??)[:：]\\s*(.*)$")]

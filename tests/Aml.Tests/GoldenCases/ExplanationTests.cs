@@ -91,7 +91,8 @@ public class ExplanationTests
                 Assert.Equal("2026-09-06", s.PublishedOn);
                 Assert.Equal("LEGAL_STAGE", s.UsedFor);
                 Assert.True(s.AttachedToProfile);
-            });
+            },
+            s => Assert.Equal(("DJ:90000012#notes", "Watchlist ProfileNotes", "PROFILE_RECORD"), (s.Id, s.Name, s.UsedFor))); // the Profile's notes, after the news
         // No identifier from the source appears unmasked.
         Assert.DoesNotContain("B123456780", System.Text.Json.JsonSerializer.Serialize(h), StringComparison.Ordinal);
     }
@@ -103,7 +104,7 @@ public class ExplanationTests
 
         Assert.Equal(ReasonCodes.ImpossibleAgeAtReportedEvent, h.HardConflict);
         Assert.Null(h.Stage3Row);
-        Assert.Empty(h.Sources); // GC-01 cites no source and has no attached news
+        Assert.Equal("DJ:90000001#notes", Assert.Single(h.Sources).Id); // GC-01 cites no source and has no attached news; its notes are its own
         Assert.Contains("董事長，宏遠投資股份有限公司（1990-07 起）", Row(h, "職業／任職機構").ProfileValue, StringComparison.Ordinal);
         Assert.Equal("硬衝突 IMPOSSIBLE_AGE_AT_REPORTED_EVENT，足以排除。除姓名、國籍、性別等前提條件外，沒有任何佐證。", h.Summary.KeyEvidenceOrGaps);
         Assert.Contains("身分判斷：不是同一人（NO_MATCH，第一階段硬衝突", h.Summary.Conclusion, StringComparison.Ordinal);
@@ -117,7 +118,7 @@ public class ExplanationTests
         var profile = new SourceProfile("DJ:1", Gender.Male, ["陳志明"], [], ["TW"], [],
             [new SourceCategory("Politically Exposed Person (PEP)", null)], [], [new ProfileRole("部長", "某部", new PartialDate(1990, 1))], [], null, [], []);
         var input = new CaseInput(subject, [new CandidateRow("陳志明", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
-            new Dictionary<string, NewsItem>(), []);
+            new Dictionary<string, IReadOnlyList<NewsItem>>(), []);
         var h = Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input, asOf: new DateOnly(2026, 11, 4))).Hits);
 
         Assert.Equal(ReasonCodes.ImpossibleAgeAtReportedEvent, h.HardConflict);
@@ -133,7 +134,7 @@ public class ExplanationTests
         var profile = new SourceProfile("DJ:1", Gender.Male, ["陳志明"], [], ["TW"], [],
             [new SourceCategory("Special Interest Person (SIP)", "Fraud")], [], [new ProfileRole("董事", "某公司", new PartialDate(1998, 1))], [], null, [], []);
         var input = new CaseInput(subject, [new CandidateRow("陳志明", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
-            new Dictionary<string, NewsItem>(), []);
+            new Dictionary<string, IReadOnlyList<NewsItem>>(), []);
         var h = Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input)).Hits);
 
         Assert.Equal((ReasonCodes.ImpossibleRoleAtReportedEvent, IdentityDecision.Review), (h.HardConflict, h.IdentityDecision));
@@ -179,8 +180,8 @@ public class ExplanationTests
         var h = Hit("GC-12");
 
         Assert.Contains(h.ProfileName!, Row(h, "中文姓名").ProfileValue + Row(h, "英文姓名").ProfileValue, StringComparison.Ordinal);
-        Assert.Equal(["S1", "S2"], h.Sources.Select(s => s.Ref));
-        Assert.Contains("）[S1]判定為", h.Summary.ExternalData, StringComparison.Ordinal);
+        Assert.Equal(["S1", "S2", "S3"], h.Sources.Select(s => s.Ref));
+        Assert.Contains("）[S1][S3]判定為", h.Summary.ExternalData, StringComparison.Ordinal); // the Profile's source and its notes
         Assert.EndsWith("附加新聞有[S2]。", h.Summary.ExternalData, StringComparison.Ordinal);
         Assert.Contains(h.RelatedParties, r => r is { Side: "PROFILE", Relation: "Employer" });
     }
@@ -192,7 +193,7 @@ public class ExplanationTests
         var profile = new SourceProfile("DJ:1", Gender.Male, ["陳志明"], [new PartialDate(1980)], ["TW"], [],
             [new SourceCategory("Special Interest Person (SIP)", "Fraud")], [], [], [], null, [], []);
         var input = new CaseInput(subject, [new CandidateRow("陳志明", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
-            new Dictionary<string, NewsItem> { ["1"] = new("1", "DOC1", "標題", "某報", new PartialDate(2026, 3, 1), "陳志明（45歲）涉案。") }, []);
+            new Dictionary<string, IReadOnlyList<NewsItem>> { ["1"] = [new("1", "DOC1", "標題", "某報", new PartialDate(2026, 3, 1), "陳志明（45歲）涉案。")] }, []);
         var dob = Row(Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input)).Hits), "年齡（出生日期）");
 
         Assert.Equal($"{ReasonCodes.BirthYearMatchFullDateNotComparable}；{ReasonCodes.AgeCompatibleAtReport}", dob.Difference);
@@ -210,7 +211,7 @@ public class ExplanationTests
         var profile = new SourceProfile("DJ:1", Gender.Male, ["陳志明"], [new PartialDate(1980)], ["TW"], ["US"],
             [new SourceCategory("Special Interest Person (SIP)", "Fraud")], [], [], [new ProfileRelationship("2", "許雅婷", "Wife")], null, [], []);
         var input = new CaseInput(subject, [new CandidateRow("陳志明", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = profile },
-            new Dictionary<string, NewsItem>(), []);
+            new Dictionary<string, IReadOnlyList<NewsItem>>(), []);
         var h = Assert.Single(ExplanationBuilder.Build(input, CaseAnalyzer.Analyze(input), asOf: new DateOnly(2026, 5, 19)).Hits);
 
         var country = Row(h, "國籍／所在地國家");
@@ -233,7 +234,7 @@ public class ExplanationTests
         var record = new SourceProfile("DJ:1", null, ["宏遠投資股份有限公司"], [], [], [], [new SourceCategory("Special Interest Entity (SIE)", "Fraud")],
             [], [], [new ProfileRelationship("2", "陳志明", "Director")], null, [], [], RecordType: "Entity");
         var input = new CaseInput(company, [new CandidateRow("宏遠投資股份有限公司", "1", null, false)], new Dictionary<string, SourceProfile> { ["1"] = record },
-            new Dictionary<string, NewsItem>(), []);
+            new Dictionary<string, IReadOnlyList<NewsItem>>(), []);
         var analysis = CaseAnalyzer.Analyze(input);
         var h = Assert.Single(ExplanationBuilder.Build(input, analysis).Hits);
 

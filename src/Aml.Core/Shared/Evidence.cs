@@ -25,6 +25,7 @@ public static class ReasonCodes
 {
     public const string TemporallyPlausible = "TEMPORALLY_PLAUSIBLE";
     public const string ImpossibleAgeAtReportedEvent = "IMPOSSIBLE_AGE_AT_REPORTED_EVENT";
+    public const string AgeImplausibleAtDocument = "AGE_IMPLAUSIBLE_AT_DOCUMENT";
     public const string FullDobConflict = "FULL_DOB_CONFLICT";
     public const string DobConflict = "DOB_CONFLICT";
     public const string DocumentIdentityConflict = "DOCUMENT_IDENTITY_CONFLICT";

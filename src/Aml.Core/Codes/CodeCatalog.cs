@@ -12,7 +12,7 @@ public sealed record CodeEntry(string Code, string Kind, string Name, string Des
 /// </summary>
 public static class CodeCatalog
 {
-    public const string Version = "codes-14";
+    public const string Version = "codes-17";
 
     private const string Sources = "docs/feature/external-sources.md";
     private const string Identity = "docs/feature/identity-adjudication.md";
@@ -31,6 +31,7 @@ public static class CodeCatalog
     {
         ("IDENTITY_REASON", "TEMPORALLY_PLAUSIBLE", "時序合理", "受檢對象在報導事件或職務起始時的年齡可能成立；不是身分佐證。", "EvidenceBuilder.TemporalEvidence", Identity + "#temporal-and-role-consistency"),
         ("IDENTITY_REASON", "IMPOSSIBLE_AGE_AT_REPORTED_EVENT", "事件時年齡不可能", "受檢對象在名單記載的事件（職務開始）時未滿 14 歲；已由 GC-01 驗證的硬衝突，排除身分（NO_MATCH），各名單類型皆同，除非來源品質降級（SOURCE_QUALITY_DOWNGRADE）。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
+        ("IDENTITY_REASON", "AGE_IMPLAUSIBLE_AT_DOCUMENT", "附加新聞日期時年齡不合理（提示）", "受檢對象在附加新聞或網頁表頭日期（到日）當天未滿 14 歲，而該則中名單人物的完整姓名正前方寫著被告、嫌犯等或公司負責人、董事等兒童不可能有的身分（名單無自己的出生日期；未成年、監護、民事、繼承、冒用、否認等線索即不提示）。只是提示，不自動排除：規則以封閉詞表讀自然語言，詞表已知不完整，也未在附銀行判定的真實 Case 上量測錯誤率。第三階段第 1 列，需人工複核；由其他硬衝突判定的 pair 不帶此提示。", "EvidenceBuilder.TemporalEvidence", Identity + "#implausible-age-at-a-dated-document-advisory"),
         ("IDENTITY_REASON", "IMPOSSIBLE_ROLE_AT_REPORTED_EVENT", "事件時職務不可能", "受檢對象在職務起始時未達該職務的法定年齡；規則待驗證，維持 REVIEW。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
         ("IDENTITY_REASON", "FULL_DOB_CONFLICT", "完整出生日期相差逾兩年", "雙方都有完整出生日期，名單所有出生日期都與受檢對象相差超過 2 年；使用者 2026-11-27 決定放行的硬衝突，排除身分（NO_MATCH），各名單類型皆同，除非來源品質降級（SOURCE_QUALITY_DOWNGRADE）。", "HardConflictGate.Check", Identity + "#hard-conflict-gate"),
         ("IDENTITY_REASON", "DOCUMENT_IDENTITY_CONFLICT", "同類證件不符", "同類型、同發證國的證件號碼不同；第三階段第 1 列，REVIEW。", "EvidenceBuilder.DocumentEvidence", Identity + "#stage-3-table"),
@@ -105,6 +106,7 @@ public static class CodeCatalog
         ("CONDITION_REASON", "RCA_OUTSIDE_STATUTORY_SCOPE", "RCA 超出法定範圍", "關係不在法定 RCA 範圍內。", "SourceConditions.Determine", "docs/feature/pep-rca-screening.md#rca-relationship-scope"),
         ("CONDITION_REASON", StageVote.ReadersDisagree, "法律階段讀取者不一致", "有回答的法律階段讀取者讀出的階段不同（只設定一個模型時，階段仍取規則的讀法），或三方未一致（兩方相同或三方各異，階段為 UNKNOWN）；複核人員須自行閱讀新聞判斷階段。各方讀出的階段見 stageReaders。", "StageVote.Decide", Watchlist + "#three-readers"),
         ("CONDITION_REASON", StageVote.ReaderNoAnswer, "法律階段模型回答缺值", "已設定的法律階段模型的回答缺值（錯誤、逾時、本次分析的大型語言模型時間預算已用完，或回答無法解析）；缺值不以其他讀取者或規則補上，階段為 UNKNOWN、無依據，交複核人員判讀。該模型列在 stageReaders 中，沒有階段（與回答 UNKNOWN 不同）。條件為 HIT 或 UNKNOWN 時，批次工作先重試，最後一次嘗試才寫入；NOT_HIT 條件照樣標示，但不重試。", "StageVote.Decide", Watchlist + "#three-readers"),
+        ("CONDITION_REASON", SourceConditions.NewsItemsDiffer, "各則附加新聞的法律階段不同", "名單附有多則新聞，各則分別讀出（規則，設定模型時與模型表決）的法律階段不同；不以其中一則為準，階段為 UNKNOWN、無依據，交複核人員判讀。讀不出階段的新聞不算。", "SourceConditions.Determine", Watchlist + "#several-news-items"),
         ("PEP_TYPE", "PEP_FAMILY", "PEP 家屬", "名單類別表明為 PEP 的家庭成員。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#pep-source-attributes"),
         ("PEP_TYPE", "PEP_CLOSE_ASSOCIATE", "PEP 密切關係人", "名單類別表明為 PEP 的密切關係人。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#pep-source-attributes"),
         ("PEP_TYPE", "RCA_UNCONFIRMED", "RCA 關係未確認", "RCA 名單，但關係類型未說明。", "SourceConditions.PepType", "docs/feature/pep-rca-screening.md#rca-relationship-scope"),
@@ -164,7 +166,8 @@ public static class CodeCatalog
         ("DATA_QUALITY", "LEGACY_RECORD_BOUNDARY_UNCLEAR", "舊處理紀錄邊界不清", "舊系統處理紀錄的分段無法確定。", "TxtCaseReader", Extraction + "#legacy-review-records"),
         ("DATA_QUALITY", "UNPARSEABLE", "無法解析", "表格列或標題無法讀取（冒號後為位置）。", "TxtCaseReader", Extraction + "#quality-findings"),
         ("DATA_QUALITY", "FIELD_CONFLICT", "欄位矛盾", "國家欄位與地址內容矛盾。", "TxtCaseReader", Extraction + "#quality-findings"),
-        ("DATA_QUALITY", "AMBIGUOUS", "值不明確", "國家值無法唯一對應到國家，不參與比對（冒號後為欄位）。", "TxtCaseReader", Extraction + "#country-roles"),
+        ("DATA_QUALITY", "AMBIGUOUS", "值不明確", "國家值無法唯一對應到國家，或名單的已故?旗標無法讀取，不參與比對（冒號後為欄位）。", "TxtCaseReader", Extraction + "#country-roles"),
+        ("DATA_QUALITY", "FIELD_TRUNCATED", "欄位超過長度上限", "文字欄位超過長度上限（名單附註 32,767 字，即工作表一格的上限），只保留前段（冒號後為欄位）；完整原文仍在案件輸入檔中。", "TxtCaseReader", Extraction + "#profile-notes"),
         ("DATA_QUALITY", "ENCODING_FALLBACK", "編碼改用 CP950", "檔案不是 UTF-8，改以 CP950（Big5）讀取（冒號後為檔名）。", "TxtCaseReader.Decode", Extraction + "#encoding"),
         ("DATA_QUALITY", "FIELD_ABSENT", "欄位不存在", "身分比對用的欄位不在檔案中（冒號後為欄位）。", "TxtCaseReader", Extraction + "#missing-values"),
         ("DATA_QUALITY", "FIELD_BLANK", "欄位空白", "身分比對用的欄位空白（冒號後為欄位）。", "TxtCaseReader", Extraction + "#missing-values"),

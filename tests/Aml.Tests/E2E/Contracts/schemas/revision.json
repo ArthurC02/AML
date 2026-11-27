@@ -1,5 +1,5 @@
 {
-  "$id": "aml:AnalysisRecord:v9",
+  "$id": "aml:AnalysisRecord:v10",
   "type": [
     "object",
     "null"
@@ -584,6 +584,79 @@
                       ]
                     },
                     "default": null
+                  },
+                  "residenceCountries": {
+                    "description": "居住國家（Resident of）；不是國籍，不參與比對",
+                    "type": [
+                      "array",
+                      "null"
+                    ],
+                    "items": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "default": null
+                  },
+                  "deceased": {
+                    "description": "名單記載是否已故（已故?）；未記載或無法讀取時為 null",
+                    "type": [
+                      "boolean",
+                      "null"
+                    ],
+                    "default": null
+                  },
+                  "notes": {
+                    "description": "名單的英文附註（Watchlist ProfileNotes），依原文保存並依標籤分段；不加解讀，不參與任何判斷。沒有附註時為 null",
+                    "type": [
+                      "object",
+                      "null"
+                    ],
+                    "properties": {
+                      "raw": {
+                        "description": "附註原文",
+                        "type": "string",
+                        "x-sensitivity": "PERSONAL"
+                      },
+                      "location": {
+                        "description": "在名單檔中的位置（名單資料_<編號>.txt:<行>）",
+                        "type": "string"
+                      },
+                      "parts": {
+                        "description": "依原文標籤分出的段落，依原文順序",
+                        "type": "array",
+                        "items": {
+                          "type": [
+                            "object",
+                            "null"
+                          ],
+                          "properties": {
+                            "label": {
+                              "description": "原文標籤，例如 Last Reviewed Date、Keywords、People mentioned、Companies mentioned、Profile；第一個標籤前的文字為 null",
+                              "type": [
+                                "string",
+                                "null"
+                              ]
+                            },
+                            "text": {
+                              "description": "該段原文",
+                              "type": "string",
+                              "x-sensitivity": "PERSONAL"
+                            }
+                          },
+                          "required": [
+                            "text"
+                          ]
+                        }
+                      }
+                    },
+                    "required": [
+                      "raw",
+                      "location",
+                      "parts"
+                    ],
+                    "default": null
                   }
                 },
                 "required": [
@@ -776,6 +849,16 @@
                               "boolean",
                               "null"
                             ],
+                            "default": null
+                          },
+                          "item": {
+                            "description": "讀的是第幾則附加新聞（依附加新聞順序，從 1 起）；只有一則時省略",
+                            "type": [
+                              "string",
+                              "integer",
+                              "null"
+                            ],
+                            "pattern": "^-?(?:0|[1-9]\\d*)$",
                             "default": null
                           }
                         },
@@ -1092,6 +1175,14 @@
                 "description": "是否經獨立驗證；舊決定永遠不是系統判斷",
                 "type": "boolean",
                 "default": false
+              },
+              "profileId": {
+                "description": "疑似名單表中此列的名單編號；整案的舊決定為 null",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "default": null
               }
             },
             "required": [
@@ -1698,7 +1789,7 @@
                 ]
               },
               "newsDigest": {
-                "description": "附加新聞的人物、事件與固定句型摘要，依規則讀出；不影響任何判斷。沒有附加新聞時為 null",
+                "description": "附加新聞的人物、事件與固定句型摘要，依規則讀出；不影響任何判斷。沒有附加新聞時為 null；有多則時為第一則的",
                 "type": [
                   "object",
                   "null"
@@ -2177,6 +2268,49 @@
                   "summary"
                 ],
                 "default": null
+              },
+              "moreNewsDigests": {
+                "description": "第二則起每則附加新聞的摘要，依附加新聞順序；只有一則或沒有時省略",
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "properties": {
+                    "sourceRef": {
+                      "description": "新聞在來源中的引用編號（S#）",
+                      "type": "string"
+                    },
+                    "people": {
+                      "description": "報導中的人物；名單人物在前",
+                      "$ref": "#/properties/explanation/properties/hits/items/properties/newsDigest/properties/people"
+                    },
+                    "events": {
+                      "description": "報導中的事件，依出現順序",
+                      "$ref": "#/properties/explanation/properties/hits/items/properties/newsDigest/properties/events"
+                    },
+                    "summary": {
+                      "description": "由人物與事件依固定句型組成的摘要；每句都來自上列人物與事件",
+                      "$ref": "#/properties/explanation/properties/hits/items/properties/newsDigest/properties/summary",
+                      "x-sensitivity": "PERSONAL"
+                    },
+                    "model": {
+                      "description": "新聞模型讀出的人物、機構與事件，與上列規則結果分開，不參與任何判斷；未設定模型時為 null",
+                      "$ref": "#/properties/explanation/properties/hits/items/properties/newsDigest/properties/model",
+                      "default": null
+                    }
+                  },
+                  "required": [
+                    "sourceRef",
+                    "people",
+                    "events",
+                    "summary"
+                  ]
+                }
               }
             },
             "required": [

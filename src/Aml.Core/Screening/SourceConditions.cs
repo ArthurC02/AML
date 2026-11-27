@@ -40,7 +40,8 @@ public sealed record StageReaderResult(
     [property: Description("此讀取者讀出的法律階段；模型回答缺值時省略（STAGE_READER_NO_ANSWER），與回答 UNKNOWN 不同")] LegalStage? Stage,
     [property: Description("規則的依據，見 /api/codes；僅 rules 有")] string? Basis = null,
     [property: Description("模型引用的原文；沒有引文時省略")] string? Quote = null,
-    [property: Description("去除空白後，引文是否出現在新聞原文中；沒有引文時省略")] bool? QuoteInText = null);
+    [property: Description("去除空白後，引文是否出現在新聞原文中；沒有引文時省略")] bool? QuoteInText = null,
+    [property: Description("讀的是第幾則附加新聞（依附加新聞順序，從 1 起）；只有一則時省略")] int? Item = null);
 
 /// <summary>List-type determination and source conditions (ADR-0005).</summary>
 public static partial class SourceConditions
@@ -105,7 +106,12 @@ public static partial class SourceConditions
     /// <param name="stageReaders">The configured stage models, which vote with the rules on the stage in attached news
     /// (<see cref="StageVote"/>); none: the rules alone.</param>
     public static IReadOnlyList<SourceCondition> Determine(SourceProfile profile, bool isRca, string? news, ListFlags? flags = null, DateOnly? asOf = null,
-        IReadOnlyList<IStageReader>? stageReaders = null)
+        IReadOnlyList<IStageReader>? stageReaders = null) =>
+        DetermineWithNews(profile, isRca, news is null ? [] : [news], flags, asOf, stageReaders);
+
+    /// <summary>As <see cref="Determine"/>, with every news item attached to the Profile (<see cref="NewsStage"/>).</summary>
+    public static IReadOnlyList<SourceCondition> DetermineWithNews(SourceProfile profile, bool isRca, IReadOnlyList<string> news, ListFlags? flags = null,
+        DateOnly? asOf = null, IReadOnlyList<IStageReader>? stageReaders = null)
     {
         var today = asOf ?? DateOnly.FromDateTime(DateTime.UtcNow);
         flags ??= ListFlags.None;
@@ -151,7 +157,7 @@ public static partial class SourceConditions
     private static bool FlagsContradictCategories(List<Decision> decided, List<ListType> mapped) =>
         mapped.Any(t => t is not ListType.Unknown && !decided.Any(d => d.Status == ConditionStatus.Hit && d.Type == t));
 
-    private static SourceCondition Condition(Decision d, SourceProfile profile, IReadOnlyList<string> risks, string? news, bool conflict, DateOnly today,
+    private static SourceCondition Condition(Decision d, SourceProfile profile, IReadOnlyList<string> risks, IReadOnlyList<string> news, bool conflict, DateOnly today,
         IReadOnlyList<IStageReader> stageReaders)
     {
         var c = Shape(d.Type, profile, risks, news, today, stageReaders);
@@ -180,7 +186,7 @@ public static partial class SourceConditions
         _ => FlagValue.Missing,
     };
 
-    private static SourceCondition Shape(ListType t, SourceProfile profile, IReadOnlyList<string> risks, string? news, DateOnly today,
+    private static SourceCondition Shape(ListType t, SourceProfile profile, IReadOnlyList<string> risks, IReadOnlyList<string> news, DateOnly today,
         IReadOnlyList<IStageReader> stageReaders) => t switch
         {
             ListType.AdverseMedia => AdverseMedia(profile, risks, news, stageReaders),
@@ -196,26 +202,54 @@ public static partial class SourceConditions
             _ => Hit(t),
         };
 
-    private static SourceCondition AdverseMedia(SourceProfile profile, IReadOnlyList<string> risks, string? news, IReadOnlyList<IStageReader> stageReaders)
+    private static SourceCondition AdverseMedia(SourceProfile profile, IReadOnlyList<string> risks, IReadOnlyList<string> news, IReadOnlyList<IStageReader> stageReaders)
     {
-        var rules = LegalStageReading.FromNews(news, profile.Names);
         var c = Hit(ListType.AdverseMedia) with
         {
             RiskCategories = risks,
-            LegalStage = rules.Stage,
-            LegalStageBasis = rules.Basis,
-            AmlRelevance = Relevance(risks, news, profile),
+            AmlRelevance = Relevance(risks, news.Count == 0 ? null : string.Join("\n\n", news), profile),
         };
-        if (news is null || stageReaders.Count == 0) return c;
-        var ((stage, basis), disagree, noAnswer, readers) = StageVote.Read(rules, news, profile.Names, stageReaders);
-        return c with
-        {
-            LegalStage = stage,
-            LegalStageBasis = basis,
-            StageReaders = readers,
-            ReasonCodes = [.. new[] { disagree ? StageVote.ReadersDisagree : null, noAnswer ? StageVote.ReaderNoAnswer : null }.OfType<string>()],
-        };
+        if (news.Count == 0) return c;
+        var ((stage, basis), codes, readers) = NewsStage(news, profile.Names, stageReaders);
+        return c with { LegalStage = stage, LegalStageBasis = basis, StageReaders = readers, ReasonCodes = codes };
     }
+
+    public const string NewsItemsDiffer = "STAGE_NEWS_ITEMS_DIFFER";
+
+    /// <summary>
+    /// The stage of the Profile person in its attached news: each item is read as one text is (the rules, voted with the
+    /// configured models, <see cref="StageVote"/>), then the items are set side by side. An item that reads no stage says
+    /// nothing; when every item that reads one reads the same, that stage stands (with the basis of the last such item);
+    /// when they differ, UNKNOWN with STAGE_NEWS_ITEMS_DIFFER, for a reviewer to read. A missing model answer in any item
+    /// is UNKNOWN with STAGE_READER_NO_ANSWER whatever the others read, never their stage. One item: that item's vote, readers without an item number.
+    /// </summary>
+    private static (StageReading Reading, IReadOnlyList<string> Codes, IReadOnlyList<StageReaderResult>? Readers) NewsStage(
+        IReadOnlyList<string> news, IReadOnlyList<string> names, IReadOnlyList<IStageReader> stageReaders)
+    {
+        var several = news.Count > 1;
+        var items = news.Select((text, i) =>
+        {
+            var rules = LegalStageReading.FromNews(text, names);
+            if (stageReaders.Count == 0) return new ItemStage(rules, false, false, []);
+            var (reading, disagree, noAnswer, readers) = StageVote.Read(rules, text, names, stageReaders);
+            return new ItemStage(reading, disagree, noAnswer, several ? [.. readers.Select(r => r with { Item = i + 1 })] : readers);
+        }).ToList();
+        var noAnswerAnywhere = items.Exists(x => x.NoAnswer);
+        var known = items.Where(x => x.Reading.Stage != LegalStage.Unknown).ToList();
+        var differ = known.Select(x => x.Reading.Stage).Distinct().Count() > 1;
+        var reading = noAnswerAnywhere || differ ? new StageReading(LegalStage.Unknown, null)
+            : known.Count > 0 ? known[^1].Reading
+            : items[^1].Reading;
+        var codes = new[]
+        {
+            items.Exists(x => x.Disagree) ? StageVote.ReadersDisagree : null,
+            noAnswerAnywhere ? StageVote.ReaderNoAnswer : null,
+            differ ? NewsItemsDiffer : null,
+        }.OfType<string>().ToList();
+        return (reading, codes, stageReaders.Count == 0 ? null : [.. items.SelectMany(x => x.Readers)]);
+    }
+
+    private sealed record ItemStage(StageReading Reading, bool Disagree, bool NoAnswer, IReadOnlyList<StageReaderResult> Readers);
 
     public const string PagePersonNotSuspect = "PAGE_PERSON_NOT_SUSPECT";
     public const string PageStageNotRead = "PAGE_STAGE_NOT_READ";

@@ -443,7 +443,7 @@ public class CaseReaderTests
     public void News_date_without_spaces_is_read()
     {
         var input = Read("GC-11", [("新聞資訊_90000011.txt", "2026 年 5 月 7 日", "2026年5月7日")]);
-        Assert.Equal(new PartialDate(2026, 5, 7), input.NewsByProfileId["90000011"].PublishedOn);
+        Assert.Equal(new PartialDate(2026, 5, 7), Assert.Single(input.NewsByProfileId["90000011"]).PublishedOn);
     }
 
     [Theory]
@@ -453,7 +453,7 @@ public class CaseReaderTests
     public void News_date_goes_through_the_date_parser(string date, int? year, int? month, int? day)
     {
         var input = Read("GC-11", [("新聞資訊_90000011.txt", "2026 年 5 月 7 日", date)]);
-        Assert.Equal(year is null ? null : new PartialDate(year.Value, month, day), input.NewsByProfileId["90000011"].PublishedOn);
+        Assert.Equal(year is null ? null : new PartialDate(year.Value, month, day), Assert.Single(input.NewsByProfileId["90000011"]).PublishedOn);
     }
 
     // Customer and related-party layouts.

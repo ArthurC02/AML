@@ -121,7 +121,7 @@ internal sealed partial class CaseExport
             .Order(StringComparer.OrdinalIgnoreCase)
             .Select(name => $"{UnsupportedAttachment}:{name}");
 
-    [GeneratedRegex("^(案件資訊.*|名單資料_\\d+|新聞資訊_\\d+|客戶-背景資料|客戶-聯絡資料|客戶-關聯人背景資料)\\.txt$")]
+    [GeneratedRegex("^(案件資訊.*|名單資料_\\d+|新聞資訊\\d*_\\d+|客戶-背景資料|客戶-聯絡資料|客戶-關聯人背景資料)\\.txt$")]
     private static partial Regex KnownFile();
 
     private static bool IsHtmlName(string path) => Path.GetExtension(path).ToLowerInvariant() is ".html" or ".htm";

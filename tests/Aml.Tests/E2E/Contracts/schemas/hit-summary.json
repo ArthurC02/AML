@@ -1,5 +1,5 @@
 {
-  "$id": "aml:HitSummary:v9",
+  "$id": "aml:HitSummary:v10",
   "type": [
     "object",
     "null"

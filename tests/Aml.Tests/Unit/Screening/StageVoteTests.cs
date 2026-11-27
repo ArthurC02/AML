@@ -151,7 +151,7 @@ public class StageVoteTests
         var subject = new ScreenedSubject(SubjectRole.Customer, null, ["陳志明"], Core.Shared.Gender.Male, new Core.Shared.PartialDate(1980, 5, 20), ["TW"], null, null, null, null, [], []);
         var a = Core.Cases.CaseAnalyzer.Analyze(new CaseInput(subject,
             [new CandidateRow("陳志明", "1", null, false, new ListFlags(FlagValue.Missing, FlagValue.Missing, adverseNews))],
-            new Dictionary<string, SourceProfile> { ["1"] = Person }, new Dictionary<string, NewsItem> { ["1"] = new("1", null, "t", null, null, News) }, []),
+            new Dictionary<string, SourceProfile> { ["1"] = Person }, new Dictionary<string, IReadOnlyList<NewsItem>> { ["1"] = [new("1", null, "t", null, null, News)] }, []),
             stageReaders: [reader]);
 
         var c = Assert.Single(Assert.Single(a.Hits).Conditions);

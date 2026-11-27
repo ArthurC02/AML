@@ -37,7 +37,7 @@ public class PageCandidateTests
             new DateTimeOffset(2026, 11, 20, 8, 0, 0, TimeSpan.Zero), "C0FFEE", text, PageReadings.Read(PageId, text, null, []).Persons, []);
 
     private static CaseInput Input(PageRecord page, ScreenedSubject? subject = null) =>
-        new(subject ?? Subject(), [], new Dictionary<string, SourceProfile>(), new Dictionary<string, NewsItem>(), [], Pages: [page]);
+        new(subject ?? Subject(), [], new Dictionary<string, SourceProfile>(), new Dictionary<string, IReadOnlyList<NewsItem>>(), [], Pages: [page]);
 
     [Theory]
     [InlineData("王大明", "王大明", "EXACT", null, true)]

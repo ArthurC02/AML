@@ -48,6 +48,15 @@ public sealed record ScreenedSubject(
     /// <summary>A legal person or group (客戶類型 法人): compared on entity identifiers, never on DOB or nationality rules.</summary>
     public bool IsEntity => PartyType is { } t && !IsNaturalPersonType(t);
 
+    /// <summary>The bank's alias of the customer (客戶別名), as written; also in <see cref="Names"/>, so it is a name form compared like the others.</summary>
+    public IReadOnlyList<string> Aliases { get; init; } = [];
+
+    /// <summary>The customer's position or title (職位, 職稱); shown, never compared.</summary>
+    public string? Title { get; init; }
+
+    /// <summary>The customer's birth place (出生地點); read, never compared.</summary>
+    public string? BirthPlace { get; init; }
+
     public static bool IsNaturalPersonType(string partyType) =>
         NaturalPersonWords.Any(w => partyType.Contains(w, StringComparison.Ordinal))
         || NaturalPersonLabels.Contains(partyType.Trim(), StringComparer.OrdinalIgnoreCase);
@@ -97,7 +106,19 @@ public sealed record SourceProfile(
     [property: Description("死亡日期")][property: Sensitivity(Sensitivity.Personal)] PartialDate? DateOfDeath = null,
     [property: Description("記錄類型：Person 或組織、船舶等")] string RecordType = "Person",
     [property: Description("非證件的識別碼")] IReadOnlyList<OtherIdentifier>? OtherIdentifiers = null,
-    [property: Description("指控相關國家")] IReadOnlyList<string>? AllegationCountries = null);
+    [property: Description("指控相關國家")] IReadOnlyList<string>? AllegationCountries = null,
+    [property: Description("居住國家（Resident of）；不是國籍，不參與比對")] IReadOnlyList<string>? ResidenceCountries = null,
+    [property: Description("名單記載是否已故（已故?）；未記載或無法讀取時為 null")] bool? Deceased = null,
+    [property: Description("名單的英文附註（Watchlist ProfileNotes），依原文保存並依標籤分段；不加解讀，不參與任何判斷。沒有附註時為 null")] ProfileNotes? Notes = null);
+
+public sealed record ProfileNotes(
+    [property: Description("附註原文")][property: Sensitivity(Sensitivity.Personal)] string Raw,
+    [property: Description("在名單檔中的位置（名單資料_<編號>.txt:<行>）")] string Location,
+    [property: Description("依原文標籤分出的段落，依原文順序")] IReadOnlyList<ProfileNotePart> Parts);
+
+public sealed record ProfileNotePart(
+    [property: Description("原文標籤，例如 Last Reviewed Date、Keywords、People mentioned、Companies mentioned、Profile；第一個標籤前的文字為 null")] string? Label,
+    [property: Description("該段原文")][property: Sensitivity(Sensitivity.Personal)] string Text);
 
 public sealed record SourceReference(
     [property: Description("來源編號")] string Id,
@@ -134,18 +155,21 @@ public sealed record ListFlags(FlagValue Pep, FlagValue Blacklist, FlagValue Adv
 }
 
 // Legacy columns become an ImportedDecision only, never evidence.
-public sealed record CandidateRow(string MatchedName, string ProfileId, string? LegacyReason, bool IsRca, ListFlags? Flags = null);
+/// <param name="LegacyDecision">The row's 是否符合名單？ cells as written (joined with " | " when both sub-columns hold a value).</param>
+public sealed record CandidateRow(string MatchedName, string ProfileId, string? LegacyReason, bool IsRca, ListFlags? Flags = null, string? LegacyDecision = null);
 
 public sealed record ImportedDecision(
     [property: Description("來源欄位")] string Field,
     [property: Description("原文內容")][property: Sensitivity(Sensitivity.Personal)] string Value,
-    [property: Description("是否經獨立驗證；舊決定永遠不是系統判斷")] bool IndependentlyVerified = false);
+    [property: Description("是否經獨立驗證；舊決定永遠不是系統判斷")] bool IndependentlyVerified = false,
+    [property: Description("疑似名單表中此列的名單編號；整案的舊決定為 null")] string? ProfileId = null);
 
+/// <param name="NewsByProfileId">Every attached news item of a Profile, in file order (新聞資訊_, then 新聞資訊1_, 新聞資訊2_ …).</param>
 public sealed record CaseInput(
     ScreenedSubject Subject,
     IReadOnlyList<CandidateRow> Rows,
     IReadOnlyDictionary<string, SourceProfile> Profiles,
-    IReadOnlyDictionary<string, NewsItem> NewsByProfileId,
+    IReadOnlyDictionary<string, IReadOnlyList<NewsItem>> NewsByProfileId,
     IReadOnlyList<ImportedDecision> ImportedDecisions,
     IReadOnlyDictionary<string, string>? SourceHashes = null,
     IReadOnlyList<Aml.Core.Pages.PageRecord>? Pages = null);

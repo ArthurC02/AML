@@ -10,15 +10,30 @@ public static class IdentityDecisionPolicy
 
     // A DOB conflict never reaches stage 3: the gate closes it (HardConflictGate.Check).
     private static readonly EvidenceGroup[] ProfileGroupsWithConflictCode = [EvidenceGroup.Document];
-    private static readonly EvidenceGroup[] NewsGroupsWithConflictCode = [EvidenceGroup.StatedAge, EvidenceGroup.StatedBirthDate];
+    // What attached news says that conflicts without concluding: the advisory implausible age at a dated document first
+    // (a TEMPORAL_ROLE conflict reaching stage 3 is only that: a role-table one stops at the gate), then stated values.
+    private static readonly EvidenceGroup[] NewsGroupsWithConflictCode = [EvidenceGroup.TemporalRole, EvidenceGroup.StatedAge, EvidenceGroup.StatedBirthDate];
 
-    public static IdentityResult Decide(ScreenedSubject s, SourceProfile p, NewsItem? news = null)
+    public static IdentityResult Decide(ScreenedSubject s, SourceProfile p, NewsItem? news = null) => Decide(s, p, news is null ? [] : [news]);
+
+    /// <param name="news">Every news item attached to the Profile; what each states next to the name is read as described in <see cref="EvidenceBuilder.Build(ScreenedSubject, SourceProfile, IReadOnlyList{NewsItem})"/>.</param>
+    public static IdentityResult Decide(ScreenedSubject s, SourceProfile p, IReadOnlyList<NewsItem> news)
     {
         var e = EvidenceBuilder.Build(s, p, news);
         if (!IsPersonRecord(p))
             return EntityDecision(s, p, new Dictionary<EvidenceGroup, Evidence>(e));
         if (HardConflictGate.Check(s, p, e, news) is { } hard)
+        {
+            // A pair another rule decides carries no hint: the hint asks for a review that the hard conflict settles.
+            if (e.GetValueOrDefault(EvidenceGroup.TemporalRole)?.Detail == ReasonCodes.AgeImplausibleAtDocument)
+            {
+                var without = new Dictionary<EvidenceGroup, Evidence>(e);
+                if (EvidenceBuilder.TemporalEvidence(s, p, news, hint: false) is { } plain) without[EvidenceGroup.TemporalRole] = plain;
+                else without.Remove(EvidenceGroup.TemporalRole);
+                e = without;
+            }
             return HardConflictDecision(e, p, hard);
+        }
 
         var (row, decision, code) = Stage3(e);
         var reasons = new List<string> { code };

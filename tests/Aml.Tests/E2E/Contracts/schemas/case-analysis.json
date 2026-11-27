@@ -1,5 +1,5 @@
 {
-  "$id": "aml:CaseAnalysis:v9",
+  "$id": "aml:CaseAnalysis:v10",
   "type": [
     "object",
     "null"
@@ -548,6 +548,79 @@
                   ]
                 },
                 "default": null
+              },
+              "residenceCountries": {
+                "description": "居住國家（Resident of）；不是國籍，不參與比對",
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "default": null
+              },
+              "deceased": {
+                "description": "名單記載是否已故（已故?）；未記載或無法讀取時為 null",
+                "type": [
+                  "boolean",
+                  "null"
+                ],
+                "default": null
+              },
+              "notes": {
+                "description": "名單的英文附註（Watchlist ProfileNotes），依原文保存並依標籤分段；不加解讀，不參與任何判斷。沒有附註時為 null",
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "raw": {
+                    "description": "附註原文",
+                    "type": "string",
+                    "x-sensitivity": "PERSONAL"
+                  },
+                  "location": {
+                    "description": "在名單檔中的位置（名單資料_<編號>.txt:<行>）",
+                    "type": "string"
+                  },
+                  "parts": {
+                    "description": "依原文標籤分出的段落，依原文順序",
+                    "type": "array",
+                    "items": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "properties": {
+                        "label": {
+                          "description": "原文標籤，例如 Last Reviewed Date、Keywords、People mentioned、Companies mentioned、Profile；第一個標籤前的文字為 null",
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "text": {
+                          "description": "該段原文",
+                          "type": "string",
+                          "x-sensitivity": "PERSONAL"
+                        }
+                      },
+                      "required": [
+                        "text"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "raw",
+                  "location",
+                  "parts"
+                ],
+                "default": null
               }
             },
             "required": [
@@ -740,6 +813,16 @@
                           "boolean",
                           "null"
                         ],
+                        "default": null
+                      },
+                      "item": {
+                        "description": "讀的是第幾則附加新聞（依附加新聞順序，從 1 起）；只有一則時省略",
+                        "type": [
+                          "string",
+                          "integer",
+                          "null"
+                        ],
+                        "pattern": "^-?(?:0|[1-9]\\d*)$",
                         "default": null
                       }
                     },
@@ -1056,6 +1139,14 @@
             "description": "是否經獨立驗證；舊決定永遠不是系統判斷",
             "type": "boolean",
             "default": false
+          },
+          "profileId": {
+            "description": "疑似名單表中此列的名單編號；整案的舊決定為 null",
+            "type": [
+              "string",
+              "null"
+            ],
+            "default": null
           }
         },
         "required": [

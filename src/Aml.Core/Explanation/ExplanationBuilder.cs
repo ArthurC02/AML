@@ -37,9 +37,12 @@ public static class ExplanationBuilder
         var categories = p.Categories.Select(c => c.Subcategory is null ? c.Category : $"{c.Category} / {c.Subcategory}").ToList();
         var support = e.Values.Where(v => v.IsSupport).ToList();
         var unknown = rows.Where(r => IsUnknown(r.Status)).Select(r => r.Field).ToList();
-        var news = Pages.PageCandidates.Find(input, p.ProfileKey) is var (page, person) ? Pages.PageCandidates.News(page, person)
-            : input.NewsByProfileId.GetValueOrDefault(ProfileKeys.IdOf(p.ProfileKey));
+        IReadOnlyList<NewsItem> news = Pages.PageCandidates.Find(input, p.ProfileKey) is var (page, person) ? [Pages.PageCandidates.News(page, person)]
+            : input.NewsByProfileId.GetValueOrDefault(ProfileKeys.IdOf(p.ProfileKey)) ?? [];
         var sources = Sources(p, news, h.Conditions);
+        // One digest per news item, each citing its own source; the news sources follow the Profile's own, in item order.
+        var newsRefs = sources.Where(x => x.UsedFor != SourceUse.ProfileRecord).Select(x => x.Ref).ToList();
+        var digests = news.Select((n, i) => NewsDigests.Build(n, p.Names, newsRefs[i], newsModel)!).ToList();
 
         return new HitExplanation(
             HitNumber: number,
@@ -51,7 +54,7 @@ public static class ExplanationBuilder
             IsRca: candidateRows.Any(r => r.IsRca),
             SourceCategories: categories,
             SourceConditions: h.Conditions,
-            AttachedNews: news is not null,
+            AttachedNews: news.Count > 0,
             Comparison: rows,
             RelatedParties: RelatedParties(s, p),
             Support: support,
@@ -74,7 +77,10 @@ public static class ExplanationBuilder
                 AgreementsAndDifferences: AgreementsAndDifferences(rows, unknown, h.Identity.Evidence, h.PairReasonCodes.Contains(AssessmentPolicy.AttachedNewsDisagreesWithProfile)),
                 KeyEvidenceOrGaps: KeyEvidence(h, support),
                 Conclusion: Conclusion(h)),
-            NewsDigest: NewsDigests.Build(news, p.Names, sources.LastOrDefault(x => x.UsedFor != SourceUse.ProfileRecord)?.Ref ?? "", newsModel));
+            NewsDigest: digests.FirstOrDefault())
+        {
+            MoreNewsDigests = digests.Count > 1 ? digests[1..] : null,
+        };
     }
 
     private static string ScreenedSubjectLabel(ScreenedSubject s)
@@ -93,26 +99,30 @@ public static class ExplanationBuilder
         (s.Relatives ?? []).Select(r => new RelatedParty("SUBJECT", r.Name, r.Relation, r.IsEntity))
             .Concat(p.Relationships.Select(r => new RelatedParty("PROFILE", r.Name, r.Relation, r.IsEntity, r.ProfileId))).ToList();
 
-    private static List<ExplanationSource> Sources(SourceProfile p, NewsItem? news, IReadOnlyList<SourceCondition> conditions)
+    // The Profile's own sources, each news item in order (the first without a document ID is <key>#news, the n-th <key>#news-n),
+    // then the Profile's notes, which are part of the record itself.
+    private static List<ExplanationSource> Sources(SourceProfile p, IReadOnlyList<NewsItem> news, IReadOnlyList<SourceCondition> conditions)
     {
         var sources = p.Sources.Select((x, i) => new ExplanationSource($"S{i + 1}", x.Id, x.Name, x.Url, x.PublishedOn, x.RetrievedOn, SourceUse.ProfileRecord, true)).ToList();
-        if (news is not null)
-            sources.Add(new ExplanationSource($"S{sources.Count + 1}", news.DocumentId ?? $"{p.ProfileKey}#news", $"{news.Publisher}：{news.Title}", news.Url,
-                news.PublishedOn?.ToString(), news.RetrievedOn,
+        foreach (var (n, i) in news.Select((n, i) => (n, i)))
+            sources.Add(new ExplanationSource($"S{sources.Count + 1}", n.DocumentId ?? (i == 0 ? $"{p.ProfileKey}#news" : $"{p.ProfileKey}#news-{i + 1}"),
+                $"{n.Publisher}：{n.Title}", n.Url, n.PublishedOn?.ToString(), n.RetrievedOn,
                 conditions.Any(c => c.Type == ListType.AdverseMedia) ? SourceUse.LegalStage : SourceUse.Context, true));
+        if (p.Notes is not null)
+            sources.Add(new ExplanationSource($"S{sources.Count + 1}", $"{p.ProfileKey}#notes", "Watchlist ProfileNotes", null, null, null, SourceUse.ProfileRecord, true));
         return sources;
     }
 
     private static string InternalData(ScreenedSubject s, string subject) =>
         $"受檢對象為{subject}；出生日期 {OrMissing(s.DateOfBirth?.ToString())}；國籍 {OrMissing(Join(s.Nationalities))}；性別 {OrMissing(Gender(s.Gender))}；證件 {(s.Document is null ? "未提供" : "已提供")}。";
 
-    private static string ExternalData(HitResult h, List<string> categories, List<ExplanationSource> sources, NewsItem? news)
+    private static string ExternalData(HitResult h, List<string> categories, List<ExplanationSource> sources, IReadOnlyList<NewsItem> news)
     {
         var p = h.Profile;
-        var hasNews = news is not null;
+        var hasNews = news.Count > 0;
         if (ProfileKeys.IsWeb(p.ProfileKey))
             return $"收到網頁的人物 {p.ProfileKey}{Cite(sources)}判定為 {Join(h.Conditions.Select(Condition))}；網頁除姓名旁所載者外沒有出生日期、國籍或性別欄位"
-                + (news?.UpdatedOn is { } updated ? $"；網頁未載發布日期，只載更新日期 {updated}（UPDATE_DATE），不作報導日期，所載年齡不比對" : "")
+                + ((hasNews ? news[0].UpdatedOn : null) is { } updated ? $"；網頁未載發布日期，只載更新日期 {updated}（UPDATE_DATE），不作報導日期，所載年齡不比對" : "")
                 + (p.Findings.Contains(Pages.PageCandidates.ModelRead) ? "；此人由新聞模型讀出（MODEL_READ）" : "") + "。";
         return $"名單 {p.ProfileKey}（{Join(categories)}）{Cite(sources.Where(x => x.UsedFor == SourceUse.ProfileRecord))}判定為 {Join(h.Conditions.Select(Condition))}；"
             + $"出生日期 {OrMissing(Join(p.DatesOfBirth.Select(d => d.ToString())))}；國籍 {OrMissing(Join(p.Citizenship))}；性別 {OrMissing(Gender(p.Gender))}；"
@@ -123,9 +133,17 @@ public static class ExplanationBuilder
     private static readonly (EvidenceGroup Group, string Label)[] NewsStated =
         [(EvidenceGroup.StatedAge, "報導年齡"), (EvidenceGroup.StatedBirthDate, "新聞所載出生日期"), (EvidenceGroup.StatedGender, "新聞所載性別")];
 
+    // The advisory implausible age at a dated document is said first, in full, and leads the conflicts: it is the one thing
+    // the reviewer must read, since nothing concluded on it.
+    private static readonly string[] DocumentAgeHintLabel = ["附加新聞日期時的年齡"];
+
+    private static string? DocumentAgeHint(IReadOnlyDictionary<EvidenceGroup, Evidence> e) =>
+        e.GetValueOrDefault(EvidenceGroup.TemporalRole) is { Detail: ReasonCodes.AgeImplausibleAtDocument, Note: { } note } ? note : null;
+
     private static string AgreementsAndDifferences(List<ComparisonRow> rows, List<string> unknown, IReadOnlyDictionary<EvidenceGroup, Evidence> e, bool newsDisagrees) =>
-        $"相符：{OrMissing(Join(rows.Where(r => r.Status is ComparisonStatus.Exact or ComparisonStatus.Partial).Select(r => r.Field)), "無")}；"
-        + $"衝突：{OrMissing(Join(rows.Where(r => r.Status == ComparisonStatus.Conflict).Select(r => r.Field)
+        (DocumentAgeHint(e) is { } hint ? $"{hint}。" : "")
+        + $"相符：{OrMissing(Join(rows.Where(r => r.Status is ComparisonStatus.Exact or ComparisonStatus.Partial).Select(r => r.Field)), "無")}；"
+        + $"衝突：{OrMissing(Join((DocumentAgeHint(e) is null ? [] : DocumentAgeHintLabel).Concat(rows.Where(r => r.Status == ComparisonStatus.Conflict).Select(r => r.Field))
             .Concat(NewsStated.Where(n => e.GetValueOrDefault(n.Group)?.Status == ComparisonStatus.Conflict).Select(n => n.Label))), "無")}；"
         + $"無法比對：{OrMissing(Join(unknown), "無")}。"
         // The Profile's own field agrees with the customer and the news next to the name says otherwise: said in words,
@@ -256,7 +274,7 @@ public static class ExplanationBuilder
     }
 
     private static IEnumerable<string> SubjectOccupations(ScreenedSubject s) =>
-        new[] { s.Occupation }.OfType<string>().Concat((s.Employments ?? []).Select(x => Position(x.Title, x.Organization, x.From)));
+        new[] { s.Occupation, s.Title is { } t ? $"職稱 {t}" : null }.OfType<string>().Concat((s.Employments ?? []).Select(x => Position(x.Title, x.Organization, x.From)));
 
     private static IEnumerable<string> ProfileRoles(SourceProfile p) =>
         p.Roles.Select(r => Position(r.Title, r.Organization, r.From))
@@ -316,11 +334,12 @@ public static class ExplanationBuilder
             parts.Add("法律階段 " + CaseJson.Code(c.LegalStage) + (c.LegalStageBasis is { } b ? $"（依據：{Named(b)}）" : ""));
         if (c.StageReaders is { } readers)
         {
-            parts.Add("各讀取者：" + Join(readers.Select(r => $"{r.Reader} {(r.Stage is { } s ? CaseJson.Code(s) : "回答缺值")}"
+            parts.Add("各讀取者：" + Join(readers.Select(r => (r.Item is { } item ? $"第 {item} 則新聞 " : "") + $"{r.Reader} {(r.Stage is { } s ? CaseJson.Code(s) : "回答缺值")}"
                 + (r.Quote is { } q ? $"（引文「{q}」，{(r.QuoteInText == true ? "原文可查到" : "原文查無")}）" : ""))));
             foreach (var code in new[] { StageVote.ReadersDisagree, StageVote.ReaderNoAnswer })
                 if (c.Status == ConditionStatus.Hit && c.ReasonCodes.Contains(code)) parts.Add(Named(code));
         }
+        if (c.Status == ConditionStatus.Hit && c.ReasonCodes.Contains(SourceConditions.NewsItemsDiffer)) parts.Add(Named(SourceConditions.NewsItemsDiffer));
         if (c.Status != ConditionStatus.Hit) parts.Add("條件狀態 " + CaseJson.Code(c.Status) + (c.ReasonCodes.Count > 0 ? "，" + Join(c.ReasonCodes) : ""));
         return CaseJson.Code(c.Type) + (parts.Count > 0 ? $"（{string.Join("；", parts)}）" : "");
     }

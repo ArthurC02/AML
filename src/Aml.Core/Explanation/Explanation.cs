@@ -58,7 +58,15 @@ public sealed record HitExplanation(
     [property: Description("資料品質 finding，見 /api/codes")] IReadOnlyList<string> DataQualityFindings,
     [property: Description("來源；Ref 在摘要中以 [S#] 引用")] IReadOnlyList<ExplanationSource> Sources,
     [property: Description("五段式摘要")] ExplanationSummary Summary,
-    [property: Description("附加新聞的人物、事件與固定句型摘要，依規則讀出；不影響任何判斷。沒有附加新聞時為 null")] NewsDigest? NewsDigest = null);
+    [property: Description("附加新聞的人物、事件與固定句型摘要，依規則讀出；不影響任何判斷。沒有附加新聞時為 null；有多則時為第一則的")] NewsDigest? NewsDigest = null)
+{
+    [property: Description("第二則起每則附加新聞的摘要，依附加新聞順序；只有一則或沒有時省略")]
+    public IReadOnlyList<NewsDigest>? MoreNewsDigests { get; init; }
+
+    /// <summary>Every news digest of the hit, in item order.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IEnumerable<NewsDigest> AllNewsDigests => new[] { NewsDigest }.OfType<NewsDigest>().Concat(MoreNewsDigests ?? []);
+}
 
 public sealed record ExplanationSource(
     [property: Description("摘要中的引用編號（S1、S2…）")] string Ref,
